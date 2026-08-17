@@ -1,955 +1,957 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import {
-  Box,
-  Button,
-  IconButton,
-  InputAdornment,
-  Menu,
-  MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
+    Box,
+    Button,
+    IconButton,
+    InputAdornment,
+    Menu,
+    MenuItem,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    TextField,
+    Typography,
 } from "@mui/material";
 import { ChevronRight, MoreHorizontal, Search } from "lucide-react";
 
 import type {
-  TableViewerAction,
-  TableViewerCell,
-  TableViewerContext,
-  TableViewerData,
-  TableViewerRow,
+    TableViewerAction,
+    TableViewerCell,
+    TableViewerContext,
+    TableViewerData,
+    TableViewerRow,
 } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 
 type TableViewerPaneProps = {
-  context: TableViewerContext;
-  table: TableViewerData;
+    context: TableViewerContext;
+    table: TableViewerData;
 };
 
 type ActivePane =
-  | {
-      kind: "metadata";
+    | {
+        kind: "metadata";
     }
-  | {
-      kind: "action";
-      action: TableViewerAction;
-      row?: TableViewerRow;
-      columnId?: string;
+    | {
+        kind: "action";
+        action: TableViewerAction;
+        row?: TableViewerRow;
+        columnId?: string;
     }
-  | null;
+    | null;
 
 function formatCellValue(value: TableViewerCell): string {
-  if (value === null || value === undefined) return "";
+    if (value === null || value === undefined) return "";
 
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
+    if (typeof value === "boolean") {
+        return value ? "Yes" : "No";
+    }
 
-  if (typeof value === "number") {
-    return Number.isInteger(value)
-      ? String(value)
-      : value.toLocaleString(undefined, {
-          maximumFractionDigits: 4,
-        });
-  }
+    if (typeof value === "number") {
+        return Number.isInteger(value)
+            ? String(value)
+            : value.toLocaleString(undefined, {
+                maximumFractionDigits: 4,
+            });
+    }
 
-  return value;
+    return value;
 }
 
 export default function TableViewerPane({
-  context,
-  table,
+    context,
+    table,
 }: TableViewerPaneProps) {
-  const [searchValue, setSearchValue] = useState("");
-  const [selectedRowId, setSelectedRowId] = useState<string | number | null>(
-    null,
-  );
-  const [activePane, setActivePane] = useState<ActivePane>(null);
-
-  const [rowMenuAnchor, setRowMenuAnchor] =
-    useState<HTMLElement | null>(null);
-  const [rowMenuRow, setRowMenuRow] =
-    useState<TableViewerRow | null>(null);
-
-  const filteredRows = useMemo(() => {
-    const query = searchValue.trim().toLowerCase();
-
-    if (!query) {
-      return table.rows;
-    }
-
-    return table.rows.filter((row) =>
-      table.columns.some((column) => {
-        const value = row.cells[column.id];
-        return formatCellValue(value)
-          .toLowerCase()
-          .includes(query);
-      }),
+    const [searchValue, setSearchValue] = useState("");
+    const [selectedRowId, setSelectedRowId] = useState<string | number | null>(
+        null,
     );
-  }, [searchValue, table.columns, table.rows]);
+    const [activePane, setActivePane] = useState<ActivePane>(null);
 
-  const hasRowActions = useMemo(
-    () =>
-      table.rows.some(
-        (row) =>
-          Array.isArray(row.actions) &&
-          row.actions.length > 0,
-      ),
-    [table.rows],
-  );
+    const [rowMenuAnchor, setRowMenuAnchor] =
+        useState<HTMLElement | null>(null);
+    const [rowMenuRow, setRowMenuRow] =
+        useState<TableViewerRow | null>(null);
 
-  const totalRows =
-    table.page?.total ??
-    table.rows.length;
+    const filteredRows = useMemo(() => {
+        const query = searchValue.trim().toLowerCase();
 
-  const loadedStart =
-    table.rows.length > 0
-      ? (table.page?.offset ?? 0) + 1
-      : 0;
+        if (!query) {
+            return table.rows;
+        }
 
-  const loadedEnd =
-    (table.page?.offset ?? 0) +
-    table.rows.length;
+        return table.rows.filter((row) =>
+            table.columns.some((column) => {
+                const value = row.cells[column.id];
+                return formatCellValue(value)
+                    .toLowerCase()
+                    .includes(query);
+            }),
+        );
+    }, [searchValue, table.columns, table.rows]);
 
-  const handleAction = (
-    action: TableViewerAction,
-    row?: TableViewerRow,
-    columnId?: string,
-  ) => {
-    if (action.disabled) return;
-
-    if (action.id === "metadata") {
-      setActivePane({
-        kind: "metadata",
-      });
-      return;
-    }
-
-    setActivePane({
-      kind: "action",
-      action,
-      row,
-      columnId,
-    });
-  };
-
-  const handleRowMenuOpen = (
-    event: MouseEvent<HTMLButtonElement>,
-    row: TableViewerRow,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    setSelectedRowId(row.id);
-    setRowMenuRow(row);
-    setRowMenuAnchor(event.currentTarget);
-  };
-
-  const handleRowMenuClose = () => {
-    setRowMenuAnchor(null);
-    setRowMenuRow(null);
-  };
-
-  const renderCell = (
-    row: TableViewerRow,
-    columnId: string,
-    actions?: TableViewerAction[],
-  ) => {
-    const text = formatCellValue(
-      row.cells[columnId],
+    const hasRowActions = useMemo(
+        () =>
+            table.rows.some(
+                (row) =>
+                    Array.isArray(row.actions) &&
+                    row.actions.length > 0,
+            ),
+        [table.rows],
     );
 
-    const enabledActions = (
-      actions ?? []
-    ).filter(
-      (action) => !action.disabled,
-    );
+    const totalRows =
+        table.page?.total ??
+        table.rows.length;
 
-    if (
-      enabledActions.length === 1 &&
-      text
-    ) {
-      const action = enabledActions[0];
+    const loadedStart =
+        table.rows.length > 0
+            ? (table.page?.offset ?? 0) + 1
+            : 0;
 
-      return (
-        <Button
-          variant="text"
-          size="small"
-          onClick={(event) => {
-            event.stopPropagation();
-            handleAction(
-              action,
-              row,
-              columnId,
+    const loadedEnd =
+        (table.page?.offset ?? 0) +
+        table.rows.length;
+
+    const handleAction = (
+        action: TableViewerAction,
+        row?: TableViewerRow,
+        columnId?: string,
+    ) => {
+        if (action.disabled) return;
+
+        if (action.id === "metadata") {
+            setActivePane({
+                kind: "metadata",
+            });
+            return;
+        }
+
+        setActivePane({
+            kind: "action",
+            action,
+            row,
+            columnId,
+        });
+    };
+
+    const handleRowMenuOpen = (
+        event: MouseEvent<HTMLButtonElement>,
+        row: TableViewerRow,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        setSelectedRowId(row.id);
+        setRowMenuRow(row);
+        setRowMenuAnchor(event.currentTarget);
+    };
+
+    const handleRowMenuClose = () => {
+        setRowMenuAnchor(null);
+        setRowMenuRow(null);
+    };
+
+    const renderCell = (
+        row: TableViewerRow,
+        columnId: string,
+        actions?: TableViewerAction[],
+    ) => {
+        const text = formatCellValue(
+            row.cells[columnId],
+        );
+
+        const enabledActions = (
+            actions ?? []
+        ).filter(
+            (action) => !action.disabled,
+        );
+
+        if (
+            enabledActions.length === 1 &&
+            text
+        ) {
+            const action = enabledActions[0];
+
+            return (
+                <Button
+                    variant="text"
+                    size="small"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        handleAction(
+                            action,
+                            row,
+                            columnId,
+                        );
+                    }}
+                    sx={{
+                        minWidth: 0,
+                        p: 0,
+                        justifyContent: "flex-start",
+                        textTransform: "none",
+                        fontSize: "0.76rem",
+                        fontWeight: 500,
+                        color: "#334155",
+                        "&:hover": {
+                            backgroundColor: "transparent",
+                            color: "#2563eb",
+                            textDecoration: "underline",
+                        },
+                    }}
+                >
+                    {text}
+                </Button>
             );
-          }}
-          sx={{
-            minWidth: 0,
-            p: 0,
-            justifyContent: "flex-start",
-            textTransform: "none",
-            fontSize: "0.76rem",
-            fontWeight: 500,
-            color: "#334155",
-            "&:hover": {
-              backgroundColor: "transparent",
-              color: "#2563eb",
-              textDecoration: "underline",
-            },
-          }}
-        >
-          {text}
-        </Button>
-      );
-    }
+        }
 
-    if (enabledActions.length > 1) {
-      return (
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            minWidth: 0,
-          }}
-        >
-          <Typography
-            component="span"
-            sx={{
-              fontSize: "0.76rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {text}
-          </Typography>
+        if (enabledActions.length > 1) {
+            return (
+                <Box
+                    sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.75,
+                        minWidth: 0,
+                    }}
+                >
+                    <Typography
+                        component="span"
+                        sx={{
+                            fontSize: "0.76rem",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        {text}
+                    </Typography>
 
-          {enabledActions.map((action) => (
-            <Button
-              key={action.id}
-              size="small"
-              variant="text"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleAction(
-                  action,
-                  row,
-                  columnId,
-                );
-              }}
-              sx={{
-                minWidth: 0,
-                px: 0.5,
-                py: 0,
-                textTransform: "none",
-                fontSize: "0.68rem",
-              }}
+                    {enabledActions.map((action) => (
+                        <Button
+                            key={action.id}
+                            size="small"
+                            variant="text"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                handleAction(
+                                    action,
+                                    row,
+                                    columnId,
+                                );
+                            }}
+                            sx={{
+                                minWidth: 0,
+                                px: 0.5,
+                                py: 0,
+                                textTransform: "none",
+                                fontSize: "0.68rem",
+                            }}
+                        >
+                            {action.label}
+                        </Button>
+                    ))}
+                </Box>
+            );
+        }
+
+        return (
+            <Typography
+                component="span"
+                sx={{
+                    fontSize: "0.76rem",
+                    color: "#334155",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                }}
             >
-              {action.label}
-            </Button>
-          ))}
-        </Box>
-      );
-    }
+                {text}
+            </Typography>
+        );
+    };
 
     return (
-      <Typography
-        component="span"
-        sx={{
-          fontSize: "0.76rem",
-          color: "#334155",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {text}
-      </Typography>
-    );
-  };
-
-  return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns:
-          "minmax(520px, 44%) minmax(0, 1fr)",
-        flex: 1,
-        height: "100%",
-        minHeight: 0,
-        minWidth: 0,
-        backgroundColor: "#f8fafc",
-      }}
-    >
-      {/* LEFT PANEL */}
-      <Box
-        sx={{
-          minWidth: 0,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#ffffff",
-          borderRight:
-            "1px solid #e5e7eb",
-        }}
-      >
-        {/* Toolbar */}
         <Box
-          sx={{
-            px: 2,
-            py: 1.25,
-            minHeight: 58,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.25,
-            borderBottom:
-              "1px solid #e5e7eb",
-          }}
+            sx={{
+                display: "grid",
+                gridTemplateColumns:
+                    "minmax(520px, 44%) minmax(0, 1fr)",
+                flex: 1,
+                height: "100%",
+                minHeight: 0,
+                minWidth: 0,
+                backgroundColor: "#f8fafc",
+            }}
         >
-          <TextField
-            size="small"
-            value={searchValue}
-            onChange={(event) =>
-              setSearchValue(
-                event.target.value,
-              )
-            }
-            placeholder="Search..."
-            sx={{
-              width: 240,
-              "& .MuiOutlinedInput-root":
-                {
-                  height: 34,
-                  borderRadius: 2,
-                  backgroundColor:
-                    "#ffffff",
-                  fontSize: "0.76rem",
-                },
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                </InputAdornment>
-              ),
-            }}
-          />
-
-          <Typography
-            variant="caption"
-            sx={{
-              color: "#64748b",
-              fontSize: "0.7rem",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {totalRows ===
-            table.rows.length
-              ? `${totalRows} items`
-              : `${table.rows.length} / ${totalRows} loaded`}
-          </Typography>
-
-          <Box
-            sx={{
-              flex: 1,
-            }}
-          />
-
-          {(table.actions ?? []).map(
-            (action) => (
-              <Button
-                key={action.id}
-                size="small"
-                variant="outlined"
-                disabled={action.disabled}
-                onClick={() =>
-                  handleAction(action)
-                }
+            {/* LEFT PANEL */}
+            <Box
                 sx={{
-                  height: 32,
-                  px: 1.25,
-                  borderRadius: 1.5,
-                  textTransform: "none",
-                  fontSize: "0.72rem",
-                  fontWeight: 600,
-                  color: "#334155",
-                  borderColor: "#dbe2ea",
-                  backgroundColor:
-                    "#ffffff",
-                  "&:hover": {
-                    borderColor:
-                      "#94a3b8",
-                    backgroundColor:
-                      "#f8fafc",
-                  },
+                    minWidth: 0,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    backgroundColor: "#ffffff",
+                    borderRight:
+                        "1px solid #e5e7eb",
                 }}
-              >
-                {action.label}
-              </Button>
-            ),
-          )}
-        </Box>
-
-        {/* Table */}
-        <TableContainer
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "auto",
-          }}
-        >
-          <Table
-            stickyHeader
-            size="small"
-            sx={{
-              minWidth: 620,
-              tableLayout: "fixed",
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell
-                  sx={{
-                    width: 34,
-                    px: 1,
-                    py: 1,
-                    backgroundColor:
-                      "#f8fafc",
-                    borderBottom:
-                      "1px solid #e2e8f0",
-                  }}
-                />
-
-                {table.columns.map(
-                  (column) => (
-                    <TableCell
-                      key={column.id}
-                      align={
-                        column.align ??
-                        "left"
-                      }
-                      sx={{
-                        width:
-                          column.width,
-                        px: 1.25,
-                        py: 1,
-                        backgroundColor:
-                          "#f8fafc",
+            >
+                {/* Toolbar */}
+                <Box
+                    sx={{
+                        px: 2,
+                        py: 1.25,
+                        minHeight: 58,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.25,
                         borderBottom:
-                          "1px solid #e2e8f0",
-                        color: "#64748b",
-                        fontSize:
-                          "0.64rem",
-                        fontWeight: 700,
-                        letterSpacing:
-                          "0.055em",
-                        textTransform:
-                          "uppercase",
-                        whiteSpace:
-                          "nowrap",
-                      }}
-                    >
-                      {column.label}
-                    </TableCell>
-                  ),
-                )}
-
-                {hasRowActions && (
-                  <TableCell
-                    sx={{
-                      width: 48,
-                      p: 0,
-                      backgroundColor:
-                        "#f8fafc",
-                      borderBottom:
-                        "1px solid #e2e8f0",
+                            "1px solid #e5e7eb",
                     }}
-                  />
-                )}
-              </TableRow>
-            </TableHead>
-
-            <TableBody>
-              {filteredRows.map(
-                (row) => {
-                  const selected =
-                    selectedRowId ===
-                    row.id;
-
-                  return (
-                    <TableRow
-                      key={String(
-                        row.id,
-                      )}
-                      hover
-                      selected={
-                        selected
-                      }
-                      onClick={() => {
-                        setSelectedRowId(
-                          row.id,
-                        );
-                      }}
-                      sx={{
-                        cursor:
-                          "pointer",
-                        height: 42,
-
-                        "& td": {
-                          backgroundColor:
-                            selected
-                              ? "#f8fafc"
-                              : "#ffffff",
-                          borderBottom:
-                            "1px solid #f1f5f9",
-                        },
-
-                        "&:hover td": {
-                          backgroundColor:
-                            selected
-                              ? "#f8fafc"
-                              : "#fbfdff",
-                        },
-
-                        ...(selected
-                          ? {
-                              "& td:first-of-type":
-                                {
-                                  boxShadow:
-                                    "inset 3px 0 0 #6366f1",
-                                },
-                            }
-                          : {}),
-                      }}
-                    >
-                      <TableCell
+                >
+                    <TextField
+                        size="small"
+                        value={searchValue}
+                        onChange={(event) =>
+                            setSearchValue(
+                                event.target.value,
+                            )
+                        }
+                        placeholder="Search..."
                         sx={{
-                          px: 1,
-                          py: 0.75,
-                          textAlign:
-                            "center",
+                            width: 240,
+                            "& .MuiOutlinedInput-root":
+                            {
+                                height: 34,
+                                borderRadius: 2,
+                                backgroundColor:
+                                    "#ffffff",
+                                fontSize: "0.76rem",
+                            },
                         }}
-                      >
-                        <ChevronRight
-                          size={14}
-                          strokeWidth={
-                            1.8
-                          }
-                          color={
-                            selected
-                              ? "#4f46e5"
-                              : "#94a3b8"
-                          }
-                        />
-                      </TableCell>
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <Search
+                                        size={15}
+                                        strokeWidth={1.8}
+                                    />
+                                </InputAdornment>
+                            ),
+                        }}
+                    />
 
-                      {table.columns.map(
-                        (column) => (
-                          <TableCell
-                            key={
-                              column.id
-                            }
-                            align={
-                              column.align ??
-                              "left"
-                            }
-                            sx={{
-                              px: 1.25,
-                              py: 0.75,
-                              minWidth: 0,
-                              overflow:
-                                "hidden",
-                            }}
-                          >
-                            {renderCell(
-                              row,
-                              column.id,
-                              column.actions,
-                            )}
-                          </TableCell>
-                        ),
-                      )}
-
-                      {hasRowActions && (
-                        <TableCell
-                          align="center"
-                          sx={{
-                            p: 0.5,
-                          }}
-                        >
-                          {row.actions
-                            ?.length ? (
-                            <IconButton
-                              size="small"
-                              onClick={(
-                                event,
-                              ) =>
-                                handleRowMenuOpen(
-                                  event,
-                                  row,
-                                )
-                              }
-                              sx={{
-                                color:
-                                  "#64748b",
-                                "&:hover":
-                                  {
-                                    backgroundColor:
-                                      "#eef2f7",
-                                    color:
-                                      "#0f172a",
-                                  },
-                              }}
-                            >
-                              <MoreHorizontal
-                                size={
-                                  16
-                                }
-                              />
-                            </IconButton>
-                          ) : null}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                },
-              )}
-
-              {filteredRows.length ===
-                0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={
-                      table.columns
-                        .length +
-                      1 +
-                      (hasRowActions
-                        ? 1
-                        : 0)
-                    }
-                    sx={{
-                      py: 6,
-                      textAlign:
-                        "center",
-                      borderBottom:
-                        "none",
-                    }}
-                  >
                     <Typography
-                      variant="body2"
-                      sx={{
-                        color:
-                          "#94a3b8",
-                        fontSize:
-                          "0.78rem",
-                      }}
+                        variant="caption"
+                        sx={{
+                            color: "#64748b",
+                            fontSize: "0.7rem",
+                            whiteSpace: "nowrap",
+                        }}
                     >
-                      No rows match
-                      the current
-                      search.
+                        {totalRows ===
+                            table.rows.length
+                            ? `${totalRows} items`
+                            : `${table.rows.length} / ${totalRows} loaded`}
                     </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
 
-        {/* Footer */}
-        <Box
-          sx={{
-            minHeight: 42,
-            px: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent:
-              "space-between",
-            gap: 2,
-            borderTop:
-              "1px solid #e5e7eb",
-            backgroundColor:
-              "#ffffff",
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{
-              color: "#64748b",
-              fontSize: "0.68rem",
-            }}
-          >
-            {searchValue.trim()
-              ? `${filteredRows.length} matches in loaded rows`
-              : `${loadedStart}–${loadedEnd} of ${totalRows}`}
-          </Typography>
+                    <Box
+                        sx={{
+                            flex: 1,
+                        }}
+                    />
 
-          {selectedRowId !==
-            null && (
-            <Typography
-              variant="caption"
-              sx={{
-                color: "#64748b",
-                fontSize:
-                  "0.68rem",
-              }}
-            >
-              Selected:{" "}
-              <strong>
-                {String(
-                  selectedRowId,
-                )}
-              </strong>
-            </Typography>
-          )}
-        </Box>
-      </Box>
+                    {(table.actions ?? []).map(
+                        (action) => (
+                            <Button
+                                key={action.id}
+                                size="small"
+                                variant="outlined"
+                                disabled={action.disabled}
+                                onClick={() =>
+                                    handleAction(action)
+                                }
+                                sx={{
+                                    height: 32,
+                                    px: 1.25,
+                                    borderRadius: 1.5,
+                                    textTransform: "none",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 600,
+                                    color: "#334155",
+                                    borderColor: "#dbe2ea",
+                                    backgroundColor:
+                                        "#ffffff",
+                                    "&:hover": {
+                                        borderColor:
+                                            "#94a3b8",
+                                        backgroundColor:
+                                            "#f8fafc",
+                                    },
+                                }}
+                            >
+                                {action.label}
+                            </Button>
+                        ),
+                    )}
+                </Box>
 
-      {/* RIGHT PANEL */}
-      <Box
-        sx={{
-          minWidth: 0,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#f8fafc",
-        }}
-      >
-        <Box
-          sx={{
-            minHeight: 58,
-            px: 2,
-            display: "flex",
-            alignItems: "center",
-            gap: 1,
-            borderBottom:
-              "1px solid #e5e7eb",
-            backgroundColor:
-              "#ffffff",
-          }}
-        >
-          <Typography
-            sx={{
-              fontSize: "0.78rem",
-              fontWeight: 600,
-              color: "#0f172a",
-            }}
-          >
-            {activePane?.kind ===
-            "metadata"
-              ? "Metadata"
-              : activePane?.kind ===
-                  "action"
-                ? activePane.action
-                    .label
-                : "Viewer"}
-          </Typography>
+                {/* Table */}
+                <TableContainer
+                    sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: "auto",
+                    }}
+                >
+                    <Table
+                        stickyHeader
+                        size="small"
+                        sx={{
+                            minWidth: 620,
+                            tableLayout: "fixed",
+                        }}
+                    >
+                        <TableHead>
+                            <TableRow>
+                                <TableCell
+                                    sx={{
+                                        width: 34,
+                                        px: 1,
+                                        py: 1,
+                                        backgroundColor:
+                                            "#f8fafc",
+                                        borderBottom:
+                                            "1px solid #e2e8f0",
+                                    }}
+                                />
 
-          {activePane?.kind ===
-            "action" &&
-            activePane.row && (
-              <Typography
-                variant="caption"
-                sx={{
-                  color:
-                    "#94a3b8",
-                }}
-              >
-                Row{" "}
-                {String(
-                  activePane.row
-                    .id,
-                )}
-              </Typography>
-            )}
-        </Box>
+                                {table.columns.map(
+                                    (column) => (
+                                        <TableCell
+                                            key={column.id}
+                                            align={
+                                                column.align ??
+                                                "left"
+                                            }
+                                            sx={{
+                                                width:
+                                                    column.width,
+                                                px: 1.25,
+                                                py: 1,
+                                                backgroundColor:
+                                                    "#f8fafc",
+                                                borderBottom:
+                                                    "1px solid #e2e8f0",
+                                                color: "#64748b",
+                                                fontSize:
+                                                    "0.64rem",
+                                                fontWeight: 700,
+                                                letterSpacing:
+                                                    "0.055em",
+                                                textTransform:
+                                                    "uppercase",
+                                                whiteSpace:
+                                                    "nowrap",
+                                            }}
+                                        >
+                                            {column.label}
+                                        </TableCell>
+                                    ),
+                                )}
 
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            minWidth: 0,
-            overflow: "hidden",
-            p:
-              activePane?.kind ===
-              "metadata"
-                ? 1
-                : 2,
-          }}
-        >
-          {activePane?.kind ===
-          "metadata" ? (
-            <MetadataViewer
-              projectId={Number(
-                context.projectId,
-              )}
-              protocolId={Number(
-                context.protocolId,
-              )}
-              outputName={
-                context.outputName
-              }
-              embedded
-            />
-          ) : activePane?.kind ===
-            "action" ? (
+                                {hasRowActions && (
+                                    <TableCell
+                                        sx={{
+                                            width: 48,
+                                            p: 0,
+                                            backgroundColor:
+                                                "#f8fafc",
+                                            borderBottom:
+                                                "1px solid #e2e8f0",
+                                        }}
+                                    />
+                                )}
+                            </TableRow>
+                        </TableHead>
+
+                        <TableBody>
+                            {filteredRows.map(
+                                (row) => {
+                                    const selected =
+                                        selectedRowId ===
+                                        row.id;
+
+                                    return (
+                                        <TableRow
+                                            key={String(
+                                                row.id,
+                                            )}
+                                            hover
+                                            selected={
+                                                selected
+                                            }
+                                            onClick={() => {
+                                                setSelectedRowId(
+                                                    row.id,
+                                                );
+                                            }}
+                                            sx={{
+                                                cursor:
+                                                    "pointer",
+                                                height: 42,
+
+                                                "& td": {
+                                                    backgroundColor:
+                                                        selected
+                                                            ? "#f8fafc"
+                                                            : "#ffffff",
+                                                    borderBottom:
+                                                        "1px solid #f1f5f9",
+                                                },
+
+                                                "&:hover td": {
+                                                    backgroundColor:
+                                                        selected
+                                                            ? "#f8fafc"
+                                                            : "#fbfdff",
+                                                },
+
+                                                ...(selected
+                                                    ? {
+                                                        "& td:first-of-type":
+                                                        {
+                                                            boxShadow:
+                                                                "inset 3px 0 0 #6366f1",
+                                                        },
+                                                    }
+                                                    : {}),
+                                            }}
+                                        >
+                                            <TableCell
+                                                sx={{
+                                                    px: 1,
+                                                    py: 0.75,
+                                                    textAlign:
+                                                        "center",
+                                                }}
+                                            >
+                                                {row.children ? (
+                                                    <ChevronRight
+                                                        size={14}
+                                                        strokeWidth={1.8}
+                                                        color={
+                                                            selected
+                                                                ? "#4f46e5"
+                                                                : "#94a3b8"
+                                                        }
+                                                    />
+                                                ) : (
+                                                    <Box sx={{ width: 14, height: 14 }} />
+                                                )}
+                                            </TableCell>
+
+                                            {table.columns.map(
+                                                (column) => (
+                                                    <TableCell
+                                                        key={
+                                                            column.id
+                                                        }
+                                                        align={
+                                                            column.align ??
+                                                            "left"
+                                                        }
+                                                        sx={{
+                                                            px: 1.25,
+                                                            py: 0.75,
+                                                            minWidth: 0,
+                                                            overflow:
+                                                                "hidden",
+                                                        }}
+                                                    >
+                                                        {renderCell(
+                                                            row,
+                                                            column.id,
+                                                            column.actions,
+                                                        )}
+                                                    </TableCell>
+                                                ),
+                                            )}
+
+                                            {hasRowActions && (
+                                                <TableCell
+                                                    align="center"
+                                                    sx={{
+                                                        p: 0.5,
+                                                    }}
+                                                >
+                                                    {row.actions
+                                                        ?.length ? (
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(
+                                                                event,
+                                                            ) =>
+                                                                handleRowMenuOpen(
+                                                                    event,
+                                                                    row,
+                                                                )
+                                                            }
+                                                            sx={{
+                                                                color:
+                                                                    "#64748b",
+                                                                "&:hover":
+                                                                {
+                                                                    backgroundColor:
+                                                                        "#eef2f7",
+                                                                    color:
+                                                                        "#0f172a",
+                                                                },
+                                                            }}
+                                                        >
+                                                            <MoreHorizontal
+                                                                size={
+                                                                    16
+                                                                }
+                                                            />
+                                                        </IconButton>
+                                                    ) : null}
+                                                </TableCell>
+                                            )}
+                                        </TableRow>
+                                    );
+                                },
+                            )}
+
+                            {filteredRows.length ===
+                                0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={
+                                                table.columns
+                                                    .length +
+                                                1 +
+                                                (hasRowActions
+                                                    ? 1
+                                                    : 0)
+                                            }
+                                            sx={{
+                                                py: 6,
+                                                textAlign:
+                                                    "center",
+                                                borderBottom:
+                                                    "none",
+                                            }}
+                                        >
+                                            <Typography
+                                                variant="body2"
+                                                sx={{
+                                                    color:
+                                                        "#94a3b8",
+                                                    fontSize:
+                                                        "0.78rem",
+                                                }}
+                                            >
+                                                No rows match
+                                                the current
+                                                search.
+                                            </Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+
+                {/* Footer */}
+                <Box
+                    sx={{
+                        minHeight: 42,
+                        px: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent:
+                            "space-between",
+                        gap: 2,
+                        borderTop:
+                            "1px solid #e5e7eb",
+                        backgroundColor:
+                            "#ffffff",
+                    }}
+                >
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "#64748b",
+                            fontSize: "0.68rem",
+                        }}
+                    >
+                        {searchValue.trim()
+                            ? `${filteredRows.length} matches in loaded rows`
+                            : `${loadedStart}–${loadedEnd} of ${totalRows}`}
+                    </Typography>
+
+                    {selectedRowId !==
+                        null && (
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "#64748b",
+                                    fontSize:
+                                        "0.68rem",
+                                }}
+                            >
+                                Selected:{" "}
+                                <strong>
+                                    {String(
+                                        selectedRowId,
+                                    )}
+                                </strong>
+                            </Typography>
+                        )}
+                </Box>
+            </Box>
+
+            {/* RIGHT PANEL */}
             <Box
-              sx={{
-                height: "100%",
-                border:
-                  "1px dashed #cbd5e1",
-                borderRadius: 2,
-                backgroundColor:
-                  "#ffffff",
-                display: "flex",
-                flexDirection:
-                  "column",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "center",
-                px: 3,
-                textAlign:
-                  "center",
-              }}
-            >
-              <Typography
                 sx={{
-                  fontSize:
-                    "0.85rem",
-                  fontWeight: 600,
-                  color: "#334155",
-                  mb: 0.5,
+                    minWidth: 0,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    backgroundColor: "#f8fafc",
                 }}
-              >
-                {
-                  activePane.action
-                    .label
+            >
+                <Box
+                    sx={{
+                        minHeight: 58,
+                        px: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        borderBottom:
+                            "1px solid #e5e7eb",
+                        backgroundColor:
+                            "#ffffff",
+                    }}
+                >
+                    <Typography
+                        sx={{
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                            color: "#0f172a",
+                        }}
+                    >
+                        {activePane?.kind ===
+                            "metadata"
+                            ? "Metadata"
+                            : activePane?.kind ===
+                                "action"
+                                ? activePane.action
+                                    .label
+                                : "Viewer"}
+                    </Typography>
+
+                    {activePane?.kind ===
+                        "action" &&
+                        activePane.row && (
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color:
+                                        "#94a3b8",
+                                }}
+                            >
+                                Row{" "}
+                                {String(
+                                    activePane.row
+                                        .id,
+                                )}
+                            </Typography>
+                        )}
+                </Box>
+
+                <Box
+                    sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        p:
+                            activePane?.kind ===
+                                "metadata"
+                                ? 1
+                                : 2,
+                    }}
+                >
+                    {activePane?.kind ===
+                        "metadata" ? (
+                        <MetadataViewer
+                            projectId={Number(
+                                context.projectId,
+                            )}
+                            protocolId={Number(
+                                context.protocolId,
+                            )}
+                            outputName={
+                                context.outputName
+                            }
+                            embedded
+                        />
+                    ) : activePane?.kind ===
+                        "action" ? (
+                        <Box
+                            sx={{
+                                height: "100%",
+                                border:
+                                    "1px dashed #cbd5e1",
+                                borderRadius: 2,
+                                backgroundColor:
+                                    "#ffffff",
+                                display: "flex",
+                                flexDirection:
+                                    "column",
+                                alignItems:
+                                    "center",
+                                justifyContent:
+                                    "center",
+                                px: 3,
+                                textAlign:
+                                    "center",
+                            }}
+                        >
+                            <Typography
+                                sx={{
+                                    fontSize:
+                                        "0.85rem",
+                                    fontWeight: 600,
+                                    color: "#334155",
+                                    mb: 0.5,
+                                }}
+                            >
+                                {
+                                    activePane.action
+                                        .label
+                                }
+                            </Typography>
+
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "#94a3b8",
+                                    maxWidth: 360,
+                                }}
+                            >
+                                This action is
+                                connected to the
+                                table contract. Its
+                                viewer content will
+                                be resolved by
+                                ScipionAPI in the
+                                next step.
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Box
+                            sx={{
+                                height: "100%",
+                                display: "flex",
+                                alignItems:
+                                    "center",
+                                justifyContent:
+                                    "center",
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    maxWidth: 360,
+                                    textAlign:
+                                        "center",
+                                }}
+                            >
+                                <Typography
+                                    sx={{
+                                        fontSize:
+                                            "0.85rem",
+                                        fontWeight:
+                                            600,
+                                        color:
+                                            "#475569",
+                                        mb: 0.5,
+                                    }}
+                                >
+                                    Select an item or
+                                    action
+                                </Typography>
+
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        color:
+                                            "#94a3b8",
+                                        lineHeight:
+                                            1.6,
+                                    }}
+                                >
+                                    Row and column
+                                    actions can open
+                                    contextual viewers
+                                    here without
+                                    leaving the table.
+                                </Typography>
+                            </Box>
+                        </Box>
+                    )}
+                </Box>
+            </Box>
+
+            <Menu
+                anchorEl={rowMenuAnchor}
+                open={Boolean(
+                    rowMenuAnchor,
+                )}
+                onClose={
+                    handleRowMenuClose
                 }
-              </Typography>
-
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#94a3b8",
-                  maxWidth: 360,
+                PaperProps={{
+                    sx: {
+                        minWidth: 170,
+                        border:
+                            "1px solid #e2e8f0",
+                        boxShadow:
+                            "0 10px 25px rgba(15,23,42,0.12)",
+                    },
                 }}
-              >
-                This action is
-                connected to the
-                table contract. Its
-                viewer content will
-                be resolved by
-                ScipionAPI in the
-                next step.
-              </Typography>
-            </Box>
-          ) : (
-            <Box
-              sx={{
-                height: "100%",
-                display: "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "center",
-              }}
             >
-              <Box
-                sx={{
-                  maxWidth: 360,
-                  textAlign:
-                    "center",
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize:
-                      "0.85rem",
-                    fontWeight:
-                      600,
-                    color:
-                      "#475569",
-                    mb: 0.5,
-                  }}
-                >
-                  Select an item or
-                  action
-                </Typography>
+                {(rowMenuRow?.actions ??
+                    []).map((action) => (
+                        <MenuItem
+                            key={action.id}
+                            disabled={
+                                action.disabled
+                            }
+                            onClick={() => {
+                                if (rowMenuRow) {
+                                    handleAction(
+                                        action,
+                                        rowMenuRow,
+                                    );
+                                }
 
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color:
-                      "#94a3b8",
-                    lineHeight:
-                      1.6,
-                  }}
-                >
-                  Row and column
-                  actions can open
-                  contextual viewers
-                  here without
-                  leaving the table.
-                </Typography>
-              </Box>
-            </Box>
-          )}
+                                handleRowMenuClose();
+                            }}
+                            sx={{
+                                fontSize: "0.76rem",
+                                minHeight: 34,
+                            }}
+                        >
+                            {action.label}
+                        </MenuItem>
+                    ))}
+            </Menu>
         </Box>
-      </Box>
-
-      <Menu
-        anchorEl={rowMenuAnchor}
-        open={Boolean(
-          rowMenuAnchor,
-        )}
-        onClose={
-          handleRowMenuClose
-        }
-        PaperProps={{
-          sx: {
-            minWidth: 170,
-            border:
-              "1px solid #e2e8f0",
-            boxShadow:
-              "0 10px 25px rgba(15,23,42,0.12)",
-          },
-        }}
-      >
-        {(rowMenuRow?.actions ??
-          []).map((action) => (
-          <MenuItem
-            key={action.id}
-            disabled={
-              action.disabled
-            }
-            onClick={() => {
-              if (rowMenuRow) {
-                handleAction(
-                  action,
-                  rowMenuRow,
-                );
-              }
-
-              handleRowMenuClose();
-            }}
-            sx={{
-              fontSize: "0.76rem",
-              minHeight: 34,
-            }}
-          >
-            {action.label}
-          </MenuItem>
-        ))}
-      </Menu>
-    </Box>
-  );
+    );
 }

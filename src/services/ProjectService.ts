@@ -594,10 +594,17 @@ export type TableViewerColumn = {
   actions?: TableViewerAction[];
 };
 
+export type TableViewerRowChildren = {
+  id: string;
+  label: string;
+  count?: number;
+};
+
 export type TableViewerRow = {
   id: string | number;
   cells: Record<string, TableViewerCell>;
   actions?: TableViewerAction[];
+  children?: TableViewerRowChildren;
 };
 
 export type TableViewerPage = {
