@@ -397,7 +397,7 @@ export default function TableViewerPane({
                 height: "100%",
                 minHeight: 0,
                 minWidth: 0,
-                backgroundColor: "#f8fafc",
+                backgroundColor: "#f6f7fb",
             }}
         >
             {/* LEFT PANEL */}
@@ -423,6 +423,8 @@ export default function TableViewerPane({
                         gap: 1.25,
                         borderBottom:
                             "1px solid #e5e7eb",
+                        background:
+                            "linear-gradient(180deg, #ffffff 0%, #f8faff 100%)",
                     }}
                 >
                     <TextField
@@ -436,13 +438,24 @@ export default function TableViewerPane({
                         placeholder="Search..."
                         sx={{
                             width: 240,
-                            "& .MuiOutlinedInput-root":
-                            {
+                            "& .MuiOutlinedInput-root": {
                                 height: 34,
                                 borderRadius: 2,
-                                backgroundColor:
-                                    "#ffffff",
+                                backgroundColor: "#ffffff",
                                 fontSize: "0.76rem",
+
+                                "& fieldset": {
+                                    borderColor: "#dbe2ea",
+                                },
+
+                                "&:hover fieldset": {
+                                    borderColor: "#a5b4fc",
+                                },
+
+                                "&.Mui-focused fieldset": {
+                                    borderColor: "#6366f1",
+                                    borderWidth: 1,
+                                },
                             },
                         }}
                         InputProps={{
@@ -451,6 +464,7 @@ export default function TableViewerPane({
                                     <Search
                                         size={15}
                                         strokeWidth={1.8}
+                                        color="#6366f1"
                                     />
                                 </InputAdornment>
                             ),
@@ -494,15 +508,14 @@ export default function TableViewerPane({
                                     textTransform: "none",
                                     fontSize: "0.72rem",
                                     fontWeight: 600,
-                                    color: "#334155",
-                                    borderColor: "#dbe2ea",
-                                    backgroundColor:
-                                        "#ffffff",
+                                    color: "#4338ca",
+                                    borderColor: "#c7d2fe",
+                                    backgroundColor: "#eef2ff",
+
                                     "&:hover": {
-                                        borderColor:
-                                            "#94a3b8",
-                                        backgroundColor:
-                                            "#f8fafc",
+                                        color: "#3730a3",
+                                        borderColor: "#a5b4fc",
+                                        backgroundColor: "#e0e7ff",
                                     },
                                 }}
                             >
@@ -535,10 +548,9 @@ export default function TableViewerPane({
                                         width: 34,
                                         px: 1,
                                         py: 1,
-                                        backgroundColor:
-                                            "#f8fafc",
+                                        backgroundColor: "#eef2ff",
                                         borderBottom:
-                                            "1px solid #e2e8f0",
+                                            "1px solid #c7d2fe",
                                     }}
                                 />
 
@@ -555,20 +567,13 @@ export default function TableViewerPane({
                                                     column.width,
                                                 px: 1.25,
                                                 py: 1,
-                                                backgroundColor:
-                                                    "#f8fafc",
-                                                borderBottom:
-                                                    "1px solid #e2e8f0",
-                                                color: "#64748b",
-                                                fontSize:
-                                                    "0.64rem",
+                                                backgroundColor: "#eef2ff",
+                                                borderBottom: "1px solid #c7d2fe",
+                                                color: "#3730a3",
+                                                fontSize: "0.7rem",
                                                 fontWeight: 700,
-                                                letterSpacing:
-                                                    "0.055em",
-                                                textTransform:
-                                                    "uppercase",
-                                                whiteSpace:
-                                                    "nowrap",
+                                                letterSpacing: "0.01em",
+                                                whiteSpace: "nowrap",
                                             }}
                                         >
                                             {column.label}
@@ -581,10 +586,8 @@ export default function TableViewerPane({
                                         sx={{
                                             width: 48,
                                             p: 0,
-                                            backgroundColor:
-                                                "#f8fafc",
-                                            borderBottom:
-                                                "1px solid #e2e8f0",
+                                            backgroundColor: "#eef2ff",
+                                            borderBottom: "1px solid #c7d2fe",
                                         }}
                                     />
                                 )}
@@ -625,7 +628,7 @@ export default function TableViewerPane({
                                                     "& td": {
                                                         backgroundColor:
                                                             selected
-                                                                ? "#f8fafc"
+                                                                ? "#eef2ff"
                                                                 : "#ffffff",
                                                         borderBottom:
                                                             "1px solid #f1f5f9",
@@ -634,8 +637,8 @@ export default function TableViewerPane({
                                                     "&:hover td": {
                                                         backgroundColor:
                                                             selected
-                                                                ? "#f8fafc"
-                                                                : "#fbfdff",
+                                                                ? "#e0e7ff"
+                                                                : "#f8faff",
                                                     },
 
                                                     ...(selected
@@ -800,15 +803,16 @@ export default function TableViewerPane({
                                                                             sx={{
                                                                                 px: 1.5,
                                                                                 py: 0.75,
-                                                                                borderBottom: "1px solid #e2e8f0",
-                                                                                backgroundColor: "#f8fafc",
+                                                                                borderBottom: "1px solid #ddd6fe",
+                                                                                background:
+                                                                                    "linear-gradient(90deg, #f5f3ff 0%, #eef2ff 100%)",
                                                                             }}
                                                                         >
                                                                             <Typography
                                                                                 sx={{
                                                                                     fontSize: "0.72rem",
                                                                                     fontWeight: 700,
-                                                                                    color: "#475569",
+                                                                                    color: "#4338ca",
                                                                                 }}
                                                                             >
                                                                                 {childrenData.title}
@@ -838,20 +842,13 @@ export default function TableViewerPane({
                                                                                                     column.width,
                                                                                                 px: 1,
                                                                                                 py: 0.65,
-                                                                                                backgroundColor:
-                                                                                                    "#f8fafc",
-                                                                                                color: "#64748b",
-                                                                                                borderBottom:
-                                                                                                    "1px solid #e2e8f0",
-                                                                                                fontSize:
-                                                                                                    "0.61rem",
+                                                                                                backgroundColor: "#f5f3ff",
+                                                                                                color: "#4f46e5",
+                                                                                                borderBottom: "1px solid #ddd6fe",
+                                                                                                fontSize: "0.67rem",
                                                                                                 fontWeight: 700,
-                                                                                                letterSpacing:
-                                                                                                    "0.045em",
-                                                                                                textTransform:
-                                                                                                    "uppercase",
-                                                                                                whiteSpace:
-                                                                                                    "nowrap",
+                                                                                                letterSpacing: "0.01em",
+                                                                                                whiteSpace: "nowrap",
                                                                                             }}
                                                                                         >
                                                                                             {column.label}
@@ -1052,16 +1049,18 @@ export default function TableViewerPane({
                         alignItems: "center",
                         gap: 1,
                         borderBottom:
-                            "1px solid #e5e7eb",
-                        backgroundColor:
-                            "#ffffff",
+                            "1px solid #e0e7ff",
+                        background:
+                            "linear-gradient(90deg, #ffffff 0%, #f8faff 100%)",
+                        boxShadow:
+                            "inset 3px 0 0 #6366f1",
                     }}
                 >
                     <Typography
                         sx={{
                             fontSize: "0.78rem",
-                            fontWeight: 600,
-                            color: "#0f172a",
+                            fontWeight: 700,
+                            color: "#312e81",
                         }}
                     >
                         {activePane?.kind === "metadata"
