@@ -608,6 +608,16 @@ export type TableViewerRow = {
   children?: TableViewerRowChildren;
 };
 
+export type TableViewerChildrenRequest = {
+  rowId: string | number;
+  childrenId: string;
+  rowData?: Record<string, unknown>;
+};
+
+export type TableViewerChildrenData = {
+  rows: TableViewerRow[];
+};
+
 export type TableViewerPage = {
   offset: number;
   limit: number;
@@ -1792,6 +1802,11 @@ export interface ProjectService<
     context: TableViewerContext,
     request: TableViewerActionRequest
   ): Promise<TableViewerPaneContent>;
+
+  resolveTableViewerChildren(
+  context: TableViewerContext,
+  request: TableViewerChildrenRequest
+): Promise<TableViewerChildrenData>;
 
   fetchIntegratedAnalyzeContext(
     projectId: Id,

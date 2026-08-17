@@ -68,6 +68,8 @@ import type {
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
   InstanceResources,
+  TableViewerChildrenRequest,
+  TableViewerChildrenData,
 
 } from "@/services/ProjectService";
 
@@ -416,6 +418,47 @@ const defaultService: ProjectService = {
     }
 
     return raw as TableViewerPaneContent;
+  },
+
+  resolveTableViewerChildren: async (
+    context: TableViewerContext,
+    request: TableViewerChildrenRequest,
+  ): Promise<TableViewerChildrenData> => {
+    const projectId = toId(context.projectId);
+    const protocolId = toId(context.protocolId);
+
+    const url =
+      `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/viewer/table/children`;
+
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        outputName: context.outputName,
+        pointerClass: context.pointerClass ?? "",
+        tableKey: context.tableKey ?? "",
+        rowId: request.rowId,
+        childrenId: request.childrenId,
+        rowData: request.rowData ?? {},
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        text || "Failed to load table children",
+      );
+    }
+
+    const raw = await res.json().catch(() => null);
+
+    return {
+      rows: Array.isArray(raw?.rows)
+        ? raw.rows
+        : [],
+    };
   },
 
   fetchIntegratedAnalyzeContext: (

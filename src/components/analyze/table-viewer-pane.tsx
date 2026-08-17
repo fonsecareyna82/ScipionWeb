@@ -1,7 +1,8 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { Fragment, useMemo, useState, type MouseEvent } from "react";
 import {
     Box,
     Button,
+    CircularProgress,
     IconButton,
     InputAdornment,
     Menu,
@@ -15,7 +16,7 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { ChevronRight, MoreHorizontal, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreHorizontal, Search } from "lucide-react";
 
 import type {
     TableViewerAction,
@@ -75,6 +76,18 @@ export default function TableViewerPane({
         null,
     );
     const [activePane, setActivePane] = useState<ActivePane>(null);
+
+    const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(
+        () => new Set(),
+    );
+
+    const [childrenByRowId, setChildrenByRowId] = useState<
+        Record<string, TableViewerRow[]>
+    >({});
+
+    const [childrenLoading, setChildrenLoading] = useState<Set<string>>(
+        () => new Set(),
+    );
 
     const [rowMenuAnchor, setRowMenuAnchor] =
         useState<HTMLElement | null>(null);
@@ -167,6 +180,70 @@ export default function TableViewerPane({
                             ? error.message
                             : "Failed to load viewer.",
                 },
+            });
+        }
+    };
+
+    const handleToggleChildren = async (
+        event: MouseEvent<HTMLButtonElement>,
+        row: TableViewerRow,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!row.children) return;
+
+        const rowKey = String(row.id);
+
+        if (expandedRowIds.has(rowKey)) {
+            setExpandedRowIds((prev) => {
+                const next = new Set(prev);
+                next.delete(rowKey);
+                return next;
+            });
+            return;
+        }
+
+        if (childrenByRowId[rowKey]) {
+            setExpandedRowIds((prev) => {
+                const next = new Set(prev);
+                next.add(rowKey);
+                return next;
+            });
+            return;
+        }
+
+        setChildrenLoading((prev) => {
+            const next = new Set(prev);
+            next.add(rowKey);
+            return next;
+        });
+
+        try {
+            const result = await svc.resolveTableViewerChildren(
+                context,
+                {
+                    rowId: row.id,
+                    childrenId: row.children.id,
+                    rowData: row.data,
+                },
+            );
+
+            setChildrenByRowId((prev) => ({
+                ...prev,
+                [rowKey]: result.rows,
+            }));
+
+            setExpandedRowIds((prev) => {
+                const next = new Set(prev);
+                next.add(rowKey);
+                return next;
+            });
+        } finally {
+            setChildrenLoading((prev) => {
+                const next = new Set(prev);
+                next.delete(rowKey);
+                return next;
             });
         }
     };
@@ -519,142 +596,254 @@ export default function TableViewerPane({
                                         row.id;
 
                                     return (
-                                        <TableRow
-                                            key={String(
-                                                row.id,
-                                            )}
-                                            hover
-                                            selected={
-                                                selected
-                                            }
-                                            onClick={() => {
-                                                setSelectedRowId(
-                                                    row.id,
-                                                );
-                                            }}
-                                            sx={{
-                                                cursor:
-                                                    "pointer",
-                                                height: 42,
-
-                                                "& td": {
-                                                    backgroundColor:
-                                                        selected
-                                                            ? "#f8fafc"
-                                                            : "#ffffff",
-                                                    borderBottom:
-                                                        "1px solid #f1f5f9",
-                                                },
-
-                                                "&:hover td": {
-                                                    backgroundColor:
-                                                        selected
-                                                            ? "#f8fafc"
-                                                            : "#fbfdff",
-                                                },
-
-                                                ...(selected
-                                                    ? {
-                                                        "& td:first-of-type":
-                                                        {
-                                                            boxShadow:
-                                                                "inset 3px 0 0 #6366f1",
-                                                        },
-                                                    }
-                                                    : {}),
-                                            }}
-                                        >
-                                            <TableCell
+                                        <Fragment key={String(row.id)}>
+                                            <TableRow
+                                                hover
+                                                selected={
+                                                    selected
+                                                }
+                                                onClick={() => {
+                                                    setSelectedRowId(
+                                                        row.id,
+                                                    );
+                                                }}
                                                 sx={{
-                                                    px: 1,
-                                                    py: 0.75,
-                                                    textAlign:
-                                                        "center",
+                                                    cursor:
+                                                        "pointer",
+                                                    height: 42,
+
+                                                    "& td": {
+                                                        backgroundColor:
+                                                            selected
+                                                                ? "#f8fafc"
+                                                                : "#ffffff",
+                                                        borderBottom:
+                                                            "1px solid #f1f5f9",
+                                                    },
+
+                                                    "&:hover td": {
+                                                        backgroundColor:
+                                                            selected
+                                                                ? "#f8fafc"
+                                                                : "#fbfdff",
+                                                    },
+
+                                                    ...(selected
+                                                        ? {
+                                                            "& td:first-of-type":
+                                                            {
+                                                                boxShadow:
+                                                                    "inset 3px 0 0 #6366f1",
+                                                            },
+                                                        }
+                                                        : {}),
                                                 }}
                                             >
-                                                {row.children ? (
-                                                    <ChevronRight
-                                                        size={14}
-                                                        strokeWidth={1.8}
-                                                        color={
-                                                            selected
-                                                                ? "#4f46e5"
-                                                                : "#94a3b8"
-                                                        }
-                                                    />
-                                                ) : (
-                                                    <Box sx={{ width: 14, height: 14 }} />
-                                                )}
-                                            </TableCell>
-
-                                            {table.columns.map(
-                                                (column) => (
-                                                    <TableCell
-                                                        key={
-                                                            column.id
-                                                        }
-                                                        align={
-                                                            column.align ??
-                                                            "left"
-                                                        }
-                                                        sx={{
-                                                            px: 1.25,
-                                                            py: 0.75,
-                                                            minWidth: 0,
-                                                            overflow:
-                                                                "hidden",
-                                                        }}
-                                                    >
-                                                        {renderCell(
-                                                            row,
-                                                            column.id,
-                                                            column.actions,
-                                                        )}
-                                                    </TableCell>
-                                                ),
-                                            )}
-
-                                            {hasRowActions && (
                                                 <TableCell
-                                                    align="center"
                                                     sx={{
-                                                        p: 0.5,
+                                                        px: 1,
+                                                        py: 0.75,
+                                                        textAlign:
+                                                            "center",
                                                     }}
                                                 >
-                                                    {row.actions
-                                                        ?.length ? (
+                                                    {row.children ? (
                                                         <IconButton
                                                             size="small"
-                                                            onClick={(
-                                                                event,
-                                                            ) =>
-                                                                handleRowMenuOpen(
+                                                            onClick={(event) =>
+                                                                void handleToggleChildren(
                                                                     event,
                                                                     row,
                                                                 )
                                                             }
                                                             sx={{
-                                                                color:
-                                                                    "#64748b",
-                                                                "&:hover":
-                                                                {
-                                                                    backgroundColor:
-                                                                        "#eef2f7",
-                                                                    color:
-                                                                        "#0f172a",
-                                                                },
+                                                                width: 24,
+                                                                height: 24,
+                                                                p: 0,
                                                             }}
                                                         >
-                                                            <MoreHorizontal
-                                                                size={
-                                                                    16
-                                                                }
-                                                            />
+                                                            {childrenLoading.has(
+                                                                String(row.id),
+                                                            ) ? (
+                                                                <CircularProgress
+                                                                    size={12}
+                                                                />
+                                                            ) : expandedRowIds.has(
+                                                                String(row.id),
+                                                            ) ? (
+                                                                <ChevronDown
+                                                                    size={14}
+                                                                    strokeWidth={1.8}
+                                                                />
+                                                            ) : (
+                                                                <ChevronRight
+                                                                    size={14}
+                                                                    strokeWidth={1.8}
+                                                                />
+                                                            )}
                                                         </IconButton>
-                                                    ) : null}
+                                                    ) : (
+                                                        <Box sx={{ width: 14, height: 14 }} />
+                                                    )}
                                                 </TableCell>
-                                            )}
-                                        </TableRow>
+
+                                                {table.columns.map(
+                                                    (column) => (
+                                                        <TableCell
+                                                            key={
+                                                                column.id
+                                                            }
+                                                            align={
+                                                                column.align ??
+                                                                "left"
+                                                            }
+                                                            sx={{
+                                                                px: 1.25,
+                                                                py: 0.75,
+                                                                minWidth: 0,
+                                                                overflow:
+                                                                    "hidden",
+                                                            }}
+                                                        >
+                                                            {renderCell(
+                                                                row,
+                                                                column.id,
+                                                                column.actions,
+                                                            )}
+                                                        </TableCell>
+                                                    ),
+                                                )}
+
+                                                {hasRowActions && (
+                                                    <TableCell
+                                                        align="center"
+                                                        sx={{
+                                                            p: 0.5,
+                                                        }}
+                                                    >
+                                                        {row.actions
+                                                            ?.length ? (
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={(
+                                                                    event,
+                                                                ) =>
+                                                                    handleRowMenuOpen(
+                                                                        event,
+                                                                        row,
+                                                                    )
+                                                                }
+                                                                sx={{
+                                                                    color:
+                                                                        "#64748b",
+                                                                    "&:hover":
+                                                                    {
+                                                                        backgroundColor:
+                                                                            "#eef2f7",
+                                                                        color:
+                                                                            "#0f172a",
+                                                                    },
+                                                                }}
+                                                            >
+                                                                <MoreHorizontal
+                                                                    size={
+                                                                        16
+                                                                    }
+                                                                />
+                                                            </IconButton>
+                                                        ) : null}
+                                                    </TableCell>
+                                                )}
+                                            </TableRow>
+                                            {expandedRowIds.has(String(row.id)) &&
+                                                (childrenByRowId[String(row.id)] ?? []).map(
+                                                    (childRow) => {
+                                                        const childSelected =
+                                                            selectedRowId === childRow.id;
+
+                                                        return (
+                                                            <TableRow
+                                                                key={String(childRow.id)}
+                                                                hover
+                                                                selected={childSelected}
+                                                                onClick={() =>
+                                                                    setSelectedRowId(
+                                                                        childRow.id,
+                                                                    )
+                                                                }
+                                                                sx={{
+                                                                    cursor: "pointer",
+                                                                    height: 36,
+
+                                                                    "& td": {
+                                                                        backgroundColor:
+                                                                            childSelected
+                                                                                ? "#f1f5f9"
+                                                                                : "#fbfdff",
+                                                                        borderBottom:
+                                                                            "1px solid #f1f5f9",
+                                                                    },
+
+                                                                    "&:hover td": {
+                                                                        backgroundColor:
+                                                                            "#f8fafc",
+                                                                    },
+                                                                }}
+                                                            >
+                                                                <TableCell
+                                                                    sx={{
+                                                                        px: 1,
+                                                                        py: 0.5,
+                                                                    }}
+                                                                >
+                                                                    <Box
+                                                                        sx={{
+                                                                            width: 14,
+                                                                            height: 14,
+                                                                        }}
+                                                                    />
+                                                                </TableCell>
+
+                                                                {table.columns.map(
+                                                                    (column, columnIndex) => (
+                                                                        <TableCell
+                                                                            key={column.id}
+                                                                            align={
+                                                                                column.align ??
+                                                                                "left"
+                                                                            }
+                                                                            sx={{
+                                                                                px: 1.25,
+                                                                                py: 0.5,
+                                                                                pl:
+                                                                                    columnIndex === 0
+                                                                                        ? 3
+                                                                                        : 1.25,
+                                                                                minWidth: 0,
+                                                                                overflow:
+                                                                                    "hidden",
+                                                                                color:
+                                                                                    "#475569",
+                                                                            }}
+                                                                        >
+                                                                            {renderCell(
+                                                                                childRow,
+                                                                                column.id,
+                                                                                column.actions,
+                                                                            )}
+                                                                        </TableCell>
+                                                                    ),
+                                                                )}
+
+                                                                {hasRowActions && (
+                                                                    <TableCell />
+                                                                )}
+                                                            </TableRow>
+                                                        );
+                                                    },
+                                                )}
+
+                                        </Fragment>
                                     );
                                 },
                             )}
@@ -784,7 +973,7 @@ export default function TableViewerPane({
                                 ? activePane.content.title ?? activePane.action.label
                                 : "Viewer"}
                     </Typography>
-                    
+
                 </Box>
 
                 <Box
