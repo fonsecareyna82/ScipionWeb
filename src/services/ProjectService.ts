@@ -567,6 +567,60 @@ export interface VolumeSurfaceMeshOptions {
   signal?: AbortSignal;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Integrated table viewer
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TableViewerCell =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined;
+
+export type TableViewerAction = {
+  id: string;
+  label: string;
+  icon?: string;
+  disabled?: boolean;
+};
+
+export type TableViewerColumn = {
+  id: string;
+  label: string;
+  align?: "left" | "center" | "right";
+  width?: number | string;
+  sortable?: boolean;
+  actions?: TableViewerAction[];
+};
+
+export type TableViewerRow = {
+  id: string | number;
+  cells: Record<string, TableViewerCell>;
+  actions?: TableViewerAction[];
+};
+
+export type TableViewerPage = {
+  offset: number;
+  limit: number;
+  total: number;
+};
+
+export type TableViewerData = {
+  title?: string;
+  columns: TableViewerColumn[];
+  rows: TableViewerRow[];
+  actions?: TableViewerAction[];
+  page?: TableViewerPage;
+};
+
+export type TableViewerContext = {
+  projectId: Id;
+  protocolId: Id;
+  outputName: string;
+  pointerClass?: string;
+  tableKey?: string;
+};
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;
@@ -591,13 +645,18 @@ export type AnalyzeViewerResolveDecision =
   }
   | {
     handled: true;
-    // Usually a Flask route that will render the viewer
+    viewer: "external";
     url: string;
-
-    // Optional behavior hints for the frontend
     target?: "_self" | "_blank";
     kind?: "redirect" | "iframe";
     title?: string;
+  }
+  | {
+    handled: true;
+    viewer: "table";
+    title?: string;
+    context: TableViewerContext;
+    table: TableViewerData;
   };
 
 

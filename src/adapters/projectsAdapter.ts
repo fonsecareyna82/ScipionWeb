@@ -303,6 +303,7 @@ const defaultService: ProjectService = {
 
     const payload = {
       protocolLabel: ctx.protocolLabel ?? "",
+      outputName: ctx.outputName,
       pointerClass: ctx.pointerClass ?? "",
       paramClass: ctx.paramClass ?? "",
       value: ctx.value ?? "",
@@ -330,11 +331,34 @@ const defaultService: ProjectService = {
     const handled = (raw as any).handled === true;
     if (!handled) return { handled: false };
 
+    const viewer = String((raw as any).viewer ?? "");
+
+    if (viewer === "table") {
+      const context = (raw as any).context;
+      const table = (raw as any).table;
+
+      if (!context || !table) {
+        return { handled: false };
+      }
+
+      return {
+        handled: true,
+        viewer: "table",
+        title: (raw as any).title,
+        context,
+        table,
+      };
+    }
+
     const decisionUrl = String((raw as any).url ?? "");
-    if (!decisionUrl) return { handled: false };
+
+    if (!decisionUrl) {
+      return { handled: false };
+    }
 
     return {
       handled: true,
+      viewer: "external",
       url: decisionUrl,
       target: (raw as any).target,
       kind: (raw as any).kind,
