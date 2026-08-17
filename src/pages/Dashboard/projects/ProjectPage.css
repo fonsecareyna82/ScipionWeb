@@ -1,6 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+
+@font-face {
+  font-family: "Outfit";
+  src: url("../../../assets/fonts/Outfit-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 /* ─────────────────────────────────────────────
    themeTokensScopedToWidgetRoot
