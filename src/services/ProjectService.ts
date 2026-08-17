@@ -585,6 +585,23 @@ export type TableViewerAction = {
   disabled?: boolean;
 };
 
+export type TableViewerActionTarget = {
+  protocolId?: NonNullable<Id>;
+  outputName?: string;
+  pointerClass?: string;
+};
+
+export type TableViewerActionContext = {
+  target?: TableViewerActionTarget;
+  data?: Record<string, unknown>;
+};
+
+export type TableViewerCellContext =
+  TableViewerActionContext & {
+    defaultAction?: TableViewerAction;
+    actions?: TableViewerAction[];
+  };
+
 export type TableViewerColumn = {
   id: string;
   label: string;
@@ -604,8 +621,15 @@ export type TableViewerRow = {
   id: string | number;
   cells: Record<string, TableViewerCell>;
   data?: Record<string, unknown>;
+
   defaultAction?: TableViewerAction;
   actions?: TableViewerAction[];
+
+  cellContexts?: Record<
+    string,
+    TableViewerCellContext
+  >;
+
   children?: TableViewerRowChildren;
 };
 
@@ -648,6 +672,7 @@ export type TableViewerActionRequest = {
   rowId?: string | number;
   columnId?: string;
   rowData?: Record<string, unknown>;
+  cellContext?: TableViewerActionContext;
 };
 
 export type TableViewerPaneContent =

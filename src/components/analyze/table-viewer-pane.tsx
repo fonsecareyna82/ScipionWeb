@@ -21,6 +21,7 @@ import { ChevronDown, ChevronRight, MoreHorizontal, Search } from "lucide-react"
 import type {
     TableViewerAction,
     TableViewerCell,
+    TableViewerCellContext,
     TableViewerContext,
     TableViewerData,
     TableViewerRow,
@@ -141,6 +142,7 @@ export default function TableViewerPane({
         action: TableViewerAction,
         row?: TableViewerRow,
         columnId?: string,
+        cellContext?: TableViewerCellContext,
     ) => {
         if (action.disabled) return;
 
@@ -160,6 +162,14 @@ export default function TableViewerPane({
                         rowId: row?.id,
                         columnId,
                         rowData: row?.data,
+                        cellContext: cellContext
+                            ? {
+                                target:
+                                    cellContext.target,
+                                data:
+                                    cellContext.data,
+                            }
+                            : undefined,
                     },
                 );
 
@@ -271,57 +281,134 @@ export default function TableViewerPane({
     const renderCell = (
         row: TableViewerRow,
         columnId: string,
-        actions?: TableViewerAction[],
+        columnActions?: TableViewerAction[],
     ) => {
         const text = formatCellValue(
             row.cells[columnId],
         );
 
+        const cellContext =
+            row.cellContexts?.[columnId];
+
         const enabledActions = (
-            actions ?? []
+            cellContext?.actions ??
+            columnActions ??
+            []
         ).filter(
             (action) => !action.disabled,
         );
 
+        const explicitDefaultAction =
+            cellContext?.defaultAction;
+
+        const defaultAction =
+            explicitDefaultAction &&
+                !explicitDefaultAction.disabled
+                ? explicitDefaultAction
+                : enabledActions.length === 1
+                    ? enabledActions[0]
+                    : undefined;
+
+        const secondaryActions =
+            defaultAction
+                ? enabledActions.filter(
+                    (action) =>
+                        action.id !==
+                        defaultAction.id,
+                )
+                : enabledActions;
+
         if (
-            enabledActions.length === 1 &&
+            defaultAction &&
             text
         ) {
-            const action = enabledActions[0];
-
             return (
-                <Button
-                    variant="text"
-                    size="small"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        handleAction(
-                            action,
-                            row,
-                            columnId,
-                        );
-                    }}
+                <Box
                     sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
                         minWidth: 0,
-                        p: 0,
-                        justifyContent: "flex-start",
-                        textTransform: "none",
-                        fontSize: "0.76rem",
-                        fontWeight: 500,
-                        color: "#334155",
-                        "&:hover": {
-                            backgroundColor: "transparent",
-                            color: "#2563eb",
-                            textDecoration: "underline",
-                        },
                     }}
                 >
-                    {text}
-                </Button>
+                    <Button
+                        variant="text"
+                        size="small"
+                        onClick={(event) => {
+                            event.stopPropagation();
+
+                            void handleAction(
+                                defaultAction,
+                                row,
+                                columnId,
+                                cellContext,
+                            );
+                        }}
+                        sx={{
+                            minWidth: 0,
+                            p: 0,
+                            justifyContent:
+                                "flex-start",
+                            textTransform: "none",
+                            fontSize: "0.76rem",
+                            fontWeight: 500,
+                            color: "#334155",
+                            overflow: "hidden",
+                            textOverflow:
+                                "ellipsis",
+                            whiteSpace: "nowrap",
+
+                            "&:hover": {
+                                backgroundColor:
+                                    "transparent",
+                                color: "#2563eb",
+                                textDecoration:
+                                    "underline",
+                            },
+                        }}
+                    >
+                        {text}
+                    </Button>
+
+                    {secondaryActions.map(
+                        (action) => (
+                            <Button
+                                key={action.id}
+                                size="small"
+                                variant="text"
+                                onClick={(
+                                    event,
+                                ) => {
+                                    event.stopPropagation();
+
+                                    void handleAction(
+                                        action,
+                                        row,
+                                        columnId,
+                                        cellContext,
+                                    );
+                                }}
+                                sx={{
+                                    minWidth: 0,
+                                    px: 0.5,
+                                    py: 0,
+                                    textTransform:
+                                        "none",
+                                    fontSize:
+                                        "0.68rem",
+                                }}
+                            >
+                                {action.label}
+                            </Button>
+                        ),
+                    )}
+                </Box>
             );
         }
 
-        if (enabledActions.length > 1) {
+        if (
+            enabledActions.length > 0
+        ) {
             return (
                 <Box
                     sx={{
@@ -334,39 +421,51 @@ export default function TableViewerPane({
                     <Typography
                         component="span"
                         sx={{
-                            fontSize: "0.76rem",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            fontSize:
+                                "0.76rem",
+                            overflow:
+                                "hidden",
+                            textOverflow:
+                                "ellipsis",
+                            whiteSpace:
+                                "nowrap",
                         }}
                     >
                         {text}
                     </Typography>
 
-                    {enabledActions.map((action) => (
-                        <Button
-                            key={action.id}
-                            size="small"
-                            variant="text"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                handleAction(
-                                    action,
-                                    row,
-                                    columnId,
-                                );
-                            }}
-                            sx={{
-                                minWidth: 0,
-                                px: 0.5,
-                                py: 0,
-                                textTransform: "none",
-                                fontSize: "0.68rem",
-                            }}
-                        >
-                            {action.label}
-                        </Button>
-                    ))}
+                    {enabledActions.map(
+                        (action) => (
+                            <Button
+                                key={action.id}
+                                size="small"
+                                variant="text"
+                                onClick={(
+                                    event,
+                                ) => {
+                                    event.stopPropagation();
+
+                                    void handleAction(
+                                        action,
+                                        row,
+                                        columnId,
+                                        cellContext,
+                                    );
+                                }}
+                                sx={{
+                                    minWidth: 0,
+                                    px: 0.5,
+                                    py: 0,
+                                    textTransform:
+                                        "none",
+                                    fontSize:
+                                        "0.68rem",
+                                }}
+                            >
+                                {action.label}
+                            </Button>
+                        ),
+                    )}
                 </Box>
             );
         }
@@ -378,7 +477,8 @@ export default function TableViewerPane({
                     fontSize: "0.76rem",
                     color: "#334155",
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    textOverflow:
+                        "ellipsis",
                     whiteSpace: "nowrap",
                 }}
             >

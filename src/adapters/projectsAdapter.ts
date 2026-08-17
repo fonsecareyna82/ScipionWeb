@@ -389,6 +389,7 @@ const defaultService: ProjectService = {
       rowId: request.rowId ?? null,
       columnId: request.columnId ?? null,
       rowData: request.rowData ?? {},
+      cellContext: request.cellContext ?? {},
     };
 
     const res = await fetchWithAuth(url, {
