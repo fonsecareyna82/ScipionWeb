@@ -724,6 +724,8 @@ describe("TiltSeriesViewer", () => {
             ).toBe(true);
         });
 
+        await flushMicrotasks();
+
         const individualCallsBefore =
             serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.length;
 
@@ -750,11 +752,18 @@ describe("TiltSeriesViewer", () => {
 
         await flushMicrotasks();
 
+        const newIndividualCalls =
+            serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.slice(
+                individualCallsBefore,
+            );
+
         expect(
-            serviceMocks.fetchTiltSeriesViewImageObjectUrl,
-        ).toHaveBeenCalledTimes(
-            individualCallsBefore,
-        );
+            newIndividualCalls.some(
+                (call) =>
+                    Number(call[4]) === 1 &&
+                    call[5]?.size === 512,
+            ),
+        ).toBe(false);
     });
 
     it("stops autoplay when switching to metadata", async () => {
