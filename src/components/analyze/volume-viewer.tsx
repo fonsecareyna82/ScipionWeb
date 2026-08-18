@@ -285,7 +285,7 @@ export default function VolumeViewer({
   const [thrAbs, setThrAbs] = useState<[number, number]>([0, 1]);
 
   const [renderMode3d, setRenderMode3d] =
-    useState<RenderMode3d>("volume");
+  useState<RenderMode3d>("surface");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
   const needsHistogram =
@@ -306,9 +306,9 @@ export default function VolumeViewer({
     surfaceLevel: number | null;
   }>({
     volumeId: null,
-    maxDim: 192,
+    maxDim: 256,
     method: "stride",
-    renderMode: "volume",
+    renderMode: "surface",
     surfaceLevel: null,
   });
 
@@ -2443,9 +2443,9 @@ export default function VolumeViewer({
                             value={renderMode3d}
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
-                            <ToggleButton value="volume">volume</ToggleButton>
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
+                            <ToggleButton value="volume">volume</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
