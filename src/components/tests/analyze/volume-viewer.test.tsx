@@ -324,7 +324,7 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
+                    maxDim: 256,
                     method: "stride",
                     maxTriangles: 220000,
                 }),
@@ -447,13 +447,13 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
+                    maxDim: 256,
                     method: "stride",
                 }),
             );
         });
 
-        fireEvent.change(screen.getByDisplayValue("192"), {
+        fireEvent.change(screen.getByDisplayValue("256"), {
             target: { value: "104" },
         });
 
@@ -624,9 +624,14 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const interpSelect = screen.getAllByRole("combobox")[1];
+        const interpSelect = screen.getAllByRole("combobox")[2];
         fireEvent.mouseDown(interpSelect);
-        fireEvent.click(await screen.findByText("nearest"));
+
+        fireEvent.click(
+            await screen.findByText("nearest", {
+                selector: '[role="option"]',
+            }),
+        );
 
         await waitFor(() => {
             expect(screen.getAllByText("nearest").length).toBeGreaterThan(0);
@@ -673,7 +678,7 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
+                    maxDim: 256,
                     method: "stride",
                 }),
             );
@@ -692,7 +697,7 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
+                    maxDim: 256,
                     method: "binning",
                 }),
             );
