@@ -148,16 +148,6 @@ function makeSliceUrl(axis: string, index: number) {
     };
 }
 
-function getSettledSliceCalls() {
-    return serviceMocks
-        .fetchVolumeSliceObjectUrl
-        .mock.calls
-        .filter(
-            (call) =>
-                call[5]?.thumb === 768,
-        );
-}
-
 function makeSurfaceMesh() {
     return {
         vertices: [
@@ -394,23 +384,8 @@ describe("VolumeViewer", () => {
             );
         });
 
-        const calls = getSettledSliceCalls();
-
-        const matchingCalls = calls.filter(
-            (call) =>
-                call[3] === 1 &&
-                call[4] === 2 &&
-                call[5]?.axis === "z",
-        );
-
-        expect(
-            matchingCalls.length,
-        ).toBeGreaterThan(0);
-
-        const lastCall =
-            matchingCalls[
-            matchingCalls.length - 1
-            ];
+        const calls = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls;
+        const lastCall = calls[calls.length - 1];
 
         expect(lastCall[0]).toBe(1);
         expect(lastCall[1]).toBe(2);
@@ -446,10 +421,7 @@ describe("VolumeViewer", () => {
 
         const calls = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls;
         const xAxisCalls = calls.filter(
-            (call) =>
-                call[3] === 1 &&
-                call[5]?.axis === "x" &&
-                call[5]?.thumb === 768,
+            (call) => call[3] === 1 && call[5]?.axis === "x",
         );
 
         expect(xAxisCalls.length).toBeGreaterThan(0);
@@ -559,24 +531,8 @@ describe("VolumeViewer", () => {
             );
         });
 
-        const calls =
-            getSettledSliceCalls();
-
-        const magmaCalls =
-            calls.filter(
-                (call) =>
-                    call[5]?.cmap ===
-                    "magma",
-            );
-
-        expect(
-            magmaCalls.length,
-        ).toBeGreaterThan(0);
-
-        const lastCall =
-            magmaCalls[
-            magmaCalls.length - 1
-            ];
+        const calls = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls;
+        const lastCall = calls[calls.length - 1];
 
         expect(lastCall[5]).toMatchObject({
             axis: "z",
@@ -595,15 +551,12 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const callCount =
-            getSettledSliceCalls().length;
+        const callCount = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
 
         fireEvent.click(screen.getByRole("button", { name: "on" }));
 
         await waitFor(() => {
-            expect(
-                getSettledSliceCalls().length,
-            ).toBe(callCount);
+            expect(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length).toBe(callCount);
         });
     });
 
@@ -618,122 +571,16 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const callCount =
-            getSettledSliceCalls().length;
+        const callCount = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
         const sliders = screen.getAllByRole("slider");
 
         fireEvent.keyDown(sliders[1], { key: "ArrowRight" });
         fireEvent.keyDown(sliders[2], { key: "ArrowRight" });
 
         await waitFor(() => {
-            expect(
-                getSettledSliceCalls().length,
-            ).toBe(callCount);
+            expect(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length).toBe(callCount);
         });
     });
-
-    it("uses the warmed interactive slice while dragging", async () => {
-        renderViewer();
-
-        expect(
-            await screen.findByText("Vol A"),
-        ).toBeInTheDocument();
-
-        fireEvent.click(
-            screen.getByRole("button", {
-                name: "single",
-            }),
-        );
-
-        const sliceSlider =
-            screen.getAllByRole("slider")[0];
-
-        const currentSlice =
-            Number(
-                sliceSlider.getAttribute(
-                    "aria-valuenow",
-                ),
-            );
-
-        let warmedSlice = -1;
-
-        await waitFor(() => {
-            const warmCall =
-                serviceMocks
-                    .fetchVolumeSliceObjectUrl
-                    .mock.calls
-                    .find(
-                        (call) =>
-                            call[3] === 1 &&
-                            call[5]?.axis === "z" &&
-                            call[5]?.thumb === 384 &&
-                            call[5]?.quality === 55 &&
-                            Number(call[4]) !==
-                            currentSlice,
-                    );
-
-            expect(warmCall).toBeDefined();
-
-            warmedSlice =
-                Number(warmCall![4]);
-        });
-
-        const warmCallsBefore =
-            serviceMocks
-                .fetchVolumeSliceObjectUrl
-                .mock.calls
-                .filter(
-                    (call) =>
-                        call[3] === 1 &&
-                        Number(call[4]) ===
-                        warmedSlice &&
-                        call[5]?.axis === "z" &&
-                        call[5]?.thumb === 384 &&
-                        call[5]?.quality === 55,
-                )
-                .length;
-
-        fireEvent.change(
-            sliceSlider,
-            {
-                target: {
-                    value: String(
-                        warmedSlice,
-                    ),
-                },
-            },
-        );
-
-        await new Promise(
-            (resolve) =>
-                window.setTimeout(
-                    resolve,
-                    100,
-                ),
-        );
-
-        const warmCallsAfter =
-            serviceMocks
-                .fetchVolumeSliceObjectUrl
-                .mock.calls
-                .filter(
-                    (call) =>
-                        call[3] === 1 &&
-                        Number(call[4]) ===
-                        warmedSlice &&
-                        call[5]?.axis === "z" &&
-                        call[5]?.thumb === 384 &&
-                        call[5]?.quality === 55,
-                )
-                .length;
-
-        expect(
-            warmCallsAfter,
-        ).toBe(
-            warmCallsBefore,
-        );
-    });
-
 
     it("toggles play and pause rotation in 3D mode", async () => {
         renderViewer();

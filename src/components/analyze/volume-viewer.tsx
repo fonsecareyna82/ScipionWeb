@@ -85,7 +85,7 @@ const CMAP_OPTIONS = [
 
 const SURFACE_MAX_TRIANGLES = 220000;
 const SURFACE_REQUEST_TIMEOUT_MS = 30000;
-const SLICE_SLIDER_THROTTLE_MS = 40;
+const SLICE_SLIDER_THROTTLE_MS = 80;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
@@ -93,254 +93,6 @@ const SLICE_PREVIEW_QUALITY = 70;
 
 const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
 const SLICE_DRAG_PREVIEW_QUALITY = 55;
-
-const SLICE_PREVIEW_CACHE_LIMIT = 192;
-const SLICE_WARM_RADIUS_SINGLE = 16;
-const SLICE_WARM_RADIUS_IDLE = 8;
-const SLICE_WARM_CONCURRENCY = 2;
-
-type SlicePreviewRequestOptions = {
-  thumb?: number;
-  format?: "png" | "webp" | "jpeg";
-  fast?: boolean;
-  quality?: number;
-};
-
-type SlicePreviewResult = {
-  url: string;
-  revoke?: () => void;
-} | null;
-
-type CachedSlicePreview = {
-  url: string;
-  revoke?: () => void;
-  lastUsed: number;
-};
-
-type SlicePreviewInFlightEntry = {
-  controller: AbortController;
-  promise: Promise<SlicePreviewResult>;
-};
-
-function buildVolumeSliceCacheKey(
-  projectId: string | number,
-  protocolId: string | number,
-  outputName: string,
-  volumeId: string | number,
-  axis: "x" | "y" | "z",
-  sliceIndex: number,
-  colormap: string,
-  reloadKey: number | undefined,
-  requestOptions?: SlicePreviewRequestOptions,
-): string {
-  return [
-    projectId,
-    protocolId,
-    outputName,
-    volumeId,
-    axis,
-    sliceIndex,
-    colormap,
-    reloadKey ?? "",
-    requestOptions?.thumb ?? "",
-    requestOptions?.format ?? "",
-    requestOptions?.fast ?? "",
-    requestOptions?.quality ?? "",
-  ].map(String).join("|");
-}
-
-function getCachedVolumeSlice(
-  cache: Map<string, CachedSlicePreview>,
-  cacheKey: string,
-): CachedSlicePreview | undefined {
-  const cached = cache.get(cacheKey);
-
-  if (cached) {
-    cached.lastUsed = Date.now();
-  }
-
-  return cached;
-}
-
-function trimVolumeSliceCache(
-  cache: Map<string, CachedSlicePreview>,
-) {
-  if (cache.size <= SLICE_PREVIEW_CACHE_LIMIT) {
-    return;
-  }
-
-  const entries = Array.from(cache.entries())
-    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-
-  for (const [cacheKey, cached] of entries) {
-    if (cache.size <= SLICE_PREVIEW_CACHE_LIMIT) {
-      break;
-    }
-
-    try {
-      cached.revoke?.();
-    } catch {
-      // Ignore ObjectURL cleanup errors.
-    }
-
-    cache.delete(cacheKey);
-  }
-}
-
-function storeCachedVolumeSlice(
-  cache: Map<string, CachedSlicePreview>,
-  cacheKey: string,
-  result: Exclude<SlicePreviewResult, null>,
-): CachedSlicePreview {
-  const previous = cache.get(cacheKey);
-
-  if (
-    previous?.revoke &&
-    previous.url !== result.url
-  ) {
-    try {
-      previous.revoke();
-    } catch {
-      // Ignore ObjectURL cleanup errors.
-    }
-  }
-
-  const cached: CachedSlicePreview = {
-    url: result.url,
-    revoke: result.revoke,
-    lastUsed: Date.now(),
-  };
-
-  cache.set(cacheKey, cached);
-  trimVolumeSliceCache(cache);
-
-  return cached;
-}
-
-async function loadVolumeSliceCached(
-  cacheRef: {
-    current: Map<string, CachedSlicePreview>;
-  },
-  inFlightRef: {
-    current: Map<string, SlicePreviewInFlightEntry>;
-  },
-  cacheKey: string,
-  loader: (
-    signal: AbortSignal,
-  ) => Promise<SlicePreviewResult>,
-): Promise<SlicePreviewResult> {
-  const cached = getCachedVolumeSlice(
-    cacheRef.current,
-    cacheKey,
-  );
-
-  if (cached) {
-    return {
-      url: cached.url,
-    };
-  }
-
-  const existing =
-    inFlightRef.current.get(cacheKey);
-
-  if (existing) {
-    return existing.promise;
-  }
-
-  const controller =
-    new AbortController();
-
-  let promise:
-    Promise<SlicePreviewResult>;
-
-  promise = loader(controller.signal)
-    .then((result) => {
-      if (controller.signal.aborted) {
-        try {
-          result?.revoke?.();
-        } catch {
-          // Ignore ObjectURL cleanup errors.
-        }
-
-        return null;
-      }
-
-      if (!result?.url) {
-        return result;
-      }
-
-      const stored =
-        storeCachedVolumeSlice(
-          cacheRef.current,
-          cacheKey,
-          result,
-        );
-
-      return {
-        url: stored.url,
-      };
-    })
-    .finally(() => {
-      const current =
-        inFlightRef.current.get(cacheKey);
-
-      if (current?.promise === promise) {
-        inFlightRef.current.delete(
-          cacheKey,
-        );
-      }
-    });
-
-  inFlightRef.current.set(
-    cacheKey,
-    {
-      controller,
-      promise,
-    },
-  );
-
-  return promise;
-}
-
-function buildSliceWarmupOrder(
-  center: number,
-  maxSlice: number,
-  radius: number,
-): number[] {
-  const safeCenter = Math.max(
-    0,
-    Math.min(
-      Math.round(center),
-      maxSlice,
-    ),
-  );
-
-  const result = [
-    safeCenter,
-  ];
-
-  for (
-    let distance = 1;
-    distance <= radius;
-    distance += 1
-  ) {
-    const forward =
-      safeCenter + distance;
-
-    const backward =
-      safeCenter - distance;
-
-    if (forward <= maxSlice) {
-      result.push(forward);
-    }
-
-    if (backward >= 0) {
-      result.push(backward);
-    }
-  }
-
-  return result;
-}
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -468,43 +220,6 @@ export default function VolumeViewer({
   const [sliceIndexX, setSliceIndexX] = useState(0);
 
   const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x">(null);
-
-  const slicePreviewCacheRef =
-    useRef<
-      Map<string, CachedSlicePreview>
-    >(new Map());
-
-  const slicePreviewInFlightRef =
-    useRef<
-      Map<
-        string,
-        SlicePreviewInFlightEntry
-      >
-    >(new Map());
-
-  useEffect(() => {
-    return () => {
-      slicePreviewInFlightRef.current
-        .forEach((entry) => {
-          entry.controller.abort();
-        });
-
-      slicePreviewInFlightRef.current
-        .clear();
-
-      slicePreviewCacheRef.current
-        .forEach((cached) => {
-          try {
-            cached.revoke?.();
-          } catch {
-            // Ignore ObjectURL cleanup errors.
-          }
-        });
-
-      slicePreviewCacheRef.current
-        .clear();
-    };
-  }, []);
 
   const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
@@ -989,8 +704,6 @@ export default function VolumeViewer({
     colormap,
     sliceIndex: effectiveSliceIndex,
     requestOptions: singleSliceFetchOptions,
-    cacheRef: slicePreviewCacheRef,
-    sharedInFlightRef: slicePreviewInFlightRef,
   });
 
   const frontUrl = singleSlice.url;
@@ -1009,8 +722,6 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: zSliceFetchOptions,
-    cacheRef: slicePreviewCacheRef,
-    sharedInFlightRef: slicePreviewInFlightRef,
   });
 
   const ySlice = useVolumeSliceImage({
@@ -1026,8 +737,6 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: ySliceFetchOptions,
-    cacheRef: slicePreviewCacheRef,
-    sharedInFlightRef: slicePreviewInFlightRef,
   });
 
   const xSlice = useVolumeSliceImage({
@@ -1043,241 +752,7 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: xSliceFetchOptions,
-    cacheRef: slicePreviewCacheRef,
-    sharedInFlightRef: slicePreviewInFlightRef,
   });
-
-  const prefetchVolumeSlice =
-    useCallback(
-      async (
-        targetAxis: "x" | "y" | "z",
-        targetIndex: number,
-        targetMaxSlice: number,
-        reloadKey?: number,
-      ) => {
-        if (
-          !active ||
-          selectedId == null
-        ) {
-          return;
-        }
-
-        const clampedIndex =
-          Math.max(
-            0,
-            Math.min(
-              targetIndex,
-              targetMaxSlice,
-            ),
-          );
-
-        const requestOptions =
-          buildSliceFetchOptions(true);
-
-        const cacheKey =
-          buildVolumeSliceCacheKey(
-            projectId,
-            protocolId,
-            outputName,
-            selectedId,
-            targetAxis,
-            clampedIndex,
-            colormap,
-            reloadKey,
-            requestOptions,
-          );
-
-        try {
-          await loadVolumeSliceCached(
-            slicePreviewCacheRef,
-            slicePreviewInFlightRef,
-            cacheKey,
-            (signal) =>
-              svc.fetchVolumeSliceObjectUrl(
-                projectId,
-                protocolId,
-                outputName,
-                selectedId,
-                clampedIndex,
-                {
-                  axis: targetAxis,
-                  cmap: colormap,
-                  ...requestOptions,
-                  signal,
-                },
-              ),
-          );
-        } catch {
-          // Background warmup must never affect
-          // the visible viewer state.
-        }
-      },
-      [
-        active,
-        selectedId,
-        projectId,
-        protocolId,
-        outputName,
-        colormap,
-        svc,
-        buildSliceFetchOptions,
-      ],
-    );
-
-
-  useEffect(() => {
-    if (
-      !active ||
-      viewMode !== "slices" ||
-      selectedId == null ||
-      draggingSlice !== null
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-
-    type WarmTask = {
-      axis: "x" | "y" | "z";
-      index: number;
-      maxSlice: number;
-      reloadKey?: number;
-    };
-
-    const tasks: WarmTask[] = [];
-    const seen = new Set<string>();
-
-    const appendWindow = (
-      targetAxis: "x" | "y" | "z",
-      center: number,
-      targetMaxSlice: number,
-      radius: number,
-      reloadKey?: number,
-    ) => {
-      buildSliceWarmupOrder(
-        center,
-        targetMaxSlice,
-        radius,
-      ).forEach((index) => {
-        const key = [
-          targetAxis,
-          index,
-          reloadKey ?? "",
-        ].join("|");
-
-        if (seen.has(key)) {
-          return;
-        }
-
-        seen.add(key);
-
-        tasks.push({
-          axis: targetAxis,
-          index,
-          maxSlice: targetMaxSlice,
-          reloadKey,
-        });
-      });
-    };
-
-    if (
-      sliceLayoutMode === "single"
-    ) {
-      appendWindow(
-        axis,
-        sliceIndex,
-        maxSlice,
-        SLICE_WARM_RADIUS_SINGLE,
-      );
-    } else {
-
-      appendWindow(
-        "z",
-        sliceIndexZ,
-        maxSliceZ,
-        SLICE_WARM_RADIUS_IDLE,
-        sliceReloadNonce,
-      );
-
-      appendWindow(
-        "y",
-        sliceIndexY,
-        maxSliceY,
-        SLICE_WARM_RADIUS_IDLE,
-        sliceReloadNonce,
-      );
-
-      appendWindow(
-        "x",
-        sliceIndexX,
-        maxSliceX,
-        SLICE_WARM_RADIUS_IDLE,
-        sliceReloadNonce,
-      ); }
-
-
-      const runWarmup = async () => {
-        let nextTask = 0;
-
-        const worker = async () => {
-          while (
-            !cancelled &&
-            nextTask < tasks.length
-          ) {
-            const task =
-              tasks[nextTask++];
-
-            await prefetchVolumeSlice(
-              task.axis,
-              task.index,
-              task.maxSlice,
-              task.reloadKey,
-            );
-          }
-        };
-
-        await Promise.all(
-          Array.from(
-            {
-              length:
-                SLICE_WARM_CONCURRENCY,
-            },
-            () => worker(),
-          ),
-        );
-      };
-
-      const timer =
-        window.setTimeout(
-          () => {
-            void runWarmup();
-          },
-          120,
-        );
-
-      return () => {
-        cancelled = true;
-        window.clearTimeout(timer);
-      };
-    
-  }, [
-    active,
-    viewMode,
-    sliceLayoutMode,
-    selectedId,
-    axis,
-    sliceIndex,
-    sliceIndexZ,
-    sliceIndexY,
-    sliceIndexX,
-    maxSlice,
-    maxSliceZ,
-    maxSliceY,
-    maxSliceX,
-    draggingSlice,
-    sliceReloadNonce,
-    prefetchVolumeSlice,
-  ]);
 
   const sliceImagesLoading =
     viewMode === "slices" &&
@@ -3908,122 +3383,57 @@ function useVolumeSliceImage({
   colormap,
   reloadKey,
   requestOptions,
-  cacheRef,
-  sharedInFlightRef,
 }: {
   enabled: boolean;
   svc: any;
   projectId: string | number;
   protocolId: string | number;
   outputName: string;
-  volumeId:
-  | string
-  | number
-  | null;
+  volumeId: string | number | null;
   axis: "x" | "y" | "z";
   sliceIndex: number | null;
   maxSlice: number;
   colormap: string;
   reloadKey?: number;
-  requestOptions?:
-  SlicePreviewRequestOptions;
-  cacheRef: {
-    current:
-    Map<
-      string,
-      CachedSlicePreview
-    >;
-  };
-  sharedInFlightRef: {
-    current:
-    Map<
-      string,
-      SlicePreviewInFlightEntry
-    >;
+  requestOptions?: {
+    thumb?: number;
+    format?: "png" | "webp" | "jpeg";
+    fast?: boolean;
+    quality?: number;
   };
 }): SliceImageState {
-  const [url, setUrl] =
-    useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const requestRunningRef =
-    useRef(false);
-
-  const pendingJobRef =
-    useRef<{
-      requestFamilyKey: string;
-      cacheKey: string;
-      sliceIndex: number;
-    } | null>(null);
-
-  const requestFamilyKeyRef =
-    useRef<string | null>(null);
-
-  const latestCacheKeyRef =
-    useRef<string | null>(null);
-
-  const runNextRef =
-    useRef<(() => void) | null>(
-      null,
-    );
+  const controllerRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+  const pendingJobRef = useRef<{ requestKey: string; sliceIndex: number } | null>(null);
+  const requestKeyRef = useRef<string | null>(null);
+  const revokeRef = useRef<(() => void) | null>(null);
+  const runNextRef = useRef<(() => void) | null>(null);
 
   runNextRef.current = () => {
-    if (requestRunningRef.current) {
-      return;
-    }
+    if (inFlightRef.current) return;
 
-    const job =
-      pendingJobRef.current;
-
+    const job = pendingJobRef.current;
     if (!job) {
       setLoading(false);
       return;
     }
 
     pendingJobRef.current = null;
+    inFlightRef.current = true;
 
-    const cached =
-      getCachedVolumeSlice(
-        cacheRef.current,
-        job.cacheKey,
-      );
-
-    if (cached) {
-      if (
-        requestFamilyKeyRef.current ===
-        job.requestFamilyKey &&
-        latestCacheKeyRef.current ===
-        job.cacheKey
-      ) {
-        setError(null);
-        setUrl(cached.url);
-      }
-
-      if (pendingJobRef.current) {
-        runNextRef.current?.();
-      } else {
-        setLoading(false);
-      }
-
-      return;
-    }
-
-    requestRunningRef.current = true;
+    const controller = new AbortController();
+    controllerRef.current = controller;
 
     setLoading(true);
     setError(null);
 
-    void loadVolumeSliceCached(
-      cacheRef,
-      sharedInFlightRef,
-      job.cacheKey,
-      (signal) =>
-        svc.fetchVolumeSliceObjectUrl(
+    (async () => {
+      try {
+        const result = await svc.fetchVolumeSliceObjectUrl(
           projectId,
           protocolId,
           outputName,
@@ -4032,102 +3442,62 @@ function useVolumeSliceImage({
           {
             axis,
             cmap: colormap,
-            thumb:
-              requestOptions?.thumb,
-            format:
-              requestOptions?.format,
-            fast:
-              requestOptions?.fast,
-            quality:
-              requestOptions?.quality,
-            signal,
+            thumb: requestOptions?.thumb,
+            format: requestOptions?.format,
+            fast: requestOptions?.fast,
+            quality: requestOptions?.quality,
+            signal: controller.signal,
           },
-        ),
-    )
-      .then((result) => {
-        if (!result?.url) {
-          return;
-        }
-
-        if (
-          requestFamilyKeyRef.current !==
-          job.requestFamilyKey ||
-          latestCacheKeyRef.current !==
-          job.cacheKey
-        ) {
-          return;
-        }
-
-        setError(null);
-        setUrl(result.url);
-      })
-      .catch((e: any) => {
-        if (
-          requestFamilyKeyRef.current !==
-          job.requestFamilyKey ||
-          latestCacheKeyRef.current !==
-          job.cacheKey
-        ) {
-          return;
-        }
-
-        if (
-          e?.name ===
-          "AbortError"
-        ) {
-          return;
-        }
-
-        setError(
-          e?.message ||
-          `Failed to load ${axis.toUpperCase()} slice`,
         );
-      })
-      .finally(() => {
-        requestRunningRef.current =
-          false;
 
-        if (
-          pendingJobRef.current
-        ) {
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) {
+          result?.revoke?.();
+          return;
+        }
+
+        if (revokeRef.current) {
+          try {
+            revokeRef.current();
+          } catch {
+            // Ignore revoke errors.
+          }
+        }
+
+        revokeRef.current = result?.revoke ?? null;
+        setUrl(result?.url ?? null);
+      } catch (e: any) {
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) return;
+        setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
+      } finally {
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+
+        inFlightRef.current = false;
+
+        if (pendingJobRef.current) {
           runNextRef.current?.();
         } else {
           setLoading(false);
         }
-      });
+      }
+    })();
   };
 
   useEffect(() => {
-    if (
-      !enabled ||
-      volumeId == null ||
-      sliceIndex == null
-    ) {
-      pendingJobRef.current =
-        null;
-
-      requestFamilyKeyRef.current =
-        null;
-
-      latestCacheKeyRef.current =
-        null;
-
+    if (!enabled || volumeId == null || sliceIndex == null) {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      requestKeyRef.current = null;
       setLoading(false);
       setError(null);
-
       return;
     }
 
-    const clampedIndex =
-      Math.max(
-        0,
-        Math.min(
-          sliceIndex,
-          maxSlice,
-        ),
-      );
-
-    const requestFamilyKey = [
+    const clampedIndex = Math.max(0, Math.min(sliceIndex, maxSlice));
+    const requestKey = [
       projectId,
       protocolId,
       outputName,
@@ -4141,50 +3511,18 @@ function useVolumeSliceImage({
       requestOptions?.quality ?? "",
     ].map(String).join("|");
 
-    const cacheKey =
-      buildVolumeSliceCacheKey(
-        projectId,
-        protocolId,
-        outputName,
-        volumeId,
-        axis,
-        clampedIndex,
-        colormap,
-        reloadKey,
-        requestOptions,
-      );
-
-    requestFamilyKeyRef.current =
-      requestFamilyKey;
-
-    latestCacheKeyRef.current =
-      cacheKey;
-
-    const cached =
-      getCachedVolumeSlice(
-        cacheRef.current,
-        cacheKey,
-      );
-
-    if (cached) {
-      pendingJobRef.current =
-        null;
-
-      setLoading(false);
-      setError(null);
-      setUrl(cached.url);
-
-      return;
+    if (requestKeyRef.current !== requestKey) {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      requestKeyRef.current = requestKey;
     }
 
     pendingJobRef.current = {
-      requestFamilyKey,
-      cacheKey,
-      sliceIndex:
-        clampedIndex,
+      requestKey,
+      sliceIndex: clampedIndex,
     };
-
-    setLoading(true);
 
     runNextRef.current?.();
   }, [
@@ -4203,20 +3541,21 @@ function useVolumeSliceImage({
     requestOptions?.format,
     requestOptions?.fast,
     requestOptions?.quality,
-    cacheRef,
-    sharedInFlightRef,
   ]);
 
   useEffect(() => {
     return () => {
-      pendingJobRef.current =
-        null;
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
 
-      requestFamilyKeyRef.current =
-        null;
-
-      latestCacheKeyRef.current =
-        null;
+      if (revokeRef.current) {
+        try {
+          revokeRef.current();
+        } catch {
+          // Ignore revoke errors.
+        }
+      }
     };
   }, []);
 
@@ -4230,11 +3569,7 @@ function useVolumeSliceImage({
       !error
     );
 
-  return {
-    url,
-    loading: effectiveLoading,
-    error,
-  };
+  return { url, loading: effectiveLoading, error };
 }
 
 /**
