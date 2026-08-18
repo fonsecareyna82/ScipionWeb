@@ -272,6 +272,9 @@ export default function VolumeViewer({
   const surfaceAbortRef = useRef<AbortController | null>(null);
   const surfaceRequestSeqRef = useRef(0);
 
+  const volumeAbortRef = useRef<AbortController | null>(null);
+  const volumeRequestSeqRef = useRef(0);
+
   const [maxDim3d, setMaxDim3d] = useState(256);
   const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">("stride");
 
@@ -285,7 +288,7 @@ export default function VolumeViewer({
   const [thrAbs, setThrAbs] = useState<[number, number]>([0, 1]);
 
   const [renderMode3d, setRenderMode3d] =
-  useState<RenderMode3d>("surface");
+    useState<RenderMode3d>("surface");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
   const needsHistogram =
@@ -344,6 +347,10 @@ export default function VolumeViewer({
       surfaceRequestSeqRef.current += 1;
       surfaceAbortRef.current?.abort();
       surfaceAbortRef.current = null;
+
+      volumeRequestSeqRef.current += 1;
+      volumeAbortRef.current?.abort();
+      volumeAbortRef.current = null;
     };
   }, []);
 
@@ -353,6 +360,26 @@ export default function VolumeViewer({
       setAutoRotate3d(false);
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    const needsVolumeData =
+      active &&
+      (
+        (viewMode === "map3d" && renderMode3d === "volume") ||
+        (viewMode === "slices" && sliceOverlayEnabled)
+      );
+
+    if (needsVolumeData) return;
+
+    volumeRequestSeqRef.current += 1;
+    volumeAbortRef.current?.abort();
+    volumeAbortRef.current = null;
+  }, [
+    active,
+    viewMode,
+    renderMode3d,
+    sliceOverlayEnabled,
+  ]);
 
   const plotlyAnimHandleRef = useRef<number | null>(null);
   const plotlyAnimAngleRef = useRef(0);
@@ -412,6 +439,10 @@ export default function VolumeViewer({
   useEffect(() => {
     surfaceAbortRef.current?.abort();
     surfaceRequestSeqRef.current += 1;
+
+    volumeRequestSeqRef.current += 1;
+    volumeAbortRef.current?.abort();
+    volumeAbortRef.current = null;
 
     setMapLoading(false);
     setSurfaceRefreshing(false);
@@ -981,37 +1012,59 @@ export default function VolumeViewer({
   const fetchVolumeData = useCallback(async () => {
     if (!active || selectedId == null) return null;
 
-    const raw = await svc.getVolumeData3d(
-      projectId,
-      protocolId,
-      outputName,
-      selectedId,
-      {
-        maxDim: maxDim3d,
-        method: method3d,
-      },
-    );
+    volumeAbortRef.current?.abort();
 
-    const parsed = normalize3dPayload(raw);
+    const controller = new AbortController();
+    const requestSeq = volumeRequestSeqRef.current + 1;
 
-    if (
-      !parsed.values.length ||
-      !parsed.dims.x ||
-      !parsed.dims.y ||
-      !parsed.dims.z
-    ) {
-      throw new Error("3D volume data is empty.");
+    volumeRequestSeqRef.current = requestSeq;
+    volumeAbortRef.current = controller;
+
+    try {
+      const raw = await svc.getVolumeData3d(
+        projectId,
+        protocolId,
+        outputName,
+        selectedId,
+        {
+          maxDim: maxDim3d,
+          method: method3d,
+          signal: controller.signal,
+        },
+      );
+
+      if (
+        controller.signal.aborted ||
+        volumeRequestSeqRef.current !== requestSeq
+      ) {
+        return null;
+      }
+
+      const parsed = normalize3dPayload(raw);
+
+      if (
+        !parsed.values.length ||
+        !parsed.dims.x ||
+        !parsed.dims.y ||
+        !parsed.dims.z
+      ) {
+        throw new Error("3D volume data is empty.");
+      }
+
+      setMapData(parsed);
+
+      mapDataKeyRef.current = [
+        String(selectedId),
+        maxDim3d,
+        method3d,
+      ].join("|");
+
+      return parsed;
+    } finally {
+      if (volumeAbortRef.current === controller) {
+        volumeAbortRef.current = null;
+      }
     }
-
-    setMapData(parsed);
-
-    mapDataKeyRef.current = [
-      String(selectedId),
-      maxDim3d,
-      method3d,
-    ].join("|");
-
-    return parsed;
   }, [
     active,
     selectedId,
@@ -1049,6 +1102,9 @@ export default function VolumeViewer({
         surfaceLevel: surfaceLevel3d,
       };
     } catch (e: any) {
+      if (e?.name === "AbortError") {
+        return;
+      }
       setMapError(e?.message || "Failed to load 3D data");
       setMapData(null);
       setSurfaceMesh(null);
@@ -3944,7 +4000,7 @@ function MetaItem({ label, value }: { label: string; value: string }) {
 
 function normalize3dPayload(raw: any): {
   dims: { x: number; y: number; z: number };
-  values: number[];
+  values: number[] | Float32Array;
   order: "zyx" | "xyz";
   min?: number;
   max?: number;
@@ -3964,9 +4020,12 @@ function normalize3dPayload(raw: any): {
     x = Number(shapeRaw[2]) || 0;
   }
 
-  let values: number[] = [];
+  let values: number[] | Float32Array = [];
   const vRaw = raw?.values ?? raw?.data ?? raw?.volume;
-  if (Array.isArray(vRaw)) {
+
+  if (vRaw instanceof Float32Array) {
+    values = vRaw;
+  } else if (Array.isArray(vRaw)) {
     if (Array.isArray(vRaw[0])) {
       values = flatten3dNested(vRaw as any);
       if (!x || !y || !z) {

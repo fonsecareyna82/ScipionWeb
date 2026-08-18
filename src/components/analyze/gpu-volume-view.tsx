@@ -8,7 +8,7 @@ import type {
 } from "./volume-color-utils";
 
 export type GpuVolumeViewProps = {
-  values: number[];
+  values: number[] | Float32Array;
   dims: { x: number; y: number; z: number };
   order?: "zyx" | "xyz";
   spacing?: [number, number, number];
@@ -358,7 +358,7 @@ function colorModeToId(colorMode: VolumeColorMode) {
 }
 
 function buildUint8Texture(
-  values: number[],
+  values: number[] | Float32Array,
   dims: { x: number; y: number; z: number },
   vmin: number,
   vmax: number,

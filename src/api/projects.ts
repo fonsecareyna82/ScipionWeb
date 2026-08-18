@@ -60,6 +60,7 @@ import {
   ProtocolWorkflowExecutionMode,
   ProtocolWorkflowExecutionScope,
   ProtocolRuntimeSummary,
+  VolumeData3d,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -2721,6 +2722,58 @@ export async function getVolumeSurfaceMesh(
   return safeJson<VolumeSurfaceMesh>(res);
 }
 
+const VOLUME_DATA3D_HEADER_BYTES = 28;
+
+function parseVolumeData3dBinary(buffer: ArrayBuffer): VolumeData3d {
+  if (buffer.byteLength < VOLUME_DATA3D_HEADER_BYTES) {
+    throw new Error("Invalid 3D volume payload.");
+  }
+
+  const view = new DataView(buffer);
+
+  const magic = String.fromCharCode(
+    view.getUint8(0),
+    view.getUint8(1),
+    view.getUint8(2),
+    view.getUint8(3),
+  );
+
+  if (magic !== "SCV3") {
+    throw new Error("Invalid 3D volume payload signature.");
+  }
+
+  const version = view.getUint32(4, true);
+  if (version !== 1) {
+    throw new Error(`Unsupported 3D volume payload version: ${version}`);
+  }
+
+  const x = view.getUint32(8, true);
+  const y = view.getUint32(12, true);
+  const z = view.getUint32(16, true);
+  const min = view.getFloat32(20, true);
+  const max = view.getFloat32(24, true);
+
+  const voxelCount = x * y * z;
+  const expectedBytes =
+    VOLUME_DATA3D_HEADER_BYTES + voxelCount * Float32Array.BYTES_PER_ELEMENT;
+
+  if (buffer.byteLength < expectedBytes) {
+    throw new Error("Incomplete 3D volume payload.");
+  }
+
+  return {
+    dims: [x, y, z],
+    order: "zyx",
+    values: new Float32Array(
+      buffer,
+      VOLUME_DATA3D_HEADER_BYTES,
+      voxelCount,
+    ),
+    min,
+    max,
+  };
+}
+
 export async function getVolumeData3d(
   projectId: Id,
   protocolId: Id,
@@ -2729,8 +2782,9 @@ export async function getVolumeData3d(
   opts: {
     maxDim?: number;
     method?: "binning" | "stride" | "none";
+    signal?: AbortSignal;
   } = {},
-): Promise<any> {
+): Promise<VolumeData3d> {
   const enc = encodeURIComponent;
 
   const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
@@ -2738,16 +2792,28 @@ export async function getVolumeData3d(
   )}/volumes/${enc(String(volumeId))}/data3d`;
 
   const params = new URLSearchParams();
+
   if (opts.maxDim != null) params.set("maxDim", String(opts.maxDim));
   if (opts.method) params.set("method", opts.method);
 
-  const url = params.toString() ? `${base}?${params.toString()}` : base;
+  params.set("binary", "true");
 
-  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
-  if (!res.ok)
-    throw await toApiError(res, "Failed to fetch 3D volume data");
+  const res = await fetchWithAuth(
+    `${base}?${params.toString()}`,
+    {
+      method: "GET",
+      cache: "no-store",
+      signal: opts.signal,
+    },
+  );
 
-  return safeJson<any>(res);
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to load 3D volume data");
+  }
+
+  return parseVolumeData3dBinary(
+    await res.arrayBuffer(),
+  );
 }
 
 /* ======================= Analyze Results: Coordinates3D ======================= */

@@ -2,7 +2,7 @@ export type VolumeColorMode = "solid" | "density" | "components";
 
 export type VolumeRenderData = {
   dims: { x: number; y: number; z: number };
-  values: number[];
+  values: number[] | Float32Array;
   order: "zyx" | "xyz";
   min?: number;
   max?: number;

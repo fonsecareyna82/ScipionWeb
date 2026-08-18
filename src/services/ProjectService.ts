@@ -213,6 +213,8 @@ export type VolumeData3dOptions = {
   maxDim?: number; // default backend: 160
   /** Downsampling method. */
   method?: "binning" | "stride" | "none"; // default backend: "binning"
+  /** Optional abort signal to cancel the request. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -228,7 +230,7 @@ export type VolumeData3d = {
   dims: [number, number, number];
 
   /** Flattened voxel values, X varying fastest for order="zyx". */
-  values: number[];
+  values: number[] | Float32Array;
 
   /** Legacy compatibility payload. */
   data?: number[];
