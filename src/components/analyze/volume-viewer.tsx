@@ -2443,7 +2443,7 @@ export default function VolumeViewer({
                             value={renderMode3d}
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
-                            <ToggleButton value="surface">surface</ToggleButton>
+                            <ToggleButton value="volume">volume</ToggleButton>
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
                           </ToggleButtonGroup>
@@ -2999,6 +2999,7 @@ function OrthoSlicesGrid({
         labelDotColor={colY}
         gridArea={{ col: "1 / 2", row: "1 / 2" }}
         imageUrl={ySlice.url}
+        overlayUrl={yOverlayUrl}
         loading={ySlice.loading}
         error={ySlice.error}
         imageWidth={Math.max(1, dims.x)}
@@ -3024,6 +3025,7 @@ function OrthoSlicesGrid({
         labelDotColor={colZ}
         gridArea={{ col: "1 / 2", row: "2 / 3" }}
         imageUrl={zSlice.url}
+        overlayUrl={zOverlayUrl}
         loading={zSlice.loading}
         error={zSlice.error}
         imageWidth={Math.max(1, dims.x)}
@@ -3047,6 +3049,7 @@ function OrthoSlicesGrid({
         labelDotColor={colX}
         gridArea={{ col: "2 / 3", row: "2 / 3" }}
         imageUrl={xSlice.url}
+        overlayUrl={xOverlayUrl}
         loading={xSlice.loading}
         error={xSlice.error}
         imageWidth={Math.max(1, dims.y)}
@@ -3992,15 +3995,6 @@ function flatten3dNested(v: number[][][]): number[] {
     }
   }
   return out;
-}
-
-function percentileFromSorted(sorted: number[], pct: number): number {
-  const p = clampFloat(pct, 0, 100) / 100;
-  const idx = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.floor(p * (sorted.length - 1))),
-  );
-  return sorted[idx];
 }
 
 function clampInt(v: any, lo: number, hi: number) {

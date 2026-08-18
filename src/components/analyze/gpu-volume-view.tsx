@@ -475,6 +475,12 @@ export default function GpuVolumeView({
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
 
   const prevRegionTexRef =
@@ -544,7 +550,7 @@ export default function GpuVolumeView({
     setWebgl2Ok(isWebgl2);
 
     if (!isWebgl2) {
-      onError?.("WebGL2 is required for GPU volume rendering.");
+      onErrorRef.current?.("WebGL2 is required for GPU volume rendering.");
 
       cleanupRef.current = () => {
         if (renderer.domElement.parentElement === mount) {
@@ -846,20 +852,7 @@ export default function GpuVolumeView({
       uInvModelRef.current = null;
       rafRef.current = null;
     };
-  }, [
-    tex,
-    scaleVec,
-    dims,
-    onError,
-    renderMode,
-    shellClamped,
-    isoMinNorm,
-    isoMaxNorm,
-    opacity,
-    cmapId,
-    autoRotate,
-    autoRotateSpeed,
-  ]);
+  }, [tex]);
 
   useEffect(() => {
     return () => cleanupRef.current?.();

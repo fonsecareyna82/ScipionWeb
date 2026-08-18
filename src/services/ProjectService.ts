@@ -221,22 +221,21 @@ export type VolumeData3dOptions = {
  * `data` is a flat array; `order` tells how to reshape.
  */
 export type VolumeData3d = {
-  id: string | number;
+  id?: string | number;
   name?: string;
 
   /** Dimensions in (x, y, z). */
   dims: [number, number, number];
 
-  /** Flattened voxel values. */
-  data: number[];
+  /** Flattened voxel values, X varying fastest for order="zyx". */
+  values: number[];
 
-  /** Ordering of the flattened array. */
+  /** Legacy compatibility payload. */
+  data?: number[];
+
   order?: "zyx" | "xyz";
-
-  /** Optional voxel size tuple. */
   voxelSize?: [number, number, number];
 
-  /** Optional stats. */
   min?: number;
   max?: number;
   mean?: number;
