@@ -53,6 +53,9 @@ const FRAG = `
   uniform int uColorMode;
   uniform vec3 uTexSize;
 
+  uniform float uDataMin;
+  uniform float uDataMax;
+
   uniform float uIsoMin;
   uniform float uIsoMax;
   uniform float uOpacity;
@@ -63,7 +66,14 @@ const FRAG = `
   uniform vec3 uLightDir;
 
   float sampleD(vec3 uvw) {
-    return texture(uTex, uvw).r;
+  float raw = texture(uTex, uvw).r;
+  float span = max(abs(uDataMax - uDataMin), 1e-12);
+
+  return clamp(
+    (raw - uDataMin) / span,
+    0.0,
+    1.0
+  );
   }
 
   vec3 palette5(float t, vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4) {
@@ -357,39 +367,33 @@ function colorModeToId(colorMode: VolumeColorMode) {
   return 0;
 }
 
-function buildUint8Texture(
+function buildFloatTexture(
   values: number[] | Float32Array,
   dims: { x: number; y: number; z: number },
-  vmin: number,
-  vmax: number,
 ) {
   const { x, y, z } = dims;
-  const n = x * y * z;
-  const out = new Uint8Array(n);
+  const voxelCount = x * y * z;
 
-  const scale = vmax > vmin ? 255.0 / (vmax - vmin) : 1.0;
-  for (let i = 0; i < n; i++) {
-    const v = values[i] ?? vmin;
-    out[i] = Math.max(0, Math.min(255, Math.round((v - vmin) * scale)));
+  if (values.length !== voxelCount) {
+    throw new Error(
+      `Invalid 3D volume size: expected ${voxelCount} voxels, received ${values.length}.`,
+    );
   }
 
-  const Tex3D = (THREE as any).Data3DTexture as
-    | (new (
-      data: Uint8Array,
-      width: number,
-      height: number,
-      depth: number,
-    ) => THREE.Data3DTexture)
-    | undefined;
+  const data: Float32Array<ArrayBuffer> =
+  values instanceof Float32Array &&
+  values.buffer instanceof ArrayBuffer
+    ? new Float32Array(
+        values.buffer,
+        values.byteOffset,
+        values.length,
+      )
+    : new Float32Array(values);
 
-  if (!Tex3D) {
-    throw new Error("Data3DTexture is not available in this Three.js build.");
-  }
-
-  const tex = new Tex3D(out, x, y, z);
+  const tex = new THREE.Data3DTexture(data, x, y, z);
 
   tex.format = THREE.RedFormat;
-  tex.type = THREE.UnsignedByteType;
+  tex.type = THREE.FloatType;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.wrapS = THREE.ClampToEdgeWrapping;
@@ -397,8 +401,6 @@ function buildUint8Texture(
   tex.wrapR = THREE.ClampToEdgeWrapping;
   tex.unpackAlignment = 1;
   tex.needsUpdate = true;
-
-  (tex as any).internalFormat = "R8";
 
   return tex;
 }
@@ -474,6 +476,7 @@ export default function GpuVolumeView({
   const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const requestRenderRef = useRef<() => void>(() => { });
 
   const onErrorRef = useRef(onError);
 
@@ -499,8 +502,8 @@ export default function GpuVolumeView({
 
   const tex = useMemo(() => {
     if (!values?.length) return null;
-    return buildUint8Texture(values, dims, rangeMin, rangeMax);
-  }, [values, dims, rangeMin, rangeMax]);
+    return buildFloatTexture(values, dims);
+  }, [values, dims]);
 
   const regionTex = useMemo(() => {
     if (!regions?.labels?.length) return null;
@@ -590,6 +593,17 @@ export default function GpuVolumeView({
     const uInvModel = new THREE.Matrix4();
     uInvModelRef.current = uInvModel;
 
+    const baseSteps = Math.min(
+      512,
+      Math.max(
+        192,
+        Math.ceil(
+          Math.max(dims.x, dims.y, dims.z) * 1.35,
+        ),
+      ),
+    );
+
+
     const material = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -599,22 +613,14 @@ export default function GpuVolumeView({
         uHasRegions: { value: 0 },
         uColorMode: { value: 0 },
         uTexSize: { value: new THREE.Vector3(dims.x, dims.y, dims.z) },
+        uDataMin: { value: rangeMin },
+        uDataMax: { value: rangeMax },
         uIsoMin: { value: isoMinNorm },
         uIsoMax: { value: isoMaxNorm },
         uOpacity: { value: opacity },
         uShell: { value: shellClamped },
         uIsoMode: { value: renderMode === "volume" ? 0 : 1 },
-        uSteps: {
-          value: Math.min(
-            512,
-            Math.max(
-              192,
-              Math.ceil(
-                Math.max(dims.x, dims.y, dims.z) * 1.35,
-              ),
-            ),
-          ),
-        },
+        uSteps: { value: baseSteps },
         uCmap: { value: cmapId },
         uInvModel: { value: uInvModel },
         uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
@@ -647,15 +653,33 @@ export default function GpuVolumeView({
     const tmpCamDir = new THREE.Vector3();
     const tmpTarget = new THREE.Vector3();
 
+
     const baseDpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
 
     const setRendererQuality = (force = false) => {
       const now = performance.now();
-      const wheelActive = now - interactionState.lastWheelAt < 160;
-      const interactionActive = interactionState.isDragging || wheelActive;
-      const desiredDpr = interactionActive ? Math.min(baseDpr, 1.25) : baseDpr;
+      const wheelActive =
+        now - interactionState.lastWheelAt < 160;
 
-      if (!force && Math.abs(desiredDpr - interactionState.dprApplied) < 1e-6) {
+      const interactionActive =
+        interactionState.isDragging || wheelActive;
+
+      const desiredDpr = interactionActive
+        ? Math.min(baseDpr, 1)
+        : baseDpr;
+
+      const desiredSteps = interactionActive
+        ? Math.max(96, Math.round(baseSteps * 0.55))
+        : baseSteps;
+
+      material.uniforms.uSteps.value = desiredSteps;
+
+      if (
+        !force &&
+        Math.abs(
+          desiredDpr - interactionState.dprApplied
+        ) < 1e-6
+      ) {
         return;
       }
 
@@ -664,6 +688,7 @@ export default function GpuVolumeView({
 
       const w = mount.clientWidth;
       const h = mount.clientHeight;
+
       if (w > 0 && h > 0) {
         renderer.setSize(w, h, false);
       }
@@ -676,23 +701,48 @@ export default function GpuVolumeView({
       setRendererQuality(true);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      requestRender();
     };
 
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
-    controls.addEventListener("start", () => {
+    const onControlsStart = () => {
       interactionState.isDragging = true;
-    });
-    controls.addEventListener("end", () => {
+      requestRender();
+    };
+
+    const onControlsChange = () => {
+      requestRender();
+    };
+
+    const onControlsEnd = () => {
       interactionState.isDragging = false;
-    });
+      requestRender();
+    };
+
+    controls.addEventListener(
+      "start",
+      onControlsStart,
+    );
+
+    controls.addEventListener(
+      "change",
+      onControlsChange,
+    );
+
+    controls.addEventListener(
+      "end",
+      onControlsEnd,
+    );
 
     const onPointerDown = () => {
       interactionState.isDragging = true;
+      requestRender();
     };
     const onPointerUp = () => {
       interactionState.isDragging = false;
+      requestRender();
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -733,6 +783,7 @@ export default function GpuVolumeView({
         ctrls.minDistance,
         ctrls.maxDistance,
       );
+      requestRender();
     };
 
     const onDoubleClick = () => {
@@ -745,6 +796,7 @@ export default function GpuVolumeView({
       cam.updateProjectionMatrix();
       zoomState.hasTarget = false;
       ctrls.update();
+      requestRender();
     };
 
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
@@ -754,22 +806,44 @@ export default function GpuVolumeView({
 
     resize();
 
-    const animate = () => {
+
+    const requestRender = () => {
+      if (rafRef.current != null) return;
+
+      rafRef.current = requestAnimationFrame(renderFrame);
+    };
+
+    requestRenderRef.current = requestRender;
+
+    function renderFrame() {
+      rafRef.current = null;
+
       const rendererNow = rendererRef.current;
       const sceneNow = sceneRef.current;
       const cameraNow = cameraRef.current;
       const controlsNow = controlsRef.current;
-      if (!rendererNow || !sceneNow || !cameraNow || !controlsNow) return;
+
+      if (
+        !rendererNow ||
+        !sceneNow ||
+        !cameraNow ||
+        !controlsNow
+      ) {
+        return;
+      }
 
       const dt = Math.min(0.05, clock.getDelta());
 
       setRendererQuality(false);
 
-      controlsNow.update();
+      const controlsChanged = controlsNow.update();
 
       if (zoomState.hasTarget) {
-        tmpCamDir.copy(cameraNow.position).sub(controlsNow.target);
-        let distance = tmpCamDir.length();
+        tmpCamDir
+          .copy(cameraNow.position)
+          .sub(controlsNow.target);
+
+        const distance = tmpCamDir.length();
 
         if (distance > 1e-6) {
           const targetDistance = clampFloat(
@@ -777,33 +851,66 @@ export default function GpuVolumeView({
             controlsNow.minDistance,
             controlsNow.maxDistance,
           );
+
           const smoothLambda = 14;
-          const alpha = 1 - Math.exp(-smoothLambda * dt);
-          const nextDistance = distance + (targetDistance - distance) * alpha;
+          const alpha =
+            1 - Math.exp(-smoothLambda * dt);
+
+          const nextDistance =
+            distance +
+            (targetDistance - distance) * alpha;
 
           tmpCamDir.setLength(nextDistance);
+
           tmpTarget.copy(controlsNow.target);
-          cameraNow.position.copy(tmpTarget).add(tmpCamDir);
+
+          cameraNow.position
+            .copy(tmpTarget)
+            .add(tmpCamDir);
+
           cameraNow.updateProjectionMatrix();
 
-          if (Math.abs(targetDistance - nextDistance) < 0.0005) {
-            zoomState.targetDistance = targetDistance;
+          if (
+            Math.abs(
+              targetDistance - nextDistance,
+            ) < 0.0005
+          ) {
+            zoomState.hasTarget = false;
           }
         } else {
           zoomState.hasTarget = false;
         }
       }
 
-      if (meshRef.current && uInvModelRef.current) {
+      if (
+        meshRef.current &&
+        uInvModelRef.current
+      ) {
         meshRef.current.updateMatrixWorld();
-        uInvModelRef.current.copy(meshRef.current.matrixWorld).invert();
+
+        uInvModelRef.current
+          .copy(meshRef.current.matrixWorld)
+          .invert();
       }
 
       rendererNow.render(sceneNow, cameraNow);
-      rafRef.current = requestAnimationFrame(animate);
-    };
 
-    animate();
+      const wheelActive =
+        performance.now() -
+        interactionState.lastWheelAt <
+        160;
+
+      const keepAnimating =
+        controlsNow.autoRotate ||
+        interactionState.isDragging ||
+        wheelActive ||
+        zoomState.hasTarget ||
+        Boolean(controlsChanged);
+
+      if (keepAnimating) {
+        requestRender();
+      }
+    }
 
     cleanupRef.current = () => {
       if (rafRef.current != null) {
@@ -816,6 +923,23 @@ export default function GpuVolumeView({
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", onDoubleClick);
+
+      controls.removeEventListener(
+        "start",
+        onControlsStart,
+      );
+
+      controls.removeEventListener(
+        "change",
+        onControlsChange,
+      );
+
+      controls.removeEventListener(
+        "end",
+        onControlsEnd,
+      );
+
+      requestRenderRef.current = () => { };
 
       controls.dispose();
       geometry.dispose();
@@ -864,6 +988,7 @@ export default function GpuVolumeView({
     if (!ctrls) return;
     ctrls.autoRotate = Boolean(autoRotate);
     ctrls.autoRotateSpeed = Number.isFinite(autoRotateSpeed) ? autoRotateSpeed : 0.8;
+    requestRenderRef.current();
   }, [autoRotate, autoRotateSpeed]);
 
   useEffect(() => {
@@ -882,6 +1007,7 @@ export default function GpuVolumeView({
       }
     }
     prevTexRef.current = tex;
+    requestRenderRef.current();
   }, [tex, dims]);
 
   useEffect(() => {
@@ -899,22 +1025,40 @@ export default function GpuVolumeView({
     }
 
     prevRegionTexRef.current = regionTex;
+    requestRenderRef.current();
   }, [regionTex, tex]);
 
   useEffect(() => {
     const mat = materialRef.current;
     if (!mat) return;
+
+    mat.uniforms.uDataMin.value = rangeMin;
+    mat.uniforms.uDataMax.value = rangeMax;
     mat.uniforms.uIsoMin.value = isoMinNorm;
     mat.uniforms.uIsoMax.value = isoMaxNorm;
     mat.uniforms.uColorMode.value = colorModeId;
     mat.uniforms.uOpacity.value = opacity;
     mat.uniforms.uShell.value = shellClamped;
     mat.uniforms.uCmap.value = cmapId;
-    mat.uniforms.uIsoMode.value = renderMode === "volume" ? 0 : 1;
-  }, [isoMinNorm, isoMaxNorm, opacity, shellClamped, cmapId, renderMode, colorModeId]);
+    mat.uniforms.uIsoMode.value =
+      renderMode === "volume" ? 0 : 1;
+
+    requestRenderRef.current();
+  }, [
+    rangeMin,
+    rangeMax,
+    isoMinNorm,
+    isoMaxNorm,
+    opacity,
+    shellClamped,
+    cmapId,
+    renderMode,
+    colorModeId,
+  ]);
 
   useEffect(() => {
     meshRef.current?.scale.copy(scaleVec);
+    requestRenderRef.current();
   }, [scaleVec]);
 
   if (!tex) return <div style={{ width: "100%", height: "100%" }} />;
