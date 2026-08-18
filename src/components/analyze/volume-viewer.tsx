@@ -1213,7 +1213,7 @@ export default function VolumeViewer({
         maxSliceX,
         SLICE_WARM_RADIUS_IDLE,
         sliceReloadNonce,
-      );
+      ); }
 
 
       const runWarmup = async () => {
@@ -1259,7 +1259,7 @@ export default function VolumeViewer({
         cancelled = true;
         window.clearTimeout(timer);
       };
-    }
+    
   }, [
     active,
     viewMode,
