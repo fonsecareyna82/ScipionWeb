@@ -804,9 +804,6 @@ export default function GpuVolumeView({
     window.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("dblclick", onDoubleClick);
 
-    resize();
-
-
     const requestRender = () => {
       if (rafRef.current != null) return;
 
@@ -814,6 +811,8 @@ export default function GpuVolumeView({
     };
 
     requestRenderRef.current = requestRender;
+
+    resize();
 
     function renderFrame() {
       rafRef.current = null;
