@@ -57,6 +57,7 @@ type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "surface" | "mesh";
+type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
 
 type SliceImageState = {
@@ -98,7 +99,10 @@ const HELP_TEXT: Record<string, string> = {
     "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
   method3d:
     "Downsampling method for interactive 3D rendering. Stride is the fastest option. None preserves the original grid only when the volume is already within the safe interactive limit.",
-  colormap3d: "Colormap applied to the rendered 3D volume.",
+  colorMode3d:
+    "Solid uses one surface color. Density colors the surface from its local intensity values. Components assigns a different color to each disconnected geometric region.",
+  colormap3d:
+    "Colormap used by Solid and Density modes. Components generates its own colors.",
   opacity3d:
     "Opacity of the volume along the ray. Higher values make the map more solid.",
   thrMode:
@@ -265,6 +269,7 @@ export default function VolumeViewer({
   const [surfaceCount, setSurfaceCount] = useState(3);
   const [opacity3d, setOpacity3d] = useState(1);
   const [colormap3d, setColormap3d] = useState<string>("viridis");
+  const [colorMode3d, setColorMode3d] = useState<MeshColorMode3d>("solid");
 
   const [thrMode, setThrMode] = useState<ThrMode>("percentile");
   const [thrPct, setThrPct] = useState<[number, number]>([55, 98]);
@@ -1569,6 +1574,7 @@ export default function VolumeViewer({
                   displayMode={renderMode3d === "mesh" ? "mesh" : "surface"}
                   opacity={opacity3d}
                   colormap={colormap3d}
+                  colorMode={colorMode3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   cameraStateKey={selectedId}
@@ -1986,6 +1992,27 @@ export default function VolumeViewer({
 
                       <SectionTitle title="Appearance" />
                       <ParamRow
+                        label="Color"
+                        helpKey="colorMode3d"
+                        onHelp={openHelp}
+                        control={
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={colorMode3d}
+                            onChange={(_, value) => {
+                              if (value) {
+                                setColorMode3d(value as MeshColorMode3d);
+                              }
+                            }}
+                          >
+                            <ToggleButton value="solid">solid</ToggleButton>
+                            <ToggleButton value="density">density</ToggleButton>
+                            <ToggleButton value="components">regions</ToggleButton>
+                          </ToggleButtonGroup>
+                        }
+                      />
+                      <ParamRow
                         label="Colormap"
                         helpKey="colormap3d"
                         onHelp={openHelp}
@@ -1994,6 +2021,7 @@ export default function VolumeViewer({
                             size="small"
                             select
                             value={colormap3d}
+                            disabled={colorMode3d === "components"}
                             onChange={(e) => setColormap3d(e.target.value)}
                             SelectProps={{ MenuProps: { disablePortal: true } }}
                           >

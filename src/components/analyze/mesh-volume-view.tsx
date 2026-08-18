@@ -3,10 +3,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 
+export type MeshColorMode = "solid" | "density" | "components";
+
 export type MeshVolumeViewProps = {
     mesh: VolumeSurfaceMesh;
     opacity?: number;
     colormap?: string;
+    colorMode?: MeshColorMode;
     autoRotate?: boolean;
     displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
@@ -48,6 +51,217 @@ function colorFromColormap(colormap?: string): THREE.Color {
         default:
             return new THREE.Color(0.32, 0.72, 0.58);
     }
+}
+
+const COLORMAP_STOPS: Record<string, number[]> = {
+    gray: [0x111111, 0xf3f4f6],
+    grey: [0x111111, 0xf3f4f6],
+    viridis: [0x440154, 0x31688e, 0x35b779, 0xfde725],
+    magma: [0x000004, 0x721f81, 0xf1605d, 0xfcfdbf],
+    plasma: [0x0d0887, 0x9c179e, 0xed7953, 0xf0f921],
+    inferno: [0x000004, 0x57106e, 0xbc3754, 0xfcffa4],
+    cividis: [0x00224e, 0x575d6d, 0xa59c74, 0xfee838],
+    turbo: [0x30123b, 0x28bbec, 0xa4fc3c, 0xf9a31b, 0x7a0403],
+};
+
+function buildDensityVertexColors(
+    mesh: VolumeSurfaceMesh,
+    colormap: string,
+): Float32Array | null {
+    const vertexCount = Math.floor(mesh.vertices.length / 3);
+    const values = mesh.values;
+
+    if (!values || values.length < vertexCount || vertexCount === 0) {
+        return null;
+    }
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (let i = 0; i < vertexCount; i++) {
+        const value = values[i];
+        if (!Number.isFinite(value)) continue;
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        return null;
+    }
+
+    const stops =
+        COLORMAP_STOPS[colormap.toLowerCase()] ??
+        COLORMAP_STOPS.viridis;
+
+    const colors = new Float32Array(vertexCount * 3);
+    const colorA = new THREE.Color();
+    const colorB = new THREE.Color();
+
+    for (let i = 0; i < vertexCount; i++) {
+        const raw = values[i];
+        const normalized = Number.isFinite(raw)
+            ? Math.max(0, Math.min(1, (raw - min) / (max - min)))
+            : 0;
+
+        const position = normalized * (stops.length - 1);
+        const lower = Math.floor(position);
+        const upper = Math.min(stops.length - 1, lower + 1);
+        const mix = position - lower;
+
+        colorA.setHex(stops[lower]);
+        colorB.setHex(stops[upper]);
+        colorA.lerp(colorB, mix);
+
+        const offset = i * 3;
+        colors[offset] = colorA.r;
+        colors[offset + 1] = colorA.g;
+        colors[offset + 2] = colorA.b;
+    }
+
+    return colors;
+}
+
+function buildComponentVertexColors(
+    mesh: VolumeSurfaceMesh,
+): Float32Array | null {
+    const vertexCount = Math.floor(mesh.vertices.length / 3);
+    const indices = mesh.indices;
+
+    if (!vertexCount || !indices?.length) {
+        return null;
+    }
+
+    const parent = new Int32Array(vertexCount);
+    const rank = new Uint8Array(vertexCount);
+    parent.fill(-1);
+
+    const ensureVertex = (index: number) => {
+        if (parent[index] === -1) {
+            parent[index] = index;
+        }
+    };
+
+    const findRoot = (index: number) => {
+        let root = index;
+
+        while (parent[root] !== root) {
+            root = parent[root];
+        }
+
+        while (parent[index] !== index) {
+            const next = parent[index];
+            parent[index] = root;
+            index = next;
+        }
+
+        return root;
+    };
+
+    const unionVertices = (a: number, b: number) => {
+        if (
+            a < 0 ||
+            b < 0 ||
+            a >= vertexCount ||
+            b >= vertexCount
+        ) {
+            return;
+        }
+
+        ensureVertex(a);
+        ensureVertex(b);
+
+        let rootA = findRoot(a);
+        let rootB = findRoot(b);
+
+        if (rootA === rootB) return;
+
+        if (rank[rootA] < rank[rootB]) {
+            [rootA, rootB] = [rootB, rootA];
+        }
+
+        parent[rootB] = rootA;
+
+        if (rank[rootA] === rank[rootB]) {
+            rank[rootA]++;
+        }
+    };
+
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+        const a = indices[i];
+        const b = indices[i + 1];
+        const c = indices[i + 2];
+
+        unionVertices(a, b);
+        unionVertices(b, c);
+        unionVertices(c, a);
+    }
+
+    const componentSizes = new Map<number, number>();
+
+    for (let i = 0; i < vertexCount; i++) {
+        if (parent[i] === -1) continue;
+
+        const root = findRoot(i);
+        parent[i] = root;
+        componentSizes.set(root, (componentSizes.get(root) ?? 0) + 1);
+    }
+
+    const componentOrder = new Map(
+        [...componentSizes.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([root], index) => [root, index]),
+    );
+
+    const colors = new Float32Array(vertexCount * 3);
+    const color = new THREE.Color();
+
+    for (let i = 0; i < vertexCount; i++) {
+        const offset = i * 3;
+
+        if (parent[i] === -1) {
+            colors[offset] = 0.5;
+            colors[offset + 1] = 0.5;
+            colors[offset + 2] = 0.5;
+            continue;
+        }
+
+        const component = componentOrder.get(parent[i]) ?? 0;
+        const hue = (component * 0.61803398875 + 0.03) % 1;
+
+        color.setHSL(hue, 0.78, 0.56);
+
+        colors[offset] = color.r;
+        colors[offset + 1] = color.g;
+        colors[offset + 2] = color.b;
+    }
+
+    return colors;
+}
+
+function applyMeshVertexColors(
+    geometry: THREE.BufferGeometry,
+    mesh: VolumeSurfaceMesh,
+    colorMode: MeshColorMode,
+    colormap: string,
+): boolean {
+    const colors =
+        colorMode === "density"
+            ? buildDensityVertexColors(mesh, colormap)
+            : colorMode === "components"
+                ? buildComponentVertexColors(mesh)
+                : null;
+
+    if (!colors) {
+        geometry.deleteAttribute("color");
+        return false;
+    }
+
+    geometry.setAttribute(
+        "color",
+        new THREE.BufferAttribute(colors, 3),
+    );
+
+    return true;
 }
 
 function disposeObject3d(root: THREE.Object3D): void {
@@ -105,6 +319,7 @@ export default function MeshVolumeView({
     opacity = 1,
     displayMode = "surface",
     colormap = "gray",
+    colorMode = "solid",
     autoRotate = false,
     autoRotateSpeed = 3.8,
     cameraStateKey = "default",
@@ -121,21 +336,45 @@ export default function MeshVolumeView({
     const cameraStateRef = useRef<MeshCameraState | null>(null);
     const onErrorRef = useRef(onError);
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+    const geometryRef = useRef<THREE.BufferGeometry | null>(null);
 
     useEffect(() => {
         onErrorRef.current = onError;
     }, [onError]);
 
     useEffect(() => {
+        const geometry = geometryRef.current;
+        const material = materialRef.current;
+
+        if (!geometry || !material) return;
+
+        const usesVertexColors = applyMeshVertexColors(
+            geometry,
+            mesh,
+            colorMode,
+            colormap,
+        );
+
+        material.vertexColors = usesVertexColors;
+
+        if (usesVertexColors) {
+            material.color.setRGB(1, 1, 1);
+        } else {
+            material.color.copy(colorFromColormap(colormap));
+        }
+
+        material.needsUpdate = true;
+    }, [colorMode, colormap, mesh]);
+
+    useEffect(() => {
         const material = materialRef.current;
         if (!material) return;
 
-        material.color.copy(colorFromColormap(colormap));
         material.opacity = opacity;
         material.transparent = opacity < 1;
         material.wireframe = displayMode === "mesh";
         material.needsUpdate = true;
-    }, [colormap, opacity, displayMode]);
+    }, [opacity, displayMode]);
 
     useEffect(() => {
         autoRotateRef.current = autoRotate;
@@ -233,8 +472,20 @@ export default function MeshVolumeView({
 
             geometry.computeBoundingSphere();
 
+            const usesVertexColors = applyMeshVertexColors(
+                geometry,
+                mesh,
+                colorMode,
+                colormap,
+            );
+
+            geometryRef.current = geometry;
+
             const material = new THREE.MeshStandardMaterial({
-                color: colorFromColormap(colormap),
+                color: usesVertexColors
+                    ? new THREE.Color(1, 1, 1)
+                    : colorFromColormap(colormap),
+                vertexColors: usesVertexColors,
                 roughness: 0.78,
                 metalness: 0.02,
                 transparent: opacity < 1,
@@ -411,6 +662,7 @@ export default function MeshVolumeView({
                     host.removeChild(renderer.domElement);
                 }
                 materialRef.current = null;
+                geometryRef.current = null;
             };
         } catch (error: any) {
             renderer?.dispose();
