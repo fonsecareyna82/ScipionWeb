@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
+import type {
+  VolumeColorMode,
+  VolumeRegionLabels,
+} from "./volume-color-utils";
+
 export type GpuVolumeViewProps = {
   values: number[];
   dims: { x: number; y: number; z: number };
@@ -13,6 +18,8 @@ export type GpuVolumeViewProps = {
   isoMax: number;
   opacity: number;
   colormap: string;
+  colorMode?: VolumeColorMode;
+  regions?: VolumeRegionLabels | null;
   shell?: number;
   renderMode?: "volume" | "surface";
   autoRotate?: boolean;
@@ -41,6 +48,9 @@ const FRAG = `
   varying vec3 vCamLocal;
 
   uniform sampler3D uTex;
+  uniform sampler3D uRegionTex;
+  uniform int uHasRegions;
+  uniform int uColorMode;
   uniform vec3 uTexSize;
 
   uniform float uIsoMin;
@@ -138,6 +148,32 @@ const FRAG = `
     return viridis(t);
   }
 
+    vec3 hsl2rgb(float h, float s, float l) {
+    float c = (1.0 - abs(2.0 * l - 1.0)) * s;
+    float hp = h * 6.0;
+    float x = c * (1.0 - abs(mod(hp, 2.0) - 1.0));
+
+    vec3 rgb;
+
+    if (hp < 1.0) rgb = vec3(c, x, 0.0);
+    else if (hp < 2.0) rgb = vec3(x, c, 0.0);
+    else if (hp < 3.0) rgb = vec3(0.0, c, x);
+    else if (hp < 4.0) rgb = vec3(0.0, x, c);
+    else if (hp < 5.0) rgb = vec3(x, 0.0, c);
+    else rgb = vec3(c, 0.0, x);
+
+    float m = l - c * 0.5;
+    return rgb + vec3(m);
+  }
+
+  vec3 regionColor(float regionId) {
+    float hue = fract(
+      (regionId - 1.0) * 0.61803398875 + 0.03
+    );
+
+    return hsl2rgb(hue, 0.78, 0.56);
+  }
+
   bool intersectBox(vec3 ro, vec3 rd, out float t0, out float t1) {
     vec3 boxMin = vec3(-0.5);
     vec3 boxMax = vec3(0.5);
@@ -180,39 +216,81 @@ const FRAG = `
       float d = sampleD(uvw);
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
-      if (uIsoMode == 0) {
-        float band = smoothstep(0.0, 0.02, tnorm) *
-                     (1.0 - smoothstep(0.90, 1.0, tnorm));
+            if (uIsoMode == 0) {
+        if (uColorMode == 2 && uHasRegions == 1) {
+          float regionId =
+            floor(texture(uRegionTex, uvw).r * 255.0 + 0.5);
 
-        if (band > 0.0) {
-          vec3 col = cmap(tnorm);
+          if (regionId > 0.5) {
+            vec3 col = regionColor(regionId);
+            float a = clamp(
+              uOpacity * dt * 45.0,
+              0.0,
+              1.0
+            );
 
-          float ramp = pow(tnorm, 1.6);
+            acc.rgb += (1.0 - acc.a) * col * a;
+            acc.a += (1.0 - acc.a) * a;
 
-          vec3 h = texStep * 2.0;
-          float dx = sampleD(uvw + vec3(h.x, 0.0, 0.0)) - sampleD(uvw - vec3(h.x, 0.0, 0.0));
-          float dy = sampleD(uvw + vec3(0.0, h.y, 0.0)) - sampleD(uvw - vec3(0.0, h.y, 0.0));
-          float dz = sampleD(uvw + vec3(0.0, 0.0, h.z)) - sampleD(uvw - vec3(0.0, 0.0, h.z));
-          vec3 grad = vec3(dx, dy, dz);
+            if (acc.a > 0.94) break;
+          }
+        } else {
+          float density = smoothstep(0.0, 1.0, tnorm);
 
-          float gradMag = length(grad);
-          vec3 nrm = gradMag > 1e-6 ? normalize(grad) : vec3(0.0, 0.0, 1.0);
+          if (density > 0.001) {
+            vec3 col =
+              uColorMode == 0
+                ? cmap(0.72)
+                : cmap(tnorm);
 
-          float ambient = 0.30;
-          float diff = max(dot(nrm, lightDir), 0.0);
-          vec3 viewDir = normalize(-rd);
-          vec3 halfV = normalize(lightDir + viewDir);
-          float spec = pow(max(dot(nrm, halfV), 0.0), 32.0);
+            vec3 h = texStep * 2.0;
 
-          col = col * (ambient + (1.0 - ambient) * diff) + spec * 0.15;
+            float dx =
+              sampleD(uvw + vec3(h.x, 0.0, 0.0)) -
+              sampleD(uvw - vec3(h.x, 0.0, 0.0));
 
-          float a = band * ramp * uOpacity * dt * 40.0;
-          a = clamp(a, 0.0, 1.0);
+            float dy =
+              sampleD(uvw + vec3(0.0, h.y, 0.0)) -
+              sampleD(uvw - vec3(0.0, h.y, 0.0));
 
-          acc.rgb += (1.0 - acc.a) * col * a;
-          acc.a   += (1.0 - acc.a) * a;
+            float dz =
+              sampleD(uvw + vec3(0.0, 0.0, h.z)) -
+              sampleD(uvw - vec3(0.0, 0.0, h.z));
 
-          if (acc.a > 0.90) break;
+            vec3 grad = vec3(dx, dy, dz);
+            float gradMag = length(grad);
+
+            vec3 nrm =
+              gradMag > 1e-6
+                ? normalize(grad)
+                : vec3(0.0, 0.0, 1.0);
+
+            float ambient = 0.38;
+            float diff = max(dot(nrm, lightDir), 0.0);
+
+            vec3 viewDir = normalize(-rd);
+            vec3 halfV = normalize(lightDir + viewDir);
+
+            float spec =
+              pow(max(dot(nrm, halfV), 0.0), 28.0);
+
+            col =
+              col * (ambient + (1.0 - ambient) * diff) +
+              spec * 0.10;
+
+            float a =
+              pow(density, 1.45) *
+              uOpacity *
+              dt *
+              28.0;
+
+            a = clamp(a, 0.0, 1.0);
+
+            acc.rgb += (1.0 - acc.a) * col * a;
+            acc.a += (1.0 - acc.a) * a;
+
+            if (acc.a > 0.94) break;
+          }
         }
       } else {
         float isoLevel = uIsoMax;
@@ -273,6 +351,12 @@ function cmapToId(name: string) {
   return 0;
 }
 
+function colorModeToId(colorMode: VolumeColorMode) {
+  if (colorMode === "density") return 1;
+  if (colorMode === "components") return 2;
+  return 0;
+}
+
 function buildUint8Texture(
   values: number[],
   dims: { x: number; y: number; z: number },
@@ -319,6 +403,48 @@ function buildUint8Texture(
   return tex;
 }
 
+function buildRegionTexture(
+  regions: VolumeRegionLabels,
+) {
+  const { dims, labels } = regions;
+
+  const Tex3D = (THREE as any).Data3DTexture as
+    | (new (
+      data: Uint8Array,
+      width: number,
+      height: number,
+      depth: number,
+    ) => THREE.Data3DTexture)
+    | undefined;
+
+  if (!Tex3D) {
+    throw new Error(
+      "Data3DTexture is not available in this Three.js build.",
+    );
+  }
+
+  const tex = new Tex3D(
+    labels,
+    dims.x,
+    dims.y,
+    dims.z,
+  );
+
+  tex.format = THREE.RedFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.wrapR = THREE.ClampToEdgeWrapping;
+  tex.unpackAlignment = 1;
+  tex.needsUpdate = true;
+
+  (tex as any).internalFormat = "R8";
+
+  return tex;
+}
+
 export default function GpuVolumeView({
   values,
   dims,
@@ -329,6 +455,8 @@ export default function GpuVolumeView({
   isoMax,
   opacity,
   colormap,
+  colorMode = "solid",
+  regions = null,
   shell = 0.12,
   renderMode = "surface",
   autoRotate = false,
@@ -349,6 +477,9 @@ export default function GpuVolumeView({
 
   const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
 
+  const prevRegionTexRef =
+    useRef<THREE.Data3DTexture | null>(null);
+
   const [webgl2Ok, setWebgl2Ok] = useState(true);
 
   const scaleVec = useMemo(() => {
@@ -364,6 +495,17 @@ export default function GpuVolumeView({
     if (!values?.length) return null;
     return buildUint8Texture(values, dims, rangeMin, rangeMax);
   }, [values, dims, rangeMin, rangeMax]);
+
+  const regionTex = useMemo(() => {
+    if (!regions?.labels?.length) return null;
+
+    return buildRegionTexture(regions);
+  }, [regions]);
+
+  const colorModeId = useMemo(
+    () => colorModeToId(colorMode),
+    [colorMode],
+  );
 
   const isoMinNorm = useMemo(() => {
     return rangeMax > rangeMin ? (isoMin - rangeMin) / (rangeMax - rangeMin) : 0.0;
@@ -447,13 +589,26 @@ export default function GpuVolumeView({
       fragmentShader: FRAG,
       uniforms: {
         uTex: { value: tex },
+        uRegionTex: { value: tex },
+        uHasRegions: { value: 0 },
+        uColorMode: { value: 0 },
         uTexSize: { value: new THREE.Vector3(dims.x, dims.y, dims.z) },
         uIsoMin: { value: isoMinNorm },
         uIsoMax: { value: isoMaxNorm },
         uOpacity: { value: opacity },
         uShell: { value: shellClamped },
         uIsoMode: { value: renderMode === "volume" ? 0 : 1 },
-        uSteps: { value: 256 },
+        uSteps: {
+          value: Math.min(
+            512,
+            Math.max(
+              192,
+              Math.ceil(
+                Math.max(dims.x, dims.y, dims.z) * 1.35,
+              ),
+            ),
+          ),
+        },
         uCmap: { value: cmapId },
         uInvModel: { value: uInvModel },
         uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
@@ -669,6 +824,11 @@ export default function GpuVolumeView({
         prevTexRef.current = null;
       }
 
+      if (prevRegionTexRef.current) {
+        prevRegionTexRef.current.dispose();
+        prevRegionTexRef.current = null;
+      }
+
       scene.clear();
 
       if (renderer.domElement.parentElement === mount) {
@@ -734,13 +894,31 @@ export default function GpuVolumeView({
   useEffect(() => {
     const mat = materialRef.current;
     if (!mat) return;
+
+    mat.uniforms.uRegionTex.value = regionTex ?? tex;
+    mat.uniforms.uHasRegions.value = regionTex ? 1 : 0;
+
+    if (
+      prevRegionTexRef.current &&
+      prevRegionTexRef.current !== regionTex
+    ) {
+      prevRegionTexRef.current.dispose();
+    }
+
+    prevRegionTexRef.current = regionTex;
+  }, [regionTex, tex]);
+
+  useEffect(() => {
+    const mat = materialRef.current;
+    if (!mat) return;
     mat.uniforms.uIsoMin.value = isoMinNorm;
     mat.uniforms.uIsoMax.value = isoMaxNorm;
+    mat.uniforms.uColorMode.value = colorModeId;
     mat.uniforms.uOpacity.value = opacity;
     mat.uniforms.uShell.value = shellClamped;
     mat.uniforms.uCmap.value = cmapId;
     mat.uniforms.uIsoMode.value = renderMode === "volume" ? 0 : 1;
-  }, [isoMinNorm, isoMaxNorm, opacity, shellClamped, cmapId, renderMode]);
+  }, [isoMinNorm, isoMaxNorm, opacity, shellClamped, cmapId, renderMode, colorModeId]);
 
   useEffect(() => {
     meshRef.current?.scale.copy(scaleVec);

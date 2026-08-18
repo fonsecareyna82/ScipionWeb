@@ -23,6 +23,12 @@ import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
 import MeshVolumeView from "./mesh-volume-view";
+import GpuVolumeView from "./gpu-volume-view";
+import useVolumeRegions from "./use-volume-regions";
+import {
+  buildVolumeSliceOverlayDataUrl,
+  type VolumeRenderData,
+} from "./volume-color-utils";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
@@ -56,7 +62,7 @@ type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
-type RenderMode3d = "surface" | "mesh";
+type RenderMode3d = "volume" | "surface" | "mesh";
 type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
 
@@ -113,6 +119,10 @@ const HELP_TEXT: Record<string, string> = {
     "Absolute intensity threshold range. Voxels outside this range are suppressed.",
   surfaceCount:
     "Number of isosurfaces in Plotly fallback. Does not affect GPU raycasting.",
+  sliceColorOverlay:
+    "Overlay the raw slice with the same volumetric color modes used by the 3D viewer.",
+  volumeWindow3d:
+    "Percentile window used by GPU volume rendering. Narrower high-percentile windows emphasize stronger densities.",
   isoRenderMode3d:
     "Surface loads a real marching-cubes mesh, closer to Chimera/EMAN. Volume renders the density field by GPU raycasting.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
@@ -232,6 +242,8 @@ export default function VolumeViewer({
   const [sharpen2d, setSharpen2d] = useState(false);
   const [brightness2d, setBrightness2d] = useState(0);
   const [contrast2d, setContrast2d] = useState(1);
+  const [sliceOverlayEnabled, setSliceOverlayEnabled] =
+    useState(false);
 
   const [pan2d, setPan2d] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -244,13 +256,10 @@ export default function VolumeViewer({
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
-  const [mapData, setMapData] = useState<{
-    dims: { x: number; y: number; z: number };
-    values: number[];
-    order: "zyx" | "xyz";
-    min?: number;
-    max?: number;
-  } | null>(null);
+  const [mapData, setMapData] =
+    useState<VolumeRenderData | null>(null);
+
+  const mapDataKeyRef = useRef("");
 
   const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
@@ -263,7 +272,7 @@ export default function VolumeViewer({
   const surfaceAbortRef = useRef<AbortController | null>(null);
   const surfaceRequestSeqRef = useRef(0);
 
-  const [maxDim3d, setMaxDim3d] = useState(192);
+  const [maxDim3d, setMaxDim3d] = useState(256);
   const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">("stride");
 
   const [surfaceCount, setSurfaceCount] = useState(3);
@@ -276,10 +285,18 @@ export default function VolumeViewer({
   const [thrAbs, setThrAbs] = useState<[number, number]>([0, 1]);
 
   const [renderMode3d, setRenderMode3d] =
-    useState<RenderMode3d>("surface");
+    useState<RenderMode3d>("volume");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
-  const needsHistogram = active && (showHistogram || (viewMode === "map3d" && usesSurfaceMesh3d && selectedId != null && surfaceMesh != null));
+  const needsHistogram =
+    active &&
+    (
+      showHistogram ||
+      (viewMode === "map3d" && selectedId != null) ||
+      (viewMode === "slices" &&
+        sliceOverlayEnabled &&
+        selectedId != null)
+    );
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -291,7 +308,7 @@ export default function VolumeViewer({
     volumeId: null,
     maxDim: 192,
     method: "stride",
-    renderMode: "surface",
+    renderMode: "volume",
     surfaceLevel: null,
   });
 
@@ -401,6 +418,7 @@ export default function VolumeViewer({
     setSurfaceRefreshError(null);
     setMapError(null);
     setMapData(null);
+    mapDataKeyRef.current = "";
     setSurfaceMesh(null);
     setSurfaceResolvedLevel(null);
     setSurfaceLevel3d(null);
@@ -891,7 +909,6 @@ export default function VolumeViewer({
 
         setSurfaceMesh(mesh);
         setSurfaceResolvedLevel(resolvedLevel);
-        setMapData(null);
         setSurfaceRefreshError(null);
 
         if (metadataSurfaceLevelRange) {
@@ -961,6 +978,51 @@ export default function VolumeViewer({
     ],
   );
 
+  const fetchVolumeData = useCallback(async () => {
+    if (!active || selectedId == null) return null;
+
+    const raw = await svc.getVolumeData3d(
+      projectId,
+      protocolId,
+      outputName,
+      selectedId,
+      {
+        maxDim: maxDim3d,
+        method: method3d,
+      },
+    );
+
+    const parsed = normalize3dPayload(raw);
+
+    if (
+      !parsed.values.length ||
+      !parsed.dims.x ||
+      !parsed.dims.y ||
+      !parsed.dims.z
+    ) {
+      throw new Error("3D volume data is empty.");
+    }
+
+    setMapData(parsed);
+
+    mapDataKeyRef.current = [
+      String(selectedId),
+      maxDim3d,
+      method3d,
+    ].join("|");
+
+    return parsed;
+  }, [
+    active,
+    selectedId,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    maxDim3d,
+    method3d,
+  ]);
+
   const load3d = useCallback(async () => {
     if (!active || selectedId == null) return;
 
@@ -974,17 +1036,8 @@ export default function VolumeViewer({
         return;
       }
 
-      const raw = await svc.getVolumeData3d(
-        projectId,
-        protocolId,
-        outputName,
-        selectedId,
-        { maxDim: maxDim3d, method: method3d },
-      );
+      await fetchVolumeData();
 
-      const parsed = normalize3dPayload(raw);
-
-      setMapData(parsed);
       setSurfaceMesh(null);
       setSurfaceResolvedLevel(null);
 
@@ -1016,6 +1069,7 @@ export default function VolumeViewer({
     surfaceLevel3d,
     usesSurfaceMesh3d,
     reloadSurfaceMesh,
+    fetchVolumeData,
   ]);
 
   useEffect(() => {
@@ -1028,6 +1082,46 @@ export default function VolumeViewer({
       load3d();
     }
   }, [active, viewMode, selectedId, renderMode3d, load3d]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      viewMode !== "slices" ||
+      !sliceOverlayEnabled ||
+      selectedId == null
+    ) {
+      return;
+    }
+
+    const expectedKey = [
+      String(selectedId),
+      maxDim3d,
+      method3d,
+    ].join("|");
+
+    if (
+      mapData &&
+      mapDataKeyRef.current === expectedKey
+    ) {
+      return;
+    }
+
+    void fetchVolumeData().catch((error) => {
+      setMapError(
+        error?.message ||
+        "Failed to load volumetric overlay data.",
+      );
+    });
+  }, [
+    active,
+    viewMode,
+    sliceOverlayEnabled,
+    selectedId,
+    maxDim3d,
+    method3d,
+    mapData,
+    fetchVolumeData,
+  ]);
 
   const dataDirty = useMemo(() => {
     const last = lastLoadedRef.current;
@@ -1050,37 +1144,91 @@ export default function VolumeViewer({
     surfaceLevel3d,
   ]);
 
-  const sortedValues = useMemo(() => {
+  const stats3d = useMemo(() => {
     if (!mapData?.values?.length) return null;
-    const clean = mapData.values.filter((n) => Number.isFinite(n));
-    if (clean.length === 0) return null;
-    clean.sort((a, b) => a - b);
-    return clean;
+
+    const payloadMin = firstFiniteNumber(mapData.min);
+    const payloadMax = firstFiniteNumber(mapData.max);
+
+    if (
+      payloadMin != null &&
+      payloadMax != null &&
+      payloadMax > payloadMin
+    ) {
+      return {
+        min: payloadMin,
+        max: payloadMax,
+      };
+    }
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const value of mapData.values) {
+      if (!Number.isFinite(value)) continue;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+
+    return Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      max > min
+      ? { min, max }
+      : null;
   }, [mapData]);
 
-  const stats3d = useMemo(() => {
-    if (!sortedValues || sortedValues.length === 0) return null;
-    return { min: sortedValues[0], max: sortedValues[sortedValues.length - 1] };
-  }, [sortedValues]);
-
   useEffect(() => {
-    if (!sortedValues || selectedId == null) return;
-    if (lastThrVolumeRef.current === selectedId) return;
+    if (
+      !histogram ||
+      selectedId == null ||
+      lastThrVolumeRef.current === selectedId
+    ) {
+      return;
+    }
 
-    const loAbs = percentileFromSorted(sortedValues, 55);
-    const hiAbs = percentileFromSorted(sortedValues, 98);
+    const low =
+      histogramWeightedQuantile(histogram, 0.55);
 
-    setThrPct([55, 98]);
-    setThrAbs([loAbs, hiAbs]);
-    lastThrVolumeRef.current = selectedId;
-  }, [sortedValues, selectedId]);
+    const high =
+      histogramWeightedQuantile(histogram, 0.98);
+
+    if (low != null && high != null && high > low) {
+      setThrPct([55, 98]);
+      setThrAbs([low, high]);
+      lastThrVolumeRef.current = selectedId;
+    }
+  }, [histogram, selectedId]);
 
   const thrPctAbs = useMemo(() => {
-    if (!sortedValues) return null;
-    const lo = percentileFromSorted(sortedValues, thrPct[0]);
-    const hi = percentileFromSorted(sortedValues, thrPct[1]);
-    return [lo, hi] as [number, number];
-  }, [sortedValues, thrPct]);
+    if (histogram) {
+      const low = histogramWeightedQuantile(
+        histogram,
+        thrPct[0] / 100,
+      );
+
+      const high = histogramWeightedQuantile(
+        histogram,
+        thrPct[1] / 100,
+      );
+
+      if (
+        low != null &&
+        high != null &&
+        high > low
+      ) {
+        return [low, high] as [number, number];
+      }
+    }
+
+    if (!stats3d) return null;
+
+    const span = stats3d.max - stats3d.min;
+
+    return [
+      stats3d.min + span * (thrPct[0] / 100),
+      stats3d.min + span * (thrPct[1] / 100),
+    ] as [number, number];
+  }, [histogram, thrPct, stats3d]);
 
   const isoRange3d = useMemo(() => {
     if (!stats3d) return null;
@@ -1229,17 +1377,94 @@ export default function VolumeViewer({
       surfaceLevel3d ??
       surfaceResolvedLevel ??
       surfaceMesh?.level ??
+      isoRange3d?.[1] ??
       (surfaceLevelRange
         ? surfaceLevelRange[0] +
-        0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0])
+        0.75 *
+        (surfaceLevelRange[1] - surfaceLevelRange[0])
         : 0)
     );
   }, [
     surfaceLevel3d,
     surfaceResolvedLevel,
     surfaceMesh,
+    isoRange3d,
     surfaceLevelRange,
   ]);
+
+  const needsVolumeRegions =
+    colorMode3d === "components" &&
+    (
+      (viewMode === "map3d" &&
+        renderMode3d === "volume") ||
+      (viewMode === "slices" &&
+        sliceOverlayEnabled)
+    );
+
+  const {
+    regions: volumeRegions,
+    loading: volumeRegionsLoading,
+    error: volumeRegionsError,
+  } = useVolumeRegions({
+    enabled: needsVolumeRegions,
+    data: mapData,
+    level: surfaceLevelValue,
+    minRegionVoxels: 12,
+    maxRegions: 96,
+  });
+
+  const buildSliceOverlay = useCallback(
+    (
+      sliceAxis: "x" | "y" | "z",
+      index: number,
+    ) => {
+      if (!sliceOverlayEnabled || !mapData) {
+        return null;
+      }
+
+      return buildVolumeSliceOverlayDataUrl({
+        data: mapData,
+        regions: volumeRegions,
+        axis: sliceAxis,
+        sourceIndex: index,
+        sourceDims: dims,
+        colorMode: colorMode3d,
+        level: surfaceLevelValue,
+        opacity: opacity3d,
+        colormap: colormap3d,
+      });
+    },
+    [
+      sliceOverlayEnabled,
+      mapData,
+      volumeRegions,
+      dims,
+      colorMode3d,
+      surfaceLevelValue,
+      opacity3d,
+      colormap3d,
+    ],
+  );
+
+  const singleOverlayUrl = useMemo(
+    () => buildSliceOverlay(axis, effectiveSliceIndex),
+    [buildSliceOverlay, axis, effectiveSliceIndex],
+  );
+
+  const zOverlayUrl = useMemo(
+    () => buildSliceOverlay("z", effectiveSliceIndexZ),
+    [buildSliceOverlay, effectiveSliceIndexZ],
+  );
+
+  const yOverlayUrl = useMemo(
+    () => buildSliceOverlay("y", effectiveSliceIndexY),
+    [buildSliceOverlay, effectiveSliceIndexY],
+  );
+
+  const xOverlayUrl = useMemo(
+    () => buildSliceOverlay("x", effectiveSliceIndexX),
+    [buildSliceOverlay, effectiveSliceIndexX],
+  );
 
   return (
     <Box
@@ -1525,6 +1750,9 @@ export default function VolumeViewer({
                     sliceIndexZ={sliceIndexZ}
                     brightness={brightness2d}
                     contrast={contrast2d}
+                    zOverlayUrl={zOverlayUrl}
+                    yOverlayUrl={yOverlayUrl}
+                    xOverlayUrl={xOverlayUrl}
                   />
                 ) : imgError ? (
                   <Typography variant="body2" color="error">
@@ -1534,6 +1762,7 @@ export default function VolumeViewer({
                   <>
                     <SlicesCanvas
                       url={frontUrl}
+                      overlayUrl={singleOverlayUrl}
                       containerW={vw}
                       containerH={vh}
                       scale={renderScale}
@@ -1568,6 +1797,30 @@ export default function VolumeViewer({
                 <Typography variant="body2" color="error">
                   {mapError}
                 </Typography>
+              ) : (
+                renderMode3d === "volume" &&
+                mapData &&
+                stats3d &&
+                isoRange3d &&
+                !gpuError
+              ) ? (
+                <GpuVolumeView
+                  values={mapData.values}
+                  dims={mapData.dims}
+                  order={mapData.order}
+                  rangeMin={stats3d.min}
+                  rangeMax={stats3d.max}
+                  isoMin={isoRange3d[0]}
+                  isoMax={isoRange3d[1]}
+                  opacity={opacity3d}
+                  colormap={colormap3d}
+                  colorMode={colorMode3d}
+                  regions={volumeRegions}
+                  renderMode="volume"
+                  autoRotate={autoRotate3d}
+                  autoRotateSpeed={0.8}
+                  onError={handleMeshError}
+                />
               ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
                 <MeshVolumeView
                   mesh={surfaceMesh}
@@ -1809,6 +2062,135 @@ export default function VolumeViewer({
                         }
                       />
 
+                      <Divider />
+
+                      <SectionTitle title="Volume overlay" />
+
+                      <ParamRow
+                        label="Color"
+                        helpKey="sliceColorOverlay"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={
+                              sliceOverlayEnabled
+                                ? colorMode3d
+                                : "off"
+                            }
+                            onChange={(event) => {
+                              const value = event.target.value;
+
+                              if (value === "off") {
+                                setSliceOverlayEnabled(false);
+                                return;
+                              }
+
+                              setSliceOverlayEnabled(true);
+                              setColorMode3d(
+                                value as MeshColorMode3d,
+                              );
+                            }}
+                            SelectProps={{
+                              MenuProps: { disablePortal: true },
+                            }}
+                          >
+                            <MenuItem value="off">off</MenuItem>
+                            <MenuItem value="solid">solid</MenuItem>
+                            <MenuItem value="density">density</MenuItem>
+                            <MenuItem value="components">regions</MenuItem>
+                          </TextField>
+                        }
+                      />
+
+                      {sliceOverlayEnabled ? (
+                        <>
+                          <ParamRow
+                            label="Overlay cmap"
+                            helpKey="colormap3d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={colormap3d}
+                                disabled={colorMode3d === "components"}
+                                onChange={(event) =>
+                                  setColormap3d(event.target.value)
+                                }
+                                SelectProps={{
+                                  MenuProps: { disablePortal: true },
+                                }}
+                              >
+                                {CMAP_OPTIONS.map((cm) => (
+                                  <MenuItem key={cm} value={cm}>
+                                    {cm}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                            }
+                          />
+
+                          <ParamRow
+                            label="Opacity"
+                            helpKey="opacity3d"
+                            onHelp={openHelp}
+                            control={
+                              <Slider
+                                size="small"
+                                value={opacity3d}
+                                min={0.05}
+                                max={1}
+                                step={0.05}
+                                onChange={(_, value) =>
+                                  setOpacity3d(value as number)
+                                }
+                              />
+                            }
+                          />
+
+                          {surfaceLevelRange ? (
+                            <SurfaceLevelHistogramSlider
+                              histogram={histogram}
+                              loading={histLoading}
+                              error={histError}
+                              displayRange={surfaceLevelRange}
+                              validRange={surfaceLevelRange}
+                              value={surfaceLevelValue}
+                              disabled={false}
+                              onHelp={openHelp("surfaceLevel3d")}
+                              onChange={(level) =>
+                                setSurfaceLevel3d(level)
+                              }
+                              onCommit={(level) =>
+                                setSurfaceLevel3d(level)
+                              }
+                            />
+                          ) : null}
+
+                          {volumeRegionsLoading ? (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Detecting 3D regions…
+                            </Typography>
+                          ) : null}
+
+                          {volumeRegionsError ? (
+                            <Typography
+                              variant="caption"
+                              color="warning.main"
+                            >
+                              {volumeRegionsError}
+                            </Typography>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      <Divider />
+
                       <ParamRow
                         label="Interpolation"
                         helpKey="interp2d"
@@ -1954,8 +2336,8 @@ export default function VolumeViewer({
                             size="small"
                             type="number"
                             value={maxDim3d}
-                            onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
-                            inputProps={{ min: 48, max: 256, step: 8 }}
+                            onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 512))}
+                            inputProps={{ min: 48, max: 512, step: 8 }}
                           />
                         }
                       />
@@ -2049,7 +2431,7 @@ export default function VolumeViewer({
 
                       <Divider />
 
-                      <SectionTitle title="Iso rendering" />
+                      <SectionTitle title="Rendering" />
                       <ParamRow
                         label="Iso mode"
                         helpKey="isoRenderMode3d"
@@ -2062,10 +2444,86 @@ export default function VolumeViewer({
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
                             <ToggleButton value="surface">surface</ToggleButton>
+                            <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
+
+                      {renderMode3d === "volume" ? (
+                        <>
+                          <Box>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Density window
+                              </Typography>
+
+                              <IconButton
+                                size="small"
+                                onClick={openHelp("volumeWindow3d")}
+                              >
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+
+                            <Slider
+                              size="small"
+                              value={thrPct}
+                              min={0}
+                              max={100}
+                              step={1}
+                              disableSwap
+                              onChange={(_, value) =>
+                                setThrPct(
+                                  value as [number, number],
+                                )
+                              }
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(value) =>
+                                `${value}%`
+                              }
+                            />
+                          </Box>
+
+                          {colorMode3d === "components" &&
+                            surfaceLevelRange ? (
+                            <SurfaceLevelHistogramSlider
+                              histogram={histogram}
+                              loading={histLoading}
+                              error={histError}
+                              displayRange={surfaceLevelRange}
+                              validRange={surfaceLevelRange}
+                              value={surfaceLevelValue}
+                              disabled={false}
+                              onHelp={openHelp("surfaceLevel3d")}
+                              onChange={(level) =>
+                                setSurfaceLevel3d(level)
+                              }
+                              onCommit={(level) =>
+                                setSurfaceLevel3d(level)
+                              }
+                            />
+                          ) : null}
+
+                          {volumeRegionsLoading ? (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Detecting 3D regions…
+                            </Typography>
+                          ) : null}
+                        </>
+                      ) : null}
 
                       {usesSurfaceMesh3d && (
                         <>
@@ -2498,6 +2956,9 @@ function OrthoSlicesGrid({
   sliceIndexZ,
   brightness,
   contrast,
+  zOverlayUrl,
+  yOverlayUrl,
+  xOverlayUrl,
 }: {
   dims: Record<"x" | "y" | "z", number>;
   zSlice: SliceImageState;
@@ -2508,6 +2969,9 @@ function OrthoSlicesGrid({
   sliceIndexZ: number;
   brightness: number;
   contrast: number;
+  zOverlayUrl?: string | null;
+  yOverlayUrl?: string | null;
+  xOverlayUrl?: string | null;
 }) {
   const colX = ORTHO_AXIS_COLORS.x;
   const colY = ORTHO_AXIS_COLORS.y;
@@ -2610,6 +3074,7 @@ function OrthoSlicePanel({
   labelDotColor,
   gridArea,
   imageUrl,
+  overlayUrl,
   loading,
   error,
   imageWidth,
@@ -2624,6 +3089,7 @@ function OrthoSlicePanel({
   labelDotColor?: string;
   gridArea: { col: string; row: string };
   imageUrl: string | null;
+  overlayUrl?: string | null;
   loading: boolean;
   error: string | null;
   imageWidth: number;
@@ -2684,6 +3150,16 @@ function OrthoSlicePanel({
               preserveAspectRatio="none"
               style={{ filter: filterCss }}
             />
+            {overlayUrl ? (
+              <image
+                href={overlayUrl}
+                x={0}
+                y={0}
+                width={imageWidth}
+                height={imageHeight}
+                preserveAspectRatio="none"
+              />
+            ) : null}
             {crossV && (
               <line
                 x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
@@ -2718,6 +3194,16 @@ function OrthoSlicePanel({
               preserveAspectRatio="none"
               style={{ filter: filterCss }}
             />
+            {overlayUrl ? (
+              <image
+                href={overlayUrl}
+                x={0}
+                y={0}
+                width={imageWidth}
+                height={imageHeight}
+                preserveAspectRatio="none"
+              />
+            ) : null}
             {crossV && (
               <line
                 x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
@@ -3071,6 +3557,7 @@ function useThrottledValue<T>(value: T, intervalMs: number): T {
 
 function SlicesCanvas({
   url,
+  overlayUrl,
   containerW,
   containerH,
   scale,
@@ -3082,6 +3569,7 @@ function SlicesCanvas({
   onNaturalSize,
 }: {
   url: string;
+  overlayUrl?: string | null;
   containerW: number;
   containerH: number;
   scale: number;
@@ -3094,6 +3582,8 @@ function SlicesCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const overlayRef =
+    useRef<HTMLImageElement | null>(null);
   const processedRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -3108,6 +3598,29 @@ function SlicesCanvas({
     };
     img.src = url;
   }, [url]);
+
+  useEffect(() => {
+    if (!overlayUrl) {
+      overlayRef.current = null;
+      scheduleDraw();
+      return;
+    }
+
+    const overlay = new Image();
+
+    overlay.onload = () => {
+      overlayRef.current = overlay;
+      scheduleDraw();
+    };
+
+    overlay.src = overlayUrl;
+
+    return () => {
+      if (overlayRef.current === overlay) {
+        overlayRef.current = null;
+      }
+    };
+  }, [overlayUrl]);
 
   useEffect(() => {
     const img = imgRef.current;
@@ -3169,6 +3682,19 @@ function SlicesCanvas({
     ctx.globalAlpha = 1;
     ctx.drawImage(src, x0, y0, drawW, drawH);
     ctx.filter = "none";
+
+    const overlay = overlayRef.current;
+
+    if (overlay) {
+      ctx.globalAlpha = 1;
+      ctx.drawImage(
+        overlay,
+        x0,
+        y0,
+        drawW,
+        drawH,
+      );
+    }
   };
 
   return (
