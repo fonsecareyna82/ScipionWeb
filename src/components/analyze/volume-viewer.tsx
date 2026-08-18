@@ -95,11 +95,9 @@ const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
 const SLICE_DRAG_PREVIEW_QUALITY = 55;
 
 const SLICE_PREVIEW_CACHE_LIMIT = 192;
-const SLICE_WARM_RADIUS_SINGLE = 32;
-const SLICE_WARM_RADIUS_ACTIVE = 24;
-const SLICE_WARM_RADIUS_IDLE = 12;
-const SLICE_WARM_RADIUS_PASSIVE = 8;
-const SLICE_WARM_CONCURRENCY = 3;
+const SLICE_WARM_RADIUS_SINGLE = 16;
+const SLICE_WARM_RADIUS_IDLE = 8;
+const SLICE_WARM_CONCURRENCY = 2;
 
 type SlicePreviewRequestOptions = {
   thumb?: number;
@@ -1131,7 +1129,8 @@ export default function VolumeViewer({
     if (
       !active ||
       viewMode !== "slices" ||
-      selectedId == null
+      selectedId == null ||
+      draggingSlice !== null
     ) {
       return;
     }
@@ -1191,30 +1190,12 @@ export default function VolumeViewer({
         SLICE_WARM_RADIUS_SINGLE,
       );
     } else {
-      const activeAxis =
-        draggingSlice === "x" ||
-          draggingSlice === "y" ||
-          draggingSlice === "z"
-          ? draggingSlice
-          : null;
-
-      const radiusFor = (
-        targetAxis: "x" | "y" | "z",
-      ) => {
-        if (!activeAxis) {
-          return SLICE_WARM_RADIUS_IDLE;
-        }
-
-        return targetAxis === activeAxis
-          ? SLICE_WARM_RADIUS_ACTIVE
-          : SLICE_WARM_RADIUS_PASSIVE;
-      };
 
       appendWindow(
         "z",
         sliceIndexZ,
         maxSliceZ,
-        radiusFor("z"),
+        SLICE_WARM_RADIUS_IDLE,
         sliceReloadNonce,
       );
 
@@ -1222,7 +1203,7 @@ export default function VolumeViewer({
         "y",
         sliceIndexY,
         maxSliceY,
-        radiusFor("y"),
+        SLICE_WARM_RADIUS_IDLE,
         sliceReloadNonce,
       );
 
@@ -1230,54 +1211,55 @@ export default function VolumeViewer({
         "x",
         sliceIndexX,
         maxSliceX,
-        radiusFor("x"),
+        SLICE_WARM_RADIUS_IDLE,
         sliceReloadNonce,
       );
-    }
 
-    const runWarmup = async () => {
-      let nextTask = 0;
 
-      const worker = async () => {
-        while (
-          !cancelled &&
-          nextTask < tasks.length
-        ) {
-          const task =
-            tasks[nextTask++];
+      const runWarmup = async () => {
+        let nextTask = 0;
 
-          await prefetchVolumeSlice(
-            task.axis,
-            task.index,
-            task.maxSlice,
-            task.reloadKey,
-          );
-        }
+        const worker = async () => {
+          while (
+            !cancelled &&
+            nextTask < tasks.length
+          ) {
+            const task =
+              tasks[nextTask++];
+
+            await prefetchVolumeSlice(
+              task.axis,
+              task.index,
+              task.maxSlice,
+              task.reloadKey,
+            );
+          }
+        };
+
+        await Promise.all(
+          Array.from(
+            {
+              length:
+                SLICE_WARM_CONCURRENCY,
+            },
+            () => worker(),
+          ),
+        );
       };
 
-      await Promise.all(
-        Array.from(
-          {
-            length:
-              SLICE_WARM_CONCURRENCY,
+      const timer =
+        window.setTimeout(
+          () => {
+            void runWarmup();
           },
-          () => worker(),
-        ),
-      );
-    };
+          120,
+        );
 
-    const timer =
-      window.setTimeout(
-        () => {
-          void runWarmup();
-        },
-        draggingSlice ? 0 : 60,
-      );
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
   }, [
     active,
     viewMode,

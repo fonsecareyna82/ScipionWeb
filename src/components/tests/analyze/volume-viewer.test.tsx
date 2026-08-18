@@ -601,7 +601,9 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "on" }));
 
         await waitFor(() => {
-            expect(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length).toBe(callCount);
+            expect(
+                getSettledSliceCalls().length,
+            ).toBe(callCount);
         });
     });
 
@@ -616,7 +618,8 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const callCount = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
+        const callCount =
+            getSettledSliceCalls().length;
         const sliders = screen.getAllByRole("slider");
 
         fireEvent.keyDown(sliders[1], { key: "ArrowRight" });
@@ -633,34 +636,46 @@ describe("VolumeViewer", () => {
         renderViewer();
 
         expect(
-            await screen.findByText(
-                "Vol A",
-            ),
+            await screen.findByText("Vol A"),
         ).toBeInTheDocument();
 
         fireEvent.click(
-            screen.getByRole(
-                "button",
-                {
-                    name: "single",
-                },
-            ),
+            screen.getByRole("button", {
+                name: "single",
+            }),
         );
 
+        const sliceSlider =
+            screen.getAllByRole("slider")[0];
+
+        const currentSlice =
+            Number(
+                sliceSlider.getAttribute(
+                    "aria-valuenow",
+                ),
+            );
+
+        let warmedSlice = -1;
+
         await waitFor(() => {
-            expect(
+            const warmCall =
                 serviceMocks
                     .fetchVolumeSliceObjectUrl
                     .mock.calls
-                    .some(
+                    .find(
                         (call) =>
                             call[3] === 1 &&
-                            call[4] === 3 &&
                             call[5]?.axis === "z" &&
                             call[5]?.thumb === 384 &&
-                            call[5]?.quality === 55,
-                    ),
-            ).toBe(true);
+                            call[5]?.quality === 55 &&
+                            Number(call[4]) !==
+                            currentSlice,
+                    );
+
+            expect(warmCall).toBeDefined();
+
+            warmedSlice =
+                Number(warmCall![4]);
         });
 
         const warmCallsBefore =
@@ -670,23 +685,21 @@ describe("VolumeViewer", () => {
                 .filter(
                     (call) =>
                         call[3] === 1 &&
-                        call[4] === 3 &&
+                        Number(call[4]) ===
+                        warmedSlice &&
                         call[5]?.axis === "z" &&
                         call[5]?.thumb === 384 &&
                         call[5]?.quality === 55,
                 )
                 .length;
 
-        const sliceSlider =
-            screen.getAllByRole(
-                "slider",
-            )[0];
-
         fireEvent.change(
             sliceSlider,
             {
                 target: {
-                    value: "3",
+                    value: String(
+                        warmedSlice,
+                    ),
                 },
             },
         );
@@ -706,7 +719,8 @@ describe("VolumeViewer", () => {
                 .filter(
                     (call) =>
                         call[3] === 1 &&
-                        call[4] === 3 &&
+                        Number(call[4]) ===
+                        warmedSlice &&
                         call[5]?.axis === "z" &&
                         call[5]?.thumb === 384 &&
                         call[5]?.quality === 55,
