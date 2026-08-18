@@ -1449,6 +1449,7 @@ export default function VolumeViewer({
   ]);
 
   const needsVolumeRegions =
+    active &&
     colorMode3d === "components" &&
     (
       (viewMode === "map3d" &&
@@ -1854,6 +1855,7 @@ export default function VolumeViewer({
                   {mapError}
                 </Typography>
               ) : (
+                active &&
                 renderMode3d === "volume" &&
                 mapData &&
                 stats3d &&
