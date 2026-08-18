@@ -85,7 +85,8 @@ type CachedPreview = ObjectUrlResult & {
   lastUsed: number;
 };
 
-const PREVIEW_CACHE_LIMIT = 80;
+const PREVIEW_CACHE_LIMIT = 200;
+const PREVIEW_BATCH_SIZE = 24;
 
 const PREVIEW_SIZE_INTERACTIVE = 512;
 const PREVIEW_SIZE_NORMAL = 768;
@@ -197,6 +198,7 @@ export default function TiltSeriesViewer({
   const previewCacheRef = useRef<Map<string, CachedPreview>>(new Map());
   const previewInFlightRef = useRef<Set<string>>(new Set());
   const previewPrefetchTimerRef = useRef<number | null>(null);
+  const previewWarmupAbortRef = useRef<AbortController | null>(null);
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   // trackPreviewLoadingStateInARefToUseItSafelyInsideIntervals
   const previewLoadingRef = useRef(false);
@@ -711,10 +713,24 @@ export default function TiltSeriesViewer({
   );
 
   const prefetchPreviewBatch = useCallback(
-    (rowIndexes: number[], size: number) => {
+    async (
+      rowIndexes: number[],
+      size: number,
+      options: {
+        signal?: AbortSignal;
+        fallbackToIndividual?: boolean;
+      } = {},
+    ) => {
       if (mainMode !== "viewer") return;
       if (selectedSeriesId == null) return;
       if (!framesData?.frames?.length) return;
+
+      const {
+        signal,
+        fallbackToIndividual = true,
+      } = options;
+
+      if (signal?.aborted) return;
 
       const pending: Array<{
         rowIndex: number;
@@ -746,7 +762,11 @@ export default function TiltSeriesViewer({
         if (previewCacheRef.current.has(cacheKey)) return;
         if (previewInFlightRef.current.has(cacheKey)) return;
 
-        pending.push({ rowIndex, frameIndex, cacheKey });
+        pending.push({
+          rowIndex,
+          frameIndex,
+          cacheKey,
+        });
       });
 
       if (!pending.length) return;
@@ -754,9 +774,11 @@ export default function TiltSeriesViewer({
       const batchFetcher = (svc as any).fetchTiltSeriesViewImagesBatch;
 
       if (typeof batchFetcher !== "function") {
-        pending.forEach((item) => {
-          prefetchPreviewAtIndex(item.rowIndex, size);
-        });
+        if (fallbackToIndividual) {
+          pending.forEach((item) => {
+            prefetchPreviewAtIndex(item.rowIndex, size);
+          });
+        }
         return;
       }
 
@@ -764,47 +786,55 @@ export default function TiltSeriesViewer({
         previewInFlightRef.current.add(item.cacheKey);
       });
 
-      void batchFetcher(
-        projectId,
-        protocolId,
-        outputName,
-        selectedSeriesId,
-        {
-          indices: pending.map((item) => item.frameIndex),
-          size,
-          format: "webp",
-          applyTransform,
-        },
-      )
-        .then((result: any) => {
-          const items = Array.isArray(result?.items) ? result.items : [];
+      try {
+        const result = await batchFetcher(
+          projectId,
+          protocolId,
+          outputName,
+          selectedSeriesId,
+          {
+            indices: pending.map((item) => item.frameIndex),
+            size,
+            format: "webp",
+            applyTransform,
+            signal,
+          },
+        );
 
-          items.forEach((item: any) => {
-            const frameIndex = Number(item?.index);
-            const dataUrl = String(item?.dataUrl ?? "");
+        if (signal?.aborted) return;
 
-            if (!Number.isFinite(frameIndex) || !dataUrl) return;
+        const items = Array.isArray(result?.items) ? result.items : [];
 
-            const cacheKey = buildPreviewCacheKey(
-              projectId,
-              protocolId,
-              outputName,
-              selectedSeriesId,
-              frameIndex,
-              size,
-              applyTransform,
-            );
+        items.forEach((item: any) => {
+          const frameIndex = Number(item?.index);
+          const dataUrl = String(item?.dataUrl ?? "");
 
-            previewCacheRef.current.set(cacheKey, {
-              url: dataUrl,
-              revoke: undefined,
-              lastUsed: Date.now(),
-            });
+          if (!Number.isFinite(frameIndex) || !dataUrl) return;
+
+          const cacheKey = buildPreviewCacheKey(
+            projectId,
+            protocolId,
+            outputName,
+            selectedSeriesId,
+            frameIndex,
+            size,
+            applyTransform,
+          );
+
+          previewCacheRef.current.set(cacheKey, {
+            url: dataUrl,
+            revoke: undefined,
+            lastUsed: Date.now(),
           });
+        });
 
-          trimPreviewCache(new Set(pending.map((item) => item.cacheKey)));
-        })
-        .catch(() => {
+        trimPreviewCache(
+          new Set(
+            pending.map((item) => item.cacheKey),
+          ),
+        );
+      } catch {
+        if (!signal?.aborted && fallbackToIndividual) {
           pending.forEach((item) => {
             previewInFlightRef.current.delete(item.cacheKey);
           });
@@ -812,12 +842,12 @@ export default function TiltSeriesViewer({
           pending.forEach((item) => {
             prefetchPreviewAtIndex(item.rowIndex, size);
           });
-        })
-        .finally(() => {
-          pending.forEach((item) => {
-            previewInFlightRef.current.delete(item.cacheKey);
-          });
+        }
+      } finally {
+        pending.forEach((item) => {
+          previewInFlightRef.current.delete(item.cacheKey);
         });
+      }
     },
     [
       mainMode,
@@ -832,6 +862,107 @@ export default function TiltSeriesViewer({
       prefetchPreviewAtIndex,
     ],
   );
+
+  // warmActiveTiltSeriesAtInteractiveResolution
+  useEffect(() => {
+    previewWarmupAbortRef.current?.abort();
+    previewWarmupAbortRef.current = null;
+
+    if (mainMode !== "viewer") return;
+    if (selectedSeriesId == null) return;
+    if (!framesData?.frames?.length) return;
+
+    if (
+      String(framesData.tiltSeriesId) !==
+      String(selectedSeriesId)
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    previewWarmupAbortRef.current = controller;
+
+    const totalFrames = framesData.frames.length;
+
+    const firstIncluded = framesData.frames.findIndex(
+      (frame) => !frame.excluded,
+    );
+
+    const startRowIndex =
+      firstIncluded >= 0
+        ? firstIncluded
+        : 0;
+
+    const orderedRowIndexes: number[] = [
+      startRowIndex,
+    ];
+
+    for (
+      let distance = 1;
+      orderedRowIndexes.length < totalFrames;
+      distance += 1
+    ) {
+      const forwardIndex =
+        startRowIndex + distance;
+
+      const backwardIndex =
+        startRowIndex - distance;
+
+      if (forwardIndex < totalFrames) {
+        orderedRowIndexes.push(
+          forwardIndex,
+        );
+      }
+
+      if (backwardIndex >= 0) {
+        orderedRowIndexes.push(
+          backwardIndex,
+        );
+      }
+    }
+
+    void (async () => {
+      for (
+        let offset = 0;
+        offset < orderedRowIndexes.length;
+        offset += PREVIEW_BATCH_SIZE
+      ) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        await prefetchPreviewBatch(
+          orderedRowIndexes.slice(
+            offset,
+            offset + PREVIEW_BATCH_SIZE,
+          ),
+          PREVIEW_SIZE_INTERACTIVE,
+          {
+            signal: controller.signal,
+            fallbackToIndividual: false,
+          },
+        );
+      }
+    })();
+
+    return () => {
+      controller.abort();
+
+      if (
+        previewWarmupAbortRef.current ===
+        controller
+      ) {
+        previewWarmupAbortRef.current = null;
+      }
+    };
+  }, [
+    mainMode,
+    selectedSeriesId,
+    framesData?.tiltSeriesId,
+    framesData?.frames?.length,
+    applyTransform,
+    prefetchPreviewBatch,
+  ]);
 
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
   useEffect(() => {
@@ -1053,6 +1184,8 @@ export default function TiltSeriesViewer({
   useEffect(() => {
     return () => {
       previewAbortRef.current?.abort();
+      previewWarmupAbortRef.current?.abort();
+      previewWarmupAbortRef.current = null;
       previewAbortRef.current = null;
       previewReqIdRef.current += 1;
       previewLoadingRef.current = false;
