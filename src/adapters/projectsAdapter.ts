@@ -527,13 +527,15 @@ const defaultService: ProjectService = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
+            body: JSON.stringify({
         outputName: context.outputName,
         pointerClass: context.pointerClass ?? "",
         tableKey: context.tableKey ?? "",
         rowId: request.rowId,
         childrenId: request.childrenId,
         rowData: request.rowData ?? {},
+        cellContext:
+          request.cellContext ?? {},
       }),
     });
 

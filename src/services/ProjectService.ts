@@ -628,6 +628,13 @@ export type TableViewerActionContext = {
   data?: Record<string, unknown>;
 };
 
+export type TableViewerRowChildren = {
+  id: string;
+  label: string;
+  count?: number;
+  readOnly?: boolean;
+};
+
 export type TableViewerCellEdit = {
   type: "boolean";
   field: string;
@@ -644,6 +651,7 @@ export type TableViewerCellContext =
     defaultAction?: TableViewerAction;
     actions?: TableViewerAction[];
     edit?: TableViewerCellEdit;
+    children?: TableViewerRowChildren;
   };
 
 export type TableViewerColumn = {
@@ -653,12 +661,6 @@ export type TableViewerColumn = {
   width?: number | string;
   sortable?: boolean;
   actions?: TableViewerAction[];
-};
-
-export type TableViewerRowChildren = {
-  id: string;
-  label: string;
-  count?: number;
 };
 
 export type TableViewerRow = {
@@ -681,6 +683,7 @@ export type TableViewerChildrenRequest = {
   rowId: string | number;
   childrenId: string;
   rowData?: Record<string, unknown>;
+  cellContext?: TableViewerActionContext;
 };
 
 export type TableViewerChildrenData = {
@@ -746,7 +749,7 @@ export type TableViewerPaneContent =
     tiltSeriesId: NonNullable<Id>;
     frameIndex?: number;
   }
-    | {
+  | {
     kind: "volume";
     title?: string;
     projectId: NonNullable<Id>;

@@ -28,6 +28,7 @@ import type {
     TableViewerRow,
     TableViewerPaneContent,
     TableViewerChildrenData,
+    TableViewerRowChildren,
     TableViewerEdit,
     TableViewerEditAction,
 } from "@/services/ProjectService";
@@ -56,6 +57,13 @@ type ActivePane =
         content: TableViewerPaneContent;
     }
     | null;
+
+type TableViewerChildrenScope = {
+    key: string;
+    children: TableViewerRowChildren;
+    columnId?: string;
+    cellContext?: TableViewerCellContext;
+};
 
 function formatCellValue(value: TableViewerCell): string {
     if (value === null || value === undefined) return "";
@@ -106,15 +114,24 @@ export default function TableViewerPane({
             [draftEdits],
         );
 
-    const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(
+    const [
+        expandedChildrenKeys,
+        setExpandedChildrenKeys,
+    ] = useState<Set<string>>(
         () => new Set(),
     );
 
-    const [childrenByRowId, setChildrenByRowId] = useState<
+    const [
+        childrenByScopeKey,
+        setChildrenByScopeKey,
+    ] = useState<
         Record<string, TableViewerChildrenData>
     >({});
 
-    const [childrenLoading, setChildrenLoading] = useState<Set<string>>(
+    const [
+        childrenLoading,
+        setChildrenLoading,
+    ] = useState<Set<string>>(
         () => new Set(),
     );
 
@@ -162,6 +179,66 @@ export default function TableViewerPane({
     const loadedEnd =
         (table.page?.offset ?? 0) +
         table.rows.length;
+
+    const buildChildrenScopeKey = (
+        row: TableViewerRow,
+        childrenId: string,
+        columnId?: string,
+    ): string => {
+        return [
+            String(row.id),
+            columnId ?? "row",
+            childrenId,
+        ].join("|");
+    };
+
+    const getRowChildrenScopes = (
+        row: TableViewerRow,
+    ): TableViewerChildrenScope[] => {
+        const scopes:
+            TableViewerChildrenScope[] = [];
+
+        if (row.children) {
+            scopes.push({
+                key:
+                    buildChildrenScopeKey(
+                        row,
+                        row.children.id,
+                    ),
+                children:
+                    row.children,
+            });
+        }
+
+        for (const column of table.columns) {
+            const cellContext =
+                row.cellContexts?.[
+                column.id
+                ];
+
+            const children =
+                cellContext?.children;
+
+            if (!children) {
+                continue;
+            }
+
+            scopes.push({
+                key:
+                    buildChildrenScopeKey(
+                        row,
+                        children.id,
+                        column.id,
+                    ),
+                children,
+                columnId:
+                    column.id,
+                cellContext,
+            });
+        }
+
+        return scopes;
+    };
 
     const handleAction = async (
         action: TableViewerAction,
@@ -290,64 +367,133 @@ export default function TableViewerPane({
     const handleToggleChildren = async (
         event: MouseEvent<HTMLButtonElement>,
         row: TableViewerRow,
+        children: TableViewerRowChildren,
+        columnId?: string,
+        cellContext?: TableViewerCellContext,
     ) => {
         event.preventDefault();
         event.stopPropagation();
 
-        if (!row.children) return;
+        const scopeKey =
+            buildChildrenScopeKey(
+                row,
+                children.id,
+                columnId,
+            );
 
-        const rowKey = String(row.id);
+        if (
+            expandedChildrenKeys.has(
+                scopeKey,
+            )
+        ) {
+            setExpandedChildrenKeys(
+                (prev) => {
+                    const next =
+                        new Set(prev);
 
-        if (expandedRowIds.has(rowKey)) {
-            setExpandedRowIds((prev) => {
-                const next = new Set(prev);
-                next.delete(rowKey);
-                return next;
-            });
-            return;
-        }
+                    next.delete(
+                        scopeKey,
+                    );
 
-        if (childrenByRowId[rowKey]) {
-            setExpandedRowIds((prev) => {
-                const next = new Set(prev);
-                next.add(rowKey);
-                return next;
-            });
-            return;
-        }
-
-        setChildrenLoading((prev) => {
-            const next = new Set(prev);
-            next.add(rowKey);
-            return next;
-        });
-
-        try {
-            const result = await svc.resolveTableViewerChildren(
-                context,
-                {
-                    rowId: row.id,
-                    childrenId: row.children.id,
-                    rowData: row.data,
+                    return next;
                 },
             );
 
-            setChildrenByRowId((prev) => ({
-                ...prev,
-                [rowKey]: result,
-            }));
+            return;
+        }
 
-            setExpandedRowIds((prev) => {
-                const next = new Set(prev);
-                next.add(rowKey);
+        if (
+            childrenByScopeKey[
+            scopeKey
+            ]
+        ) {
+            setExpandedChildrenKeys(
+                (prev) => {
+                    const next =
+                        new Set(prev);
+
+                    next.add(
+                        scopeKey,
+                    );
+
+                    return next;
+                },
+            );
+
+            return;
+        }
+
+        setChildrenLoading(
+            (prev) => {
+                const next =
+                    new Set(prev);
+
+                next.add(
+                    scopeKey,
+                );
+
                 return next;
-            });
+            },
+        );
+
+        try {
+            const result =
+                await svc
+                    .resolveTableViewerChildren(
+                        context,
+                        {
+                            rowId:
+                                row.id,
+                            childrenId:
+                                children.id,
+                            rowData:
+                                row.data,
+                            cellContext:
+                                cellContext
+                                    ? {
+                                        target:
+                                            cellContext.target,
+                                        data:
+                                            cellContext.data,
+                                    }
+                                    : undefined,
+                        },
+                    );
+
+            setChildrenByScopeKey(
+                (prev) => ({
+                    ...prev,
+                    [scopeKey]:
+                        result,
+                }),
+            );
+
+            setExpandedChildrenKeys(
+                (prev) => {
+                    const next =
+                        new Set(prev);
+
+                    next.add(
+                        scopeKey,
+                    );
+
+                    return next;
+                },
+            );
+
         } finally {
-            setChildrenLoading((prev) => {
-                const next = new Set(prev);
-                next.delete(rowKey);
-                return next;
-            });
+            setChildrenLoading(
+                (prev) => {
+                    const next =
+                        new Set(prev);
+
+                    next.delete(
+                        scopeKey,
+                    );
+
+                    return next;
+                },
+            );
         }
     };
 
@@ -634,6 +780,7 @@ export default function TableViewerPane({
         columnActions?: TableViewerAction[],
         parentRow?: TableViewerRow,
         childrenId?: string,
+        forceEditDisabled = false,
     ) => {
         const text = formatCellValue(
             row.cells[columnId],
@@ -644,6 +791,62 @@ export default function TableViewerPane({
 
         const cellEdit =
             cellContext?.edit;
+
+        const cellChildren =
+            cellContext?.children;
+
+        const cellChildrenKey =
+            cellChildren
+                ? buildChildrenScopeKey(
+                    row,
+                    cellChildren.id,
+                    columnId,
+                )
+                : null;
+
+        const childrenToggle =
+            cellChildren &&
+                cellChildrenKey ? (
+                <IconButton
+                    size="small"
+                    onClick={(event) =>
+                        void handleToggleChildren(
+                            event,
+                            row,
+                            cellChildren,
+                            columnId,
+                            cellContext,
+                        )
+                    }
+                    sx={{
+                        width: 20,
+                        height: 20,
+                        p: 0,
+                        flexShrink: 0,
+                        color: "#64748b",
+                    }}
+                >
+                    {childrenLoading.has(
+                        cellChildrenKey,
+                    ) ? (
+                        <CircularProgress
+                            size={11}
+                        />
+                    ) : expandedChildrenKeys.has(
+                        cellChildrenKey,
+                    ) ? (
+                        <ChevronDown
+                            size={13}
+                            strokeWidth={1.8}
+                        />
+                    ) : (
+                        <ChevronRight
+                            size={13}
+                            strokeWidth={1.8}
+                        />
+                    )}
+                </IconButton>
+            ) : null;
 
         if (
             cellEdit?.type === "boolean"
@@ -661,6 +864,7 @@ export default function TableViewerPane({
                     size="small"
                     checked={checked}
                     disabled={
+                        forceEditDisabled ||
                         isBooleanEditDisabled(
                             row,
                             columnId,
@@ -738,6 +942,8 @@ export default function TableViewerPane({
                         minWidth: 0,
                     }}
                 >
+                    {childrenToggle}
+
                     <Button
                         variant="text"
                         size="small"
@@ -825,6 +1031,7 @@ export default function TableViewerPane({
                         minWidth: 0,
                     }}
                 >
+                    {childrenToggle}
                     <Typography
                         component="span"
                         sx={{
@@ -878,19 +1085,34 @@ export default function TableViewerPane({
         }
 
         return (
-            <Typography
-                component="span"
+            <Box
                 sx={{
-                    fontSize: "0.76rem",
-                    color: "#334155",
-                    overflow: "hidden",
-                    textOverflow:
-                        "ellipsis",
-                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
                 }}
             >
-                {text}
-            </Typography>
+                {childrenToggle}
+
+                <Typography
+                    component="span"
+                    sx={{
+                        fontSize:
+                            "0.76rem",
+                        color:
+                            "#334155",
+                        overflow:
+                            "hidden",
+                        textOverflow:
+                            "ellipsis",
+                        whiteSpace:
+                            "nowrap",
+                    }}
+                >
+                    {text}
+                </Typography>
+            </Box>
         );
     };
 
@@ -1239,6 +1461,29 @@ export default function TableViewerPane({
                                         selectedRowId ===
                                         row.id;
 
+                                    const rowChildrenKey =
+                                        row.children
+                                            ? buildChildrenScopeKey(
+                                                row,
+                                                row.children.id,
+                                            )
+                                            : null;
+
+                                    const expandedScopes =
+                                        getRowChildrenScopes(
+                                            row,
+                                        ).filter(
+                                            (scope) =>
+                                                expandedChildrenKeys.has(
+                                                    scope.key,
+                                                ) &&
+                                                Boolean(
+                                                    childrenByScopeKey[
+                                                    scope.key
+                                                    ],
+                                                ),
+                                        );
+
                                     return (
                                         <Fragment key={String(row.id)}>
                                             <TableRow
@@ -1298,13 +1543,15 @@ export default function TableViewerPane({
                                                             "center",
                                                     }}
                                                 >
-                                                    {row.children ? (
+                                                    {row.children &&
+                                                        rowChildrenKey ? (
                                                         <IconButton
                                                             size="small"
                                                             onClick={(event) =>
                                                                 void handleToggleChildren(
                                                                     event,
                                                                     row,
+                                                                    row.children!,
                                                                 )
                                                             }
                                                             sx={{
@@ -1313,25 +1560,25 @@ export default function TableViewerPane({
                                                                 p: 0,
                                                             }}
                                                         >
-                                                            {childrenLoading.has(
-                                                                String(row.id),
+                                                            childrenLoading.has(
+                                                            rowChildrenKey,
                                                             ) ? (
-                                                                <CircularProgress
-                                                                    size={12}
-                                                                />
-                                                            ) : expandedRowIds.has(
-                                                                String(row.id),
+                                                            <CircularProgress
+                                                                size={12}
+                                                            />
+                                                            ) : expandedChildrenKeys.has(
+                                                            rowChildrenKey,
                                                             ) ? (
-                                                                <ChevronDown
-                                                                    size={14}
-                                                                    strokeWidth={1.8}
-                                                                />
+                                                            <ChevronDown
+                                                                size={14}
+                                                                strokeWidth={1.8}
+                                                            />
                                                             ) : (
-                                                                <ChevronRight
-                                                                    size={14}
-                                                                    strokeWidth={1.8}
-                                                                />
-                                                            )}
+                                                            <ChevronRight
+                                                                size={14}
+                                                                strokeWidth={1.8}
+                                                            />
+                                                            )
                                                         </IconButton>
                                                     ) : (
                                                         <Box sx={{ width: 14, height: 14 }} />
@@ -1406,23 +1653,33 @@ export default function TableViewerPane({
                                                     </TableCell>
                                                 )}
                                             </TableRow>
-                                            {expandedRowIds.has(String(row.id)) &&
-                                                childrenByRowId[String(row.id)] && (() => {
+                                            {expandedScopes.map(
+                                                (scope) => {
                                                     const childrenData =
-                                                        childrenByRowId[String(row.id)];
+                                                        childrenByScopeKey[
+                                                        scope.key
+                                                        ];
 
                                                     return (
-                                                        <TableRow>
+                                                        <TableRow
+                                                            key={
+                                                                `children-${scope.key}`
+                                                            }
+                                                        >
                                                             <TableCell
                                                                 colSpan={
                                                                     table.columns.length +
                                                                     1 +
-                                                                    (hasRowActions ? 1 : 0)
+                                                                    (hasRowActions
+                                                                        ? 1
+                                                                        : 0)
                                                                 }
                                                                 sx={{
                                                                     p: 0,
-                                                                    backgroundColor: "#f8fafc",
-                                                                    borderBottom: "1px solid #e2e8f0",
+                                                                    backgroundColor:
+                                                                        "#f8fafc",
+                                                                    borderBottom:
+                                                                        "1px solid #e2e8f0",
                                                                 }}
                                                             >
                                                                 <Box
@@ -1430,10 +1687,14 @@ export default function TableViewerPane({
                                                                         ml: 4,
                                                                         mr: 1,
                                                                         my: 1,
-                                                                        border: "1px solid #e2e8f0",
-                                                                        borderRadius: 1.5,
-                                                                        overflow: "hidden",
-                                                                        backgroundColor: "#ffffff",
+                                                                        border:
+                                                                            "1px solid #e2e8f0",
+                                                                        borderRadius:
+                                                                            1.5,
+                                                                        overflow:
+                                                                            "hidden",
+                                                                        backgroundColor:
+                                                                            "#ffffff",
                                                                     }}
                                                                 >
                                                                     {childrenData.title && (
@@ -1441,19 +1702,25 @@ export default function TableViewerPane({
                                                                             sx={{
                                                                                 px: 1.5,
                                                                                 py: 0.75,
-                                                                                borderBottom: "1px solid #d4e5e8",
+                                                                                borderBottom:
+                                                                                    "1px solid #d4e5e8",
                                                                                 background:
                                                                                     "linear-gradient(90deg, #f1f7f8 0%, #eaf4f5 100%)",
                                                                             }}
                                                                         >
                                                                             <Typography
                                                                                 sx={{
-                                                                                    fontSize: "0.72rem",
-                                                                                    fontWeight: 700,
-                                                                                    color: "#285e68",
+                                                                                    fontSize:
+                                                                                        "0.72rem",
+                                                                                    fontWeight:
+                                                                                        700,
+                                                                                    color:
+                                                                                        "#285e68",
                                                                                 }}
                                                                             >
-                                                                                {childrenData.title}
+                                                                                {
+                                                                                    childrenData.title
+                                                                                }
                                                                             </Typography>
                                                                         </Box>
                                                                     )}
@@ -1461,16 +1728,22 @@ export default function TableViewerPane({
                                                                     <Table
                                                                         size="small"
                                                                         sx={{
-                                                                            tableLayout: "fixed",
-                                                                            width: "100%",
+                                                                            tableLayout:
+                                                                                "fixed",
+                                                                            width:
+                                                                                "100%",
                                                                         }}
                                                                     >
                                                                         <TableHead>
                                                                             <TableRow>
                                                                                 {childrenData.columns.map(
-                                                                                    (column) => (
+                                                                                    (
+                                                                                        column,
+                                                                                    ) => (
                                                                                         <TableCell
-                                                                                            key={column.id}
+                                                                                            key={
+                                                                                                column.id
+                                                                                            }
                                                                                             align={
                                                                                                 column.align ??
                                                                                                 "left"
@@ -1480,16 +1753,25 @@ export default function TableViewerPane({
                                                                                                     column.width,
                                                                                                 px: 1,
                                                                                                 py: 0.65,
-                                                                                                backgroundColor: "#f1f7f8",
-                                                                                                color: "#356b75",
-                                                                                                borderBottom: "1px solid #d4e5e8",
-                                                                                                fontSize: "0.67rem",
-                                                                                                fontWeight: 700,
-                                                                                                letterSpacing: "0.01em",
-                                                                                                whiteSpace: "nowrap",
+                                                                                                backgroundColor:
+                                                                                                    "#f1f7f8",
+                                                                                                color:
+                                                                                                    "#356b75",
+                                                                                                borderBottom:
+                                                                                                    "1px solid #d4e5e8",
+                                                                                                fontSize:
+                                                                                                    "0.67rem",
+                                                                                                fontWeight:
+                                                                                                    700,
+                                                                                                letterSpacing:
+                                                                                                    "0.01em",
+                                                                                                whiteSpace:
+                                                                                                    "nowrap",
                                                                                             }}
                                                                                         >
-                                                                                            {column.label}
+                                                                                            {
+                                                                                                column.label
+                                                                                            }
                                                                                         </TableCell>
                                                                                     ),
                                                                                 )}
@@ -1498,7 +1780,9 @@ export default function TableViewerPane({
 
                                                                         <TableBody>
                                                                             {childrenData.rows.map(
-                                                                                (childRow) => {
+                                                                                (
+                                                                                    childRow,
+                                                                                ) => {
                                                                                     const childSelected =
                                                                                         selectedRowId ===
                                                                                         childRow.id;
@@ -1523,6 +1807,8 @@ export default function TableViewerPane({
                                                                                                     void handleAction(
                                                                                                         childRow.defaultAction,
                                                                                                         childRow,
+                                                                                                        scope.columnId,
+                                                                                                        scope.cellContext,
                                                                                                     );
                                                                                                 }
                                                                                             }}
@@ -1531,14 +1817,17 @@ export default function TableViewerPane({
                                                                                                     "pointer",
                                                                                                 height: 34,
 
-                                                                                                "& td": {
+                                                                                                "& td":
+                                                                                                {
                                                                                                     borderBottom:
                                                                                                         "1px solid #f1f5f9",
                                                                                                 },
                                                                                             }}
                                                                                         >
                                                                                             {childrenData.columns.map(
-                                                                                                (column) => (
+                                                                                                (
+                                                                                                    column,
+                                                                                                ) => (
                                                                                                     <TableCell
                                                                                                         key={
                                                                                                             column.id
@@ -1560,7 +1849,9 @@ export default function TableViewerPane({
                                                                                                             column.id,
                                                                                                             column.actions,
                                                                                                             row,
-                                                                                                            row.children?.id,
+                                                                                                            scope.children.id,
+                                                                                                            scope.children.readOnly ===
+                                                                                                            true,
                                                                                                         )}
                                                                                                     </TableCell>
                                                                                                 ),
@@ -1575,7 +1866,8 @@ export default function TableViewerPane({
                                                             </TableCell>
                                                         </TableRow>
                                                     );
-                                                })()}
+                                                },
+                                            )}
 
                                         </Fragment>
                                     );
