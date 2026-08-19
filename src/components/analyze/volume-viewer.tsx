@@ -3484,11 +3484,9 @@ function useVolumeSliceImage({
   const inFlightRef = useRef(false);
   const pendingJobRef = useRef<{
     requestKey: string;
-    jobKey: string;
     sliceIndex: number;
   } | null>(null);
 
-  const latestJobKeyRef = useRef<string | null>(null);
   const requestKeyRef = useRef<string | null>(null);
   const revokeRef = useRef<(() => void) | null>(null);
   const runNextRef = useRef<(() => void) | null>(null);
@@ -3534,8 +3532,7 @@ function useVolumeSliceImage({
 
         if (
           controller.signal.aborted ||
-          requestKeyRef.current !== job.requestKey ||
-          latestJobKeyRef.current !== job.jobKey
+          requestKeyRef.current !== job.requestKey
         ) {
           result?.revoke?.();
           return;
@@ -3545,8 +3542,7 @@ function useVolumeSliceImage({
 
         if (
           controller.signal.aborted ||
-          requestKeyRef.current !== job.requestKey ||
-          latestJobKeyRef.current !== job.jobKey
+          requestKeyRef.current !== job.requestKey
         ) {
           result?.revoke?.();
           return;
@@ -3569,11 +3565,11 @@ function useVolumeSliceImage({
       } catch (e: any) {
         if (
           controller.signal.aborted ||
-          requestKeyRef.current !== job.requestKey ||
-          latestJobKeyRef.current !== job.jobKey
+          requestKeyRef.current !== job.requestKey
         ) {
           return;
         }
+
         setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
       } finally {
         if (controllerRef.current !== controller) {
@@ -3599,7 +3595,6 @@ function useVolumeSliceImage({
       pendingJobRef.current = null;
       inFlightRef.current = false;
       requestKeyRef.current = null;
-      latestJobKeyRef.current = null;
       setLoading(false);
       setError(null);
       return;
@@ -3622,9 +3617,10 @@ function useVolumeSliceImage({
       requestOptions?.windowMax ?? "",
     ].map(String).join("|");
 
-    const jobKey = `${requestKey}|${clampedIndex}`;
-    latestJobKeyRef.current = jobKey;
-
+    // Do not include sliceIndex in requestKey.
+    // While scrubbing, completed intermediate slices are intentionally displayed.
+    // Only the latest pending index is kept, so visual continuity is preserved
+    // without building an unbounded request queue.
 
     if (requestKeyRef.current !== requestKey) {
       controllerRef.current?.abort();
@@ -3636,7 +3632,6 @@ function useVolumeSliceImage({
 
     pendingJobRef.current = {
       requestKey,
-      jobKey,
       sliceIndex: clampedIndex,
     };
 
