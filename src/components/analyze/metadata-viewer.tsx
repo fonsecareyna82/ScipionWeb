@@ -1508,6 +1508,8 @@ function useVirtualTableWindow(params: {
       const maxOffset = Math.max(0, totalRows - limit);
       const clampedOffset = Math.min(Math.max(0, requestedOffset), maxOffset);
 
+      latestWindowTargetRef.current = clampedOffset;
+
       if (windowRequestInFlightRef.current) {
         // avoidQueuingSameOffsetTwice
         if (inFlightOffsetRef.current === clampedOffset) {
@@ -1565,6 +1567,10 @@ function useVirtualTableWindow(params: {
           return;
         }
 
+        if (clampedOffset !== latestWindowTargetRef.current) {
+          return;
+        }
+
         hasWindowRowsRef.current = false;
         setWindowRows([]);
         setWindowError(getErrorMessage(error, "Failed to load rows"));
@@ -1573,25 +1579,22 @@ function useVirtualTableWindow(params: {
           return;
         }
 
-        if (clampedOffset !== latestWindowTargetRef.current) {
-          return;
-        }
-
-        if (showLoading) {
-          setWindowLoading(false);
-        }
-
-        windowRequestInFlightRef.current = false;
-        inFlightOffsetRef.current = null; // clearInFlightOffset
-
         const pendingOffset = pendingWindowOffsetRef.current;
         pendingWindowOffsetRef.current = null;
 
-        if (
+        const shouldLoadPending =
           pendingOffset != null &&
           pendingOffset === latestWindowTargetRef.current &&
-          totalRows > 0
-        ) {
+          totalRows > 0;
+
+        windowRequestInFlightRef.current = false;
+        inFlightOffsetRef.current = null;
+
+        if (showLoading && !shouldLoadPending) {
+          setWindowLoading(false);
+        }
+
+        if (shouldLoadPending) {
           void loadWindow(pendingOffset);
         }
       }
@@ -1614,7 +1617,6 @@ function useVirtualTableWindow(params: {
 
     if (!schema || !selectedTable || totalRows === 0) return;
     if (viewModeRef.current === "table") {
-      latestWindowTargetRef.current = 0;
       void loadWindow(0);
     }
   }, [schema, selectedTable, totalRows, sortBy, sortAsc, loadWindow, invalidateWindowState]);
@@ -1646,7 +1648,6 @@ function useVirtualTableWindow(params: {
     if (targetOffset < 0) targetOffset = 0;
     if (targetOffset > maxOffset) targetOffset = maxOffset;
 
-    latestWindowTargetRef.current = targetOffset;
     void loadWindow(targetOffset);
   }, [
     viewMode,
@@ -1679,7 +1680,6 @@ function useVirtualTableWindow(params: {
       let targetOffset = firstVisible - buffer;
       if (targetOffset < 0) targetOffset = 0;
       if (targetOffset > maxOffset) targetOffset = maxOffset;
-      latestWindowTargetRef.current = targetOffset;
 
       const distance = Math.abs(targetOffset - windowOffset);
       if (distance < Math.max(5, Math.floor(buffer / 2))) {
@@ -1714,8 +1714,6 @@ function useVirtualTableWindow(params: {
       let targetOffset = safeRowIndex - buffer;
       if (targetOffset < 0) targetOffset = 0;
       if (targetOffset > maxOffset) targetOffset = maxOffset;
-
-      latestWindowTargetRef.current = targetOffset;
 
       const container = scrollRef.current;
       if (container && effectiveRowSize > 0) {
