@@ -244,7 +244,7 @@ export default function VolumeViewer({
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
   const [brightness2d, setBrightness2d] = useState(0);
-  const [contrast2d, setContrast2d] = useState(1);
+  const [contrast2d, setContrast2d] = useState(1.5);
   const [sliceOverlayEnabled, setSliceOverlayEnabled] =
     useState(false);
 
