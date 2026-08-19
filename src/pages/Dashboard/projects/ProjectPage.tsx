@@ -4142,25 +4142,88 @@ export default function ProjectPage() {
           return;
         }
 
-        const shouldUseCanonicalLayoutForPendingNewNodes =
-          viewMode === "hierarchical" &&
-          !!pendingNewNodesRef.current &&
-          (
-            pendingNewNodesRef.current.operation === "add" ||
-            pendingNewNodesRef.current.operation === "duplicate" ||
-            pendingNewNodesRef.current.reflowWholeGraph
-          );
+        let hierarchicalNodes = loadedNodes;
 
-        const hierarchicalNodes = shouldUseCanonicalLayoutForPendingNewNodes
-          ? loadNodesWithPositions(loadedNodes, data.protocols, { ignoreSaved: true })
-          : preservePendingDeletedNodePositions(
-            preservePendingExistingNodePositions(
-              loadNodesWithPositions(loadedNodes, data.protocols)
-            ),
-            loadedEdges
-          );
+        if (viewMode === "hierarchical") {
+          const pendingNewNodes =
+            pendingNewNodesRef.current;
 
-        const nodesWithPositions = viewMode === "hierarchical" ? hierarchicalNodes : loadedNodes;
+          if (
+            pendingNewNodes?.reflowWholeGraph
+          ) {
+            hierarchicalNodes =
+              loadNodesWithPositions(
+                loadedNodes,
+                data.protocols,
+                { ignoreSaved: true }
+              );
+          } else if (
+            pendingNewNodes &&
+            graphDirection === "TB"
+          ) {
+            const canonicalNodes =
+              loadNodesWithPositions(
+                loadedNodes,
+                data.protocols,
+                { ignoreSaved: true }
+              );
+
+            const placement =
+              placePendingNewNodesAtCanonicalTbPositions(
+                canonicalNodes,
+                loadedEdges
+              );
+
+            hierarchicalNodes =
+              placement.nodes;
+
+            if (placement.resolved) {
+              const topologySignature =
+                graphTopologySignatureRef.current;
+
+              if (topologySignature) {
+                try {
+                  writePersistedPositions(
+                    storageKeyHier,
+                    graphDirection,
+                    topologySignature,
+                    hierarchicalNodes.map((node) => ({
+                      id: String(node.id),
+                      position: node.position,
+                    }))
+                  );
+                } catch {
+                  // noOp
+                }
+              }
+
+              pendingNewNodesRef.current =
+                null;
+
+              pendingPlacementRef.current =
+                null;
+            }
+          } else {
+            hierarchicalNodes =
+              preservePendingExistingNodePositions(
+                loadNodesWithPositions(
+                  loadedNodes,
+                  data.protocols
+                )
+              );
+          }
+
+          hierarchicalNodes =
+            preservePendingDeletedNodePositions(
+              hierarchicalNodes,
+              loadedEdges
+            );
+        }
+
+        const nodesWithPositions =
+          viewMode === "hierarchical"
+            ? hierarchicalNodes
+            : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
         edgesRef.current = edgesMerged;
@@ -5795,6 +5858,747 @@ export default function ProjectPage() {
     return preferredDelta;
   };
 
+  const placePendingNewNodesAtCanonicalTbPositions = (
+    canonicalNodes: Node<any>[],
+    currentEdges: Edge[]
+  ): {
+    nodes: Node<any>[];
+    resolved: boolean;
+  } => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending?.beforePositions) {
+      return {
+        nodes: canonicalNodes,
+        resolved: false,
+      };
+    }
+
+    const canonicalById = new Map(
+      canonicalNodes.map((node) => [
+        String(node.id),
+        node,
+      ])
+    );
+
+    const currentById = new Map(
+      nodesRef.current.map((node) => [
+        String(node.id),
+        node,
+      ])
+    );
+
+    const protocolIds = canonicalNodes
+      .map((node) => String(node.id))
+      .filter((id) => id !== "PROJECT");
+
+    const newIds = new Set(
+      protocolIds.filter(
+        (id) => !pending.beforeIds.has(id)
+      )
+    );
+
+    if (newIds.size === 0) {
+      return {
+        nodes: preservePendingExistingNodePositions(
+          canonicalNodes
+        ),
+        resolved: false,
+      };
+    }
+
+    const workingById = new Map<string, Node<any>>();
+
+    for (const node of canonicalNodes) {
+      const nodeId = String(node.id);
+      const previousPosition =
+        pending.beforePositions.get(nodeId);
+
+      workingById.set(
+        nodeId,
+        previousPosition
+          ? {
+            ...node,
+            position: {
+              ...previousPosition,
+            },
+          }
+          : {
+            ...node,
+            position: {
+              ...node.position,
+            },
+          }
+      );
+    }
+
+    const duplicatedPairByNewId = new Map(
+      (pending.duplicatedPairs ?? []).map(
+        (pair) => [
+          String(pair.newId),
+          pair,
+        ]
+      )
+    );
+
+    const neighborsById =
+      new Map<string, string[]>();
+
+    const outgoingBySource =
+      new Map<string, string[]>();
+
+    const incomingCount =
+      new Map<string, number>();
+
+    const projectRootIds =
+      new Set<string>();
+
+    const addNeighbor = (
+      firstId: string,
+      secondId: string
+    ) => {
+      const neighbors =
+        neighborsById.get(firstId) ?? [];
+
+      if (!neighbors.includes(secondId)) {
+        neighbors.push(secondId);
+        neighborsById.set(
+          firstId,
+          neighbors
+        );
+      }
+    };
+
+    for (const edge of currentEdges) {
+      const sourceId =
+        String(edge.source);
+
+      const targetId =
+        String(edge.target);
+
+      if (!canonicalById.has(targetId)) {
+        continue;
+      }
+
+      if (sourceId === "PROJECT") {
+        projectRootIds.add(targetId);
+        continue;
+      }
+
+      if (!canonicalById.has(sourceId)) {
+        continue;
+      }
+
+      const children =
+        outgoingBySource.get(sourceId) ?? [];
+
+      if (!children.includes(targetId)) {
+        children.push(targetId);
+        outgoingBySource.set(
+          sourceId,
+          children
+        );
+      }
+
+      incomingCount.set(
+        targetId,
+        (incomingCount.get(targetId) ?? 0) + 1
+      );
+
+      addNeighbor(
+        sourceId,
+        targetId
+      );
+
+      addNeighbor(
+        targetId,
+        sourceId
+      );
+    }
+
+    for (const id of protocolIds) {
+      if (
+        (incomingCount.get(id) ?? 0) === 0
+      ) {
+        projectRootIds.add(id);
+      }
+    }
+
+    const canonicalDistance = (
+      firstId: string,
+      secondId: string
+    ): number => {
+      const first =
+        canonicalById.get(firstId);
+
+      const second =
+        canonicalById.get(secondId);
+
+      if (!first || !second) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      const dx =
+        first.position.x -
+        second.position.x;
+
+      const dy =
+        first.position.y -
+        second.position.y;
+
+      return Math.hypot(dx, dy);
+    };
+
+    const projectCanonical =
+      canonicalById.get("PROJECT");
+
+    const projectPrevious =
+      pending.beforePositions.get("PROJECT");
+
+    for (const newId of newIds) {
+      const canonicalNode =
+        canonicalById.get(newId);
+
+      const workingNode =
+        workingById.get(newId);
+
+      if (
+        !canonicalNode ||
+        !workingNode
+      ) {
+        continue;
+      }
+
+      let anchorId: string | null =
+        null;
+
+      let anchorPosition:
+        { x: number; y: number } |
+        undefined;
+
+      const duplicatePair =
+        duplicatedPairByNewId.get(newId);
+
+      if (duplicatePair) {
+        const sourceId =
+          String(
+            duplicatePair.sourceId
+          );
+
+        const sourcePosition =
+          duplicatePair.sourcePosition ??
+          pending.beforePositions.get(
+            sourceId
+          );
+
+        if (
+          canonicalById.has(sourceId) &&
+          sourcePosition
+        ) {
+          anchorId = sourceId;
+          anchorPosition =
+            sourcePosition;
+        }
+      }
+
+      if (!anchorId) {
+        const existingNeighbors =
+          (
+            neighborsById.get(newId) ??
+            []
+          )
+            .filter(
+              (id) =>
+                pending.beforeIds.has(id) &&
+                canonicalById.has(id) &&
+                pending.beforePositions.has(id)
+            )
+            .sort(
+              (leftId, rightId) =>
+                canonicalDistance(
+                  newId,
+                  leftId
+                ) -
+                canonicalDistance(
+                  newId,
+                  rightId
+                )
+            );
+
+        const nearestNeighbor =
+          existingNeighbors[0];
+
+        if (nearestNeighbor) {
+          anchorId =
+            nearestNeighbor;
+
+          anchorPosition =
+            pending.beforePositions.get(
+              nearestNeighbor
+            );
+        }
+      }
+
+      if (
+        anchorId &&
+        anchorPosition
+      ) {
+        const canonicalAnchor =
+          canonicalById.get(anchorId);
+
+        if (canonicalAnchor) {
+          workingById.set(
+            newId,
+            {
+              ...workingNode,
+              position: {
+                x:
+                  anchorPosition.x +
+                  (
+                    canonicalNode.position.x -
+                    canonicalAnchor.position.x
+                  ),
+
+                y:
+                  anchorPosition.y +
+                  (
+                    canonicalNode.position.y -
+                    canonicalAnchor.position.y
+                  ),
+              },
+            }
+          );
+
+          continue;
+        }
+      }
+
+      if (
+        projectCanonical &&
+        projectPrevious
+      ) {
+        workingById.set(
+          newId,
+          {
+            ...workingNode,
+            position: {
+              x:
+                projectPrevious.x +
+                (
+                  canonicalNode.position.x -
+                  projectCanonical.position.x
+                ),
+
+              y:
+                projectPrevious.y +
+                (
+                  canonicalNode.position.y -
+                  projectCanonical.position.y
+                ),
+            },
+          }
+        );
+      }
+    }
+
+    const orderedRootIds =
+      Array.from(projectRootIds)
+        .filter(
+          (id) =>
+            canonicalById.has(id)
+        )
+        .sort((leftId, rightId) => {
+          const left =
+            canonicalById.get(
+              leftId
+            )!;
+
+          const right =
+            canonicalById.get(
+              rightId
+            )!;
+
+          return (
+            left.position.x -
+            right.position.x
+          );
+        });
+
+    if (orderedRootIds.length === 0) {
+      const positionedNodes =
+        canonicalNodes.map(
+          (node) =>
+            workingById.get(
+              String(node.id)
+            ) ?? node
+        );
+
+      return {
+        nodes:
+          centerProjectOverGraphBranches(
+            positionedNodes,
+            "TB"
+          ),
+        resolved: true,
+      };
+    }
+
+    const reachableByRoot =
+      new Map<string, Set<string>>();
+
+    for (const rootId of orderedRootIds) {
+      const reachable =
+        new Set<string>();
+
+      const pendingIds =
+        [rootId];
+
+      while (pendingIds.length > 0) {
+        const currentId =
+          pendingIds.pop();
+
+        if (
+          !currentId ||
+          reachable.has(currentId)
+        ) {
+          continue;
+        }
+
+        reachable.add(currentId);
+
+        for (
+          const childId
+          of outgoingBySource.get(
+            currentId
+          ) ?? []
+        ) {
+          pendingIds.push(childId);
+        }
+      }
+
+      reachableByRoot.set(
+        rootId,
+        reachable
+      );
+    }
+
+    const nodeIdsByRoot =
+      new Map<string, string[]>();
+
+    for (const rootId of orderedRootIds) {
+      nodeIdsByRoot.set(
+        rootId,
+        []
+      );
+    }
+
+    for (const nodeId of protocolIds) {
+      const canonicalNode =
+        canonicalById.get(nodeId);
+
+      if (!canonicalNode) continue;
+
+      const candidateRoots =
+        orderedRootIds.filter(
+          (rootId) =>
+            reachableByRoot
+              .get(rootId)
+              ?.has(nodeId)
+        );
+
+      const candidates =
+        candidateRoots.length > 0
+          ? candidateRoots
+          : orderedRootIds;
+
+      const resolvedRootId =
+        [...candidates]
+          .sort((leftId, rightId) => {
+            const leftRoot =
+              canonicalById.get(
+                leftId
+              )!;
+
+            const rightRoot =
+              canonicalById.get(
+                rightId
+              )!;
+
+            const leftDistance =
+              Math.abs(
+                leftRoot.position.x -
+                canonicalNode.position.x
+              );
+
+            const rightDistance =
+              Math.abs(
+                rightRoot.position.x -
+                canonicalNode.position.x
+              );
+
+            return (
+              leftDistance -
+              rightDistance
+            );
+          })[0];
+
+      if (resolvedRootId) {
+        nodeIdsByRoot
+          .get(resolvedRootId)
+          ?.push(nodeId);
+      }
+    }
+
+    const affectedRootIds =
+      new Set<string>();
+
+    for (const newId of newIds) {
+      for (
+        const [
+          rootId,
+          branchIds,
+        ]
+        of nodeIdsByRoot
+      ) {
+        if (
+          branchIds.includes(newId)
+        ) {
+          affectedRootIds.add(
+            rootId
+          );
+        }
+      }
+    }
+
+    const firstAffectedIndex =
+      orderedRootIds.findIndex(
+        (rootId) =>
+          affectedRootIds.has(rootId)
+      );
+
+    if (firstAffectedIndex >= 0) {
+      const branchGap = 120;
+
+      const occupiedRightByLevel =
+        new Map<number, number>();
+
+      const getBranchExtents = (
+        rootId: string
+      ) => {
+        const extents =
+          new Map<
+            number,
+            {
+              left: number;
+              right: number;
+            }
+          >();
+
+        for (
+          const nodeId
+          of nodeIdsByRoot.get(
+            rootId
+          ) ?? []
+        ) {
+          const positionedNode =
+            workingById.get(nodeId);
+
+          const canonicalNode =
+            canonicalById.get(nodeId);
+
+          if (
+            !positionedNode ||
+            !canonicalNode
+          ) {
+            continue;
+          }
+
+          const currentNode =
+            currentById.get(nodeId);
+
+          const sizeNode =
+            currentNode
+              ? {
+                ...currentNode,
+                position:
+                  positionedNode.position,
+              }
+              : positionedNode;
+
+          const size =
+            getAxisSize(
+              "TB",
+              sizeNode
+            );
+
+          const level =
+            Math.round(
+              canonicalNode.position.y /
+              hierSpacingY("TB")
+            );
+
+          const left =
+            positionedNode.position.x -
+            size / 2;
+
+          const right =
+            positionedNode.position.x +
+            size / 2;
+
+          const current =
+            extents.get(level);
+
+          extents.set(
+            level,
+            {
+              left:
+                current
+                  ? Math.min(
+                    current.left,
+                    left
+                  )
+                  : left,
+
+              right:
+                current
+                  ? Math.max(
+                    current.right,
+                    right
+                  )
+                  : right,
+            }
+          );
+        }
+
+        return extents;
+      };
+
+      for (
+        let index = 0;
+        index < orderedRootIds.length;
+        index++
+      ) {
+        const rootId =
+          orderedRootIds[index];
+
+        const branchIds =
+          nodeIdsByRoot.get(rootId) ??
+          [];
+
+        let extents =
+          getBranchExtents(rootId);
+
+        let offset = 0;
+
+        if (
+          index >=
+          firstAffectedIndex
+        ) {
+          for (
+            const [
+              level,
+              extent,
+            ]
+            of extents
+          ) {
+            const occupiedRight =
+              occupiedRightByLevel.get(
+                level
+              );
+
+            if (
+              occupiedRight ===
+              undefined
+            ) {
+              continue;
+            }
+
+            offset = Math.max(
+              offset,
+              occupiedRight +
+              branchGap -
+              extent.left
+            );
+          }
+        }
+
+        if (offset > 0.5) {
+          for (
+            const nodeId
+            of branchIds
+          ) {
+            const node =
+              workingById.get(
+                nodeId
+              );
+
+            if (!node) continue;
+
+            workingById.set(
+              nodeId,
+              {
+                ...node,
+                position: {
+                  ...node.position,
+                  x:
+                    node.position.x +
+                    offset,
+                },
+              }
+            );
+          }
+
+          extents =
+            getBranchExtents(
+              rootId
+            );
+        }
+
+        for (
+          const [
+            level,
+            extent,
+          ]
+          of extents
+        ) {
+          const occupiedRight =
+            occupiedRightByLevel.get(
+              level
+            );
+
+          occupiedRightByLevel.set(
+            level,
+            occupiedRight ===
+              undefined
+              ? extent.right
+              : Math.max(
+                occupiedRight,
+                extent.right
+              )
+          );
+        }
+      }
+    }
+
+    const positionedNodes =
+      canonicalNodes.map(
+        (node) =>
+          workingById.get(
+            String(node.id)
+          ) ?? node
+      );
+
+    return {
+      nodes:
+        centerProjectOverGraphBranches(
+          positionedNodes,
+          "TB"
+        ),
+
+      resolved: true,
+    };
+  };
+
   const placeDuplicatedNodesAsBranchBlock = (
     dir: "TB" | "LR",
     nodesList: Node<any>[],
@@ -6762,7 +7566,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
-      reflowWholeGraph: true,
+      reflowWholeGraph: false,
     };
 
     try {
@@ -6840,7 +7644,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
-      reflowWholeGraph: true,
+      reflowWholeGraph: false,
     };
 
     try {
