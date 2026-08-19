@@ -137,8 +137,6 @@
   display: flex;
   flex-direction: column;
   min-height: 400px;
-  container-name: projectpage;
-  container-type: inline-size;
 
   /* projectPageBrandTokens */
   --ppBrand: #3b82f6;
@@ -585,7 +583,7 @@
    responsiveHeader
    ───────────────────────────────────────────── */
 
-@container projectpage (max-width: 1550px) {
+@media (max-width: 1550px) {
   .projectpage-widget-root .pp-headerRow {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -649,7 +647,7 @@
   }
 }
 
-@container projectpage (max-width: 600px) {
+@media (max-width: 600px) {
   .projectpage-widget-root .pp-headerRow {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
