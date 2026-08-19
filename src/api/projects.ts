@@ -2555,6 +2555,8 @@ export async function buildVolumeSliceUrl(
     axis?: "z" | "y" | "x";
     cmap?: string;
     normalize?: "minmax" | "zscore" | "none";
+    windowMin?: number;
+    windowMax?: number;
     scale?: number;
   },
 ): Promise<string> {
@@ -2566,6 +2568,19 @@ export async function buildVolumeSliceUrl(
   if (opts?.axis) qp.push(`axis=${opts.axis}`);
   if (opts?.cmap) qp.push(`cmap=${enc(opts.cmap)}`); // ONLY cmap
   if (opts?.normalize) qp.push(`normalize=${opts.normalize}`);
+  if (
+    typeof opts?.windowMin === "number" &&
+    Number.isFinite(opts.windowMin)
+  ) {
+    qp.push(`windowMin=${enc(String(opts.windowMin))}`);
+  }
+
+  if (
+    typeof opts?.windowMax === "number" &&
+    Number.isFinite(opts.windowMax)
+  ) {
+    qp.push(`windowMax=${enc(String(opts.windowMax))}`);
+  }
   if (typeof opts?.scale === "number") qp.push(`scale=${opts.scale}`);
   const url = `${base}?${qp.join("&")}`;
   const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
@@ -2584,6 +2599,8 @@ export async function fetchVolumeSliceObjectUrl(
     axis?: "z" | "y" | "x";
     cmap?: string;
     normalize?: "minmax" | "zscore" | "none";
+    windowMin?: number;
+    windowMax?: number;
     scale?: number;
     format?: "png" | "webp" | "jpeg";
     thumb?: number;
@@ -2600,6 +2617,19 @@ export async function fetchVolumeSliceObjectUrl(
   if (opts?.axis) qp.push(`axis=${opts.axis}`);
   if (opts?.cmap) qp.push(`cmap=${enc(opts.cmap)}`); // ONLY cmap
   if (opts?.normalize) qp.push(`normalize=${opts.normalize}`);
+  if (
+    typeof opts?.windowMin === "number" &&
+    Number.isFinite(opts.windowMin)
+  ) {
+    qp.push(`windowMin=${enc(String(opts.windowMin))}`);
+  }
+
+  if (
+    typeof opts?.windowMax === "number" &&
+    Number.isFinite(opts.windowMax)
+  ) {
+    qp.push(`windowMax=${enc(String(opts.windowMax))}`);
+  }
   if (typeof opts?.scale === "number") qp.push(`scale=${opts.scale}`);
   if (opts?.format) qp.push(`format=${opts.format}`);
   if (typeof opts?.thumb === "number") qp.push(`thumb=${opts.thumb}`);

@@ -89,10 +89,13 @@ const SLICE_SLIDER_THROTTLE_MS = 80;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
-const SLICE_PREVIEW_QUALITY = 70;
+const SLICE_PREVIEW_QUALITY = 75;
 
-const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
-const SLICE_DRAG_PREVIEW_QUALITY = 55;
+const SLICE_DRAG_PREVIEW_MAX_SIDE = 512;
+const SLICE_DRAG_PREVIEW_QUALITY = 70;
+
+const SLICE_WINDOW_LOW_QUANTILE = 0.005;
+const SLICE_WINDOW_HIGH_QUANTILE = 0.995;
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -294,13 +297,51 @@ export default function VolumeViewer({
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
   const needsHistogram =
     active &&
+    selectedId != null &&
     (
       showHistogram ||
-      (viewMode === "map3d" && selectedId != null) ||
-      (viewMode === "slices" &&
-        sliceOverlayEnabled &&
-        selectedId != null)
+      viewMode === "map3d" ||
+      viewMode === "slices"
     );
+
+  const sliceIntensityWindow = useMemo<[number, number] | null>(() => {
+    const histogramMin = histogram
+      ? histogramWeightedQuantile(
+        histogram,
+        SLICE_WINDOW_LOW_QUANTILE,
+      )
+      : null;
+
+    const histogramMax = histogram
+      ? histogramWeightedQuantile(
+        histogram,
+        SLICE_WINDOW_HIGH_QUANTILE,
+      )
+      : null;
+
+    if (
+      histogramMin != null &&
+      histogramMax != null &&
+      Number.isFinite(histogramMin) &&
+      Number.isFinite(histogramMax) &&
+      histogramMax > histogramMin
+    ) {
+      return [histogramMin, histogramMax];
+    }
+
+    const metadataMin = firstFiniteNumber(meta?.min);
+    const metadataMax = firstFiniteNumber(meta?.max);
+
+    if (
+      metadataMin != null &&
+      metadataMax != null &&
+      metadataMax > metadataMin
+    ) {
+      return [metadataMin, metadataMax];
+    }
+
+    return null;
+  }, [histogram, meta]);
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -645,12 +686,18 @@ export default function VolumeViewer({
 
   const buildSliceFetchOptions = useCallback(
     (isDragging: boolean) => ({
-      thumb: isDragging ? SLICE_DRAG_PREVIEW_MAX_SIDE : SLICE_PREVIEW_MAX_SIDE,
+      thumb: isDragging
+        ? SLICE_DRAG_PREVIEW_MAX_SIDE
+        : SLICE_PREVIEW_MAX_SIDE,
       format: SLICE_PREVIEW_FORMAT,
       fast: true,
-      quality: isDragging ? SLICE_DRAG_PREVIEW_QUALITY : SLICE_PREVIEW_QUALITY,
+      quality: isDragging
+        ? SLICE_DRAG_PREVIEW_QUALITY
+        : SLICE_PREVIEW_QUALITY,
+      windowMin: sliceIntensityWindow?.[0],
+      windowMax: sliceIntensityWindow?.[1],
     }),
-    [],
+    [sliceIntensityWindow],
   );
 
   const singleSliceFetchOptions = useMemo(
@@ -3378,6 +3425,23 @@ function OrthoSlicePanel({
   );
 }
 
+async function decodeSliceObjectUrl(
+  url: string | null | undefined,
+): Promise<void> {
+  if (!url || typeof Image === "undefined") return;
+
+  const image = new Image();
+  image.src = url;
+
+  if (typeof image.decode !== "function") return;
+
+  try {
+    await image.decode();
+  } catch {
+    // The browser can still try to display the image normally.
+  }
+}
+
 function useVolumeSliceImage({
   enabled,
   svc,
@@ -3408,6 +3472,8 @@ function useVolumeSliceImage({
     format?: "png" | "webp" | "jpeg";
     fast?: boolean;
     quality?: number;
+    windowMin?: number;
+    windowMax?: number;
   };
 }): SliceImageState {
   const [url, setUrl] = useState<string | null>(null);
@@ -3416,7 +3482,13 @@ function useVolumeSliceImage({
 
   const controllerRef = useRef<AbortController | null>(null);
   const inFlightRef = useRef(false);
-  const pendingJobRef = useRef<{ requestKey: string; sliceIndex: number } | null>(null);
+  const pendingJobRef = useRef<{
+    requestKey: string;
+    jobKey: string;
+    sliceIndex: number;
+  } | null>(null);
+
+  const latestJobKeyRef = useRef<string | null>(null);
   const requestKeyRef = useRef<string | null>(null);
   const revokeRef = useRef<(() => void) | null>(null);
   const runNextRef = useRef<(() => void) | null>(null);
@@ -3455,32 +3527,49 @@ function useVolumeSliceImage({
             fast: requestOptions?.fast,
             quality: requestOptions?.quality,
             signal: controller.signal,
+            windowMin: requestOptions?.windowMin,
+            windowMax: requestOptions?.windowMax,
           },
         );
 
-        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) {
+        if (
+          controller.signal.aborted ||
+          requestKeyRef.current !== job.requestKey ||
+          latestJobKeyRef.current !== job.jobKey
+        ) {
           result?.revoke?.();
           return;
         }
 
-        if (revokeRef.current) {
-          try {
-            revokeRef.current();
-          } catch {
-            // Ignore revoke errors.
-          }
-        }
+        const previousRevoke = revokeRef.current;
 
         revokeRef.current = result?.revoke ?? null;
         setUrl(result?.url ?? null);
+
+        if (previousRevoke) {
+          window.requestAnimationFrame(() => {
+            try {
+              previousRevoke();
+            } catch {
+              // Ignore revoke errors.
+            }
+          });
+        }
       } catch (e: any) {
-        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) return;
+        if (
+          controller.signal.aborted ||
+          requestKeyRef.current !== job.requestKey ||
+          latestJobKeyRef.current !== job.jobKey
+        ) {
+          return;
+        }
         setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
       } finally {
-        if (controllerRef.current === controller) {
-          controllerRef.current = null;
+        if (controllerRef.current !== controller) {
+          return;
         }
 
+        controllerRef.current = null;
         inFlightRef.current = false;
 
         if (pendingJobRef.current) {
@@ -3499,6 +3588,7 @@ function useVolumeSliceImage({
       pendingJobRef.current = null;
       inFlightRef.current = false;
       requestKeyRef.current = null;
+      latestJobKeyRef.current = null;
       setLoading(false);
       setError(null);
       return;
@@ -3517,7 +3607,13 @@ function useVolumeSliceImage({
       requestOptions?.format ?? "",
       requestOptions?.fast ?? "",
       requestOptions?.quality ?? "",
+      requestOptions?.windowMin ?? "",
+      requestOptions?.windowMax ?? "",
     ].map(String).join("|");
+
+    const jobKey = `${requestKey}|${clampedIndex}`;
+    latestJobKeyRef.current = jobKey;
+
 
     if (requestKeyRef.current !== requestKey) {
       controllerRef.current?.abort();
@@ -3529,6 +3625,7 @@ function useVolumeSliceImage({
 
     pendingJobRef.current = {
       requestKey,
+      jobKey,
       sliceIndex: clampedIndex,
     };
 
@@ -3549,6 +3646,8 @@ function useVolumeSliceImage({
     requestOptions?.format,
     requestOptions?.fast,
     requestOptions?.quality,
+    requestOptions?.windowMin,
+    requestOptions?.windowMax,
   ]);
 
   useEffect(() => {

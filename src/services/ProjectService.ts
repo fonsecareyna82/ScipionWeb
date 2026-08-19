@@ -169,6 +169,8 @@ export type VolumeSliceOptions = {
   axis?: "x" | "y" | "z";
   cmap?: string;
   normalize?: "minmax" | "zscore" | "none";
+  windowMin?: number;
+  windowMax?: number;
   scale?: number;
   inline?: boolean;
   signal?: AbortSignal;
