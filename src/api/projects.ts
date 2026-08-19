@@ -3299,10 +3299,16 @@ export async function fetchMetadataImageCellObjectUrl(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
+    signal?: AbortSignal;
   } = {},
 ): Promise<{ url: string; revoke: () => void }> {
-  const { size = 256, applyTransform = false, inline = true, format = "png" } =
-    opts;
+  const {
+    size = 256,
+    applyTransform = false,
+    inline = true,
+    format = "png",
+    signal,
+  } = opts;
 
   const baseUrl = getMetadataImageCellUrl(
     Number(projectId),
@@ -3314,7 +3320,10 @@ export async function fetchMetadataImageCellObjectUrl(
     { size, applyTransform, inline, format },
   );
 
-  const res = await fetchWithAuth(baseUrl, { method: "GET" });
+  const res = await fetchWithAuth(baseUrl, {
+    method: "GET",
+    signal,
+  });
   if (!res.ok) {
     throw await toApiError(res, "Failed to fetch metadata image cell");
   }

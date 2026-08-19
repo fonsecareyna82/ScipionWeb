@@ -1895,6 +1895,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
 

@@ -2218,6 +2218,7 @@ function MetadataImageCell({
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
 
     setThumbUrl(null);
     setLoading(true);
@@ -2230,6 +2231,7 @@ function MetadataImageCell({
           size,
           applyTransform: false,
           inline: true,
+          signal: abortController.signal,
         };
 
         try {
@@ -2245,7 +2247,11 @@ function MetadataImageCell({
               format: METADATA_IMAGE_PRIMARY_FORMAT,
             },
           );
-        } catch {
+        } catch (error) {
+          if (abortController.signal.aborted) {
+            throw error;
+          }
+
           return svcRef.current.fetchMetadataImageCellObjectUrl(
             projectId,
             protocolId,
@@ -2282,6 +2288,7 @@ function MetadataImageCell({
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [
     columnName,

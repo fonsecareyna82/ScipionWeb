@@ -604,6 +604,140 @@ describe("MetadataViewer", () => {
         ).toBe(true);
     });
 
+    it("aborts an in-flight metadata image when its cell is removed", async () => {
+        let capturedSignal: AbortSignal | undefined;
+
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(
+                    tableName as "particles" | "classes",
+                );
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [
+                            {
+                                rowId: 1,
+                                values: [
+                                    1,
+                                    {
+                                        kind: "image",
+                                        path: "/img/1.png",
+                                    },
+                                ],
+                            },
+                        ],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(
+                    tableName as "particles" | "classes",
+                );
+            },
+        );
+
+        serviceMocks.fetchMetadataImageCellObjectUrl.mockImplementation(
+            (
+                _projectId,
+                _protocolId,
+                _outputName,
+                _tableName,
+                _rowIndex,
+                _columnName,
+                options,
+            ) => {
+                capturedSignal = options?.signal;
+
+                return new Promise((_resolve, reject) => {
+                    options?.signal?.addEventListener(
+                        "abort",
+                        () => {
+                            reject(
+                                new DOMException(
+                                    "Aborted",
+                                    "AbortError",
+                                ),
+                            );
+                        },
+                        { once: true },
+                    );
+                });
+            },
+        );
+
+        renderViewer();
+
+        await waitFor(() => {
+            expect(
+                serviceMocks.fetchMetadataImageCellObjectUrl,
+            ).toHaveBeenCalled();
+        });
+
+        expect(capturedSignal).toBeDefined();
+        expect(capturedSignal?.aborted).toBe(false);
+
+        fireEvent.mouseDown(
+            screen.getByLabelText("Metadata table"),
+        );
+
+        fireEvent.click(
+            await screen.findByRole(
+                "option",
+                { name: "Classes" },
+            ),
+        );
+
+        await waitFor(() => {
+            expect(capturedSignal?.aborted).toBe(true);
+        });
+    });
+
     it("enables gallery mode when the table has image columns and loads gallery rows", async () => {
         serviceMocks.fetchMetadataTableSchema.mockImplementation(
             async (
