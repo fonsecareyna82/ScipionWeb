@@ -4142,7 +4142,25 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions = viewMode === "hierarchical" ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)), loadedEdges) : loadedNodes;
+        const shouldUseCanonicalLayoutForPendingNewNodes =
+          viewMode === "hierarchical" &&
+          !!pendingNewNodesRef.current &&
+          (
+            pendingNewNodesRef.current.operation === "add" ||
+            pendingNewNodesRef.current.operation === "duplicate" ||
+            pendingNewNodesRef.current.reflowWholeGraph
+          );
+
+        const hierarchicalNodes = shouldUseCanonicalLayoutForPendingNewNodes
+          ? loadNodesWithPositions(loadedNodes, data.protocols, { ignoreSaved: true })
+          : preservePendingDeletedNodePositions(
+            preservePendingExistingNodePositions(
+              loadNodesWithPositions(loadedNodes, data.protocols)
+            ),
+            loadedEdges
+          );
+
+        const nodesWithPositions = viewMode === "hierarchical" ? hierarchicalNodes : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
         edgesRef.current = edgesMerged;
@@ -6255,14 +6273,13 @@ export default function ProjectPage() {
         const hasNewNodes = currentNodes.some((node) => !pending.beforeIds.has(String(node.id)));
 
         if (!hasNewNodes) {
+          pendingNewNodesRef.current = null;
           return currentNodes;
         }
 
-        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
-
         persistPositionsBulk(
           graphDirection,
-          resolvedNodes.map((node) => ({
+          currentNodes.map((node) => ({
             id: String(node.id),
             position: node.position,
           }))
@@ -6270,7 +6287,7 @@ export default function ProjectPage() {
 
         pendingNewNodesRef.current = null;
 
-        return resolvedNodes;
+        return currentNodes;
       });
 
       return;
@@ -6823,7 +6840,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
-      reflowWholeGraph: false,
+      reflowWholeGraph: true,
     };
 
     try {
