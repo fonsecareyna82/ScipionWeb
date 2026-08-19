@@ -417,6 +417,8 @@ export default function MeshVolumeView({
 
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.05;
             host.innerHTML = "";
             host.style.cursor = "grab";
             host.style.touchAction = "none";
@@ -486,8 +488,8 @@ export default function MeshVolumeView({
                     ? new THREE.Color(1, 1, 1)
                     : colorFromColormap(colormap),
                 vertexColors: usesVertexColors,
-                roughness: 0.78,
-                metalness: 0.02,
+                roughness: 0.58,
+                metalness: 0.0,
                 transparent: opacity < 1,
                 opacity,
                 wireframe: displayMode === "mesh",
@@ -513,16 +515,20 @@ export default function MeshVolumeView({
 
             controls.addEventListener("change", saveCameraState);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.22);
             scene.add(ambient);
 
-            const key = new THREE.DirectionalLight(0xffffff, 1.2);
+            const key = new THREE.DirectionalLight(0xffffff, 1.55);
             key.position.set(1.5, -2.0, 2.0);
             scene.add(key);
 
-            const fill = new THREE.DirectionalLight(0xffffff, 0.45);
-            fill.position.set(-2.0, 1.5, -1.0);
+            const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+            fill.position.set(-1.5, -0.5, 0.8);
             scene.add(fill);
+
+            const rim = new THREE.DirectionalLight(0xffffff, 0.55);
+            rim.position.set(-0.5, 1.5, -1.5);
+            scene.add(rim);
 
             const resize = () => {
                 const width = Math.max(1, host.clientWidth);
