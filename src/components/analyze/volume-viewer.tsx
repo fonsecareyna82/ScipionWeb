@@ -22,7 +22,7 @@ import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
-import MeshVolumeView from "./mesh-volume-view";
+import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
 import useVolumeRegions from "./use-volume-regions";
 import {
@@ -262,6 +262,7 @@ export default function VolumeViewer({
   const mapDataKeyRef = useRef("");
 
   const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
+  const meshCameraStateRef = useRef<MeshCameraState | null>(null);
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
   const [surfaceLevelRange, setSurfaceLevelRange] = useState<[number, number] | null>(null);
@@ -1523,6 +1524,12 @@ export default function VolumeViewer({
     [buildSliceOverlay, effectiveSliceIndexX],
   );
 
+  const meshCameraStateKey = useMemo(
+    () =>
+      `${projectIdNum}:${protocolIdNum}:${outputName}:${String(selectedId ?? "none")}`,
+    [projectIdNum, protocolIdNum, outputName, selectedId],
+  );
+
   return (
     <Box
       sx={{
@@ -1888,7 +1895,8 @@ export default function VolumeViewer({
                   colorMode={colorMode3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
-                  cameraStateKey={selectedId}
+                  cameraStateKey={meshCameraStateKey}
+                  cameraStateRef={meshCameraStateRef}
                   onError={handleMeshError}
                   active={active && viewMode === "map3d"}
                 />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -18,11 +18,12 @@ export type MeshVolumeViewProps = {
     displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
     cameraStateKey?: string | number | null;
+    cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
     active?: boolean;
 };
 
-type MeshCameraState = {
+export type MeshCameraState = {
     key: string;
     position: [number, number, number];
     target: [number, number, number];
@@ -350,6 +351,7 @@ export default function MeshVolumeView({
     autoRotate = false,
     autoRotateSpeed = 3.8,
     cameraStateKey = "default",
+    cameraStateRef: externalCameraStateRef,
     onError,
     active = true,
 }: MeshVolumeViewProps) {
@@ -360,7 +362,8 @@ export default function MeshVolumeView({
 
     const currentCameraStateKey = useMemo(() => String(cameraStateKey ?? "default"), [cameraStateKey]);
 
-    const cameraStateRef = useRef<MeshCameraState | null>(null);
+    const internalCameraStateRef = useRef<MeshCameraState | null>(null);
+    const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
