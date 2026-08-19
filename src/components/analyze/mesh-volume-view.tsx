@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 
 export type MeshColorMode = "solid" | "density" | "components";
@@ -30,6 +34,29 @@ type DragState = {
     pointerId: number;
     lastX: number;
     lastY: number;
+};
+
+const GTAO_BLEND_INTENSITY = 0.82;
+const GTAO_RESOLUTION_SCALE = 1.0;
+
+const GTAO_PARAMETERS = {
+    radius: 0.12,
+    distanceExponent: 1.25,
+    thickness: 1.0,
+    distanceFallOff: 0.8,
+    scale: 1.0,
+    samples: 16,
+    screenSpaceRadius: false,
+};
+
+const GTAO_DENOISE_PARAMETERS = {
+    lumaPhi: 10,
+    depthPhi: 2,
+    normalPhi: 3,
+    radius: 4,
+    radiusExponent: 1,
+    rings: 2,
+    samples: 16,
 };
 
 function colorFromColormap(colormap?: string): THREE.Color {
@@ -398,6 +425,9 @@ export default function MeshVolumeView({
         }
 
         let renderer: THREE.WebGLRenderer | null = null;
+        let composer: EffectComposer | null = null;
+        let gtaoPass: GTAOPass | null = null;
+        let outputPass: OutputPass | null = null;
         let frameId = 0;
         let dragState: DragState | null = null;
 
@@ -530,13 +560,36 @@ export default function MeshVolumeView({
             rim.position.set(-0.5, 1.5, -1.5);
             scene.add(rim);
 
+            composer = new EffectComposer(renderer);
+
+            const renderPass = new RenderPass(scene, camera);
+            renderPass.clearAlpha = 0;
+            composer.addPass(renderPass);
+
+            gtaoPass = new GTAOPass(scene, camera, 1, 1);
+            gtaoPass.blendIntensity = GTAO_BLEND_INTENSITY;
+            gtaoPass.updateGtaoMaterial(GTAO_PARAMETERS);
+            gtaoPass.updatePdMaterial(GTAO_DENOISE_PARAMETERS);
+            composer.addPass(gtaoPass);
+
+            outputPass = new OutputPass();
+            composer.addPass(outputPass);
+
             const resize = () => {
                 const width = Math.max(1, host.clientWidth);
                 const height = Math.max(1, host.clientHeight);
 
                 renderer?.setSize(width, height, false);
+
                 camera.aspect = width / height;
                 camera.updateProjectionMatrix();
+
+                composer?.setSize(width, height);
+
+                gtaoPass?.setSize(
+                    Math.max(1, Math.floor(width * GTAO_RESOLUTION_SCALE)),
+                    Math.max(1, Math.floor(height * GTAO_RESOLUTION_SCALE)),
+                );
             };
 
             const observer = new ResizeObserver(resize);
@@ -637,7 +690,7 @@ export default function MeshVolumeView({
                 }
 
                 controls.update();
-                renderer?.render(scene, camera);
+                composer?.render(dt);
             };
 
             animate();
@@ -661,6 +714,11 @@ export default function MeshVolumeView({
                 host.style.touchAction = "";
 
                 controls.dispose();
+
+                gtaoPass?.dispose();
+                outputPass?.dispose();
+                composer?.dispose();
+
                 disposeObject3d(scene);
                 renderer?.dispose();
 
@@ -671,8 +729,14 @@ export default function MeshVolumeView({
                 geometryRef.current = null;
             };
         } catch (error: any) {
+            gtaoPass?.dispose();
+            outputPass?.dispose();
+            composer?.dispose();
             renderer?.dispose();
-            onErrorRef.current?.(error?.message || "Failed to render surface mesh.");
+
+            onErrorRef.current?.(
+                error?.message || "Failed to render surface mesh.",
+            );
         }
 
     }, [mesh, currentCameraStateKey]);
