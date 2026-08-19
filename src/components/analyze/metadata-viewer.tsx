@@ -1468,6 +1468,7 @@ function useVirtualTableWindow(params: {
   const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
   const viewModeRef = useRef<ViewMode>(viewMode);
+  const hasWindowRowsRef = useRef(false);
 
   useEffect(() => {
     viewModeRef.current = viewMode;
@@ -1490,6 +1491,7 @@ function useVirtualTableWindow(params: {
     setWindowError(null);
 
     if (!options?.keepRows) {
+      hasWindowRowsRef.current = false;
       setWindowRows([]);
       setWindowOffset(0);
     }
@@ -1516,10 +1518,15 @@ function useVirtualTableWindow(params: {
       }
 
       const requestEpoch = windowEpochRef.current;
+      const showLoading = !hasWindowRowsRef.current;
 
       windowRequestInFlightRef.current = true;
       inFlightOffsetRef.current = clampedOffset; // trackInFlightOffset
-      setWindowLoading(true);
+
+      if (showLoading) {
+        setWindowLoading(true);
+      }
+
       setWindowError(null);
 
       try {
@@ -1542,6 +1549,8 @@ function useVirtualTableWindow(params: {
         }
 
         const parsed = parseWindowResponse(response);
+
+        hasWindowRowsRef.current = parsed.rows.length > 0;
         setWindowRows(parsed.rows);
         setWindowOffset(parsed.offset ?? clampedOffset);
       } catch (error) {
@@ -1549,6 +1558,7 @@ function useVirtualTableWindow(params: {
           return;
         }
 
+        hasWindowRowsRef.current = false;
         setWindowRows([]);
         setWindowError(getErrorMessage(error, "Failed to load rows"));
       } finally {
@@ -1556,7 +1566,10 @@ function useVirtualTableWindow(params: {
           return;
         }
 
-        setWindowLoading(false);
+        if (showLoading) {
+          setWindowLoading(false);
+        }
+
         windowRequestInFlightRef.current = false;
         inFlightOffsetRef.current = null; // clearInFlightOffset
 
