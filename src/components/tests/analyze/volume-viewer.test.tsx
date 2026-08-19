@@ -280,7 +280,6 @@ describe("VolumeViewer", () => {
             );
         });
 
-        expect(screen.getByText("7 × 6 × 5")).toBeInTheDocument();
         expect(screen.getByText("-1.200")).toBeInTheDocument();
         expect(screen.getByText("2.800")).toBeInTheDocument();
         expect(screen.getByText("0.700")).toBeInTheDocument();

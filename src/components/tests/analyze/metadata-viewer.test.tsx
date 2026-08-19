@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
     fetchOutputMetadataTables: vi.fn(),
@@ -198,6 +198,9 @@ function renderViewer() {
 }
 
 describe("MetadataViewer", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
     beforeEach(() => {
         vi.clearAllMocks();
 
@@ -501,6 +504,104 @@ describe("MetadataViewer", () => {
         expect(
             screen.getByText((_, node) => node?.textContent === "Selected: 2"),
         ).toBeInTheDocument();
+    });
+
+    it("uses the metadata scroll container as the image lazy-loading root", async () => {
+        const observerRoots: Array<Element | Document | null> = [];
+        const observedTargets: Element[] = [];
+
+        class IntersectionObserverMock {
+            constructor(
+                _callback: IntersectionObserverCallback,
+                options?: IntersectionObserverInit,
+            ) {
+                observerRoots.push(options?.root ?? null);
+            }
+
+            observe(target: Element) {
+                observedTargets.push(target);
+            }
+
+            disconnect() { }
+
+            unobserve() { }
+
+            takeRecords() {
+                return [];
+            }
+        }
+
+        vi.stubGlobal(
+            "IntersectionObserver",
+            IntersectionObserverMock,
+        );
+
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValueOnce([
+            {
+                name: "particles",
+                alias: "Particles",
+                rowCount: 1,
+            },
+        ]);
+
+        serviceMocks.fetchMetadataTableSchema.mockResolvedValueOnce({
+            name: "particles",
+            alias: "Particles",
+            hasColumnId: true,
+            columns: [
+                {
+                    name: "id",
+                    alias: "Id",
+                    index: 0,
+                    sortable: true,
+                    visible: true,
+                    rendererType: "int",
+                    decimals: 0,
+                    hasTransformation: false,
+                },
+                {
+                    name: "preview",
+                    alias: "Preview",
+                    index: 1,
+                    sortable: false,
+                    visible: true,
+                    rendererType: "image",
+                    decimals: 0,
+                    hasTransformation: false,
+                },
+            ],
+            actions: [],
+        });
+
+        serviceMocks.fetchMetadataTableWindow.mockResolvedValueOnce({
+            rows: [
+                {
+                    rowId: 1,
+                    values: [
+                        1,
+                        {
+                            kind: "image",
+                            path: "/images/1.mrc",
+                        },
+                    ],
+                },
+            ],
+            offset: 0,
+        });
+
+        renderViewer();
+
+        await waitFor(() => {
+            expect(observerRoots.length).toBeGreaterThan(0);
+            expect(observedTargets.length).toBeGreaterThan(0);
+        });
+
+        const observerRoot = observerRoots[0];
+
+        expect(observerRoot).not.toBeNull();
+        expect(
+            (observerRoot as Element).contains(observedTargets[0]),
+        ).toBe(true);
     });
 
     it("enables gallery mode when the table has image columns and loads gallery rows", async () => {

@@ -209,6 +209,7 @@ type MetadataImageCellProps = {
   size: number;
   isSelected?: boolean;
   onClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  scrollRootRef: MutableRefObject<HTMLDivElement | null>;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
 };
 
@@ -2129,6 +2130,7 @@ function MetadataImageCell({
   size,
   isSelected = false,
   onClick,
+  scrollRootRef,
   imageCacheRef,
 }: MetadataImageCellProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -2184,7 +2186,7 @@ function MetadataImageCell({
         observer.disconnect();
       },
       {
-        root: null,
+        root: scrollRootRef.current,
         rootMargin: IMAGE_LAZY_ROOT_MARGIN,
         threshold: 0.01,
       },
@@ -2195,7 +2197,7 @@ function MetadataImageCell({
     return () => {
       observer.disconnect();
     };
-  }, [imageCacheKey]);
+  }, [imageCacheKey, scrollRootRef]);
 
   useEffect(() => {
     const cache = imageCacheRef.current;
@@ -2662,6 +2664,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                                   columnName: column.name,
                                 });
                               }}
+                              scrollRootRef={scrollRef}
                               imageCacheRef={imageCacheRef}
                             />
                           </Box>
@@ -2931,6 +2934,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                       cell={imageCell}
                       size={imageThumbSize}
                       isSelected={isFocusedImageCell || isSelected}
+                      scrollRootRef={galleryScrollRef}
                       imageCacheRef={imageCacheRef}
                     />
                   ) : (
