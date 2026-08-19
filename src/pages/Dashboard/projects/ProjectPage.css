@@ -585,7 +585,7 @@
    responsiveHeader
    ───────────────────────────────────────────── */
 
-@container projectpage (max-width: 1180px) {
+@container projectpage (max-width: 1550px) {
   .projectpage-widget-root .pp-headerRow {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
