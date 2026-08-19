@@ -2400,6 +2400,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
+        position: "relative",
         display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
@@ -2765,12 +2766,20 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
       {windowLoading && hasData && (
         <Box
           sx={{
+            position: "absolute",
+            right: 8,
+            bottom: 8,
+            zIndex: 4,
             py: 0.5,
-            px: 1.5,
-            borderTop: "1px solid rgba(148,163,184,0.4)",
+            px: 1,
             display: "flex",
             alignItems: "center",
-            gap: 1,
+            gap: 0.75,
+            border: "1px solid rgba(148,163,184,0.4)",
+            borderRadius: 1,
+            backgroundColor: "background.paper",
+            boxShadow: "0 1px 3px rgba(15,23,42,0.12)",
+            pointerEvents: "none",
           }}
         >
           <CircularProgress size={14} />
