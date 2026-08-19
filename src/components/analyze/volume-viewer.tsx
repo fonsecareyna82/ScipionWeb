@@ -3541,6 +3541,17 @@ function useVolumeSliceImage({
           return;
         }
 
+        await decodeSliceObjectUrl(result?.url);
+
+        if (
+          controller.signal.aborted ||
+          requestKeyRef.current !== job.requestKey ||
+          latestJobKeyRef.current !== job.jobKey
+        ) {
+          result?.revoke?.();
+          return;
+        }
+
         const previousRevoke = revokeRef.current;
 
         revokeRef.current = result?.revoke ?? null;
