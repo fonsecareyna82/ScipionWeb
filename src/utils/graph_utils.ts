@@ -563,7 +563,9 @@ function buildSubtreeAlignedPlacements(params: {
   const levelsDescending = Object.keys(levelIds).map(Number).filter(Number.isFinite).sort((a, b) => b - a);
 
   for (const level of levelsDescending) {
-    const idsInLevel = (levelIds[level] ?? []).filter((id) => id !== "PROJECT" && Boolean(placements[id]));
+    const idsInLevel = (levelIds[level] ?? []).filter(
+      (id) => id !== "PROJECT" && Boolean(placements[id])
+    );
 
     const alignmentIds =
       direction === "TB"
@@ -584,7 +586,11 @@ function buildSubtreeAlignedPlacements(params: {
       };
     });
 
-    const needsAlignment = items.some((item) => item.alignsToChildren && Math.abs(item.desiredAxis - item.currentAxis) > 0.5);
+    const needsAlignment = items.some(
+      (item) =>
+        item.alignsToChildren &&
+        Math.abs(item.desiredAxis - item.currentAxis) > 0.5
+    );
 
     if (!needsAlignment) {
       continue;
@@ -602,49 +608,314 @@ function buildSubtreeAlignedPlacements(params: {
     let previousRight = Number.NEGATIVE_INFINITY;
 
     for (const item of items) {
-      const minCenter = previousRight + parentAlignmentGap + item.size / 2;
-      const resolvedAxis = Math.max(item.desiredAxis, minCenter);
+      const minCenter =
+        previousRight +
+        parentAlignmentGap +
+        item.size / 2;
 
-      resolvedAxes.set(item.id, resolvedAxis);
-      previousRight = resolvedAxis + item.size / 2;
+      const resolvedAxis = Math.max(
+        item.desiredAxis,
+        minCenter
+      );
+
+      resolvedAxes.set(
+        item.id,
+        resolvedAxis
+      );
+
+      previousRight =
+        resolvedAxis +
+        item.size / 2;
     }
 
-    const desiredLeft = Math.min(...items.map((item) => item.desiredAxis - item.size / 2));
-    const desiredRight = Math.max(...items.map((item) => item.desiredAxis + item.size / 2));
-    const resolvedLeft = Math.min(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) - item.size / 2));
-    const resolvedRight = Math.max(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) + item.size / 2));
-    const desiredGroupCenter = (desiredLeft + desiredRight) / 2;
-    const resolvedGroupCenter = (resolvedLeft + resolvedRight) / 2;
-    const recenterOffset = desiredGroupCenter - resolvedGroupCenter;
+    const desiredLeft = Math.min(
+      ...items.map(
+        (item) =>
+          item.desiredAxis -
+          item.size / 2
+      )
+    );
+
+    const desiredRight = Math.max(
+      ...items.map(
+        (item) =>
+          item.desiredAxis +
+          item.size / 2
+      )
+    );
+
+    const resolvedLeft = Math.min(
+      ...items.map(
+        (item) =>
+          (resolvedAxes.get(item.id) ?? item.desiredAxis) -
+          item.size / 2
+      )
+    );
+
+    const resolvedRight = Math.max(
+      ...items.map(
+        (item) =>
+          (resolvedAxes.get(item.id) ?? item.desiredAxis) +
+          item.size / 2
+      )
+    );
+
+    const desiredGroupCenter =
+      (desiredLeft + desiredRight) / 2;
+
+    const resolvedGroupCenter =
+      (resolvedLeft + resolvedRight) / 2;
+
+    const recenterOffset =
+      desiredGroupCenter -
+      resolvedGroupCenter;
 
     for (const item of items) {
-      const resolvedAxis = resolvedAxes.get(item.id) ?? item.desiredAxis;
-      setPlacementAxis(item.id, resolvedAxis + recenterOffset);
+      const resolvedAxis =
+        resolvedAxes.get(item.id) ??
+        item.desiredAxis;
+
+      setPlacementAxis(
+        item.id,
+        resolvedAxis + recenterOffset
+      );
+    }
+  }
+
+  if (direction === "TB") {
+    const topLevelBranches =
+      (layoutChildren.PROJECT ?? [])
+        .filter(
+          (id) =>
+            Boolean(placements[id])
+        );
+
+    if (topLevelBranches.length > 1) {
+      const collectBranchIds = (
+        rootId: string
+      ): string[] => {
+        const collected: string[] = [];
+        const pending = [rootId];
+        const seen = new Set<string>();
+
+        while (pending.length > 0) {
+          const currentId =
+            pending.pop();
+
+          if (
+            !currentId ||
+            seen.has(currentId)
+          ) {
+            continue;
+          }
+
+          seen.add(currentId);
+
+          if (placements[currentId]) {
+            collected.push(currentId);
+          }
+
+          for (
+            const childId
+            of layoutChildren[currentId] ?? []
+          ) {
+            pending.push(childId);
+          }
+        }
+
+        return collected;
+      };
+
+      const orderedBranches =
+        [...topLevelBranches]
+          .sort(
+            (a, b) =>
+              getPlacementAxis(a) -
+              getPlacementAxis(b)
+          );
+
+      const occupiedRightByLevel =
+        new Map<number, number>();
+
+      for (
+        const branchRootId
+        of orderedBranches
+      ) {
+        const branchIds =
+          collectBranchIds(
+            branchRootId
+          );
+
+        const branchExtentsByLevel =
+          new Map<
+            number,
+            {
+              left: number;
+              right: number;
+            }
+          >();
+
+        for (const id of branchIds) {
+          const level =
+            levelMap[id] ?? 0;
+
+          const axis =
+            getPlacementAxis(id);
+
+          const size =
+            getResolvedCrossSize(id);
+
+          const left =
+            axis - size / 2;
+
+          const right =
+            axis + size / 2;
+
+          const current =
+            branchExtentsByLevel.get(
+              level
+            );
+
+          branchExtentsByLevel.set(
+            level,
+            {
+              left: current
+                ? Math.min(
+                  current.left,
+                  left
+                )
+                : left,
+
+              right: current
+                ? Math.max(
+                  current.right,
+                  right
+                )
+                : right,
+            }
+          );
+        }
+
+        let offset =
+          Number.NEGATIVE_INFINITY;
+
+        for (
+          const [level, extent]
+          of branchExtentsByLevel
+        ) {
+          const occupiedRight =
+            occupiedRightByLevel.get(
+              level
+            );
+
+          if (
+            occupiedRight ===
+            undefined
+          ) {
+            continue;
+          }
+
+          offset = Math.max(
+            offset,
+            occupiedRight +
+            rootBranchGap -
+            extent.left
+          );
+        }
+
+        if (
+          !Number.isFinite(offset)
+        ) {
+          offset = 0;
+        }
+
+        if (
+          Math.abs(offset) > 0.5
+        ) {
+          for (
+            const id
+            of branchIds
+          ) {
+            setPlacementAxis(
+              id,
+              getPlacementAxis(id) +
+              offset
+            );
+          }
+        }
+
+        for (
+          const [level, extent]
+          of branchExtentsByLevel
+        ) {
+          const shiftedRight =
+            extent.right +
+            offset;
+
+          const occupiedRight =
+            occupiedRightByLevel.get(
+              level
+            );
+
+          occupiedRightByLevel.set(
+            level,
+            occupiedRight === undefined
+              ? shiftedRight
+              : Math.max(
+                occupiedRight,
+                shiftedRight
+              )
+          );
+        }
+      }
     }
   }
 
   if (placements.PROJECT) {
-    let minGraphAxis = Number.POSITIVE_INFINITY;
-    let maxGraphAxis = Number.NEGATIVE_INFINITY;
+    let minGraphAxis =
+      Number.POSITIVE_INFINITY;
+
+    let maxGraphAxis =
+      Number.NEGATIVE_INFINITY;
 
     for (const id of nodeIds) {
-      if (id === "PROJECT" || !placements[id]) {
+      if (
+        id === "PROJECT" ||
+        !placements[id]
+      ) {
         continue;
       }
 
-      const nodeAxis = getPlacementAxis(id);
-      const nodeSize = getResolvedCrossSize(id);
+      const nodeAxis =
+        getPlacementAxis(id);
 
-      minGraphAxis = Math.min(minGraphAxis, nodeAxis - nodeSize / 2);
-      maxGraphAxis = Math.max(maxGraphAxis, nodeAxis + nodeSize / 2);
+      const nodeSize =
+        getResolvedCrossSize(id);
+
+      minGraphAxis = Math.min(
+        minGraphAxis,
+        nodeAxis - nodeSize / 2
+      );
+
+      maxGraphAxis = Math.max(
+        maxGraphAxis,
+        nodeAxis + nodeSize / 2
+      );
     }
 
-    if (Number.isFinite(minGraphAxis) && Number.isFinite(maxGraphAxis)) {
-      setPlacementAxis("PROJECT", (minGraphAxis + maxGraphAxis) / 2);
+    if (
+      Number.isFinite(minGraphAxis) &&
+      Number.isFinite(maxGraphAxis)
+    ) {
+      setPlacementAxis(
+        "PROJECT",
+        (minGraphAxis + maxGraphAxis) / 2
+      );
     }
   }
 
   return placements;
+
 }
 
 /**
@@ -653,7 +924,7 @@ function buildSubtreeAlignedPlacements(params: {
  * Improvements:
  * - Hierarchical mode uses a subtree-aligned layout so children stay grouped around
  *   their primary visual parent while preserving all real workflow edges.
- * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
+ * - TB root branches are compacted by per-level contours so independent subgraphs stay close without overlapping.
  * - Primary subtrees preserve their compact span-based placement.
  * - TB keeps primary parent-child chains on a stable vertical trunk.
  * - Secondary-only TB parents may align toward their nearest real children.
