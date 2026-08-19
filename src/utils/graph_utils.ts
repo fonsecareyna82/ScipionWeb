@@ -455,6 +455,17 @@ function buildSubtreeAlignedPlacements(params: {
       placeNode(childId, cursor);
       cursor += childSpan + childrenGap;
     }
+
+    if (direction === "TB" && id !== "PROJECT") {
+      const primaryChildPlacement = placements[children[0]];
+
+      if (primaryChildPlacement) {
+        placements[id] = {
+          ...placements[id],
+          x: primaryChildPlacement.x,
+        };
+      }
+    }
   };
 
   const rootTotal =
@@ -554,7 +565,12 @@ function buildSubtreeAlignedPlacements(params: {
   for (const level of levelsDescending) {
     const idsInLevel = (levelIds[level] ?? []).filter((id) => id !== "PROJECT" && Boolean(placements[id]));
 
-    const items = idsInLevel.map((id) => {
+    const alignmentIds =
+      direction === "TB"
+        ? idsInLevel.filter((id) => (layoutChildren[id] ?? []).length === 0)
+        : idsInLevel;
+
+    const items = alignmentIds.map((id) => {
       const realChildren = getNearestRealChildren(id);
       const childrenAxis = getChildrenCenterAxis(realChildren);
       const currentAxis = getPlacementAxis(id);
@@ -639,7 +655,9 @@ function buildSubtreeAlignedPlacements(params: {
  *   their primary visual parent while preserving all real workflow edges.
  * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
  * - Primary subtrees preserve their compact span-based placement.
- * - Parent nodes are centered over the nearest visible layer of their real children.
+ * - TB keeps primary parent-child chains on a stable vertical trunk.
+ * - Secondary-only TB parents may align toward their nearest real children.
+ * - LR keeps parents centered over the nearest visible layer of their real children.
  * - Parent-level collisions are resolved without moving descendant subtrees.
  * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  * - Layout uses deterministic size estimates and optional measured node dimensions.

@@ -3502,16 +3502,19 @@ export default function ProjectPage() {
 
   const loadNodesWithPositions = (
     loadedNodes: Node[],
-    protocols: Record<string, any>
+    protocols: Record<string, any>,
+    options?: { ignoreSaved?: boolean }
   ): Node[] => {
     const topologySignature = getGraphTopologySignature(protocols);
     graphTopologySignatureRef.current = topologySignature;
 
-    const saved = readPersistedPositions(
-      storageKeyHier,
-      graphDirection,
-      topologySignature
-    );
+    const saved = options?.ignoreSaved
+      ? []
+      : readPersistedPositions(
+        storageKeyHier,
+        graphDirection,
+        topologySignature
+      );
 
     const savedById = new Map<string, { x: number; y: number }>();
 
@@ -4369,7 +4372,7 @@ export default function ProjectPage() {
           }
 
           applyProtocolRuntimeSummaries(summaries);
-          
+
           if (protocolOutputThumbnailsEnabled) {
             const runtimeOutputsByProtocolId =
               new Map<string, unknown[]>();
@@ -4528,7 +4531,7 @@ export default function ProjectPage() {
         );
       }
     };
-    }, [
+  }, [
     workflowAutoRefreshSec,
     liveProtocolIdsKey,
     projectId,
@@ -4696,53 +4699,16 @@ export default function ProjectPage() {
           return;
         }
 
-        const persistedNodes =
+        const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes, data.protocols)
+            ? loadNodesWithPositions(
+              loadedNodes,
+              data.protocols,
+              { ignoreSaved: true }
+            )
             : loadedNodes;
 
-        const manualOrigins =
-          viewMode === "hierarchical"
-            ? readManualNodeOrigins()
-            : new Map<string, { x: number; y: number }>();
-
-        const nodesWithPositions =
-          manualOrigins.size > 0
-            ? centerProjectOverGraphBranches(
-              persistedNodes.map((node) => {
-                if (String(node.id) === "PROJECT") {
-                  return node;
-                }
-
-                const originalPosition = manualOrigins.get(String(node.id));
-
-                return originalPosition
-                  ? { ...node, position: originalPosition }
-                  : node;
-              }),
-              graphDirection
-            )
-            : persistedNodes;
-
-        if (viewMode === "hierarchical" && manualOrigins.size > 0) {
-          const topologySignature = graphTopologySignatureRef.current;
-
-          if (topologySignature) {
-            try {
-              writePersistedPositions(
-                storageKeyHier,
-                graphDirection,
-                topologySignature,
-                nodesWithPositions.map((node) => ({
-                  id: String(node.id),
-                  position: node.position,
-                }))
-              );
-            } catch {
-              // noOp
-            }
-          }
-
+        if (viewMode === "hierarchical") {
           clearManualNodeOrigins();
         }
 
