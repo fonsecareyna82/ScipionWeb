@@ -137,6 +137,8 @@
   display: flex;
   flex-direction: column;
   min-height: 400px;
+  container-name: projectpage;
+  container-type: inline-size;
 
   /* projectPageBrandTokens */
   --ppBrand: #3b82f6;
@@ -244,7 +246,7 @@
   pointer-events: auto;
 }
 
-.projectpage-widget-root .dock-panel > * {
+.projectpage-widget-root .dock-panel>* {
   width: 100%;
   height: 100%;
 }
@@ -288,6 +290,7 @@
 .projectpage-widget-root .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .projectpage-widget-root .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -297,9 +300,11 @@
   width: 6px;
   height: 6px;
 }
+
 .projectpage-widget-root .custom-scrollbar::-webkit-scrollbar-track {
   border-radius: 9999px;
 }
+
 .projectpage-widget-root .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #e4e7ec;
   border-radius: 9999px;
@@ -339,11 +344,13 @@
     opacity: 0.92;
     filter: drop-shadow(0 0 0 rgba(252, 206, 98, 0.0));
   }
+
   50% {
     transform: scale(1.08);
     opacity: 1;
     filter: drop-shadow(0 0 10px rgba(252, 206, 98, 0.35));
   }
+
   100% {
     transform: scale(1);
     opacity: 0.92;
@@ -434,6 +441,7 @@
 .projectpage-widget-root .pp-searchInput::placeholder {
   color: rgba(75, 85, 99, 0.78);
 }
+
 .projectpage-widget-root.dark .pp-searchInput::placeholder {
   color: rgba(156, 163, 175, 0.80);
 }
@@ -574,6 +582,126 @@
 }
 
 /* ─────────────────────────────────────────────
+   responsiveHeader
+   ───────────────────────────────────────────── */
+
+@container projectpage (max-width: 1180px) {
+  .projectpage-widget-root .pp-headerRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "left left"
+      "center right";
+    column-gap: 8px;
+    row-gap: 8px;
+  }
+
+  .projectpage-widget-root .pp-headerLeft {
+    grid-area: left;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .projectpage-widget-root .pp-headerCenter {
+    grid-area: center;
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .projectpage-widget-root .pp-headerRight {
+    grid-area: right;
+    justify-self: end;
+    min-width: 0;
+  }
+
+  .projectpage-widget-root .pp-searchBox {
+    flex: 1 1 280px;
+    width: auto;
+    min-width: 240px;
+    max-width: 420px;
+    margin-left: 0;
+  }
+
+  .projectpage-widget-root .pp-tagsCard {
+    flex: 1 1 320px;
+    min-width: 280px;
+    max-width: 480px;
+  }
+
+  .projectpage-widget-root .pp-tagsActions {
+    flex: 0 0 auto;
+  }
+
+  .projectpage-widget-root .pp-tagsPicker {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .projectpage-widget-root .pp-tagsPicker .tag-picker-root {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .projectpage-widget-root .pp-headerCard {
+    margin-bottom: 0;
+  }
+}
+
+@container projectpage (max-width: 600px) {
+  .projectpage-widget-root .pp-headerRow {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "left"
+      "center"
+      "right";
+    row-gap: 6px;
+  }
+
+  .projectpage-widget-root .pp-headerLeft {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .projectpage-widget-root .pp-searchBox {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .projectpage-widget-root .pp-tagsCard {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .projectpage-widget-root .pp-headerCenter,
+  .projectpage-widget-root .pp-headerRight {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .projectpage-widget-root .pp-actionsCard,
+  .projectpage-widget-root .pp-viewCard {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .projectpage-widget-root .pp-actionsCard {
+    justify-content: center;
+  }
+
+  .projectpage-widget-root .pp-viewCard {
+    justify-content: space-between;
+  }
+}
+
+/* ─────────────────────────────────────────────
    reactFlowControls
    ───────────────────────────────────────────── */
 
@@ -689,8 +817,13 @@
 }
 
 @keyframes ppSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* tableCard */
@@ -728,6 +861,7 @@
   z-index: 2;
   background: #e5e7eb;
 }
+
 .projectpage-widget-root.dark .pp-thead {
   background: #111827;
 }
@@ -755,39 +889,42 @@
   background: transparent !important;
 }
 
-.projectpage-widget-root .pp-tr + .pp-tr .pp-td {
+.projectpage-widget-root .pp-tr+.pp-tr .pp-td {
   border-top: 1px solid var(--color-border, #e5e7eb);
 }
-.projectpage-widget-root.dark .pp-tr + .pp-tr .pp-td {
+
+.projectpage-widget-root.dark .pp-tr+.pp-tr .pp-td {
   border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .projectpage-widget-root .pp-tr:hover,
-.projectpage-widget-root .pp-tr:hover > .pp-td,
-.projectpage-widget-root .pp-tr:hover > * {
+.projectpage-widget-root .pp-tr:hover>.pp-td,
+.projectpage-widget-root .pp-tr:hover>* {
   background: rgba(59, 130, 246, 0.05) !important;
 }
+
 .projectpage-widget-root.dark .pp-tr:hover,
-.projectpage-widget-root.dark .pp-tr:hover > .pp-td,
-.projectpage-widget-root.dark .pp-tr:hover > * {
+.projectpage-widget-root.dark .pp-tr:hover>.pp-td,
+.projectpage-widget-root.dark .pp-tr:hover>* {
   background: rgba(59, 130, 246, 0.10) !important;
 }
 
 /* highlightedRow */
 .projectpage-widget-root .pp-trHighlighted,
-.projectpage-widget-root .pp-trHighlighted > .pp-td,
-.projectpage-widget-root .pp-trHighlighted > *,
+.projectpage-widget-root .pp-trHighlighted>.pp-td,
+.projectpage-widget-root .pp-trHighlighted>*,
 .projectpage-widget-root .pp-trHighlighted:hover,
-.projectpage-widget-root .pp-trHighlighted:hover > .pp-td,
-.projectpage-widget-root .pp-trHighlighted:hover > * {
+.projectpage-widget-root .pp-trHighlighted:hover>.pp-td,
+.projectpage-widget-root .pp-trHighlighted:hover>* {
   background: rgba(252, 206, 98, 0.25) !important;
 }
+
 .projectpage-widget-root.dark .pp-trHighlighted,
-.projectpage-widget-root.dark .pp-trHighlighted > .pp-td,
-.projectpage-widget-root.dark .pp-trHighlighted > *,
+.projectpage-widget-root.dark .pp-trHighlighted>.pp-td,
+.projectpage-widget-root.dark .pp-trHighlighted>*,
 .projectpage-widget-root.dark .pp-trHighlighted:hover,
-.projectpage-widget-root.dark .pp-trHighlighted:hover > .pp-td,
-.projectpage-widget-root.dark .pp-trHighlighted:hover > * {
+.projectpage-widget-root.dark .pp-trHighlighted:hover>.pp-td,
+.projectpage-widget-root.dark .pp-trHighlighted:hover>* {
   background: rgba(252, 206, 98, 0.18) !important;
 }
 
@@ -818,6 +955,7 @@
   color: var(--ppInk);
   font-size: 0.75rem;
 }
+
 .projectpage-widget-root.dark .pp-idPill {
   color: var(--ppInk);
   background: rgba(148, 163, 184, 0.16);
@@ -843,6 +981,7 @@
   color: #1f2937;
   white-space: nowrap;
 }
+
 .projectpage-widget-root.dark .pp-statusBadge {
   color: #111827;
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -861,12 +1000,10 @@
   position: absolute;
   inset: -6px;
   border-radius: calc(0.55rem + 6px);
-  background: radial-gradient(
-    closest-side,
-    rgba(252, 206, 98, 0.38),
-    rgba(252, 206, 98, 0.18) 55%,
-    rgba(252, 206, 98, 0.00) 78%
-  );
+  background: radial-gradient(closest-side,
+      rgba(252, 206, 98, 0.38),
+      rgba(252, 206, 98, 0.18) 55%,
+      rgba(252, 206, 98, 0.00) 78%);
   opacity: 0.85;
   z-index: -2;
   filter: blur(0.2px);
@@ -878,12 +1015,10 @@
   position: absolute;
   inset: 0;
   border-radius: 0.55rem;
-  background: linear-gradient(
-    120deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.35) 28%,
-    rgba(255, 255, 255, 0.00) 56%
-  );
+  background: linear-gradient(120deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.35) 28%,
+      rgba(255, 255, 255, 0.00) 56%);
   opacity: 0.55;
   z-index: -1;
   transform: translateX(-70%);
@@ -892,19 +1027,45 @@
 }
 
 @keyframes ppRunningHalo {
-  0% { transform: scale(0.98); opacity: 0.55; }
-  45% { transform: scale(1.05); opacity: 0.95; }
-  100% { transform: scale(0.98); opacity: 0.55; }
+  0% {
+    transform: scale(0.98);
+    opacity: 0.55;
+  }
+
+  45% {
+    transform: scale(1.05);
+    opacity: 0.95;
+  }
+
+  100% {
+    transform: scale(0.98);
+    opacity: 0.55;
+  }
 }
 
 @keyframes ppRunningSheen {
-  0% { transform: translateX(-70%); opacity: 0.00; }
-  35% { opacity: 0.55; }
-  70% { transform: translateX(70%); opacity: 0.00; }
-  100% { transform: translateX(70%); opacity: 0.00; }
+  0% {
+    transform: translateX(-70%);
+    opacity: 0.00;
+  }
+
+  35% {
+    opacity: 0.55;
+  }
+
+  70% {
+    transform: translateX(70%);
+    opacity: 0.00;
+  }
+
+  100% {
+    transform: translateX(70%);
+    opacity: 0.00;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .projectpage-widget-root .pp-statusPulse::before,
   .projectpage-widget-root .pp-statusPulse::after {
     animation: none !important;
@@ -1305,11 +1466,11 @@
   box-sizing: border-box;
 }
 
-.projectpage-widget-root .pp-helpDialog > button[aria-label="Close"] {
+.projectpage-widget-root .pp-helpDialog>button[aria-label="Close"] {
   color: #fff !important;
 }
 
-.projectpage-widget-root .pp-helpDialog > button[aria-label="Close"]:hover {
+.projectpage-widget-root .pp-helpDialog>button[aria-label="Close"]:hover {
   background-color: rgba(255, 255, 255, 0.10) !important;
 }
 
@@ -1375,26 +1536,31 @@
 
 /* tagPickerDropdownUltraCompact */
 .projectpage-widget-root {
-  --ppTagDropdownMaxHeight: 100px; /* reduce this: 120px looks even tighter */
+  --ppTagDropdownMaxHeight: 100px;
+  /* reduce this: 120px looks even tighter */
   --ppTagOptionMinHeight: 24px;
   --ppTagOptionFontSize: 0.78rem;
 }
 
 /* A) make the "Filter tags" dropdown shorter */
 .projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-popper .MuiPaper-root {
-  max-height: calc(var(--ppTagDropdownMaxHeight) + 36px) !important; /* paper cap */
-  overflow: hidden !important; /* listbox handles scrolling */
+  max-height: calc(var(--ppTagDropdownMaxHeight) + 36px) !important;
+  /* paper cap */
+  overflow: hidden !important;
+  /* listbox handles scrolling */
 }
 
 .projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-listbox {
   max-height: var(--ppTagDropdownMaxHeight) !important;
-  padding: 2px !important; /* less vertical padding */
+  padding: 2px !important;
+  /* less vertical padding */
   overflow-y: auto !important;
 }
 
 .projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-option {
   min-height: var(--ppTagOptionMinHeight) !important;
-  padding: 4px 10px !important; /* tighter rows */
+  padding: 4px 10px !important;
+  /* tighter rows */
   font-size: var(--ppTagOptionFontSize) !important;
   line-height: 1.1 !important;
 }
@@ -1408,8 +1574,10 @@
 
 /* B) keep the header panel from growing taller when multiple tags are selected */
 .projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-inputRoot {
-  flex-wrap: nowrap !important;  /* do not wrap chips into new rows */
-  overflow: hidden !important;   /* hide extra chips instead of growing height */
+  flex-wrap: nowrap !important;
+  /* do not wrap chips into new rows */
+  overflow: hidden !important;
+  /* hide extra chips instead of growing height */
   align-items: center !important;
 }
 
@@ -1417,7 +1585,8 @@
 .projectpage-widget-root .pp-tagsPicker .MuiChip-root {
   height: 20px !important;
   font-size: 0.76rem !important;
-  max-width: 140px;              /* prevent huge chips from expanding */
+  max-width: 140px;
+  /* prevent huge chips from expanding */
 }
 
 .projectpage-widget-root .pp-tagsPicker .MuiChip-label {
