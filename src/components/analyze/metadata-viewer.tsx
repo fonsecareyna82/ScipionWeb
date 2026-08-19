@@ -327,6 +327,7 @@ const BASE_THUMB_SIZE = 200;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_PADDING = 16;
 const EXTRA_BUFFER_ROWS = 10;
+const MIN_TABLE_WINDOW_ROWS = 60;
 
 const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
 
@@ -3417,9 +3418,18 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   }, [viewMode, hasImageColumns]);
 
   const desiredWindowSize = useMemo(() => {
-    if (!rowHeight || viewportHeight <= 0) return 60;
+    if (!rowHeight || viewportHeight <= 0) {
+      return MIN_TABLE_WINDOW_ROWS;
+    }
+
     const approxVisible = Math.ceil(viewportHeight / rowHeight);
-    return approxVisible * 2 + EXTRA_BUFFER_ROWS;
+    const calculatedWindowSize =
+      approxVisible * 2 + EXTRA_BUFFER_ROWS;
+
+    return Math.max(
+      MIN_TABLE_WINDOW_ROWS,
+      calculatedWindowSize,
+    );
   }, [viewportHeight, rowHeight]);
 
   const {
