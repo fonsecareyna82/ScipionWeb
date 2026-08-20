@@ -365,7 +365,7 @@ export default function MeshVolumeView({
     const internalCameraStateRef = useRef<MeshCameraState | null>(null);
     const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
-    const materialRef = useRef<THREE.MeshPhongMaterial | null>(null);
+    const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
 
     useEffect(() => {
@@ -451,7 +451,7 @@ export default function MeshVolumeView({
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.05;
+            renderer.toneMappingExposure = 0.95;
             host.innerHTML = "";
             host.style.cursor = "grab";
             host.style.touchAction = "none";
@@ -517,13 +517,13 @@ export default function MeshVolumeView({
 
             geometryRef.current = geometry;
 
-            const material = new THREE.MeshPhongMaterial({
+            const material = new THREE.MeshStandardMaterial({
                 color: usesVertexColors
                     ? new THREE.Color(1, 1, 1)
                     : colorFromColormap(colormap),
                 vertexColors: usesVertexColors,
-                shininess: 22,
-                specular: new THREE.Color(0.28, 0.28, 0.28),
+                roughness: 0.82,
+                metalness: 0.0,
                 flatShading: false,
                 transparent: opacity < 1,
                 opacity,
@@ -550,18 +550,18 @@ export default function MeshVolumeView({
 
             controls.addEventListener("change", saveCameraState);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.14);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.18);
             scene.add(ambient);
 
-            const key = new THREE.DirectionalLight(0xffffff, 1.75);
+            const key = new THREE.DirectionalLight(0xffffff, 1.35);
             key.position.set(1.8, -2.4, 2.2);
             scene.add(key);
 
-            const fill = new THREE.DirectionalLight(0xffffff, 0.48);
+            const fill = new THREE.DirectionalLight(0xffffff, 0.42);
             fill.position.set(-1.8, -0.6, 1.0);
             scene.add(fill);
 
-            const rim = new THREE.DirectionalLight(0xffffff, 0.72);
+            const rim = new THREE.DirectionalLight(0xffffff, 0.48);
             rim.position.set(-0.8, 1.8, -1.6);
             scene.add(rim);
 
