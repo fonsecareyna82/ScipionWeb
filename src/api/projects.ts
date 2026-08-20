@@ -2711,6 +2711,7 @@ export async function getVolumeSurfaceMesh(
     method?: VolumeSurfaceMethod;
     maxTriangles?: number;
     minComponentTriangles?: number;
+    smoothingIterations?: number;
     signal?: AbortSignal;
   } = {},
 ): Promise<VolumeSurfaceMesh> {
@@ -2742,6 +2743,13 @@ export async function getVolumeSurfaceMesh(
     params.set(
       "minComponentTriangles",
       String(opts.minComponentTriangles),
+    );
+  }
+
+  if (opts.smoothingIterations != null) {
+    params.set(
+      "smoothingIterations",
+      String(opts.smoothingIterations),
     );
   }
 

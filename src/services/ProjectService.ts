@@ -552,6 +552,7 @@ export interface VolumeSurfaceMesh {
   triangleCount: number;
   marchingCubesStep?: number;
   minComponentTriangles?: number;
+  smoothingIterations?: number;
   removedComponents?: number;
   vertices: number[];
   normals: number[];
@@ -571,6 +572,7 @@ export interface VolumeSurfaceMeshOptions {
   method?: VolumeSurfaceMethod;
   maxTriangles?: number;
   minComponentTriangles?: number;
+  smoothingIterations?: number;
   signal?: AbortSignal;
 }
 
