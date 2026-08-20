@@ -803,99 +803,143 @@ function buildSubtreeAlignedPlacements(params: {
   }
 
   if (direction === "TB") {
-    for (const [parentId, rawChildIds] of Object.entries(layoutChildren)) {
-      if (parentId === "PROJECT" || !placements[parentId]) continue;
+    const wouldOverlapAtAxis = (id: string, axis: number): boolean => {
+      const level = levelMap[id] ?? 0;
+      const size = getResolvedCrossSize(id);
 
-      const childIds = rawChildIds.filter((childId) => Boolean(placements[childId]));
+      return (levelIds[level] ?? []).some((otherId) => {
+        if (otherId === id || !placements[otherId]) return false;
+
+        const otherAxis = getPlacementAxis(otherId);
+        const otherSize = getResolvedCrossSize(otherId);
+        const minimumDistance = size / 2 + siblingGap + otherSize / 2;
+
+        return Math.abs(axis - otherAxis) < minimumDistance;
+      });
+    };
+
+    const parentIds = Object.keys(layoutChildren)
+      .filter((id) => id !== "PROJECT" && Boolean(placements[id]))
+      .sort((a, b) => {
+        const levelDelta = (levelMap[a] ?? 0) - (levelMap[b] ?? 0);
+        if (levelDelta !== 0) return levelDelta;
+
+        const axisDelta = getPlacementAxis(a) - getPlacementAxis(b);
+        if (axisDelta !== 0) return axisDelta;
+
+        return stableIdCompare(a, b);
+      });
+
+    for (const parentId of parentIds) {
+      const childIds = (layoutChildren[parentId] ?? []).filter((childId) => Boolean(placements[childId]));
       if (childIds.length === 0) continue;
 
+      let desiredAxis: number;
+
       if (childIds.length === 1) {
-        setPlacementAxis(parentId, getPlacementAxis(childIds[0]));
-        continue;
+        desiredAxis = getPlacementAxis(childIds[0]);
+      } else {
+        const middleIndex = Math.floor(childIds.length / 2);
+
+        if (childIds.length % 2 === 1) {
+          desiredAxis = getPlacementAxis(childIds[middleIndex]);
+        } else {
+          const leftMiddleAxis = getPlacementAxis(childIds[middleIndex - 1]);
+          const rightMiddleAxis = getPlacementAxis(childIds[middleIndex]);
+          desiredAxis = (leftMiddleAxis + rightMiddleAxis) / 2;
+        }
       }
 
-      const middleIndex = Math.floor(childIds.length / 2);
-
-      if (childIds.length % 2 === 1) {
-        setPlacementAxis(parentId, getPlacementAxis(childIds[middleIndex]));
-        continue;
+      if (!wouldOverlapAtAxis(parentId, desiredAxis)) {
+        setPlacementAxis(parentId, desiredAxis);
       }
-
-      const leftMiddleAxis = getPlacementAxis(childIds[middleIndex - 1]);
-      const rightMiddleAxis = getPlacementAxis(childIds[middleIndex]);
-
-      setPlacementAxis(parentId, (leftMiddleAxis + rightMiddleAxis) / 2);
     }
   }
 
 
   if (direction === "TB") {
-    const topLevelBranches = uniqStable([
-      ...(layoutChildren.PROJECT ?? []),
-      ...roots.filter((id) => id !== "PROJECT"),
-    ]).filter((id) => Boolean(placements[id]));
+    const protocolIds = nodeIds.filter((id) => id !== "PROJECT" && Boolean(placements[id]));
+    const adjacency = new Map<string, Set<string>>();
 
-    if (topLevelBranches.length > 1) {
-      const collectBranchIds = (rootId: string): string[] => {
-        const collected: string[] = [];
-        const pending = [rootId];
-        const seen = new Set<string>();
+    for (const id of protocolIds) {
+      adjacency.set(id, new Set());
+    }
 
-        while (pending.length > 0) {
-          const currentId = pending.pop();
+    for (const childId of protocolIds) {
+      for (const parentId of parentMap[childId] ?? []) {
+        if (parentId === "PROJECT" || !placements[parentId]) continue;
 
-          if (!currentId || seen.has(currentId)) continue;
+        adjacency.get(childId)?.add(parentId);
+        adjacency.get(parentId)?.add(childId);
+      }
+    }
 
-          seen.add(currentId);
+    const components: string[][] = [];
+    const visited = new Set<string>();
 
-          if (placements[currentId]) {
-            collected.push(currentId);
-          }
+    const orderedProtocolIds = [...protocolIds].sort((a, b) => {
+      const axisDelta = getPlacementAxis(a) - getPlacementAxis(b);
+      return axisDelta !== 0 ? axisDelta : stableIdCompare(a, b);
+    });
 
-          for (const childId of layoutChildren[currentId] ?? []) {
-            pending.push(childId);
+    for (const startId of orderedProtocolIds) {
+      if (visited.has(startId)) continue;
+
+      const component: string[] = [];
+      const pending = [startId];
+
+      while (pending.length > 0) {
+        const currentId = pending.pop();
+
+        if (!currentId || visited.has(currentId)) continue;
+
+        visited.add(currentId);
+        component.push(currentId);
+
+        for (const neighborId of adjacency.get(currentId) ?? []) {
+          if (!visited.has(neighborId)) {
+            pending.push(neighborId);
           }
         }
+      }
 
-        return collected;
-      };
+      if (component.length > 0) {
+        components.push(component);
+      }
+    }
 
-      const orderedBranches = [...topLevelBranches].sort(
-        (a, b) => getPlacementAxis(a) - getPlacementAxis(b)
-      );
+    const componentBlocks = components
+      .map((ids) => {
+        let left = Number.POSITIVE_INFINITY;
+        let right = Number.NEGATIVE_INFINITY;
 
-      let previousRight = Number.NEGATIVE_INFINITY;
-
-      for (const branchRootId of orderedBranches) {
-        const branchIds = collectBranchIds(branchRootId);
-
-        let branchLeft = Number.POSITIVE_INFINITY;
-        let branchRight = Number.NEGATIVE_INFINITY;
-
-        for (const id of branchIds) {
+        for (const id of ids) {
           const axis = getPlacementAxis(id);
           const size = getResolvedCrossSize(id);
 
-          branchLeft = Math.min(branchLeft, axis - size / 2);
-          branchRight = Math.max(branchRight, axis + size / 2);
+          left = Math.min(left, axis - size / 2);
+          right = Math.max(right, axis + size / 2);
         }
 
-        if (!Number.isFinite(branchLeft) || !Number.isFinite(branchRight)) {
-          continue;
+        return { ids, left, right };
+      })
+      .filter((block) => Number.isFinite(block.left) && Number.isFinite(block.right))
+      .sort((a, b) => a.left - b.left);
+
+    let previousRight = Number.NEGATIVE_INFINITY;
+
+    for (const block of componentBlocks) {
+      const offset = Number.isFinite(previousRight)
+        ? Math.max(0, previousRight + disconnectedRootGap - block.left)
+        : 0;
+
+      if (offset > 0.5) {
+        for (const id of block.ids) {
+          setPlacementAxis(id, getPlacementAxis(id) + offset);
         }
-
-        const offset = Number.isFinite(previousRight)
-          ? Math.max(0, previousRight + rootBranchGap - branchLeft)
-          : 0;
-
-        if (offset > 0.5) {
-          for (const id of branchIds) {
-            setPlacementAxis(id, getPlacementAxis(id) + offset);
-          }
-        }
-
-        previousRight = branchRight + offset;
       }
+
+      previousRight = block.right + offset;
     }
   }
 
@@ -952,7 +996,9 @@ function buildSubtreeAlignedPlacements(params: {
  * Improvements:
  * - Hierarchical mode uses a subtree-aligned layout so children stay grouped around
  *   their primary visual parent while preserving all real workflow edges.
- * - TB root branches occupy separate horizontal bands so independent subgraphs never interleave.
+ * - TB connected workflow components occupy separate horizontal bands.
+ * - Multi-root DAGs stay inside the same component instead of being split into artificial subgraphs.
+ * - TB parent centering is collision-safe and never reintroduces node overlaps.
  * - Primary subtrees preserve their compact span-based placement.
  * - TB keeps primary parent-child chains on a stable vertical trunk.
  * - Secondary-only TB parents may align toward their nearest real children.
