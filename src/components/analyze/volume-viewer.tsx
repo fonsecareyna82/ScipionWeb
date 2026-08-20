@@ -105,7 +105,7 @@ const ORTHO_AXIS_COLORS = {
 
 const HELP_TEXT: Record<string, string> = {
   maxDim3d:
-    "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
+    "3D rendering quality. Higher quality uses more data and may take longer to load.",
   method3d:
     "Downsampling method for interactive 3D rendering. Stride is the fastest option. None preserves the original grid only when the volume is already within the safe interactive limit.",
   colorMode3d:
@@ -2441,17 +2441,22 @@ export default function VolumeViewer({
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
                       <SectionTitle title="Data" />
                       <ParamRow
-                        label="maxDim"
+                        label="Quality"
                         helpKey="maxDim3d"
                         onHelp={openHelp}
                         control={
                           <TextField
                             size="small"
-                            type="number"
+                            select
                             value={maxDim3d}
-                            onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 512))}
-                            inputProps={{ min: 48, max: 512, step: 8 }}
-                          />
+                            onChange={(e) => setMaxDim3d(Number(e.target.value))}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            <MenuItem value={128}>Fast</MenuItem>
+                            <MenuItem value={256}>Balanced</MenuItem>
+                            <MenuItem value={384}>High</MenuItem>
+                            <MenuItem value={512}>Maximum</MenuItem>
+                          </TextField>
                         }
                       />
                       <ParamRow
