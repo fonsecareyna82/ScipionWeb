@@ -567,12 +567,127 @@ function buildSubtreeAlignedPlacements(params: {
       (id) => id !== "PROJECT" && Boolean(placements[id])
     );
 
-    const alignmentIds =
-      direction === "TB"
-        ? idsInLevel.filter((id) => (layoutChildren[id] ?? []).length === 0)
-        : idsInLevel;
+    if (direction === "TB") {
+      const movableItems = idsInLevel
+        .filter((id) => (layoutChildren[id] ?? []).length === 0)
+        .map((id) => {
+          const realChildren = getNearestRealChildren(id);
+          const childrenAxis = getChildrenCenterAxis(realChildren);
+          const currentAxis = getPlacementAxis(id);
 
-    const items = alignmentIds.map((id) => {
+          return {
+            id,
+            size: getResolvedCrossSize(id),
+            currentAxis,
+            desiredAxis: childrenAxis ?? currentAxis,
+            alignsToChildren: childrenAxis !== null,
+          };
+        })
+        .filter(
+          (item) =>
+            item.alignsToChildren &&
+            Math.abs(item.desiredAxis - item.currentAxis) > 0.5
+        );
+
+      if (movableItems.length === 0) {
+        continue;
+      }
+
+      const movableIds = new Set(
+        movableItems.map((item) => item.id)
+      );
+
+      const occupied = idsInLevel
+        .filter((id) => !movableIds.has(id))
+        .map((id) => ({
+          id,
+          axis: getPlacementAxis(id),
+          size: getResolvedCrossSize(id),
+        }));
+
+      movableItems.sort((a, b) => {
+        if (a.desiredAxis !== b.desiredAxis) {
+          return a.desiredAxis - b.desiredAxis;
+        }
+
+        return stableIdCompare(a.id, b.id);
+      });
+
+      for (const item of movableItems) {
+        const candidateAxes = [
+          item.desiredAxis,
+        ];
+
+        for (const obstacle of occupied) {
+          const separation =
+            obstacle.size / 2 +
+            siblingGap +
+            item.size / 2;
+
+          candidateAxes.push(
+            obstacle.axis - separation,
+            obstacle.axis + separation
+          );
+        }
+
+        candidateAxes.sort((a, b) => {
+          const desiredDistanceA =
+            Math.abs(a - item.desiredAxis);
+
+          const desiredDistanceB =
+            Math.abs(b - item.desiredAxis);
+
+          if (desiredDistanceA !== desiredDistanceB) {
+            return desiredDistanceA - desiredDistanceB;
+          }
+
+          const currentDistanceA =
+            Math.abs(a - item.currentAxis);
+
+          const currentDistanceB =
+            Math.abs(b - item.currentAxis);
+
+          if (currentDistanceA !== currentDistanceB) {
+            return currentDistanceA - currentDistanceB;
+          }
+
+          return a - b;
+        });
+
+        const resolvedAxis =
+          candidateAxes.find((candidateAxis) => {
+            return !occupied.some((obstacle) => {
+              const minimumDistance =
+                obstacle.size / 2 +
+                siblingGap +
+                item.size / 2;
+
+              return (
+                Math.abs(
+                  candidateAxis -
+                  obstacle.axis
+                ) <
+                minimumDistance
+              );
+            });
+          }) ?? item.currentAxis;
+
+        setPlacementAxis(
+          item.id,
+          resolvedAxis
+        );
+
+        occupied.push({
+          id: item.id,
+          axis: resolvedAxis,
+          size: item.size,
+        });
+      }
+
+      continue;
+    }
+
+    const items = idsInLevel.map((id) => {
       const realChildren = getNearestRealChildren(id);
       const childrenAxis = getChildrenCenterAxis(realChildren);
       const currentAxis = getPlacementAxis(id);
