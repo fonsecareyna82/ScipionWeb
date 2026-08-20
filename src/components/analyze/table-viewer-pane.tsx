@@ -481,6 +481,13 @@ export default function TableViewerPane({
                 },
             );
 
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to load table children.",
+            );
+
         } finally {
             setChildrenLoading(
                 (prev) => {
@@ -1560,25 +1567,25 @@ export default function TableViewerPane({
                                                                 p: 0,
                                                             }}
                                                         >
-                                                            childrenLoading.has(
-                                                            rowChildrenKey,
+                                                            {childrenLoading.has(
+                                                                rowChildrenKey,
                                                             ) ? (
-                                                            <CircularProgress
-                                                                size={12}
-                                                            />
+                                                                <CircularProgress
+                                                                    size={12}
+                                                                />
                                                             ) : expandedChildrenKeys.has(
-                                                            rowChildrenKey,
+                                                                rowChildrenKey,
                                                             ) ? (
-                                                            <ChevronDown
-                                                                size={14}
-                                                                strokeWidth={1.8}
-                                                            />
+                                                                <ChevronDown
+                                                                    size={14}
+                                                                    strokeWidth={1.8}
+                                                                />
                                                             ) : (
-                                                            <ChevronRight
-                                                                size={14}
-                                                                strokeWidth={1.8}
-                                                            />
-                                                            )
+                                                                <ChevronRight
+                                                                    size={14}
+                                                                    strokeWidth={1.8}
+                                                                />
+                                                            )}
                                                         </IconButton>
                                                     ) : (
                                                         <Box sx={{ width: 14, height: 14 }} />
@@ -1653,221 +1660,223 @@ export default function TableViewerPane({
                                                     </TableCell>
                                                 )}
                                             </TableRow>
-                                            {expandedScopes.map(
-                                                (scope) => {
-                                                    const childrenData =
-                                                        childrenByScopeKey[
-                                                        scope.key
-                                                        ];
+                                            {
+                                                expandedScopes.map(
+                                                    (scope) => {
+                                                        const childrenData =
+                                                            childrenByScopeKey[
+                                                            scope.key
+                                                            ];
 
-                                                    return (
-                                                        <TableRow
-                                                            key={
-                                                                `children-${scope.key}`
-                                                            }
-                                                        >
-                                                            <TableCell
-                                                                colSpan={
-                                                                    table.columns.length +
-                                                                    1 +
-                                                                    (hasRowActions
-                                                                        ? 1
-                                                                        : 0)
+                                                        return (
+                                                            <TableRow
+                                                                key={
+                                                                    `children-${scope.key}`
                                                                 }
-                                                                sx={{
-                                                                    p: 0,
-                                                                    backgroundColor:
-                                                                        "#f8fafc",
-                                                                    borderBottom:
-                                                                        "1px solid #e2e8f0",
-                                                                }}
                                                             >
-                                                                <Box
+                                                                <TableCell
+                                                                    colSpan={
+                                                                        table.columns.length +
+                                                                        1 +
+                                                                        (hasRowActions
+                                                                            ? 1
+                                                                            : 0)
+                                                                    }
                                                                     sx={{
-                                                                        ml: 4,
-                                                                        mr: 1,
-                                                                        my: 1,
-                                                                        border:
-                                                                            "1px solid #e2e8f0",
-                                                                        borderRadius:
-                                                                            1.5,
-                                                                        overflow:
-                                                                            "hidden",
+                                                                        p: 0,
                                                                         backgroundColor:
-                                                                            "#ffffff",
+                                                                            "#f8fafc",
+                                                                        borderBottom:
+                                                                            "1px solid #e2e8f0",
                                                                     }}
                                                                 >
-                                                                    {childrenData.title && (
-                                                                        <Box
-                                                                            sx={{
-                                                                                px: 1.5,
-                                                                                py: 0.75,
-                                                                                borderBottom:
-                                                                                    "1px solid #d4e5e8",
-                                                                                background:
-                                                                                    "linear-gradient(90deg, #f1f7f8 0%, #eaf4f5 100%)",
-                                                                            }}
-                                                                        >
-                                                                            <Typography
-                                                                                sx={{
-                                                                                    fontSize:
-                                                                                        "0.72rem",
-                                                                                    fontWeight:
-                                                                                        700,
-                                                                                    color:
-                                                                                        "#285e68",
-                                                                                }}
-                                                                            >
-                                                                                {
-                                                                                    childrenData.title
-                                                                                }
-                                                                            </Typography>
-                                                                        </Box>
-                                                                    )}
-
-                                                                    <Table
-                                                                        size="small"
+                                                                    <Box
                                                                         sx={{
-                                                                            tableLayout:
-                                                                                "fixed",
-                                                                            width:
-                                                                                "100%",
+                                                                            ml: 4,
+                                                                            mr: 1,
+                                                                            my: 1,
+                                                                            border:
+                                                                                "1px solid #e2e8f0",
+                                                                            borderRadius:
+                                                                                1.5,
+                                                                            overflow:
+                                                                                "hidden",
+                                                                            backgroundColor:
+                                                                                "#ffffff",
                                                                         }}
                                                                     >
-                                                                        <TableHead>
-                                                                            <TableRow>
-                                                                                {childrenData.columns.map(
-                                                                                    (
-                                                                                        column,
-                                                                                    ) => (
-                                                                                        <TableCell
-                                                                                            key={
-                                                                                                column.id
-                                                                                            }
-                                                                                            align={
-                                                                                                column.align ??
-                                                                                                "left"
-                                                                                            }
-                                                                                            sx={{
-                                                                                                width:
-                                                                                                    column.width,
-                                                                                                px: 1,
-                                                                                                py: 0.65,
-                                                                                                backgroundColor:
-                                                                                                    "#f1f7f8",
-                                                                                                color:
-                                                                                                    "#356b75",
-                                                                                                borderBottom:
-                                                                                                    "1px solid #d4e5e8",
-                                                                                                fontSize:
-                                                                                                    "0.67rem",
-                                                                                                fontWeight:
-                                                                                                    700,
-                                                                                                letterSpacing:
-                                                                                                    "0.01em",
-                                                                                                whiteSpace:
-                                                                                                    "nowrap",
-                                                                                            }}
-                                                                                        >
-                                                                                            {
-                                                                                                column.label
-                                                                                            }
-                                                                                        </TableCell>
-                                                                                    ),
-                                                                                )}
-                                                                            </TableRow>
-                                                                        </TableHead>
+                                                                        {childrenData.title && (
+                                                                            <Box
+                                                                                sx={{
+                                                                                    px: 1.5,
+                                                                                    py: 0.75,
+                                                                                    borderBottom:
+                                                                                        "1px solid #d4e5e8",
+                                                                                    background:
+                                                                                        "linear-gradient(90deg, #f1f7f8 0%, #eaf4f5 100%)",
+                                                                                }}
+                                                                            >
+                                                                                <Typography
+                                                                                    sx={{
+                                                                                        fontSize:
+                                                                                            "0.72rem",
+                                                                                        fontWeight:
+                                                                                            700,
+                                                                                        color:
+                                                                                            "#285e68",
+                                                                                    }}
+                                                                                >
+                                                                                    {
+                                                                                        childrenData.title
+                                                                                    }
+                                                                                </Typography>
+                                                                            </Box>
+                                                                        )}
 
-                                                                        <TableBody>
-                                                                            {childrenData.rows.map(
-                                                                                (
-                                                                                    childRow,
-                                                                                ) => {
-                                                                                    const childSelected =
-                                                                                        selectedRowId ===
-                                                                                        childRow.id;
-
-                                                                                    return (
-                                                                                        <TableRow
-                                                                                            key={String(
-                                                                                                childRow.id,
-                                                                                            )}
-                                                                                            hover
-                                                                                            selected={
-                                                                                                childSelected
-                                                                                            }
-                                                                                            onClick={() => {
-                                                                                                setSelectedRowId(
-                                                                                                    childRow.id,
-                                                                                                );
-
-                                                                                                if (
-                                                                                                    childRow.defaultAction
-                                                                                                ) {
-                                                                                                    void handleAction(
-                                                                                                        childRow.defaultAction,
-                                                                                                        childRow,
-                                                                                                        scope.columnId,
-                                                                                                        scope.cellContext,
-                                                                                                    );
+                                                                        <Table
+                                                                            size="small"
+                                                                            sx={{
+                                                                                tableLayout:
+                                                                                    "fixed",
+                                                                                width:
+                                                                                    "100%",
+                                                                            }}
+                                                                        >
+                                                                            <TableHead>
+                                                                                <TableRow>
+                                                                                    {childrenData.columns.map(
+                                                                                        (
+                                                                                            column,
+                                                                                        ) => (
+                                                                                            <TableCell
+                                                                                                key={
+                                                                                                    column.id
                                                                                                 }
-                                                                                            }}
-                                                                                            sx={{
-                                                                                                cursor:
-                                                                                                    "pointer",
-                                                                                                height: 34,
-
-                                                                                                "& td":
-                                                                                                {
+                                                                                                align={
+                                                                                                    column.align ??
+                                                                                                    "left"
+                                                                                                }
+                                                                                                sx={{
+                                                                                                    width:
+                                                                                                        column.width,
+                                                                                                    px: 1,
+                                                                                                    py: 0.65,
+                                                                                                    backgroundColor:
+                                                                                                        "#f1f7f8",
+                                                                                                    color:
+                                                                                                        "#356b75",
                                                                                                     borderBottom:
-                                                                                                        "1px solid #f1f5f9",
-                                                                                                },
-                                                                                            }}
-                                                                                        >
-                                                                                            {childrenData.columns.map(
-                                                                                                (
-                                                                                                    column,
-                                                                                                ) => (
-                                                                                                    <TableCell
-                                                                                                        key={
-                                                                                                            column.id
-                                                                                                        }
-                                                                                                        align={
-                                                                                                            column.align ??
-                                                                                                            "left"
-                                                                                                        }
-                                                                                                        sx={{
-                                                                                                            px: 1,
-                                                                                                            py: 0.5,
-                                                                                                            minWidth: 0,
-                                                                                                            overflow:
-                                                                                                                "hidden",
-                                                                                                        }}
-                                                                                                    >
-                                                                                                        {renderCell(
+                                                                                                        "1px solid #d4e5e8",
+                                                                                                    fontSize:
+                                                                                                        "0.67rem",
+                                                                                                    fontWeight:
+                                                                                                        700,
+                                                                                                    letterSpacing:
+                                                                                                        "0.01em",
+                                                                                                    whiteSpace:
+                                                                                                        "nowrap",
+                                                                                                }}
+                                                                                            >
+                                                                                                {
+                                                                                                    column.label
+                                                                                                }
+                                                                                            </TableCell>
+                                                                                        ),
+                                                                                    )}
+                                                                                </TableRow>
+                                                                            </TableHead>
+
+                                                                            <TableBody>
+                                                                                {childrenData.rows.map(
+                                                                                    (
+                                                                                        childRow,
+                                                                                    ) => {
+                                                                                        const childSelected =
+                                                                                            selectedRowId ===
+                                                                                            childRow.id;
+
+                                                                                        return (
+                                                                                            <TableRow
+                                                                                                key={String(
+                                                                                                    childRow.id,
+                                                                                                )}
+                                                                                                hover
+                                                                                                selected={
+                                                                                                    childSelected
+                                                                                                }
+                                                                                                onClick={() => {
+                                                                                                    setSelectedRowId(
+                                                                                                        childRow.id,
+                                                                                                    );
+
+                                                                                                    if (
+                                                                                                        childRow.defaultAction
+                                                                                                    ) {
+                                                                                                        void handleAction(
+                                                                                                            childRow.defaultAction,
                                                                                                             childRow,
-                                                                                                            column.id,
-                                                                                                            column.actions,
-                                                                                                            row,
-                                                                                                            scope.children.id,
-                                                                                                            scope.children.readOnly ===
-                                                                                                            true,
-                                                                                                        )}
-                                                                                                    </TableCell>
-                                                                                                ),
-                                                                                            )}
-                                                                                        </TableRow>
-                                                                                    );
-                                                                                },
-                                                                            )}
-                                                                        </TableBody>
-                                                                    </Table>
-                                                                </Box>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                },
-                                            )}
+                                                                                                            scope.columnId,
+                                                                                                            scope.cellContext,
+                                                                                                        );
+                                                                                                    }
+                                                                                                }}
+                                                                                                sx={{
+                                                                                                    cursor:
+                                                                                                        "pointer",
+                                                                                                    height: 34,
+
+                                                                                                    "& td":
+                                                                                                    {
+                                                                                                        borderBottom:
+                                                                                                            "1px solid #f1f5f9",
+                                                                                                    },
+                                                                                                }}
+                                                                                            >
+                                                                                                {childrenData.columns.map(
+                                                                                                    (
+                                                                                                        column,
+                                                                                                    ) => (
+                                                                                                        <TableCell
+                                                                                                            key={
+                                                                                                                column.id
+                                                                                                            }
+                                                                                                            align={
+                                                                                                                column.align ??
+                                                                                                                "left"
+                                                                                                            }
+                                                                                                            sx={{
+                                                                                                                px: 1,
+                                                                                                                py: 0.5,
+                                                                                                                minWidth: 0,
+                                                                                                                overflow:
+                                                                                                                    "hidden",
+                                                                                                            }}
+                                                                                                        >
+                                                                                                            {renderCell(
+                                                                                                                childRow,
+                                                                                                                column.id,
+                                                                                                                column.actions,
+                                                                                                                row,
+                                                                                                                scope.children.id,
+                                                                                                                scope.children.readOnly ===
+                                                                                                                true,
+                                                                                                            )}
+                                                                                                        </TableCell>
+                                                                                                    ),
+                                                                                                )}
+                                                                                            </TableRow>
+                                                                                        );
+                                                                                    },
+                                                                                )}
+                                                                            </TableBody>
+                                                                        </Table>
+                                                                    </Box>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    },
+                                                )
+                                            }
 
                                         </Fragment>
                                     );
@@ -2228,6 +2237,6 @@ export default function TableViewerPane({
                         </MenuItem>
                     ))}
             </Menu>
-        </Box>
+        </Box >
     );
 }
