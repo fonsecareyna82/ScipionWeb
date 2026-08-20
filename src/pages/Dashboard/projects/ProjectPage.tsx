@@ -6275,19 +6275,46 @@ export default function ProjectPage() {
       }
     }
 
-    const getCurrentRootX = (rootId: string): number => {
-      const previousPosition = beforePositions.get(rootId);
-      if (previousPosition) return previousPosition.x;
+    const getCurrentNodeWidth = (nodeId: string): number => {
+      const currentNode = currentById.get(nodeId);
+      const measuredWidth = Number((currentNode as any)?.measured?.width ?? currentNode?.width);
 
-      const currentNode = currentById.get(rootId);
-      if (currentNode?.position) return currentNode.position.x;
+      return Number.isFinite(measuredWidth) && measuredWidth > 0
+        ? Math.ceil(measuredWidth)
+        : 950;
+    };
 
-      return canonicalById.get(rootId)?.position.x ?? 0;
+    const getCurrentBranchLeft = (rootId: string): number => {
+      const branchIds = nodeIdsByRoot.get(rootId) ?? [rootId];
+      let left = Number.POSITIVE_INFINITY;
+
+      for (const nodeId of branchIds) {
+        const position =
+          beforePositions.get(nodeId) ??
+          currentById.get(nodeId)?.position ??
+          canonicalById.get(nodeId)?.position;
+
+        if (!position) continue;
+
+        const width = getCurrentNodeWidth(nodeId);
+        left = Math.min(left, position.x - width / 2);
+      }
+
+      if (Number.isFinite(left)) {
+        return left;
+      }
+
+      const fallback =
+        beforePositions.get(rootId) ??
+        currentById.get(rootId)?.position ??
+        canonicalById.get(rootId)?.position;
+
+      return fallback?.x ?? 0;
     };
 
     const orderedRootIds = Array.from(projectRootIds)
       .filter((id) => canonicalById.has(id))
-      .sort((leftId, rightId) => getCurrentRootX(leftId) - getCurrentRootX(rightId));
+      .sort((leftId, rightId) => getCurrentBranchLeft(leftId) - getCurrentBranchLeft(rightId));
 
     if (orderedRootIds.length === 0) {
       const positionedNodes =
