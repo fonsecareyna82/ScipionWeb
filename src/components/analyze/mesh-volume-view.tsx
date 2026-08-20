@@ -37,16 +37,16 @@ type DragState = {
     lastY: number;
 };
 
-const GTAO_BLEND_INTENSITY = 0.68;
+const GTAO_BLEND_INTENSITY = 0.88;
 const GTAO_RESOLUTION_SCALE = 1.0;
 
 const GTAO_PARAMETERS = {
-    radius: 0.085,
-    distanceExponent: 1.35,
-    thickness: 0.8,
-    distanceFallOff: 1.0,
+    radius: 0.12,
+    distanceExponent: 1.25,
+    thickness: 1.0,
+    distanceFallOff: 0.8,
     scale: 1.0,
-    samples: 20,
+    samples: 24,
     screenSpaceRadius: false,
 };
 
@@ -64,7 +64,7 @@ function colorFromColormap(colormap?: string): THREE.Color {
     switch ((colormap || "").toLowerCase()) {
         case "gray":
         case "grey":
-            return new THREE.Color(0.88, 0.88, 0.88);
+            return new THREE.Color(0.82, 0.82, 0.82);
         case "magma":
             return new THREE.Color(0.86, 0.34, 0.20);
         case "plasma":
@@ -365,7 +365,7 @@ export default function MeshVolumeView({
     const internalCameraStateRef = useRef<MeshCameraState | null>(null);
     const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
-    const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+    const materialRef = useRef<THREE.MeshLambertMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
 
     useEffect(() => {
@@ -436,7 +436,7 @@ export default function MeshVolumeView({
 
         try {
             const scene = new THREE.Scene();
-            scene.background = null;
+            scene.background = new THREE.Color(0xe7ecf3);
 
             const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
             camera.position.set(0.9, -1.45, 0.9);
@@ -446,12 +446,11 @@ export default function MeshVolumeView({
                 alpha: true,
                 powerPreference: "high-performance",
             });
-            renderer.setClearColor(0x000000, 0);
+            renderer.setClearColor(0xe7ecf3, 1);
 
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 0.95;
+            renderer.toneMapping = THREE.NoToneMapping;
             host.innerHTML = "";
             host.style.cursor = "grab";
             host.style.touchAction = "none";
@@ -501,10 +500,7 @@ export default function MeshVolumeView({
 
             geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
 
-            if (!mesh.normals?.length) {
-                geometry.computeVertexNormals();
-            }
-
+            geometry.computeVertexNormals();
             geometry.normalizeNormals();
             geometry.computeBoundingSphere();
 
@@ -517,13 +513,11 @@ export default function MeshVolumeView({
 
             geometryRef.current = geometry;
 
-            const material = new THREE.MeshStandardMaterial({
+            const material = new THREE.MeshLambertMaterial({
                 color: usesVertexColors
                     ? new THREE.Color(1, 1, 1)
                     : colorFromColormap(colormap),
                 vertexColors: usesVertexColors,
-                roughness: 0.82,
-                metalness: 0.0,
                 flatShading: false,
                 transparent: opacity < 1,
                 opacity,
@@ -550,19 +544,19 @@ export default function MeshVolumeView({
 
             controls.addEventListener("change", saveCameraState);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.18);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.10);
             scene.add(ambient);
 
-            const key = new THREE.DirectionalLight(0xffffff, 1.35);
-            key.position.set(1.8, -2.4, 2.2);
+            const key = new THREE.DirectionalLight(0xffffff, 1.45);
+            key.position.set(1.6, -2.2, 2.0);
             scene.add(key);
 
-            const fill = new THREE.DirectionalLight(0xffffff, 0.42);
-            fill.position.set(-1.8, -0.6, 1.0);
+            const fill = new THREE.DirectionalLight(0xffffff, 0.22);
+            fill.position.set(-1.5, -0.8, 0.8);
             scene.add(fill);
 
-            const rim = new THREE.DirectionalLight(0xffffff, 0.48);
-            rim.position.set(-0.8, 1.8, -1.6);
+            const rim = new THREE.DirectionalLight(0xffffff, 0.28);
+            rim.position.set(-0.6, 1.5, -1.4);
             scene.add(rim);
 
             composer = new EffectComposer(renderer);
