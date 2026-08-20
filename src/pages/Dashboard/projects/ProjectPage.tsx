@@ -5874,6 +5874,8 @@ export default function ProjectPage() {
       };
     }
 
+    const beforePositions = pending.beforePositions;
+
     const canonicalById = new Map(
       canonicalNodes.map((node) => [
         String(node.id),
@@ -5912,7 +5914,7 @@ export default function ProjectPage() {
     for (const node of canonicalNodes) {
       const nodeId = String(node.id);
       const previousPosition =
-        pending.beforePositions.get(nodeId);
+        beforePositions.get(nodeId);
 
       workingById.set(
         nodeId,
@@ -6053,7 +6055,7 @@ export default function ProjectPage() {
       canonicalById.get("PROJECT");
 
     const projectPrevious =
-      pending.beforePositions.get("PROJECT");
+      beforePositions.get("PROJECT");
 
     for (const newId of newIds) {
       const canonicalNode =
@@ -6087,7 +6089,7 @@ export default function ProjectPage() {
 
         const sourcePosition =
           duplicatePair.sourcePosition ??
-          pending.beforePositions.get(
+          beforePositions.get(
             sourceId
           );
 
@@ -6111,7 +6113,7 @@ export default function ProjectPage() {
               (id) =>
                 pending.beforeIds.has(id) &&
                 canonicalById.has(id) &&
-                pending.beforePositions.has(id)
+                beforePositions.has(id)
             )
             .sort(
               (leftId, rightId) =>
@@ -6133,7 +6135,7 @@ export default function ProjectPage() {
             nearestNeighbor;
 
           anchorPosition =
-            pending.beforePositions.get(
+            beforePositions.get(
               nearestNeighbor
             );
         }
