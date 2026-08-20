@@ -1166,6 +1166,7 @@ export default function VolumeViewer({
         method: method3d,
         renderMode: renderMode3d,
         surfaceLevel: surfaceLevel3d,
+        surfaceDust: surfaceDust3d,
       };
     } catch (e: any) {
       if (e?.name === "AbortError") {
@@ -1192,6 +1193,7 @@ export default function VolumeViewer({
     usesSurfaceMesh3d,
     reloadSurfaceMesh,
     fetchVolumeData,
+    surfaceDust3d,
   ]);
 
   useEffect(() => {
