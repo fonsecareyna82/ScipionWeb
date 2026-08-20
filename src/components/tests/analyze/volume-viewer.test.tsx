@@ -496,7 +496,7 @@ describe("VolumeViewer", () => {
         const qualitySelect = screen.getAllByRole("combobox")[0];
         fireEvent.mouseDown(qualitySelect);
         fireEvent.click(
-            await screen.findByRole("option", { name: "Fast" }),
+            await screen.findByText("Fast", { selector: "li" }),
         );
 
         fireEvent.click(
@@ -728,10 +728,15 @@ describe("VolumeViewer", () => {
             );
         });
 
-        const methodSelect = screen.getAllByRole("combobox")[1];
+        const methodSelect = screen.getByText(
+            "stride",
+            { selector: '[role="combobox"]' },
+        );
+
         fireEvent.mouseDown(methodSelect);
+
         fireEvent.click(
-            await screen.findByRole("option", { name: "binning" }),
+            await screen.findByText("binning", { selector: "li" }),
         );
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
