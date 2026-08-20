@@ -6203,28 +6203,19 @@ export default function ProjectPage() {
       }
     }
 
-    const orderedRootIds =
-      Array.from(projectRootIds)
-        .filter(
-          (id) =>
-            canonicalById.has(id)
-        )
-        .sort((leftId, rightId) => {
-          const left =
-            canonicalById.get(
-              leftId
-            )!;
+    const getCurrentRootX = (rootId: string): number => {
+      const previousPosition = beforePositions.get(rootId);
+      if (previousPosition) return previousPosition.x;
 
-          const right =
-            canonicalById.get(
-              rightId
-            )!;
+      const currentNode = currentById.get(rootId);
+      if (currentNode?.position) return currentNode.position.x;
 
-          return (
-            left.position.x -
-            right.position.x
-          );
-        });
+      return canonicalById.get(rootId)?.position.x ?? 0;
+    };
+
+    const orderedRootIds = Array.from(projectRootIds)
+      .filter((id) => canonicalById.has(id))
+      .sort((leftId, rightId) => getCurrentRootX(leftId) - getCurrentRootX(rightId));
 
     if (orderedRootIds.length === 0) {
       const positionedNodes =
@@ -6372,6 +6363,33 @@ export default function ProjectPage() {
       }
     }
 
+    for (const rootId of affectedRootIds) {
+      const branchIds = nodeIdsByRoot.get(rootId) ?? [];
+      const canonicalRoot = canonicalById.get(rootId);
+
+      if (!canonicalRoot) continue;
+
+      const rootAnchorPosition =
+        beforePositions.get(rootId) ??
+        currentById.get(rootId)?.position ??
+        canonicalRoot.position;
+
+      for (const nodeId of branchIds) {
+        const canonicalNode = canonicalById.get(nodeId);
+        const workingNode = workingById.get(nodeId);
+
+        if (!canonicalNode || !workingNode) continue;
+
+        workingById.set(nodeId, {
+          ...workingNode,
+          position: {
+            x: rootAnchorPosition.x + canonicalNode.position.x - canonicalRoot.position.x,
+            y: rootAnchorPosition.y + canonicalNode.position.y - canonicalRoot.position.y,
+          },
+        });
+      }
+    }
+
     const firstAffectedIndex =
       orderedRootIds.findIndex(
         (rootId) =>
@@ -6402,16 +6420,9 @@ export default function ProjectPage() {
             rootId
           ) ?? []
         ) {
-          const positionedNode =
-            workingById.get(nodeId);
+          const positionedNode = workingById.get(nodeId);
 
-          const canonicalNode =
-            canonicalById.get(nodeId);
-
-          if (
-            !positionedNode ||
-            !canonicalNode
-          ) {
+          if (!positionedNode) {
             continue;
           }
 
@@ -6433,11 +6444,7 @@ export default function ProjectPage() {
               sizeNode
             );
 
-          const level =
-            Math.round(
-              canonicalNode.position.y /
-              hierSpacingY("TB")
-            );
+          const level = Math.round(positionedNode.position.y / hierSpacingY("TB"));
 
           const left =
             positionedNode.position.x -
@@ -6492,10 +6499,7 @@ export default function ProjectPage() {
 
         let offset = 0;
 
-        if (
-          index >=
-          firstAffectedIndex
-        ) {
+        if (index > firstAffectedIndex && !affectedRootIds.has(rootId)) {
           for (
             const [
               level,
