@@ -151,6 +151,8 @@ const HELP_TEXT: Record<string, string> = {
     "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
   surfaceLevel3d:
     "Absolute iso level for the marching-cubes surface. Leave it empty to let the backend choose an automatic level.",
+  hideDust3d:
+    "Removes small disconnected surface fragments. Standard is a good default for cryo-EM maps; turn it off when small isolated densities are scientifically relevant.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -269,6 +271,7 @@ export default function VolumeViewer({
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
   const [surfaceLevelRange, setSurfaceLevelRange] = useState<[number, number] | null>(null);
+  const [surfaceDust3d, setSurfaceDust3d] = useState(400);
 
 
   const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
@@ -349,12 +352,14 @@ export default function VolumeViewer({
     method: "binning" | "stride" | "none";
     renderMode: RenderMode3d;
     surfaceLevel: number | null;
+    surfaceDust: number;
   }>({
     volumeId: null,
     maxDim: 256,
     method: "stride",
     renderMode: "surface",
     surfaceLevel: null,
+    surfaceDust: 400,
   });
 
   const lastThrVolumeRef = useRef<string | number | null>(null);
@@ -916,7 +921,13 @@ export default function VolumeViewer({
   }, []);
 
   const reloadSurfaceMesh = useCallback(
-    async (level: number | null, opts: { silent?: boolean } = {}) => {
+    async (
+      level: number | null,
+      opts: {
+        silent?: boolean;
+        minComponentTriangles?: number;
+      } = {},
+    ) => {
       if (!active || selectedId == null) return;
 
       surfaceAbortRef.current?.abort();
@@ -928,6 +939,10 @@ export default function VolumeViewer({
       surfaceRequestSeqRef.current = requestSeq;
 
       const silent = opts.silent === true;
+
+      const effectiveSurfaceDust =
+        opts.minComponentTriangles ??
+        surfaceDust3d;
 
       if (silent) {
         setSurfaceRefreshing(true);
@@ -973,6 +988,7 @@ export default function VolumeViewer({
             maxDim: maxDim3d,
             method: method3d,
             maxTriangles: SURFACE_MAX_TRIANGLES,
+            minComponentTriangles: effectiveSurfaceDust,
             signal: controller.signal,
           },
         );
@@ -1008,6 +1024,7 @@ export default function VolumeViewer({
           method: method3d,
           renderMode: renderMode3d,
           surfaceLevel: requestLevel,
+          surfaceDust: effectiveSurfaceDust,
         };
       } catch (e: any) {
         if (surfaceRequestSeqRef.current !== requestSeq) return;
@@ -1054,6 +1071,7 @@ export default function VolumeViewer({
       metadataSurfaceLevelRange,
       buildFallbackSurfaceLevelRange,
       surfaceLevelRange,
+      surfaceDust3d,
     ],
   );
 
@@ -1237,7 +1255,8 @@ export default function VolumeViewer({
         last.maxDim !== maxDim3d ||
         last.method !== method3d ||
         last.renderMode !== renderMode3d ||
-        last.surfaceLevel !== surfaceLevel3d)
+        last.surfaceLevel !== surfaceLevel3d ||
+        last.surfaceDust !== surfaceDust3d)
     );
   }, [
     viewMode,
@@ -1246,6 +1265,7 @@ export default function VolumeViewer({
     method3d,
     renderMode3d,
     surfaceLevel3d,
+    surfaceDust3d,
   ]);
 
   const stats3d = useMemo(() => {
@@ -2564,6 +2584,47 @@ export default function VolumeViewer({
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
                           </ToggleButtonGroup>
+                        }
+                      />
+
+                      <ParamRow
+                        label="Hide dust"
+                        helpKey="hideDust3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={surfaceDust3d}
+                            disabled={
+                              selectedId == null ||
+                              mapLoading ||
+                              surfaceRefreshing
+                            }
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+
+                              setSurfaceDust3d(value);
+
+                              if (surfaceMesh) {
+                                void reloadSurfaceMesh(
+                                  surfaceLevel3d,
+                                  {
+                                    silent: true,
+                                    minComponentTriangles: value,
+                                  },
+                                );
+                              }
+                            }}
+                            SelectProps={{
+                              MenuProps: { disablePortal: true },
+                            }}
+                          >
+                            <MenuItem value={0}>Off</MenuItem>
+                            <MenuItem value={100}>Light</MenuItem>
+                            <MenuItem value={400}>Standard</MenuItem>
+                            <MenuItem value={1000}>Strong</MenuItem>
+                          </TextField>
                         }
                       />
 

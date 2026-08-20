@@ -550,6 +550,9 @@ export interface VolumeSurfaceMesh {
   order: "zyx" | "xyz";
   vertexCount: number;
   triangleCount: number;
+  marchingCubesStep?: number;
+  minComponentTriangles?: number;
+  removedComponents?: number;
   vertices: number[];
   normals: number[];
   indices: number[];
@@ -567,6 +570,7 @@ export interface VolumeSurfaceMeshOptions {
   maxDim?: number;
   method?: VolumeSurfaceMethod;
   maxTriangles?: number;
+  minComponentTriangles?: number;
   signal?: AbortSignal;
 }
 

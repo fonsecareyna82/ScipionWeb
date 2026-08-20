@@ -2710,6 +2710,7 @@ export async function getVolumeSurfaceMesh(
     maxDim?: number;
     method?: VolumeSurfaceMethod;
     maxTriangles?: number;
+    minComponentTriangles?: number;
     signal?: AbortSignal;
   } = {},
 ): Promise<VolumeSurfaceMesh> {
@@ -2735,6 +2736,13 @@ export async function getVolumeSurfaceMesh(
 
   if (opts.maxTriangles != null) {
     params.set("maxTriangles", String(opts.maxTriangles));
+  }
+
+  if (opts.minComponentTriangles != null) {
+    params.set(
+      "minComponentTriangles",
+      String(opts.minComponentTriangles),
+    );
   }
 
   const url = params.toString() ? `${base}?${params.toString()}` : base;
