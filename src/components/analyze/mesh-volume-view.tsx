@@ -37,16 +37,16 @@ type DragState = {
     lastY: number;
 };
 
-const GTAO_BLEND_INTENSITY = 0.82;
+const GTAO_BLEND_INTENSITY = 0.68;
 const GTAO_RESOLUTION_SCALE = 1.0;
 
 const GTAO_PARAMETERS = {
-    radius: 0.12,
-    distanceExponent: 1.25,
-    thickness: 1.0,
-    distanceFallOff: 0.8,
+    radius: 0.085,
+    distanceExponent: 1.35,
+    thickness: 0.8,
+    distanceFallOff: 1.0,
     scale: 1.0,
-    samples: 16,
+    samples: 20,
     screenSpaceRadius: false,
 };
 
@@ -64,7 +64,7 @@ function colorFromColormap(colormap?: string): THREE.Color {
     switch ((colormap || "").toLowerCase()) {
         case "gray":
         case "grey":
-            return new THREE.Color(0.82, 0.82, 0.82);
+            return new THREE.Color(0.88, 0.88, 0.88);
         case "magma":
             return new THREE.Color(0.86, 0.34, 0.20);
         case "plasma":
@@ -365,7 +365,7 @@ export default function MeshVolumeView({
     const internalCameraStateRef = useRef<MeshCameraState | null>(null);
     const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
-    const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+    const materialRef = useRef<THREE.MeshPhongMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
 
     useEffect(() => {
@@ -505,6 +505,7 @@ export default function MeshVolumeView({
                 geometry.computeVertexNormals();
             }
 
+            geometry.normalizeNormals();
             geometry.computeBoundingSphere();
 
             const usesVertexColors = applyMeshVertexColors(
@@ -516,13 +517,14 @@ export default function MeshVolumeView({
 
             geometryRef.current = geometry;
 
-            const material = new THREE.MeshStandardMaterial({
+            const material = new THREE.MeshPhongMaterial({
                 color: usesVertexColors
                     ? new THREE.Color(1, 1, 1)
                     : colorFromColormap(colormap),
                 vertexColors: usesVertexColors,
-                roughness: 0.58,
-                metalness: 0.0,
+                shininess: 22,
+                specular: new THREE.Color(0.28, 0.28, 0.28),
+                flatShading: false,
                 transparent: opacity < 1,
                 opacity,
                 wireframe: displayMode === "mesh",
@@ -548,19 +550,19 @@ export default function MeshVolumeView({
 
             controls.addEventListener("change", saveCameraState);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.22);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.14);
             scene.add(ambient);
 
-            const key = new THREE.DirectionalLight(0xffffff, 1.55);
-            key.position.set(1.5, -2.0, 2.0);
+            const key = new THREE.DirectionalLight(0xffffff, 1.75);
+            key.position.set(1.8, -2.4, 2.2);
             scene.add(key);
 
-            const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-            fill.position.set(-1.5, -0.5, 0.8);
+            const fill = new THREE.DirectionalLight(0xffffff, 0.48);
+            fill.position.set(-1.8, -0.6, 1.0);
             scene.add(fill);
 
-            const rim = new THREE.DirectionalLight(0xffffff, 0.55);
-            rim.position.set(-0.5, 1.5, -1.5);
+            const rim = new THREE.DirectionalLight(0xffffff, 0.72);
+            rim.position.set(-0.8, 1.8, -1.6);
             scene.add(rim);
 
             composer = new EffectComposer(renderer);
