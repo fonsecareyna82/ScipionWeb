@@ -360,14 +360,20 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const normalizedTerm = search.trim().toLowerCase();
 
   const filteredProjects = useMemo(() => {
-    if (!normalizedTerm) return projects;
+    const filtered = normalizedTerm
+      ? projects.filter((p) => {
+        const name = String(p.name ?? "").toLowerCase();
+        const id = String(p.id ?? "").toLowerCase();
+        const desc = String(p.description ?? "").toLowerCase();
+        return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
+      })
+      : projects;
 
-    return projects.filter((p) => {
-      const name = String(p.name ?? "").toLowerCase();
-      const id = String(p.id ?? "").toLowerCase();
-      const desc = String(p.description ?? "").toLowerCase();
-      return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
-    });
+    return [...filtered].sort(
+      (a, b) =>
+        (b.updatedAt ?? b.createdAt).getTime() -
+        (a.updatedAt ?? a.createdAt).getTime(),
+    );
   }, [projects, normalizedTerm]);
 
   const stats = useMemo(() => {

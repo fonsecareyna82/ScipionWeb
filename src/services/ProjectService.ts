@@ -169,6 +169,8 @@ export type VolumeSliceOptions = {
   axis?: "x" | "y" | "z";
   cmap?: string;
   normalize?: "minmax" | "zscore" | "none";
+  windowMin?: number;
+  windowMax?: number;
   scale?: number;
   inline?: boolean;
   signal?: AbortSignal;
@@ -213,6 +215,8 @@ export type VolumeData3dOptions = {
   maxDim?: number; // default backend: 160
   /** Downsampling method. */
   method?: "binning" | "stride" | "none"; // default backend: "binning"
+  /** Optional abort signal to cancel the request. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -221,22 +225,21 @@ export type VolumeData3dOptions = {
  * `data` is a flat array; `order` tells how to reshape.
  */
 export type VolumeData3d = {
-  id: string | number;
+  id?: string | number;
   name?: string;
 
   /** Dimensions in (x, y, z). */
   dims: [number, number, number];
 
-  /** Flattened voxel values. */
-  data: number[];
+  /** Flattened voxel values, X varying fastest for order="zyx". */
+  values: number[] | Float32Array;
 
-  /** Ordering of the flattened array. */
+  /** Legacy compatibility payload. */
+  data?: number[];
+
   order?: "zyx" | "xyz";
-
-  /** Optional voxel size tuple. */
   voxelSize?: [number, number, number];
 
-  /** Optional stats. */
   min?: number;
   max?: number;
   mean?: number;
@@ -547,6 +550,10 @@ export interface VolumeSurfaceMesh {
   order: "zyx" | "xyz";
   vertexCount: number;
   triangleCount: number;
+  marchingCubesStep?: number;
+  minComponentTriangles?: number;
+  smoothingIterations?: number;
+  removedComponents?: number;
   vertices: number[];
   normals: number[];
   indices: number[];
@@ -564,6 +571,8 @@ export interface VolumeSurfaceMeshOptions {
   maxDim?: number;
   method?: VolumeSurfaceMethod;
   maxTriangles?: number;
+  minComponentTriangles?: number;
+  smoothingIterations?: number;
   signal?: AbortSignal;
 }
 
@@ -2113,6 +2122,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
 
