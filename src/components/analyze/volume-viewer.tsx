@@ -273,7 +273,7 @@ export default function VolumeViewer({
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
   const [surfaceLevelRange, setSurfaceLevelRange] = useState<[number, number] | null>(null);
-  const [surfaceDust3d, setSurfaceDust3d] = useState(400);
+  const [surfaceDust3d, setSurfaceDust3d] = useState(0);
   const [surfaceSmoothing3d, setSurfaceSmoothing3d] = useState(4);
 
 
