@@ -320,6 +320,7 @@ function buildSubtreeAlignedPlacements(params: {
   spacingX: number;
   spacingY: number;
   nodeSizeMap?: NodeSizeMap | null;
+  preferredChildOrder?: Record<string, string[]> | null;
 }): Record<string, GraphPosition> {
   const {
     levelMap,
@@ -330,6 +331,7 @@ function buildSubtreeAlignedPlacements(params: {
     spacingX,
     spacingY,
     nodeSizeMap,
+    preferredChildOrder,
   } = params;
 
   const nodeIds = Object.keys(levelMap).sort((a, b) => {
@@ -353,9 +355,23 @@ function buildSubtreeAlignedPlacements(params: {
   }
 
   for (const parentId of Object.keys(layoutChildren)) {
-    layoutChildren[parentId] = uniqStable(layoutChildren[parentId]).sort((a, b) =>
-      compareChildrenByParentOrder(protocols, parentId, a, b)
-    );
+    const preferredOrder = preferredChildOrder?.[parentId] ?? [];
+    const preferredRank = new Map(preferredOrder.map((id, index) => [String(id), index]));
+
+    layoutChildren[parentId] = uniqStable(layoutChildren[parentId]).sort((a, b) => {
+      if (preferredOrder.length > 0) {
+        const rankA = preferredRank.get(a);
+        const rankB = preferredRank.get(b);
+
+        if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
+        if (rankA !== undefined) return -1;
+        if (rankB !== undefined) return 1;
+
+        return stableIdCompare(a, b);
+      }
+
+      return compareChildrenByParentOrder(protocols, parentId, a, b);
+    });
   }
 
   const roots = nodeIds.filter((id) => id === "PROJECT" || !assigned.has(id));
@@ -454,17 +470,6 @@ function buildSubtreeAlignedPlacements(params: {
       const childSpan = computeSpan(childId);
       placeNode(childId, cursor);
       cursor += childSpan + childrenGap;
-    }
-
-    if (direction === "TB" && id !== "PROJECT") {
-      const primaryChildPlacement = placements[children[0]];
-
-      if (primaryChildPlacement) {
-        placements[id] = {
-          ...placements[id],
-          x: primaryChildPlacement.x,
-        };
-      }
     }
   };
 
@@ -798,6 +803,33 @@ function buildSubtreeAlignedPlacements(params: {
   }
 
   if (direction === "TB") {
+    for (const [parentId, rawChildIds] of Object.entries(layoutChildren)) {
+      if (parentId === "PROJECT" || !placements[parentId]) continue;
+
+      const childIds = rawChildIds.filter((childId) => Boolean(placements[childId]));
+      if (childIds.length === 0) continue;
+
+      if (childIds.length === 1) {
+        setPlacementAxis(parentId, getPlacementAxis(childIds[0]));
+        continue;
+      }
+
+      const middleIndex = Math.floor(childIds.length / 2);
+
+      if (childIds.length % 2 === 1) {
+        setPlacementAxis(parentId, getPlacementAxis(childIds[middleIndex]));
+        continue;
+      }
+
+      const leftMiddleAxis = getPlacementAxis(childIds[middleIndex - 1]);
+      const rightMiddleAxis = getPlacementAxis(childIds[middleIndex]);
+
+      setPlacementAxis(parentId, (leftMiddleAxis + rightMiddleAxis) / 2);
+    }
+  }
+
+
+  if (direction === "TB") {
     const topLevelBranches =
       (layoutChildren.PROJECT ?? [])
         .filter(
@@ -1055,7 +1087,10 @@ export function buildGraphElements(
   direction: Direction = "TB",
   containerWidth?: number | null,
   viewportZoom?: number | null,
-  nodeSizeMap?: NodeSizeMap | null
+  nodeSizeMap?: NodeSizeMap | null,
+  layoutOptions?: {
+    preferredChildOrder?: Record<string, string[]> | null;
+  }
 ) {
   const spacingX = direction === "TB" ? 480 : 1250;
   const spacingY = direction === "TB" ? 680 : 480;
@@ -1276,6 +1311,7 @@ export function buildGraphElements(
     spacingX,
     spacingY,
     nodeSizeMap,
+    preferredChildOrder: layoutOptions?.preferredChildOrder,
   });
 
   const nodeIds = Object.keys(levelMap).sort((a, b) => {

@@ -478,6 +478,60 @@ type WorkflowClipboardState = {
 
 let workflowClipboardMemory: WorkflowClipboardState | null = null;
 
+function buildPreferredTbChildOrderFromGraph(sourceNodes: Node[], sourceEdges: Edge[]): Record<string, string[]> {
+  const xById = new Map<string, number>();
+
+  for (const node of sourceNodes) {
+    const id = String(node.id);
+    const x = node.position?.x;
+
+    if (typeof x === "number" && Number.isFinite(x)) {
+      xById.set(id, x);
+    }
+  }
+
+  const childrenByParent: Record<string, string[]> = {};
+
+  for (const edge of sourceEdges) {
+    const parentId = String(edge.source);
+    const childId = String(edge.target);
+
+    if (!xById.has(childId)) continue;
+
+    if (!childrenByParent[parentId]) {
+      childrenByParent[parentId] = [];
+    }
+
+    if (!childrenByParent[parentId].includes(childId)) {
+      childrenByParent[parentId].push(childId);
+    }
+  }
+
+  const compareIds = (a: string, b: string): number => {
+    const numericA = Number(a);
+    const numericB = Number(b);
+
+    if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
+      return numericA - numericB;
+    }
+
+    return a.localeCompare(b, undefined, { numeric: true });
+  };
+
+  for (const parentId of Object.keys(childrenByParent)) {
+    childrenByParent[parentId].sort((a, b) => {
+      const xA = xById.get(a) ?? 0;
+      const xB = xById.get(b) ?? 0;
+
+      if (xA !== xB) return xA - xB;
+      return compareIds(a, b);
+    });
+  }
+
+  return childrenByParent;
+}
+
+
 function normalizeHelpText(raw: unknown): string {
   // normalizeHelpText
   return String(raw ?? "").replace(/\\n/g, "\n");
@@ -4097,10 +4151,19 @@ export default function ProjectPage() {
       setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
       if (data.protocols) {
+        const preferredChildOrder = viewMode === "hierarchical" && graphDirection === "TB"
+          ? buildPreferredTbChildOrderFromGraph(nodesRef.current, edgesRef.current)
+          : undefined;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection,
           gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          getEffectiveZoom(),
+          undefined,
+          preferredChildOrder ? { preferredChildOrder } : undefined
         );
 
         const freshTableRows = table ?? [];
@@ -4729,10 +4792,19 @@ export default function ProjectPage() {
           return;
         }
 
+        const preferredChildOrder = viewMode === "hierarchical" && graphDirection === "TB"
+          ? buildPreferredTbChildOrderFromGraph(nodesRef.current, edgesRef.current)
+          : undefined;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection,
           gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          getEffectiveZoom(),
+          undefined,
+          preferredChildOrder ? { preferredChildOrder } : undefined
         );
 
         const currentNodesById =
