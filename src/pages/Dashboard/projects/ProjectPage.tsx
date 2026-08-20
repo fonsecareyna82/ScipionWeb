@@ -6275,46 +6275,18 @@ export default function ProjectPage() {
       }
     }
 
-    const getCurrentNodeWidth = (nodeId: string): number => {
-      const currentNode = currentById.get(nodeId);
-      const measuredWidth = Number((currentNode as any)?.measured?.width ?? currentNode?.width);
-
-      return Number.isFinite(measuredWidth) && measuredWidth > 0
-        ? Math.ceil(measuredWidth)
-        : 950;
-    };
-
-    const getCurrentBranchLeft = (rootId: string): number => {
-      const branchIds = nodeIdsByRoot.get(rootId) ?? [rootId];
-      let left = Number.POSITIVE_INFINITY;
-
-      for (const nodeId of branchIds) {
-        const position =
-          beforePositions.get(nodeId) ??
-          currentById.get(nodeId)?.position ??
-          canonicalById.get(nodeId)?.position;
-
-        if (!position) continue;
-
-        const width = getCurrentNodeWidth(nodeId);
-        left = Math.min(left, position.x - width / 2);
-      }
-
-      if (Number.isFinite(left)) {
-        return left;
-      }
-
-      const fallback =
+    const getCurrentRootX = (rootId: string): number => {
+      const position =
         beforePositions.get(rootId) ??
         currentById.get(rootId)?.position ??
         canonicalById.get(rootId)?.position;
 
-      return fallback?.x ?? 0;
+      return position?.x ?? 0;
     };
 
     const orderedRootIds = Array.from(projectRootIds)
       .filter((id) => canonicalById.has(id))
-      .sort((leftId, rightId) => getCurrentBranchLeft(leftId) - getCurrentBranchLeft(rightId));
+      .sort((leftId, rightId) => getCurrentRootX(leftId) - getCurrentRootX(rightId));
 
     if (orderedRootIds.length === 0) {
       const positionedNodes =
@@ -6441,6 +6413,45 @@ export default function ProjectPage() {
       }
     }
 
+    const getCurrentNodeWidth = (nodeId: string): number => {
+      const currentNode = currentById.get(nodeId);
+      const measuredWidth = Number((currentNode as any)?.measured?.width ?? currentNode?.width);
+
+      return Number.isFinite(measuredWidth) && measuredWidth > 0
+        ? Math.ceil(measuredWidth)
+        : 950;
+    };
+
+    const getCurrentBranchLeft = (rootId: string): number => {
+      const branchIds = nodeIdsByRoot.get(rootId) ?? [rootId];
+      let left = Number.POSITIVE_INFINITY;
+
+      for (const nodeId of branchIds) {
+        const position =
+          beforePositions.get(nodeId) ??
+          currentById.get(nodeId)?.position ??
+          canonicalById.get(nodeId)?.position;
+
+        if (!position) continue;
+
+        const width = getCurrentNodeWidth(nodeId);
+        left = Math.min(left, position.x - width / 2);
+      }
+
+      if (Number.isFinite(left)) return left;
+
+      const fallback =
+        beforePositions.get(rootId) ??
+        currentById.get(rootId)?.position ??
+        canonicalById.get(rootId)?.position;
+
+      return fallback?.x ?? 0;
+    };
+
+    const orderedRootIdsByBounds = [...orderedRootIds]
+      .sort((leftId, rightId) => getCurrentBranchLeft(leftId) - getCurrentBranchLeft(rightId));
+
+
     const affectedRootIds =
       new Set<string>();
 
@@ -6506,201 +6517,147 @@ export default function ProjectPage() {
       }
     }
 
-    const firstAffectedIndex =
-      orderedRootIds.findIndex(
-        (rootId) =>
-          affectedRootIds.has(rootId)
-      );
+    const firstAffectedIndex = orderedRootIdsByBounds.findIndex((rootId) =>
+      affectedRootIds.has(rootId)
+    );
 
     if (firstAffectedIndex >= 0) {
-      const branchGap = 120;
+      const branchGap = 240;
+      const levelGap = 40;
+      const occupiedRightByLevel = new Map<number, number>();
+      const placedRootIds: string[] = [];
 
-      const occupiedRightByLevel =
-        new Map<number, number>();
+      const getBranchExtents = (rootId: string) => {
+        const extents = new Map<number, { left: number; right: number }>();
 
-      const getBranchExtents = (
-        rootId: string
-      ) => {
-        const extents =
-          new Map<
-            number,
-            {
-              left: number;
-              right: number;
-            }
-          >();
-
-        for (
-          const nodeId
-          of nodeIdsByRoot.get(
-            rootId
-          ) ?? []
-        ) {
+        for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
           const positionedNode = workingById.get(nodeId);
 
-          if (!positionedNode) {
-            continue;
-          }
+          if (!positionedNode) continue;
 
-          const currentNode =
-            currentById.get(nodeId);
+          const currentNode = currentById.get(nodeId);
+          const sizeNode = currentNode
+            ? { ...currentNode, position: positionedNode.position }
+            : positionedNode;
 
-          const sizeNode =
-            currentNode
-              ? {
-                ...currentNode,
-                position:
-                  positionedNode.position,
-              }
-              : positionedNode;
-
-          const size =
-            getAxisSize(
-              "TB",
-              sizeNode
-            );
-
+          const size = getAxisSize("TB", sizeNode);
           const level = Math.round(positionedNode.position.y / hierSpacingY("TB"));
+          const left = positionedNode.position.x - size / 2;
+          const right = positionedNode.position.x + size / 2;
+          const current = extents.get(level);
 
-          const left =
-            positionedNode.position.x -
-            size / 2;
-
-          const right =
-            positionedNode.position.x +
-            size / 2;
-
-          const current =
-            extents.get(level);
-
-          extents.set(
-            level,
-            {
-              left:
-                current
-                  ? Math.min(
-                    current.left,
-                    left
-                  )
-                  : left,
-
-              right:
-                current
-                  ? Math.max(
-                    current.right,
-                    right
-                  )
-                  : right,
-            }
-          );
+          extents.set(level, {
+            left: current ? Math.min(current.left, left) : left,
+            right: current ? Math.max(current.right, right) : right,
+          });
         }
 
         return extents;
       };
 
-      for (
-        let index = 0;
-        index < orderedRootIds.length;
-        index++
-      ) {
-        const rootId =
-          orderedRootIds[index];
+      const getBranchNodeBounds = (rootId: string): GraphBlockBounds[] => {
+        const bounds: GraphBlockBounds[] = [];
 
-        const branchIds =
-          nodeIdsByRoot.get(rootId) ??
-          [];
+        for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
+          const positionedNode = workingById.get(nodeId);
 
-        let extents =
-          getBranchExtents(rootId);
+          if (!positionedNode) continue;
 
+          const currentNode = currentById.get(nodeId);
+          const sizeNode = currentNode
+            ? { ...currentNode, position: positionedNode.position }
+            : positionedNode;
+
+          const nodeBounds = getBoundsFromPositionItems("TB", [
+            {
+              id: nodeId,
+              position: positionedNode.position,
+              node: sizeNode,
+            },
+          ]);
+
+          if (nodeBounds) bounds.push(nodeBounds);
+        }
+
+        return bounds;
+      };
+
+      for (let index = 0; index < orderedRootIdsByBounds.length; index++) {
+        const rootId = orderedRootIdsByBounds[index];
+        const branchIds = nodeIdsByRoot.get(rootId) ?? [];
+        let extents = getBranchExtents(rootId);
         let offset = 0;
 
         if (index > firstAffectedIndex && !affectedRootIds.has(rootId)) {
-          for (
-            const [
-              level,
-              extent,
-            ]
-            of extents
-          ) {
-            const occupiedRight =
-              occupiedRightByLevel.get(
-                level
-              );
+          for (const [level, extent] of extents) {
+            const occupiedRight = occupiedRightByLevel.get(level);
 
-            if (
-              occupiedRight ===
-              undefined
-            ) {
-              continue;
-            }
+            if (occupiedRight === undefined) continue;
 
             offset = Math.max(
               offset,
-              occupiedRight +
-              branchGap -
-              extent.left
+              occupiedRight + branchGap - extent.left
             );
+          }
+
+          const candidateBounds = getBranchNodeBounds(rootId);
+          const obstacleBounds = placedRootIds.flatMap((placedRootId) =>
+            getBranchNodeBounds(placedRootId)
+          );
+
+          for (const candidate of candidateBounds) {
+            for (const obstacle of obstacleBounds) {
+              const overlapsVertically = intervalsOverlap(
+                candidate.minLevel,
+                candidate.maxLevel,
+                obstacle.minLevel,
+                obstacle.maxLevel,
+                levelGap
+              );
+
+              if (!overlapsVertically) continue;
+
+              offset = Math.max(
+                offset,
+                obstacle.maxAxis + branchGap - candidate.minAxis
+              );
+            }
           }
         }
 
         if (offset > 0.5) {
-          for (
-            const nodeId
-            of branchIds
-          ) {
-            const node =
-              workingById.get(
-                nodeId
-              );
+          for (const nodeId of branchIds) {
+            const node = workingById.get(nodeId);
 
             if (!node) continue;
 
-            workingById.set(
-              nodeId,
-              {
-                ...node,
-                position: {
-                  ...node.position,
-                  x:
-                    node.position.x +
-                    offset,
-                },
-              }
-            );
+            workingById.set(nodeId, {
+              ...node,
+              position: {
+                ...node.position,
+                x: node.position.x + offset,
+              },
+            });
           }
 
-          extents =
-            getBranchExtents(
-              rootId
-            );
+          extents = getBranchExtents(rootId);
         }
 
-        for (
-          const [
-            level,
-            extent,
-          ]
-          of extents
-        ) {
-          const occupiedRight =
-            occupiedRightByLevel.get(
-              level
-            );
+        for (const [level, extent] of extents) {
+          const occupiedRight = occupiedRightByLevel.get(level);
 
           occupiedRightByLevel.set(
             level,
-            occupiedRight ===
-              undefined
+            occupiedRight === undefined
               ? extent.right
-              : Math.max(
-                occupiedRight,
-                extent.right
-              )
+              : Math.max(occupiedRight, extent.right)
           );
         }
+
+        placedRootIds.push(rootId);
       }
     }
+
 
     const positionedNodes =
       canonicalNodes.map(
