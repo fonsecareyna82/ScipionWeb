@@ -6413,77 +6413,163 @@ export default function ProjectPage() {
       }
     }
 
-    const getCurrentNodeWidth = (nodeId: string): number => {
-      const currentNode = currentById.get(nodeId);
-      const measuredWidth = Number((currentNode as any)?.measured?.width ?? currentNode?.width);
-
-      return Number.isFinite(measuredWidth) && measuredWidth > 0
-        ? Math.ceil(measuredWidth)
-        : 950;
-    };
-
-    const getCurrentBranchLeft = (rootId: string): number => {
-      const branchIds = nodeIdsByRoot.get(rootId) ?? [rootId];
+    const getBranchBounds = (
+      rootId: string,
+      useBeforePositions = false
+    ): { left: number; right: number } | null => {
       let left = Number.POSITIVE_INFINITY;
+      let right = Number.NEGATIVE_INFINITY;
 
-      for (const nodeId of branchIds) {
-        const position =
-          beforePositions.get(nodeId) ??
-          currentById.get(nodeId)?.position ??
-          canonicalById.get(nodeId)?.position;
+      for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
+        const workingNode = workingById.get(nodeId) ?? canonicalById.get(nodeId);
+        const currentNode = currentById.get(nodeId);
+
+        const position = useBeforePositions
+          ? beforePositions.get(nodeId) ?? currentNode?.position ?? workingNode?.position
+          : workingNode?.position;
 
         if (!position) continue;
 
-        const width = getCurrentNodeWidth(nodeId);
-        left = Math.min(left, position.x - width / 2);
+        const sizeNode = currentNode
+          ? { ...currentNode, position }
+          : workingNode
+            ? { ...workingNode, position }
+            : null;
+
+        const size = sizeNode ? getAxisSize("TB", sizeNode) : 940;
+
+        left = Math.min(left, position.x - size / 2);
+        right = Math.max(right, position.x + size / 2);
       }
 
-      if (Number.isFinite(left)) return left;
-
-      const fallback =
-        beforePositions.get(rootId) ??
-        currentById.get(rootId)?.position ??
-        canonicalById.get(rootId)?.position;
-
-      return fallback?.x ?? 0;
+      return Number.isFinite(left) && Number.isFinite(right)
+        ? { left, right }
+        : null;
     };
 
-    const orderedRootIdsByBounds = [...orderedRootIds]
-      .sort((leftId, rightId) => getCurrentBranchLeft(leftId) - getCurrentBranchLeft(rightId));
+    const shiftBranch = (rootId: string, deltaX: number): void => {
+      if (Math.abs(deltaX) <= 0.5) return;
 
+      for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
+        const node = workingById.get(nodeId);
+        if (!node) continue;
 
-    const affectedRootIds =
-      new Set<string>();
+        workingById.set(nodeId, {
+          ...node,
+          position: {
+            ...node.position,
+            x: node.position.x + deltaX,
+          },
+        });
+      }
+    };
+
+    const rootByNodeId = new Map<string, string>();
+
+    for (const [rootId, branchIds] of nodeIdsByRoot) {
+      for (const nodeId of branchIds) {
+        rootByNodeId.set(nodeId, rootId);
+      }
+    }
+
+    const affectedRootIds = new Set<string>();
 
     for (const newId of newIds) {
-      for (
-        const [
-          rootId,
-          branchIds,
-        ]
-        of nodeIdsByRoot
-      ) {
-        if (
-          branchIds.includes(newId)
-        ) {
-          affectedRootIds.add(
-            rootId
-          );
+      const rootId = rootByNodeId.get(newId);
+
+      if (rootId) {
+        affectedRootIds.add(rootId);
+      }
+    }
+
+    const sourceRootByNewRoot = new Map<string, string>();
+
+    for (const rootId of affectedRootIds) {
+      if (pending.beforeIds.has(rootId)) continue;
+
+      const branchIds = new Set(nodeIdsByRoot.get(rootId) ?? []);
+
+      for (const pair of pending.duplicatedPairs ?? []) {
+        if (!branchIds.has(String(pair.newId))) continue;
+
+        const sourceRootId = rootByNodeId.get(String(pair.sourceId));
+
+        if (sourceRootId && sourceRootId !== rootId) {
+          sourceRootByNewRoot.set(rootId, sourceRootId);
+          break;
         }
       }
     }
 
-    for (const rootId of affectedRootIds) {
-      const branchIds = nodeIdsByRoot.get(rootId) ?? [];
-      const branchIdSet = new Set(branchIds);
+    const compareNodeIds = (a: string, b: string): number => {
+      const numericA = Number(a);
+      const numericB = Number(b);
 
+      if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
+        return numericA - numericB;
+      }
+
+      return a.localeCompare(b, undefined, { numeric: true });
+    };
+
+    const existingRootIds = orderedRootIds
+      .filter((rootId) => pending.beforeIds.has(rootId))
+      .sort((leftId, rightId) => {
+        const leftBounds = getBranchBounds(leftId, true);
+        const rightBounds = getBranchBounds(rightId, true);
+
+        const left = leftBounds?.left ?? getCurrentRootX(leftId);
+        const right = rightBounds?.left ?? getCurrentRootX(rightId);
+
+        return left - right;
+      });
+
+    const newRootIds = orderedRootIds
+      .filter((rootId) => !pending.beforeIds.has(rootId))
+      .sort(compareNodeIds);
+
+    const orderedRootIdsByBounds = [...existingRootIds];
+
+    for (const newRootId of newRootIds) {
+      const sourceRootId = sourceRootByNewRoot.get(newRootId);
+
+      if (!sourceRootId) {
+        orderedRootIdsByBounds.push(newRootId);
+        continue;
+      }
+
+      const sourceIndex = orderedRootIdsByBounds.indexOf(sourceRootId);
+
+      if (sourceIndex < 0) {
+        orderedRootIdsByBounds.push(newRootId);
+        continue;
+      }
+
+      let insertIndex = sourceIndex + 1;
+
+      while (
+        insertIndex < orderedRootIdsByBounds.length &&
+        sourceRootByNewRoot.get(orderedRootIdsByBounds[insertIndex]) === sourceRootId
+      ) {
+        insertIndex += 1;
+      }
+
+      orderedRootIdsByBounds.splice(insertIndex, 0, newRootId);
+    }
+
+    for (const rootId of affectedRootIds) {
+      if (!pending.beforeIds.has(rootId)) {
+        continue;
+      }
+
+      const branchIds = nodeIdsByRoot.get(rootId) ?? [];
       let anchorId = rootId;
 
       if (pending.operation === "duplicate") {
         const duplicatedSourceId = (pending.duplicatedPairs ?? [])
           .map((pair) => String(pair.sourceId))
           .find((sourceId) =>
-            branchIdSet.has(sourceId) &&
+            rootByNodeId.get(sourceId) === rootId &&
             beforePositions.has(sourceId) &&
             canonicalById.has(sourceId)
           );
@@ -6522,142 +6608,41 @@ export default function ProjectPage() {
     );
 
     if (firstAffectedIndex >= 0) {
-      const branchGap = 240;
-      const levelGap = 40;
-      const occupiedRightByLevel = new Map<number, number>();
-      const placedRootIds: string[] = [];
+      const branchGap = 320;
 
-      const getBranchExtents = (rootId: string) => {
-        const extents = new Map<number, { left: number; right: number }>();
+      for (let index = firstAffectedIndex; index < orderedRootIdsByBounds.length; index++) {
+        if (index === 0) continue;
 
-        for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
-          const positionedNode = workingById.get(nodeId);
-
-          if (!positionedNode) continue;
-
-          const currentNode = currentById.get(nodeId);
-          const sizeNode = currentNode
-            ? { ...currentNode, position: positionedNode.position }
-            : positionedNode;
-
-          const size = getAxisSize("TB", sizeNode);
-          const level = Math.round(positionedNode.position.y / hierSpacingY("TB"));
-          const left = positionedNode.position.x - size / 2;
-          const right = positionedNode.position.x + size / 2;
-          const current = extents.get(level);
-
-          extents.set(level, {
-            left: current ? Math.min(current.left, left) : left,
-            right: current ? Math.max(current.right, right) : right,
-          });
-        }
-
-        return extents;
-      };
-
-      const getBranchNodeBounds = (rootId: string): GraphBlockBounds[] => {
-        const bounds: GraphBlockBounds[] = [];
-
-        for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
-          const positionedNode = workingById.get(nodeId);
-
-          if (!positionedNode) continue;
-
-          const currentNode = currentById.get(nodeId);
-          const sizeNode = currentNode
-            ? { ...currentNode, position: positionedNode.position }
-            : positionedNode;
-
-          const nodeBounds = getBoundsFromPositionItems("TB", [
-            {
-              id: nodeId,
-              position: positionedNode.position,
-              node: sizeNode,
-            },
-          ]);
-
-          if (nodeBounds) bounds.push(nodeBounds);
-        }
-
-        return bounds;
-      };
-
-      for (let index = 0; index < orderedRootIdsByBounds.length; index++) {
         const rootId = orderedRootIdsByBounds[index];
-        const branchIds = nodeIdsByRoot.get(rootId) ?? [];
-        let extents = getBranchExtents(rootId);
-        let offset = 0;
+        const previousRootId = orderedRootIdsByBounds[index - 1];
 
-        if (index > firstAffectedIndex && !affectedRootIds.has(rootId)) {
-          for (const [level, extent] of extents) {
-            const occupiedRight = occupiedRightByLevel.get(level);
+        const currentBounds = getBranchBounds(rootId);
+        const previousBounds = getBranchBounds(previousRootId);
 
-            if (occupiedRight === undefined) continue;
+        if (!currentBounds || !previousBounds) continue;
 
-            offset = Math.max(
-              offset,
-              occupiedRight + branchGap - extent.left
-            );
-          }
+        const isNewRoot = !pending.beforeIds.has(rootId);
+        const isAnchoredAffectedRoot =
+          index === firstAffectedIndex &&
+          affectedRootIds.has(rootId) &&
+          !isNewRoot;
 
-          const candidateBounds = getBranchNodeBounds(rootId);
-          const obstacleBounds = placedRootIds.flatMap((placedRootId) =>
-            getBranchNodeBounds(placedRootId)
-          );
-
-          for (const candidate of candidateBounds) {
-            for (const obstacle of obstacleBounds) {
-              const overlapsVertically = intervalsOverlap(
-                candidate.minLevel,
-                candidate.maxLevel,
-                obstacle.minLevel,
-                obstacle.maxLevel,
-                levelGap
-              );
-
-              if (!overlapsVertically) continue;
-
-              offset = Math.max(
-                offset,
-                obstacle.maxAxis + branchGap - candidate.minAxis
-              );
-            }
-          }
+        if (isAnchoredAffectedRoot) {
+          continue;
         }
 
-        if (offset > 0.5) {
-          for (const nodeId of branchIds) {
-            const node = workingById.get(nodeId);
+        const requiredShift =
+          previousBounds.right +
+          branchGap -
+          currentBounds.left;
 
-            if (!node) continue;
+        const deltaX = isNewRoot
+          ? requiredShift
+          : Math.max(0, requiredShift);
 
-            workingById.set(nodeId, {
-              ...node,
-              position: {
-                ...node.position,
-                x: node.position.x + offset,
-              },
-            });
-          }
-
-          extents = getBranchExtents(rootId);
-        }
-
-        for (const [level, extent] of extents) {
-          const occupiedRight = occupiedRightByLevel.get(level);
-
-          occupiedRightByLevel.set(
-            level,
-            occupiedRight === undefined
-              ? extent.right
-              : Math.max(occupiedRight, extent.right)
-          );
-        }
-
-        placedRootIds.push(rootId);
+        shiftBranch(rootId, deltaX);
       }
     }
-
 
     const positionedNodes =
       canonicalNodes.map(
