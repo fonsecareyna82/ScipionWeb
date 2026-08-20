@@ -473,7 +473,7 @@ describe("VolumeViewer", () => {
         });
     });
 
-    it("reloads surface mesh after changing maxDim", async () => {
+    it("reloads surface mesh after changing quality", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -493,11 +493,15 @@ describe("VolumeViewer", () => {
             );
         });
 
-        fireEvent.change(screen.getByDisplayValue("256"), {
-            target: { value: "104" },
-        });
+        const qualitySelect = screen.getAllByRole("combobox")[0];
+        fireEvent.mouseDown(qualitySelect);
+        fireEvent.click(
+            await screen.findByRole("option", { name: "Fast" }),
+        );
 
-        fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
+        fireEvent.click(
+            screen.getByRole("button", { name: "Reload data" }),
+        );
 
         await waitFor(() => {
             expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenLastCalledWith(
@@ -506,7 +510,7 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 104,
+                    maxDim: 128,
                     method: "stride",
                 }),
             );
@@ -724,9 +728,11 @@ describe("VolumeViewer", () => {
             );
         });
 
-        const methodSelect = screen.getAllByRole("combobox")[0];
+        const methodSelect = screen.getAllByRole("combobox")[1];
         fireEvent.mouseDown(methodSelect);
-        fireEvent.click(await screen.findByText("binning", { selector: '[role="option"]' }));
+        fireEvent.click(
+            await screen.findByRole("option", { name: "binning" }),
+        );
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
