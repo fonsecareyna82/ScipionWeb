@@ -6365,14 +6365,31 @@ export default function ProjectPage() {
 
     for (const rootId of affectedRootIds) {
       const branchIds = nodeIdsByRoot.get(rootId) ?? [];
-      const canonicalRoot = canonicalById.get(rootId);
+      const branchIdSet = new Set(branchIds);
 
-      if (!canonicalRoot) continue;
+      let anchorId = rootId;
 
-      const rootAnchorPosition =
-        beforePositions.get(rootId) ??
-        currentById.get(rootId)?.position ??
-        canonicalRoot.position;
+      if (pending.operation === "duplicate") {
+        const duplicatedSourceId = (pending.duplicatedPairs ?? [])
+          .map((pair) => String(pair.sourceId))
+          .find((sourceId) =>
+            branchIdSet.has(sourceId) &&
+            beforePositions.has(sourceId) &&
+            canonicalById.has(sourceId)
+          );
+
+        if (duplicatedSourceId) {
+          anchorId = duplicatedSourceId;
+        }
+      }
+
+      const canonicalAnchor = canonicalById.get(anchorId);
+      const anchorPosition =
+        beforePositions.get(anchorId) ??
+        currentById.get(anchorId)?.position ??
+        canonicalAnchor?.position;
+
+      if (!canonicalAnchor || !anchorPosition) continue;
 
       for (const nodeId of branchIds) {
         const canonicalNode = canonicalById.get(nodeId);
@@ -6383,8 +6400,8 @@ export default function ProjectPage() {
         workingById.set(nodeId, {
           ...workingNode,
           position: {
-            x: rootAnchorPosition.x + canonicalNode.position.x - canonicalRoot.position.x,
-            y: rootAnchorPosition.y + canonicalNode.position.y - canonicalRoot.position.y,
+            x: anchorPosition.x + canonicalNode.position.x - canonicalAnchor.position.x,
+            y: anchorPosition.y + canonicalNode.position.y - canonicalAnchor.position.y,
           },
         });
       }
