@@ -2558,7 +2558,6 @@ export default function VolumeViewer({
                           >
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
-                            <ToggleButton value="volume">volume</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
