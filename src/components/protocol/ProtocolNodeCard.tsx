@@ -2070,12 +2070,11 @@ export default function ProtocolNodeCard({
                 </div>
               ) : (
                 <div className={styles.protocolTitleBlock}>
-                  <div
+                  <OverflowTooltipText
+                    as="div"
+                    text={protocolLabel}
                     className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
-                    title={data.runName}
-                  >
-                    {truncateLabel(protocolLabel, 150)}
-                  </div>
+                  />
 
                   {shouldShowProtocolSubtitle ? (
                     <div className={styles.protocolSubtitle} title={headerDisplayName}>
