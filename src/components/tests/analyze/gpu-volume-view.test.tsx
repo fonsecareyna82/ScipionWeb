@@ -147,7 +147,7 @@ vi.mock("three", () => {
     }
 
     class Data3DTexture {
-        data: Uint8Array;
+        data: Uint8Array | Float32Array;
         width: number;
         height: number;
         depth: number;
@@ -162,7 +162,7 @@ vi.mock("three", () => {
         needsUpdate = false;
         internalFormat: unknown;
 
-        constructor(data: Uint8Array, width: number, height: number, depth: number) {
+        constructor(data: Uint8Array | Float32Array, width: number, height: number, depth: number) {
             this.data = data;
             this.width = width;
             this.height = height;
@@ -230,6 +230,7 @@ vi.mock("three", () => {
         SRGBColorSpace: "srgb",
         RedFormat: "red",
         UnsignedByteType: "ubyte",
+        FloatType: "float",
         LinearFilter: "linear",
         ClampToEdgeWrapping: "clamp",
     };
@@ -258,7 +259,9 @@ vi.mock("three/examples/jsm/controls/OrbitControls.js", () => ({
             threeState.lastControls = this;
         }
 
-        update() { }
+        update() {
+            return false;
+        }
 
         dispose() {
             this.disposed = true;
@@ -267,6 +270,16 @@ vi.mock("three/examples/jsm/controls/OrbitControls.js", () => ({
         addEventListener(name: string, cb: Function) {
             if (!this.listeners[name]) this.listeners[name] = [];
             this.listeners[name].push(cb);
+        }
+
+        removeEventListener(
+            name: string,
+            cb: Function,
+        ) {
+            this.listeners[name] =
+                (this.listeners[name] ?? []).filter(
+                    (listener) => listener !== cb,
+                );
         }
     },
 }));

@@ -95,7 +95,14 @@ describe("ProtocolOutputsPanel", () => {
     });
 
     await waitFor(() => {
-      expect(mockFetchOutputPreview).toHaveBeenCalledWith("1", "2", "outputA", undefined);
+      expect(mockFetchOutputPreview).toHaveBeenCalledWith(
+        "1",
+        "2",
+        "outputA",
+        expect.objectContaining({
+          signal: expect.anything(),
+        }),
+      );
     });
 
     expect(await screen.findByText("This is the first preview")).toBeInTheDocument();
@@ -133,7 +140,14 @@ describe("ProtocolOutputsPanel", () => {
     fireEvent.click(screen.getByText("Output B"));
 
     await waitFor(() => {
-      expect(mockFetchOutputPreview).toHaveBeenCalledWith("1", "2", "outputB", undefined);
+      expect(mockFetchOutputPreview).toHaveBeenCalledWith(
+        "1",
+        "2",
+        "outputB",
+        expect.objectContaining({
+          signal: expect.anything(),
+        }),
+      );
     });
 
     expect(await screen.findByText("Preview B")).toBeInTheDocument();

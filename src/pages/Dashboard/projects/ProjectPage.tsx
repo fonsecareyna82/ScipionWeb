@@ -67,7 +67,13 @@ import {
   hasProjectEffectiveSettingsService,
   type ProjectEffectiveSettings,
   type ProtocolOutputThumbnailItem,
+  type ProtocolRuntimeSummary,
 } from "@/services/ProjectService";
+import {
+  DEFAULT_PROJECT_USER_SETTINGS,
+  DEFAULT_PROJECT_INSTANCE_SETTINGS,
+  type ProjectUserSettings,
+} from "@/config/settingsDefaults";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
 import { Typography, Link } from "@mui/material";
@@ -100,6 +106,11 @@ interface StatusNodeData {
   // Progress/timing
   cpuTime?: string;
   elapsedTime?: string;
+
+  elapsedSessionId?:
+  | string
+  | null;
+
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
@@ -127,6 +138,27 @@ function normalizeProtocolStatus(
     .toLowerCase();
 }
 
+const LIVE_PROTOCOL_STATUSES =
+  new Set([
+    "scheduled",
+    "launched",
+    "running",
+  ]);
+
+
+function isLiveProtocolStatus(
+  status: unknown,
+): boolean {
+  return (
+    LIVE_PROTOCOL_STATUSES
+      .has(
+        normalizeProtocolStatus(
+          status
+        )
+      )
+  );
+}
+
 function isElapsedTimerStatus(
   status: unknown,
 ): boolean {
@@ -135,19 +167,20 @@ function isElapsedTimerStatus(
   );
 }
 
-function isProtocolRefreshActive(status: unknown): boolean {
-  const normalized = normalizeProtocolStatus(status);
-
-  return (
-    normalized === "launched" ||
-    normalized === "running" ||
-    normalized === "scheduled"
-  );
+function normalizeElapsedSessionId(
+  value: unknown,
+): string {
+  return String(
+    value ?? ""
+  ).trim();
 }
+
 
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
+  previousSessionId?: unknown,
+  nextSessionId?: unknown,
 ): boolean {
   const previous =
     normalizeProtocolStatus(
@@ -159,16 +192,47 @@ function continuesElapsedTimerSession(
       nextStatus
     );
 
-  return (
-    previous === "launched" &&
+  const statusContinues =
     (
-      next === "launched" ||
-      next === "running"
+      previous === "launched"
+      &&
+      (
+        next === "launched"
+        ||
+        next === "running"
+      )
     )
-  ) || (
-      previous === "running" &&
+    ||
+    (
+      previous === "running"
+      &&
       next === "running"
     );
+
+  if (!statusContinues) {
+    return false;
+  }
+
+  const nextSession =
+    normalizeElapsedSessionId(
+      nextSessionId
+    );
+
+  // Backward compatibility with hosts
+  // that do not expose elapsedSessionId.
+  if (!nextSession) {
+    return true;
+  }
+
+  const previousSession =
+    normalizeElapsedSessionId(
+      previousSessionId
+    );
+
+  return (
+    previousSession
+    === nextSession
+  );
 }
 
 function toElapsedSeconds(value: unknown): number {
@@ -204,6 +268,12 @@ function mergeNodeElapsedTick(
     continuesElapsedTimerSession(
       currentNode?.data?.status,
       freshStatus,
+      currentNode
+        ?.data
+        ?.elapsedSessionId,
+      freshNode
+        .data
+        ?.elapsedSessionId,
     );
 
   const currentElapsed = toElapsedSeconds(
@@ -252,12 +322,18 @@ function mergeTableElapsedTick(
     continuesElapsedTimerSession(
       currentRow?.status,
       freshRow?.status,
+      currentRow?.elapsedSessionId,
+      freshRow?.elapsedSessionId,
     );
 
   const currentNodeContinues =
     continuesElapsedTimerSession(
       currentNode?.data?.status,
       freshRow?.status,
+      currentNode
+        ?.data
+        ?.elapsedSessionId,
+      freshRow?.elapsedSessionId,
     );
 
   const currentElapsed = Math.max(
@@ -401,6 +477,60 @@ type WorkflowClipboardState = {
 };
 
 let workflowClipboardMemory: WorkflowClipboardState | null = null;
+
+function buildPreferredTbChildOrderFromGraph(sourceNodes: Node[], sourceEdges: Edge[]): Record<string, string[]> {
+  const xById = new Map<string, number>();
+
+  for (const node of sourceNodes) {
+    const id = String(node.id);
+    const x = node.position?.x;
+
+    if (typeof x === "number" && Number.isFinite(x)) {
+      xById.set(id, x);
+    }
+  }
+
+  const childrenByParent: Record<string, string[]> = {};
+
+  for (const edge of sourceEdges) {
+    const parentId = String(edge.source);
+    const childId = String(edge.target);
+
+    if (!xById.has(childId)) continue;
+
+    if (!childrenByParent[parentId]) {
+      childrenByParent[parentId] = [];
+    }
+
+    if (!childrenByParent[parentId].includes(childId)) {
+      childrenByParent[parentId].push(childId);
+    }
+  }
+
+  const compareIds = (a: string, b: string): number => {
+    const numericA = Number(a);
+    const numericB = Number(b);
+
+    if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
+      return numericA - numericB;
+    }
+
+    return a.localeCompare(b, undefined, { numeric: true });
+  };
+
+  for (const parentId of Object.keys(childrenByParent)) {
+    childrenByParent[parentId].sort((a, b) => {
+      const xA = xById.get(a) ?? 0;
+      const xB = xById.get(b) ?? 0;
+
+      if (xA !== xB) return xA - xB;
+      return compareIds(a, b);
+    });
+  }
+
+  return childrenByParent;
+}
+
 
 function normalizeHelpText(raw: unknown): string {
   // normalizeHelpText
@@ -828,12 +958,118 @@ export default function ProjectPage() {
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
 
-  const protocolOutputThumbnailsEnabled = useMemo(() => {
-    const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+  const effectiveUserSettings =
+    useMemo<ProjectUserSettings>(() => {
+      const raw =
+        projectEffectiveSettings
+          ?.settings
+          ?.user;
 
-    return raw?.protocolOutputThumbnailsEnabled === true;
-  }, [projectEffectiveSettings]);
+      const source =
+        raw &&
+          typeof raw === "object"
+          ? raw as Record<string, unknown>
+          : {};
 
+      const workflowViewModeRaw =
+        String(
+          source.workflowViewMode
+          ?? DEFAULT_PROJECT_USER_SETTINGS
+            .workflowViewMode
+        )
+          .trim()
+          .toLowerCase();
+
+      let workflowViewMode:
+        ProjectUserSettings[
+        "workflowViewMode"
+        ] = "treeTb";
+
+      switch (workflowViewModeRaw) {
+        case "treelr":
+        case "tree_lr":
+        case "tree-lr":
+        case "lr":
+          workflowViewMode =
+            "treeLr";
+          break;
+
+        case "grid":
+          workflowViewMode =
+            "grid";
+          break;
+
+        case "table":
+          workflowViewMode =
+            "table";
+          break;
+
+        case "treetb":
+        case "tree_tb":
+        case "tree-tb":
+        case "tb":
+        default:
+          workflowViewMode =
+            "treeTb";
+          break;
+      }
+
+      const refreshValue = Number(
+        source.workflowsAutoRefreshSec
+        ?? DEFAULT_PROJECT_USER_SETTINGS
+          .workflowsAutoRefreshSec
+      );
+
+      return {
+        workflowViewMode,
+
+        graphMiniMapEnabled:
+          typeof source
+            .graphMiniMapEnabled
+            === "boolean"
+            ? source.graphMiniMapEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .graphMiniMapEnabled,
+
+        graphFocusModeEnabled:
+          typeof source
+            .graphFocusModeEnabled
+            === "boolean"
+            ? source.graphFocusModeEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .graphFocusModeEnabled,
+
+        protocolOutputThumbnailsEnabled:
+          typeof source
+            .protocolOutputThumbnailsEnabled
+            === "boolean"
+            ? source
+              .protocolOutputThumbnailsEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .protocolOutputThumbnailsEnabled,
+
+        workflowsAutoRefreshSec:
+          Number.isFinite(
+            refreshValue
+          )
+            ? Math.max(
+              0,
+              Math.min(
+                300,
+                refreshValue,
+              ),
+            )
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .workflowsAutoRefreshSec,
+      };
+    }, [
+      projectEffectiveSettings,
+    ]);
+
+
+  const workflowAutoRefreshSec = effectiveUserSettings.workflowsAutoRefreshSec;
+
+  const protocolOutputThumbnailsEnabled = effectiveUserSettings.protocolOutputThumbnailsEnabled;
   const protocolOutputThumbnailsEnabledRef = useRef(false);
   protocolOutputThumbnailsEnabledRef.current = protocolOutputThumbnailsEnabled;
 
@@ -903,6 +1139,53 @@ export default function ProjectPage() {
 
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+
+
+  useEffect(() => {
+    const workflowViewMode = effectiveUserSettings.workflowViewMode;
+
+    switch (workflowViewMode) {
+      case "treeLr":
+        setViewMode(
+          "hierarchical"
+        );
+
+        setGraphDirection(
+          "LR"
+        );
+        break;
+
+      case "grid":
+        setViewMode(
+          "grid"
+        );
+        break;
+
+      case "table":
+        setViewMode(
+          "table"
+        );
+        break;
+
+      case "treeTb":
+      default:
+        setViewMode(
+          "hierarchical"
+        );
+
+        setGraphDirection(
+          "TB"
+        );
+        break;
+    }
+
+    setMiniMapEnabled(effectiveUserSettings.graphMiniMapEnabled);
+    setFocusModeEnabled(effectiveUserSettings.graphFocusModeEnabled);
+
+  }, [
+    projectName,
+    effectiveUserSettings,
+  ]);
 
   const analyzeViewerService = useMemo<ExternalAnalyzeViewerService>(() => {
     return {
@@ -1012,12 +1295,23 @@ export default function ProjectPage() {
     return Number.isFinite(n) ? n : undefined;
   }, [project]);
 
-  const effectiveUserSettings = projectEffectiveSettings?.settings?.user ?? null;
-  const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
-  const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
+  const effectiveInstanceSettings =
+    projectEffectiveSettings
+      ?.settings
+      ?.instance
+    ?? null;
+  const effectiveHostSettings =
+    projectEffectiveSettings
+      ?.settings
+      ?.host
+    ?? null;
 
   const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
-  const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
+  const effectiveDefaultQueueName =
+    effectiveInstanceSettings
+      ?.defaultQueueName
+    ?? DEFAULT_PROJECT_INSTANCE_SETTINGS
+      .defaultQueueName;
 
   const loadProjectEffectiveSettings = useCallback(
     async (nextProjectId?: string | number): Promise<ProjectEffectiveSettings | null> => {
@@ -1094,31 +1388,6 @@ export default function ProjectPage() {
     };
   }, [svc, projectId]);
 
-
-  useEffect(() => {
-    // loadFocusModeFromStorage
-    if (!projectName) return;
-    try {
-      const raw = localStorage.getItem(`project-${projectName}-focus-mode`);
-      if (raw == null) return;
-      setFocusModeEnabled(Boolean(JSON.parse(raw)));
-    } catch {
-      // noOp
-    }
-  }, [projectName]);
-
-  useEffect(() => {
-    // persistFocusModeToStorage
-    if (!projectName) return;
-    try {
-      localStorage.setItem(
-        `project-${projectName}-focus-mode`,
-        JSON.stringify(focusModeEnabled)
-      );
-    } catch {
-      // noOp
-    }
-  }, [projectName, focusModeEnabled]);
 
   // unifiedSelectionState
   const [unifiedSelectedIdsState, setUnifiedSelectedIdsState] = useState<Set<string>>(
@@ -1519,8 +1788,6 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
-  const ACTIVE_TIME_TO_REFRESH = 5000;
-  const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
   const PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS = 30_000;
@@ -1612,6 +1879,136 @@ export default function ProjectPage() {
           };
         })
       );
+    },
+    [setNodes],
+  );
+
+  const applyProtocolRuntimeSummaries = useCallback(
+    (summaries: ProtocolRuntimeSummary[]) => {
+      const summaryByProtocolId = new Map(
+        summaries.map((summary) => [String(summary.protocolId), summary])
+      );
+
+      if (!summaryByProtocolId.size) {
+        return;
+      }
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const summary = summaryByProtocolId.get(String(node.id));
+
+          if (!summary) {
+            return node;
+          }
+
+          const status = String(summary.status ?? "");
+          const cpuTime = String(summary.cpuTimeSeconds ?? 0);
+          const elapsedTime = String(summary.elapsedTimeSeconds ?? 0);
+          const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
+          const stepsDone = Number(summary.stepsDone ?? 0);
+          const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+
+          const elapsedSessionId =
+            summary.elapsedSessionId == null
+              ? null
+              : String(summary.elapsedSessionId).trim() || null;
+
+          const freshNode: Node<StatusNodeData> = {
+            ...node,
+            data: {
+              ...node.data,
+              status,
+              cpuTime,
+              elapsedTime,
+              elapsedSessionId,
+              stepsDone,
+              numberOfSteps,
+              ...(outputs !== undefined ? { outputs } : {}),
+            },
+          };
+
+          return mergeNodeElapsedTick(freshNode, node);
+        })
+      );
+
+      setTableData((currentRows) =>
+        currentRows.map((row) => {
+          const summary = summaryByProtocolId.get(String(row?.id));
+
+          if (!summary) {
+            return row;
+          }
+
+          const status = String(summary.status ?? "");
+          const cpuTime = String(summary.cpuTimeSeconds ?? 0);
+          const elapsedTime = String(summary.elapsedTimeSeconds ?? 0);
+          const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
+          const stepsDone = Number(summary.stepsDone ?? 0);
+          const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+
+          const elapsedSessionId =
+            summary.elapsedSessionId == null
+              ? null
+              : String(summary.elapsedSessionId).trim() || null;
+
+          const freshRow = {
+            ...row,
+            status,
+            cpuTime,
+            elapsedTime,
+            elapsedSessionId,
+            stepsDone,
+            numberOfSteps,
+            ...(outputs !== undefined ? { outputs } : {}),
+          };
+
+          return mergeTableElapsedTick(freshRow, row);
+        })
+      );
+
+      setProject((currentProject) => {
+        const protocols = (currentProject as any)?.protocols;
+
+        if (!protocols) {
+          return currentProject;
+        }
+
+        let changed = false;
+        const nextProtocols = { ...protocols };
+
+        for (const [protocolId, summary] of summaryByProtocolId) {
+          const currentProtocol = protocols[protocolId];
+
+          if (!currentProtocol) {
+            continue;
+          }
+
+          const status = String(summary.status ?? "");
+
+          if (
+            normalizeProtocolStatus(currentProtocol.status) ===
+            normalizeProtocolStatus(status)
+          ) {
+            continue;
+          }
+
+          nextProtocols[protocolId] = {
+            ...currentProtocol,
+            status,
+          };
+
+          changed = true;
+        }
+
+        if (!changed) {
+          return currentProject;
+        }
+
+        return {
+          ...currentProject,
+          protocols: nextProtocols,
+        } as Project;
+      });
     },
     [setNodes],
   );
@@ -3159,16 +3556,19 @@ export default function ProjectPage() {
 
   const loadNodesWithPositions = (
     loadedNodes: Node[],
-    protocols: Record<string, any>
+    protocols: Record<string, any>,
+    options?: { ignoreSaved?: boolean }
   ): Node[] => {
     const topologySignature = getGraphTopologySignature(protocols);
     graphTopologySignatureRef.current = topologySignature;
 
-    const saved = readPersistedPositions(
-      storageKeyHier,
-      graphDirection,
-      topologySignature
-    );
+    const saved = options?.ignoreSaved
+      ? []
+      : readPersistedPositions(
+        storageKeyHier,
+        graphDirection,
+        topologySignature
+      );
 
     const savedById = new Map<string, { x: number; y: number }>();
 
@@ -3751,10 +4151,19 @@ export default function ProjectPage() {
       setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
       if (data.protocols) {
+        const preferredChildOrder = viewMode === "hierarchical" && graphDirection === "TB"
+          ? buildPreferredTbChildOrderFromGraph(nodesRef.current, edgesRef.current)
+          : undefined;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection,
           gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          getEffectiveZoom(),
+          undefined,
+          preferredChildOrder ? { preferredChildOrder } : undefined
         );
 
         const freshTableRows = table ?? [];
@@ -3796,7 +4205,88 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions = viewMode === "hierarchical" ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)), loadedEdges) : loadedNodes;
+        let hierarchicalNodes = loadedNodes;
+
+        if (viewMode === "hierarchical") {
+          const pendingNewNodes =
+            pendingNewNodesRef.current;
+
+          if (
+            pendingNewNodes?.reflowWholeGraph
+          ) {
+            hierarchicalNodes =
+              loadNodesWithPositions(
+                loadedNodes,
+                data.protocols,
+                { ignoreSaved: true }
+              );
+          } else if (
+            pendingNewNodes &&
+            graphDirection === "TB"
+          ) {
+            const canonicalNodes =
+              loadNodesWithPositions(
+                loadedNodes,
+                data.protocols,
+                { ignoreSaved: true }
+              );
+
+            const placement =
+              placePendingNewNodesAtCanonicalTbPositions(
+                canonicalNodes,
+                loadedEdges
+              );
+
+            hierarchicalNodes =
+              placement.nodes;
+
+            if (placement.resolved) {
+              const topologySignature =
+                graphTopologySignatureRef.current;
+
+              if (topologySignature) {
+                try {
+                  writePersistedPositions(
+                    storageKeyHier,
+                    graphDirection,
+                    topologySignature,
+                    hierarchicalNodes.map((node) => ({
+                      id: String(node.id),
+                      position: node.position,
+                    }))
+                  );
+                } catch {
+                  // noOp
+                }
+              }
+
+              pendingNewNodesRef.current =
+                null;
+
+              pendingPlacementRef.current =
+                null;
+            }
+          } else {
+            hierarchicalNodes =
+              preservePendingExistingNodePositions(
+                loadNodesWithPositions(
+                  loadedNodes,
+                  data.protocols
+                )
+              );
+          }
+
+          hierarchicalNodes =
+            preservePendingDeletedNodePositions(
+              hierarchicalNodes,
+              loadedEdges
+            );
+        }
+
+        const nodesWithPositions =
+          viewMode === "hierarchical"
+            ? hierarchicalNodes
+            : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
         edgesRef.current = edgesMerged;
@@ -3912,52 +4402,288 @@ export default function ProjectPage() {
 
   }, [projectName, viewMode, graphDirection, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
+  const liveProtocolIdsKey =
+    useMemo(
+      () =>
+        nodes
+          .filter(
+            (node) =>
+              String(
+                node.id
+              ) !== "PROJECT"
+              &&
+              isLiveProtocolStatus(
+                node.data?.status
+              )
+          )
+          .map(
+            (node) =>
+              String(
+                node.id
+              )
+          )
+          .sort(
+            (a, b) =>
+              Number(a)
+              - Number(b)
+          )
+          .join(","),
+      [
+        nodes,
+      ],
+    );
+
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
+
+
+  // Refresh only active protocols without rebuilding the workflow graph.
   useEffect(() => {
+    const refreshSeconds =
+      Number(
+        workflowAutoRefreshSec
+        ?? 5
+      );
+
+    if (
+      !Number.isFinite(
+        refreshSeconds
+      )
+      ||
+      refreshSeconds <= 0
+      ||
+      !liveProtocolIdsKey
+      ||
+      projectId == null
+    ) {
+      return;
+    }
+
+    const protocolIds =
+      liveProtocolIdsKey
+        .split(",")
+        .map(
+          (protocolId) =>
+            protocolId.trim()
+        )
+        .filter(Boolean);
+
+    if (!protocolIds.length) {
+      return;
+    }
+
     let cancelled = false;
-    let timerId: number | null = null;
 
-    const scheduleRefresh = (
-      delay: number,
-    ) => {
-      timerId = window.setTimeout(
-        async () => {
-          await handleRefreshRef.current();
+    let timerId:
+      number | null = null;
 
-          if (cancelled) return;
+    const delay =
+      refreshSeconds
+      * 1000;
 
-          const hasActiveProtocol =
-            nodesRef.current.some(
-              (node) =>
-                String(node.id) !== "PROJECT" &&
-                isProtocolRefreshActive(
-                  node.data?.status
-                )
+
+    const refreshLiveProtocols =
+      async () => {
+        const fetchRuntime =
+          (
+            svc as any
+          )
+            .fetchProtocolRuntimeSummaries;
+
+        // Backward-compatible fallback.
+        if (
+          typeof fetchRuntime
+          !== "function"
+        ) {
+          await (
+            handleRefreshRef
+              .current?.()
+          );
+
+          return;
+        }
+
+        try {
+          const summaries:
+            ProtocolRuntimeSummary[] =
+            await fetchRuntime(
+              projectId,
+              protocolIds,
             );
 
-          scheduleRefresh(
-            hasActiveProtocol
-              ? ACTIVE_TIME_TO_REFRESH
-              : IDLE_TIME_TO_REFRESH
+          if (cancelled) {
+            return;
+          }
+
+          applyProtocolRuntimeSummaries(summaries);
+
+          if (protocolOutputThumbnailsEnabled) {
+            const runtimeOutputsByProtocolId =
+              new Map<string, unknown[]>();
+
+            for (const summary of summaries) {
+              if (
+                !Array.isArray(summary.outputs)
+                ||
+                !summary.outputs.length
+              ) {
+                continue;
+              }
+
+              runtimeOutputsByProtocolId.set(
+                String(summary.protocolId),
+                summary.outputs,
+              );
+            }
+
+            const nodesMissingRuntimeThumbnails = (
+              nodesRef.current as
+              Node<StatusNodeData>[]
+            ).flatMap((node) => {
+              const outputs =
+                runtimeOutputsByProtocolId.get(
+                  String(node.id)
+                );
+
+              if (!outputs?.length) {
+                return [];
+              }
+
+              const outputThumbnails =
+                node.data?.outputThumbnails
+                ?? {};
+
+              const missingOutputs =
+                outputs.filter((output) => {
+                  const outputName =
+                    getOutputNameFromNodeOutput(
+                      output
+                    );
+
+                  return (
+                    !!outputName
+                    &&
+                    !outputThumbnails[
+                    outputName
+                    ]
+                  );
+                });
+
+              if (!missingOutputs.length) {
+                return [];
+              }
+
+              return [{
+                ...node,
+                data: {
+                  ...node.data,
+                  outputs: missingOutputs,
+                },
+              }];
+            });
+
+            if (
+              nodesMissingRuntimeThumbnails.length
+            ) {
+              void loadProtocolOutputThumbnailsForNodes(
+                projectId,
+                nodesMissingRuntimeThumbnails,
+              );
+            }
+          }
+
+          for (
+            const summary
+            of summaries
+          ) {
+            // Once the protocol leaves the
+            // active state, refresh its
+            // details once to obtain outputs.
+            if (
+              !isLiveProtocolStatus(
+                summary.status
+              )
+            ) {
+              try {
+                const details =
+                  await (
+                    svc
+                      .fetchProtocolDetails(
+                        projectId,
+                        summary.protocolId,
+                      )
+                  );
+
+                if (cancelled) {
+                  return;
+                }
+
+                syncProtocolDetailsToGraphRef
+                  .current?.(
+                    String(
+                      summary.protocolId
+                    ),
+                    details,
+                  );
+
+              } catch (error) {
+                console.warn(
+                  "Final protocol details refresh failed",
+                  error,
+                );
+              }
+            }
+          }
+
+        } catch (error) {
+          console.warn(
+            "Live protocol runtime refresh failed",
+            error,
           );
-        },
-        delay,
-      );
+        }
+      };
+
+
+    const scheduleRefresh = () => {
+      timerId =
+        window.setTimeout(
+          async () => {
+            await (
+              refreshLiveProtocols()
+            );
+
+            if (cancelled) {
+              return;
+            }
+
+            scheduleRefresh();
+          },
+          delay,
+        );
     };
 
-    scheduleRefresh(
-      ACTIVE_TIME_TO_REFRESH
-    );
+
+    scheduleRefresh();
+
 
     return () => {
       cancelled = true;
 
-      if (timerId !== null) {
-        window.clearTimeout(timerId);
+      if (timerId != null) {
+        window.clearTimeout(
+          timerId
+        );
       }
     };
-  }, []);
+  }, [
+    workflowAutoRefreshSec,
+    liveProtocolIdsKey,
+    projectId,
+    svc,
+    applyProtocolRuntimeSummaries,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -4066,10 +4792,19 @@ export default function ProjectPage() {
           return;
         }
 
+        const preferredChildOrder = viewMode === "hierarchical" && graphDirection === "TB"
+          ? buildPreferredTbChildOrderFromGraph(nodesRef.current, edgesRef.current)
+          : undefined;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection,
           gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          getEffectiveZoom(),
+          undefined,
+          preferredChildOrder ? { preferredChildOrder } : undefined
         );
 
         const currentNodesById =
@@ -4117,53 +4852,16 @@ export default function ProjectPage() {
           return;
         }
 
-        const persistedNodes =
+        const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes, data.protocols)
+            ? loadNodesWithPositions(
+              loadedNodes,
+              data.protocols,
+              { ignoreSaved: true }
+            )
             : loadedNodes;
 
-        const manualOrigins =
-          viewMode === "hierarchical"
-            ? readManualNodeOrigins()
-            : new Map<string, { x: number; y: number }>();
-
-        const nodesWithPositions =
-          manualOrigins.size > 0
-            ? centerProjectOverGraphBranches(
-              persistedNodes.map((node) => {
-                if (String(node.id) === "PROJECT") {
-                  return node;
-                }
-
-                const originalPosition = manualOrigins.get(String(node.id));
-
-                return originalPosition
-                  ? { ...node, position: originalPosition }
-                  : node;
-              }),
-              graphDirection
-            )
-            : persistedNodes;
-
-        if (viewMode === "hierarchical" && manualOrigins.size > 0) {
-          const topologySignature = graphTopologySignatureRef.current;
-
-          if (topologySignature) {
-            try {
-              writePersistedPositions(
-                storageKeyHier,
-                graphDirection,
-                topologySignature,
-                nodesWithPositions.map((node) => ({
-                  id: String(node.id),
-                  position: node.position,
-                }))
-              );
-            } catch {
-              // noOp
-            }
-          }
-
+        if (viewMode === "hierarchical") {
           clearManualNodeOrigins();
         }
 
@@ -5232,6 +5930,739 @@ export default function ProjectPage() {
     return preferredDelta;
   };
 
+  const placePendingNewNodesAtCanonicalTbPositions = (
+    canonicalNodes: Node<any>[],
+    currentEdges: Edge[]
+  ): {
+    nodes: Node<any>[];
+    resolved: boolean;
+  } => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending?.beforePositions) {
+      return {
+        nodes: canonicalNodes,
+        resolved: false,
+      };
+    }
+
+    const beforePositions = pending.beforePositions;
+
+    const canonicalById = new Map(
+      canonicalNodes.map((node) => [
+        String(node.id),
+        node,
+      ])
+    );
+
+    const currentById = new Map(
+      nodesRef.current.map((node) => [
+        String(node.id),
+        node,
+      ])
+    );
+
+    const protocolIds = canonicalNodes
+      .map((node) => String(node.id))
+      .filter((id) => id !== "PROJECT");
+
+    const newIds = new Set(
+      protocolIds.filter(
+        (id) => !pending.beforeIds.has(id)
+      )
+    );
+
+    if (newIds.size === 0) {
+      return {
+        nodes: preservePendingExistingNodePositions(
+          canonicalNodes
+        ),
+        resolved: false,
+      };
+    }
+
+    const workingById = new Map<string, Node<any>>();
+
+    for (const node of canonicalNodes) {
+      const nodeId = String(node.id);
+      const previousPosition =
+        beforePositions.get(nodeId);
+
+      workingById.set(
+        nodeId,
+        previousPosition
+          ? {
+            ...node,
+            position: {
+              ...previousPosition,
+            },
+          }
+          : {
+            ...node,
+            position: {
+              ...node.position,
+            },
+          }
+      );
+    }
+
+    const duplicatedPairByNewId = new Map(
+      (pending.duplicatedPairs ?? []).map(
+        (pair) => [
+          String(pair.newId),
+          pair,
+        ]
+      )
+    );
+
+    const neighborsById =
+      new Map<string, string[]>();
+
+    const outgoingBySource =
+      new Map<string, string[]>();
+
+    const incomingCount =
+      new Map<string, number>();
+
+    const projectRootIds =
+      new Set<string>();
+
+    const addNeighbor = (
+      firstId: string,
+      secondId: string
+    ) => {
+      const neighbors =
+        neighborsById.get(firstId) ?? [];
+
+      if (!neighbors.includes(secondId)) {
+        neighbors.push(secondId);
+        neighborsById.set(
+          firstId,
+          neighbors
+        );
+      }
+    };
+
+    for (const edge of currentEdges) {
+      const sourceId =
+        String(edge.source);
+
+      const targetId =
+        String(edge.target);
+
+      if (!canonicalById.has(targetId)) {
+        continue;
+      }
+
+      if (sourceId === "PROJECT") {
+        projectRootIds.add(targetId);
+        continue;
+      }
+
+      if (!canonicalById.has(sourceId)) {
+        continue;
+      }
+
+      const children =
+        outgoingBySource.get(sourceId) ?? [];
+
+      if (!children.includes(targetId)) {
+        children.push(targetId);
+        outgoingBySource.set(
+          sourceId,
+          children
+        );
+      }
+
+      incomingCount.set(
+        targetId,
+        (incomingCount.get(targetId) ?? 0) + 1
+      );
+
+      addNeighbor(
+        sourceId,
+        targetId
+      );
+
+      addNeighbor(
+        targetId,
+        sourceId
+      );
+    }
+
+    for (const id of protocolIds) {
+      if (
+        (incomingCount.get(id) ?? 0) === 0
+      ) {
+        projectRootIds.add(id);
+      }
+    }
+
+    const canonicalDistance = (
+      firstId: string,
+      secondId: string
+    ): number => {
+      const first =
+        canonicalById.get(firstId);
+
+      const second =
+        canonicalById.get(secondId);
+
+      if (!first || !second) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      const dx =
+        first.position.x -
+        second.position.x;
+
+      const dy =
+        first.position.y -
+        second.position.y;
+
+      return Math.hypot(dx, dy);
+    };
+
+    const projectCanonical =
+      canonicalById.get("PROJECT");
+
+    const projectPrevious =
+      beforePositions.get("PROJECT");
+
+    for (const newId of newIds) {
+      const canonicalNode =
+        canonicalById.get(newId);
+
+      const workingNode =
+        workingById.get(newId);
+
+      if (
+        !canonicalNode ||
+        !workingNode
+      ) {
+        continue;
+      }
+
+      let anchorId: string | null =
+        null;
+
+      let anchorPosition:
+        { x: number; y: number } |
+        undefined;
+
+      const duplicatePair =
+        duplicatedPairByNewId.get(newId);
+
+      if (duplicatePair) {
+        const sourceId =
+          String(
+            duplicatePair.sourceId
+          );
+
+        const sourcePosition =
+          duplicatePair.sourcePosition ??
+          beforePositions.get(
+            sourceId
+          );
+
+        if (
+          canonicalById.has(sourceId) &&
+          sourcePosition
+        ) {
+          anchorId = sourceId;
+          anchorPosition =
+            sourcePosition;
+        }
+      }
+
+      if (!anchorId) {
+        const existingNeighbors =
+          (
+            neighborsById.get(newId) ??
+            []
+          )
+            .filter(
+              (id) =>
+                pending.beforeIds.has(id) &&
+                canonicalById.has(id) &&
+                beforePositions.has(id)
+            )
+            .sort(
+              (leftId, rightId) =>
+                canonicalDistance(
+                  newId,
+                  leftId
+                ) -
+                canonicalDistance(
+                  newId,
+                  rightId
+                )
+            );
+
+        const nearestNeighbor =
+          existingNeighbors[0];
+
+        if (nearestNeighbor) {
+          anchorId =
+            nearestNeighbor;
+
+          anchorPosition =
+            beforePositions.get(
+              nearestNeighbor
+            );
+        }
+      }
+
+      if (
+        anchorId &&
+        anchorPosition
+      ) {
+        const canonicalAnchor =
+          canonicalById.get(anchorId);
+
+        if (canonicalAnchor) {
+          workingById.set(
+            newId,
+            {
+              ...workingNode,
+              position: {
+                x:
+                  anchorPosition.x +
+                  (
+                    canonicalNode.position.x -
+                    canonicalAnchor.position.x
+                  ),
+
+                y:
+                  anchorPosition.y +
+                  (
+                    canonicalNode.position.y -
+                    canonicalAnchor.position.y
+                  ),
+              },
+            }
+          );
+
+          continue;
+        }
+      }
+
+      if (
+        projectCanonical &&
+        projectPrevious
+      ) {
+        workingById.set(
+          newId,
+          {
+            ...workingNode,
+            position: {
+              x:
+                projectPrevious.x +
+                (
+                  canonicalNode.position.x -
+                  projectCanonical.position.x
+                ),
+
+              y:
+                projectPrevious.y +
+                (
+                  canonicalNode.position.y -
+                  projectCanonical.position.y
+                ),
+            },
+          }
+        );
+      }
+    }
+
+    const getCurrentRootX = (rootId: string): number => {
+      const position =
+        beforePositions.get(rootId) ??
+        currentById.get(rootId)?.position ??
+        canonicalById.get(rootId)?.position;
+
+      return position?.x ?? 0;
+    };
+
+    const orderedRootIds = Array.from(projectRootIds)
+      .filter((id) => canonicalById.has(id))
+      .sort((leftId, rightId) => getCurrentRootX(leftId) - getCurrentRootX(rightId));
+
+    if (orderedRootIds.length === 0) {
+      const positionedNodes =
+        canonicalNodes.map(
+          (node) =>
+            workingById.get(
+              String(node.id)
+            ) ?? node
+        );
+
+      return {
+        nodes:
+          centerProjectOverGraphBranches(
+            positionedNodes,
+            "TB"
+          ),
+        resolved: true,
+      };
+    }
+
+    const reachableByRoot =
+      new Map<string, Set<string>>();
+
+    for (const rootId of orderedRootIds) {
+      const reachable =
+        new Set<string>();
+
+      const pendingIds =
+        [rootId];
+
+      while (pendingIds.length > 0) {
+        const currentId =
+          pendingIds.pop();
+
+        if (
+          !currentId ||
+          reachable.has(currentId)
+        ) {
+          continue;
+        }
+
+        reachable.add(currentId);
+
+        for (
+          const childId
+          of outgoingBySource.get(
+            currentId
+          ) ?? []
+        ) {
+          pendingIds.push(childId);
+        }
+      }
+
+      reachableByRoot.set(
+        rootId,
+        reachable
+      );
+    }
+
+    const nodeIdsByRoot =
+      new Map<string, string[]>();
+
+    for (const rootId of orderedRootIds) {
+      nodeIdsByRoot.set(
+        rootId,
+        []
+      );
+    }
+
+    for (const nodeId of protocolIds) {
+      const canonicalNode =
+        canonicalById.get(nodeId);
+
+      if (!canonicalNode) continue;
+
+      const candidateRoots =
+        orderedRootIds.filter(
+          (rootId) =>
+            reachableByRoot
+              .get(rootId)
+              ?.has(nodeId)
+        );
+
+      const candidates =
+        candidateRoots.length > 0
+          ? candidateRoots
+          : orderedRootIds;
+
+      const resolvedRootId =
+        [...candidates]
+          .sort((leftId, rightId) => {
+            const leftRoot =
+              canonicalById.get(
+                leftId
+              )!;
+
+            const rightRoot =
+              canonicalById.get(
+                rightId
+              )!;
+
+            const leftDistance =
+              Math.abs(
+                leftRoot.position.x -
+                canonicalNode.position.x
+              );
+
+            const rightDistance =
+              Math.abs(
+                rightRoot.position.x -
+                canonicalNode.position.x
+              );
+
+            return (
+              leftDistance -
+              rightDistance
+            );
+          })[0];
+
+      if (resolvedRootId) {
+        nodeIdsByRoot
+          .get(resolvedRootId)
+          ?.push(nodeId);
+      }
+    }
+
+    const getBranchBounds = (
+      rootId: string,
+      useBeforePositions = false
+    ): { left: number; right: number } | null => {
+      let left = Number.POSITIVE_INFINITY;
+      let right = Number.NEGATIVE_INFINITY;
+
+      for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
+        const workingNode = workingById.get(nodeId) ?? canonicalById.get(nodeId);
+        const currentNode = currentById.get(nodeId);
+
+        const position = useBeforePositions
+          ? beforePositions.get(nodeId) ?? currentNode?.position ?? workingNode?.position
+          : workingNode?.position;
+
+        if (!position) continue;
+
+        const sizeNode = currentNode
+          ? { ...currentNode, position }
+          : workingNode
+            ? { ...workingNode, position }
+            : null;
+
+        const size = sizeNode ? getAxisSize("TB", sizeNode) : 940;
+
+        left = Math.min(left, position.x - size / 2);
+        right = Math.max(right, position.x + size / 2);
+      }
+
+      return Number.isFinite(left) && Number.isFinite(right)
+        ? { left, right }
+        : null;
+    };
+
+    const shiftBranch = (rootId: string, deltaX: number): void => {
+      if (Math.abs(deltaX) <= 0.5) return;
+
+      for (const nodeId of nodeIdsByRoot.get(rootId) ?? []) {
+        const node = workingById.get(nodeId);
+        if (!node) continue;
+
+        workingById.set(nodeId, {
+          ...node,
+          position: {
+            ...node.position,
+            x: node.position.x + deltaX,
+          },
+        });
+      }
+    };
+
+    const rootByNodeId = new Map<string, string>();
+
+    for (const [rootId, branchIds] of nodeIdsByRoot) {
+      for (const nodeId of branchIds) {
+        rootByNodeId.set(nodeId, rootId);
+      }
+    }
+
+    const affectedRootIds = new Set<string>();
+
+    for (const newId of newIds) {
+      const rootId = rootByNodeId.get(newId);
+
+      if (rootId) {
+        affectedRootIds.add(rootId);
+      }
+    }
+
+    const sourceRootByNewRoot = new Map<string, string>();
+
+    for (const rootId of affectedRootIds) {
+      if (pending.beforeIds.has(rootId)) continue;
+
+      const branchIds = new Set(nodeIdsByRoot.get(rootId) ?? []);
+
+      for (const pair of pending.duplicatedPairs ?? []) {
+        if (!branchIds.has(String(pair.newId))) continue;
+
+        const sourceRootId = rootByNodeId.get(String(pair.sourceId));
+
+        if (sourceRootId && sourceRootId !== rootId) {
+          sourceRootByNewRoot.set(rootId, sourceRootId);
+          break;
+        }
+      }
+    }
+
+    const compareNodeIds = (a: string, b: string): number => {
+      const numericA = Number(a);
+      const numericB = Number(b);
+
+      if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
+        return numericA - numericB;
+      }
+
+      return a.localeCompare(b, undefined, { numeric: true });
+    };
+
+    const existingRootIds = orderedRootIds
+      .filter((rootId) => pending.beforeIds.has(rootId))
+      .sort((leftId, rightId) => {
+        const leftBounds = getBranchBounds(leftId, true);
+        const rightBounds = getBranchBounds(rightId, true);
+
+        const left = leftBounds?.left ?? getCurrentRootX(leftId);
+        const right = rightBounds?.left ?? getCurrentRootX(rightId);
+
+        return left - right;
+      });
+
+    const newRootIds = orderedRootIds
+      .filter((rootId) => !pending.beforeIds.has(rootId))
+      .sort(compareNodeIds);
+
+    const orderedRootIdsByBounds = [...existingRootIds];
+
+    for (const newRootId of newRootIds) {
+      const sourceRootId = sourceRootByNewRoot.get(newRootId);
+
+      if (!sourceRootId) {
+        orderedRootIdsByBounds.push(newRootId);
+        continue;
+      }
+
+      const sourceIndex = orderedRootIdsByBounds.indexOf(sourceRootId);
+
+      if (sourceIndex < 0) {
+        orderedRootIdsByBounds.push(newRootId);
+        continue;
+      }
+
+      let insertIndex = sourceIndex + 1;
+
+      while (
+        insertIndex < orderedRootIdsByBounds.length &&
+        sourceRootByNewRoot.get(orderedRootIdsByBounds[insertIndex]) === sourceRootId
+      ) {
+        insertIndex += 1;
+      }
+
+      orderedRootIdsByBounds.splice(insertIndex, 0, newRootId);
+    }
+
+    for (const rootId of affectedRootIds) {
+      if (!pending.beforeIds.has(rootId)) {
+        continue;
+      }
+
+      const branchIds = nodeIdsByRoot.get(rootId) ?? [];
+      let anchorId = rootId;
+
+      if (pending.operation === "duplicate") {
+        const duplicatedSourceId = (pending.duplicatedPairs ?? [])
+          .map((pair) => String(pair.sourceId))
+          .find((sourceId) =>
+            rootByNodeId.get(sourceId) === rootId &&
+            beforePositions.has(sourceId) &&
+            canonicalById.has(sourceId)
+          );
+
+        if (duplicatedSourceId) {
+          anchorId = duplicatedSourceId;
+        }
+      }
+
+      const canonicalAnchor = canonicalById.get(anchorId);
+      const anchorPosition =
+        beforePositions.get(anchorId) ??
+        currentById.get(anchorId)?.position ??
+        canonicalAnchor?.position;
+
+      if (!canonicalAnchor || !anchorPosition) continue;
+
+      for (const nodeId of branchIds) {
+        const canonicalNode = canonicalById.get(nodeId);
+        const workingNode = workingById.get(nodeId);
+
+        if (!canonicalNode || !workingNode) continue;
+
+        workingById.set(nodeId, {
+          ...workingNode,
+          position: {
+            x: anchorPosition.x + canonicalNode.position.x - canonicalAnchor.position.x,
+            y: anchorPosition.y + canonicalNode.position.y - canonicalAnchor.position.y,
+          },
+        });
+      }
+    }
+
+    const firstAffectedIndex = orderedRootIdsByBounds.findIndex((rootId) =>
+      affectedRootIds.has(rootId)
+    );
+
+    if (firstAffectedIndex >= 0) {
+      const branchGap = 320;
+
+      for (let index = firstAffectedIndex; index < orderedRootIdsByBounds.length; index++) {
+        if (index === 0) continue;
+
+        const rootId = orderedRootIdsByBounds[index];
+        const previousRootId = orderedRootIdsByBounds[index - 1];
+
+        const currentBounds = getBranchBounds(rootId);
+        const previousBounds = getBranchBounds(previousRootId);
+
+        if (!currentBounds || !previousBounds) continue;
+
+        const isNewRoot = !pending.beforeIds.has(rootId);
+        const isAnchoredAffectedRoot =
+          index === firstAffectedIndex &&
+          affectedRootIds.has(rootId) &&
+          !isNewRoot;
+
+        if (isAnchoredAffectedRoot) {
+          continue;
+        }
+
+        const requiredShift =
+          previousBounds.right +
+          branchGap -
+          currentBounds.left;
+
+        const deltaX = isNewRoot
+          ? requiredShift
+          : Math.max(0, requiredShift);
+
+        shiftBranch(rootId, deltaX);
+      }
+    }
+
+    const positionedNodes =
+      canonicalNodes.map(
+        (node) =>
+          workingById.get(
+            String(node.id)
+          ) ?? node
+      );
+
+    return {
+      nodes:
+        centerProjectOverGraphBranches(
+          positionedNodes,
+          "TB"
+        ),
+
+      resolved: true,
+    };
+  };
+
   const placeDuplicatedNodesAsBranchBlock = (
     dir: "TB" | "LR",
     nodesList: Node<any>[],
@@ -5710,14 +7141,13 @@ export default function ProjectPage() {
         const hasNewNodes = currentNodes.some((node) => !pending.beforeIds.has(String(node.id)));
 
         if (!hasNewNodes) {
+          pendingNewNodesRef.current = null;
           return currentNodes;
         }
 
-        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
-
         persistPositionsBulk(
           graphDirection,
-          resolvedNodes.map((node) => ({
+          currentNodes.map((node) => ({
             id: String(node.id),
             position: node.position,
           }))
@@ -5725,7 +7155,7 @@ export default function ProjectPage() {
 
         pendingNewNodesRef.current = null;
 
-        return resolvedNodes;
+        return currentNodes;
       });
 
       return;
@@ -6200,7 +7630,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
-      reflowWholeGraph: true,
+      reflowWholeGraph: false,
     };
 
     try {

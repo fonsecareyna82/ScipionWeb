@@ -102,6 +102,8 @@ export default function ProtocolOutputsPanel({
         }
 
         let cancelled = false;
+        const abortController = new AbortController();
+
         setPreviewLoading(true);
         setPreviewError(null);
 
@@ -111,7 +113,9 @@ export default function ProtocolOutputsPanel({
                     projectIdStr,
                     protocolIdStr,
                     activeOutput.name,
-                    sqliteTable ? { table: sqliteTable } : undefined
+                    sqliteTable
+                        ? { table: sqliteTable, signal: abortController.signal }
+                        : { signal: abortController.signal }
                 );
 
                 if (cancelled) return;
@@ -137,6 +141,7 @@ export default function ProtocolOutputsPanel({
 
         return () => {
             cancelled = true;
+            abortController.abort();
         };
     }, [activeOutput, protocolIdStr, sqliteTable, svc, projectIdStr]);
 

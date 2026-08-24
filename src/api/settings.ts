@@ -1,30 +1,43 @@
 // settingsApi
 import { BASE_URL } from "@/config";
 import { fetchWithAuth } from "./auth";
-import { HostSettings, HostSettingsPatch } from "@/services/ProjectService";
+import type {
+  HostSettings,
+  HostSettingsPatch,
+  JobMonitoringOverview,
+  UserSettings,
+  UserSettingsPatch,
+} from "@/services/ProjectService";
 
-export type UserSettings = {
-  theme: "system" | "light" | "dark";
-  uiDensity: "comfortable" | "compact";
-  fontScale: number;
-
-  language: "en" | "es";
-  timeZone: string;
-
-  graphMiniMapEnabled: boolean;
-  graphFocusModeEnabled: boolean;
-  workflowsAutoRefreshSec: number;
-};
-
-export type UserSettingsPatch = Partial<UserSettings>;
 
 export type InstanceSettings = {
-  enableCelery: boolean;
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
+};
 
-  requireConfirmBeforeExecute: boolean;
-  requireConfirmBeforeDelete: boolean;
+
+export type InstanceGpuResource = {
+  index: number;
+  name: string;
+  memoryTotalBytes?: number | null;
+};
+
+export type InstanceResources = {
+  hostAlias: string;
+  hostname: string;
+  fqdn: string;
+  schedulerName: string;
+
+  operatingSystem: string;
+  architecture: string;
+  cpuModel: string;
+
+  physicalCores: number;
+  logicalCores: number;
+  ramTotalBytes: number;
+
+  gpuCount: number;
+  gpus: InstanceGpuResource[];
 };
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
@@ -41,7 +54,7 @@ export type EnvironmentVariable = {
 
 export type EnvironmentVariablesPatch = Record<string, string>;
 
-type ApiErrorShape = { message?: string; detail?: unknown; [k: string]: unknown };
+type ApiErrorShape = { message?: string; detail?: unknown;[k: string]: unknown };
 
 class ApiError extends Error {
   status?: number;
@@ -73,7 +86,7 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   let payload: ApiErrorShape | string | undefined;
   try {
     payload = await safeJson<ApiErrorShape | string>(response);
-  } catch {}
+  } catch { }
 
   const message =
     (typeof payload === "object" && (payload.message as string)) ||
@@ -129,6 +142,27 @@ export async function fetchInstanceSettings(): Promise<InstanceSettings> {
   return safeJson<InstanceSettings>(res);
 }
 
+export async function fetchInstanceResources():
+  Promise<InstanceResources> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/instance/resources`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to load instance resources",
+    );
+  }
+
+  return safeJson<InstanceResources>(
+    res
+  );
+}
+
 export async function putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings> {
   // putInstanceSettings
   const res = await fetchWithAuth(`${BASE_URL}/settings/instance`, {
@@ -149,6 +183,36 @@ export async function patchInstanceSettings(patch: InstanceSettingsPatch): Promi
   });
   if (!res.ok) throw await toApiError(res, "Failed to patch instance settings");
   return safeJson<InstanceSettings>(res);
+}
+
+/* ======================= jobMonitoring ======================= */
+
+export async function fetchJobsOverview(
+  recentLimit: number = 25,
+): Promise<JobMonitoringOverview> {
+  const limit = Math.max(
+    1,
+    Math.min(
+      100,
+      Math.trunc(Number(recentLimit) || 25),
+    ),
+  );
+
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/jobs?recentLimit=${limit}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to load job monitoring data",
+    );
+  }
+
+  return safeJson<JobMonitoringOverview>(res);
 }
 
 /* ======================= environmentVariables ======================= */

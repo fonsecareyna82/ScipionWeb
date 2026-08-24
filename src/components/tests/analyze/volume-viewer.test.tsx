@@ -280,7 +280,6 @@ describe("VolumeViewer", () => {
             );
         });
 
-        expect(screen.getByText("7 × 6 × 5")).toBeInTheDocument();
         expect(screen.getByText("-1.200")).toBeInTheDocument();
         expect(screen.getByText("2.800")).toBeInTheDocument();
         expect(screen.getByText("0.700")).toBeInTheDocument();
@@ -324,9 +323,9 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
-                    method: "none",
-                    maxTriangles: 550000,
+                    maxDim: 256,
+                    method: "stride",
+                    maxTriangles: 500000,
                 }),
             );
         });
@@ -433,7 +432,48 @@ describe("VolumeViewer", () => {
         });
     });
 
-    it("reloads surface mesh after changing maxDim", async () => {
+    it("uses the same global intensity window for all orthogonal slices", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+
+        await waitFor(() => {
+            const calls =
+                serviceMocks.fetchVolumeSliceObjectUrl.mock.calls;
+
+            const latestByAxis = new Map<string, any>();
+
+            for (const call of calls) {
+                const options = call[5];
+                const axis = options?.axis;
+
+                if (
+                    axis &&
+                    Number.isFinite(options?.windowMin) &&
+                    Number.isFinite(options?.windowMax)
+                ) {
+                    latestByAxis.set(axis, options);
+                }
+            }
+
+            expect(latestByAxis.size).toBe(3);
+
+            const x = latestByAxis.get("x");
+            const y = latestByAxis.get("y");
+            const z = latestByAxis.get("z");
+
+            expect(x.windowMin).toBeCloseTo(y.windowMin, 6);
+            expect(x.windowMin).toBeCloseTo(z.windowMin, 6);
+
+            expect(x.windowMax).toBeCloseTo(y.windowMax, 6);
+            expect(x.windowMax).toBeCloseTo(z.windowMax, 6);
+
+            expect(x.windowMin).toBeCloseTo(0.00875, 5);
+            expect(x.windowMax).toBeCloseTo(2.965, 5);
+        });
+    });
+
+    it("reloads surface mesh after changing quality", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -447,17 +487,21 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
-                    method: "none",
+                    maxDim: 256,
+                    method: "stride",
                 }),
             );
         });
 
-        fireEvent.change(screen.getByDisplayValue("192"), {
-            target: { value: "104" },
-        });
+        const qualitySelect = screen.getAllByRole("combobox")[0];
+        fireEvent.mouseDown(qualitySelect);
+        fireEvent.click(
+            await screen.findByText("Fast", { selector: "li" }),
+        );
 
-        fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
+        fireEvent.click(
+            screen.getByRole("button", { name: "Reload data" }),
+        );
 
         await waitFor(() => {
             expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenLastCalledWith(
@@ -466,8 +510,8 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 104,
-                    method: "none",
+                    maxDim: 128,
+                    method: "stride",
                 }),
             );
         });
@@ -624,9 +668,14 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const interpSelect = screen.getAllByRole("combobox")[1];
+        const interpSelect = screen.getAllByRole("combobox")[2];
         fireEvent.mouseDown(interpSelect);
-        fireEvent.click(await screen.findByText("nearest"));
+
+        fireEvent.click(
+            await screen.findByText("nearest", {
+                selector: '[role="option"]',
+            }),
+        );
 
         await waitFor(() => {
             expect(screen.getAllByText("nearest").length).toBeGreaterThan(0);
@@ -673,15 +722,22 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
-                    method: "none",
+                    maxDim: 256,
+                    method: "stride",
                 }),
             );
         });
 
-        const methodSelect = screen.getAllByRole("combobox")[0];
+        const methodSelect = screen.getByText(
+            "stride",
+            { selector: '[role="combobox"]' },
+        );
+
         fireEvent.mouseDown(methodSelect);
-        fireEvent.click(await screen.findByText("stride"));
+
+        fireEvent.click(
+            await screen.findByText("binning", { selector: "li" }),
+        );
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
@@ -692,8 +748,8 @@ describe("VolumeViewer", () => {
                 "volumeOutput",
                 1,
                 expect.objectContaining({
-                    maxDim: 192,
-                    method: "stride",
+                    maxDim: 256,
+                    method: "binning",
                 }),
             );
         });
@@ -734,5 +790,22 @@ describe("VolumeViewer", () => {
 
         expect(await screen.findByText("Y (XZ)")).toBeInTheDocument();
         expect(screen.queryByText("Mock MetadataViewer volumeOutput")).not.toBeInTheDocument();
+    });
+    it("does not start 3D work while the viewer is inactive", async () => {
+        const { rerender } = render(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active={false} />);
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        expect(serviceMocks.fetchVolumeSliceObjectUrl).not.toHaveBeenCalled();
+        expect(serviceMocks.getVolumeSurfaceMesh).not.toHaveBeenCalled();
+
+        rerender(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active />);
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalled();
+        });
     });
 });
