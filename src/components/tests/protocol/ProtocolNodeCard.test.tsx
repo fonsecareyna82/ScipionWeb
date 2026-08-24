@@ -402,8 +402,8 @@ describe("ProtocolNodeCard", () => {
         expect(mockSetCurrentDraggedOutput).toHaveBeenLastCalledWith(null);
     });
 
-    it("shows reduced selection actions when path selection is active", () => {
-        renderComponent({
+    it("shows reduced selection actions when path selection is active", async () => {
+        const { service } = renderComponent({
             inPathSelection: true,
             pathSelectionActive: true,
             data: createProtocolData({ status: "running" }),
@@ -411,6 +411,10 @@ describe("ProtocolNodeCard", () => {
 
         expect(screen.getAllByText("Stop selection")[0]).toBeInTheDocument();
         expect(screen.queryByText("Browse")).not.toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(service.listProjectTags).toHaveBeenCalled();
+        });
     });
 
     it("loads next step suggestions and opens help dialog for a suggestion", async () => {
@@ -505,14 +509,18 @@ describe("ProtocolNodeCard", () => {
         expect(mockReactFlowSetNodes).toHaveBeenCalled();
     });
 
-    it("calls duplicate and delete actions from menu items", () => {
-        const { onDelete, onDuplicate } = renderComponent();
+    it("calls duplicate and delete actions from menu items", async () => {
+        const { onDelete, onDuplicate, service } = renderComponent();
 
         fireEvent.click(screen.getAllByRole("button", { name: /Duplicate/i })[0]);
         fireEvent.click(screen.getAllByRole("button", { name: /Delete/i })[0]);
 
         expect(onDuplicate).toHaveBeenCalledWith("12");
         expect(onDelete).toHaveBeenCalledWith("12");
+
+        await waitFor(() => {
+            expect(service.listProjectTags).toHaveBeenCalled();
+        });
     });
 
 });
