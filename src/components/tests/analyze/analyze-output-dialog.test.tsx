@@ -29,6 +29,14 @@ vi.mock("@/ProjectServiceContext", () => ({
     }),
 }));
 
+vi.mock("@/context/ThemeContext", () => ({
+  useTheme: () => ({
+    theme: "light",
+    toggleTheme: vi.fn(),
+    setThemeMode: vi.fn(),
+  }),
+}));
+
 vi.mock("../../analyze/volume-viewer", () => ({
     default: (props: Record<string, unknown>) => {
         mocks.volumeViewerSpy(props);

@@ -92,7 +92,7 @@ import {
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
 
-import { ProjectEffectiveSettings } from "@/services/ProjectService";
+import { ProjectEffectiveSettings, ProtocolWorkflowExecutionPreflight, ProtocolWorkflowExecutionScope } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
@@ -134,6 +134,12 @@ type QueueLaunchDraftParam = {
 type QueueLaunchDraft = {
   queueName: string;
   params: QueueLaunchDraftParam[];
+};
+
+type PendingWorkflowExecution = {
+  modeKey: "continue" | "restart";
+  queueOverride: QueueLaunchDraft | null;
+  preflight: ProtocolWorkflowExecutionPreflight;
 };
 
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
@@ -331,6 +337,7 @@ export default function ProtocolForm({
   const [topTab, setTopTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
+  const effectiveProtocolId = String(protocolDetails?.id ?? protocolId ?? "").trim();
   const protocolDisplayName = useMemo(() => {
     const candidates = [
       protocolDetails?.runName,
@@ -379,7 +386,7 @@ export default function ProtocolForm({
     svc,
     enabled: topTab === 2,
     projectId,
-    protocolId,
+    protocolId: effectiveProtocolId,
     protocolStatus: protocolDetails.status,
   });
 
@@ -392,6 +399,7 @@ export default function ProtocolForm({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [pendingExecuteMode, setPendingExecuteMode] = useState<string | null>(null);
   const [queueDraft, setQueueDraft] = useState<QueueLaunchDraft | null>(null);
+  const [pendingWorkflowExecution, setPendingWorkflowExecution] = useState<PendingWorkflowExecution | null>(null);
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1449,7 +1457,7 @@ export default function ProtocolForm({
     setPointInVolumeVoxel,
   } = useProtocolWizards({
     projectId,
-    protocolId,
+    protocolId: effectiveProtocolId,
     protocolClassName,
     protocolDetails,
     svc,
@@ -1457,6 +1465,15 @@ export default function ProtocolForm({
     applyWizardParamUpdates,
     openExecErrorDialog,
   });
+
+  const adoptCreatedProtocolId = (payload: any) => {
+    const returnedProtocolId = String(payload?.protocolId ?? "").trim();
+
+    if (!returnedProtocolId || effectiveProtocolId) return;
+
+    setProtocolDetails((prev: any) => ({ ...prev, id: returnedProtocolId, status: String(prev?.status ?? "").trim().toLowerCase() === "new" ? "saved" : prev?.status }));
+    onSaved?.();
+  };
 
   const executeNow = async (
     modeKey: string,
@@ -1466,7 +1483,7 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const serializedParams = getSerializedParams();
       const finalParams = mergeQueueDraftIntoParams(serializedParams, queueOverride);
 
@@ -1491,6 +1508,7 @@ export default function ProtocolForm({
     } catch (err: any) {
       const httpStatus = getHttpStatusFromError(err);
       const backendPayload = getBackendPayloadFromError(err);
+      adoptCreatedProtocolId(backendPayload);
       const errors = getErrorsFromBackendPayload(backendPayload);
 
       if (errors.length > 0) {
@@ -1515,9 +1533,81 @@ export default function ProtocolForm({
     }
   };
 
+  const beginExecute = async (modeKey: string, queueOverride: QueueLaunchDraft | null = null) => {
+    const normalizedModeKey = String(modeKey ?? "").trim().toLowerCase();
+
+    if (normalizedModeKey !== "continue" && normalizedModeKey !== "restart") {
+      await executeNow(modeKey, queueOverride);
+      return;
+    }
+
+    setActionLoading("execute");
+
+    try {
+      const pid = effectiveProtocolId;
+      const preflight = await svc.getProtocolWorkflowExecutionPreflight(projectId, pid, normalizedModeKey);
+
+      if (!preflight?.requiresConfirmation) {
+        setActionLoading(null);
+        await executeNow(normalizedModeKey, queueOverride);
+        return;
+      }
+
+      setPendingWorkflowExecution({ modeKey: normalizedModeKey, queueOverride, preflight });
+    } catch (err: any) {
+      const backendPayload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(backendPayload);
+      const message = errors.length > 0 ? formatErrorsForDialog(errors) : String(err?.message || "Failed to prepare workflow execution");
+      openExecErrorDialog("Execution error", message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const executeWorkflowScope = async (scope: ProtocolWorkflowExecutionScope) => {
+    const pending = pendingWorkflowExecution;
+
+    if (!pending) return;
+
+    setPendingWorkflowExecution(null);
+    setActionLoading("execute");
+    setValidationErrors([]);
+
+    try {
+      const pid = effectiveProtocolId;
+      const serializedParams = getSerializedParams();
+      const finalParams = mergeQueueDraftIntoParams(serializedParams, pending.queueOverride);
+      const res: any = await svc.executeProtocolWorkflow(projectId, pid, protocolClassName, finalParams, pending.modeKey, scope);
+      const errors = getErrorsFromBackendPayload(res);
+
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        setShowValidationDialog(true);
+        return;
+      }
+
+      onExecuted?.();
+      requestClose();
+    } catch (err: any) {
+      const httpStatus = getHttpStatusFromError(err);
+      const backendPayload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(backendPayload);
+
+      if (errors.length > 0 && httpStatus === 422) {
+        setValidationErrors(errors);
+        setShowValidationDialog(true);
+        return;
+      }
+
+      const message = errors.length > 0 ? formatErrorsForDialog(errors) : String(err?.message || "Error executing workflow");
+      openExecErrorDialog("Execution error", message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // handleExecute
   const handleExecute = async (modeKey: string) => {
-
     const normalizedModeKey = String(modeKey ?? "").trim().toLowerCase();
 
     if (normalizedModeKey === "stop") {
@@ -1528,7 +1618,7 @@ export default function ProtocolForm({
     const shouldUseQueue = useQueueEnabled || effectiveQueueMandatory;
 
     if (!shouldUseQueue) {
-      await executeNow(modeKey, null);
+      await beginExecute(modeKey, null);
       return;
     }
 
@@ -1542,9 +1632,7 @@ export default function ProtocolForm({
       return;
     }
 
-    const draft = buildQueueDraft(
-      effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName
-    );
+    const draft = buildQueueDraft(effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName);
 
     if (!draft) {
       toast.error("Unable to prepare queue settings.");
@@ -1552,7 +1640,7 @@ export default function ProtocolForm({
     }
 
     if (effectiveQueueMandatory) {
-      await executeNow(modeKey, draft);
+      await beginExecute(modeKey, draft);
       return;
     }
 
@@ -1568,13 +1656,14 @@ export default function ProtocolForm({
       return;
     }
 
+    const modeKey = pendingExecuteMode;
     const draft = queueDraft;
 
     applyQueueDraftToProtocolState(draft);
     setQueueDialogOpen(false);
     setPendingExecuteMode(null);
 
-    await executeNow(pendingExecuteMode, draft);
+    await beginExecute(modeKey, draft);
   };
 
   // handleSave
@@ -1582,7 +1671,7 @@ export default function ProtocolForm({
     setActionLoading("save");
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const serialized = getSerializedParams();
 
       const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
@@ -2371,7 +2460,7 @@ export default function ProtocolForm({
       <div className={styles.formHeader}>
         <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {String(protocolId ?? "")}
+            {effectiveProtocolId}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
           <span
@@ -2540,7 +2629,7 @@ export default function ProtocolForm({
             {topTab === 1 && (
               <ProtocolOutputsPanel
                 projectId={projectId}
-                protocolId={protocolId}
+                protocolId={effectiveProtocolId}
                 protocolLabel={protocolDisplayName}
                 outputsFromApi={outputsFromApi}
               />
@@ -2634,13 +2723,11 @@ export default function ProtocolForm({
           }
           title={`Select file for: ${pathDialog.title ?? pathDialog.stateKey}`}
           projectId={projectId}
-          protocolId={protocolId}
-          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId)}
-          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId, p)}
-          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, protocolId, p)}
-          buildDownloadUrl={(p, inline) =>
-            svc.buildProtocolDownloadUrl(projectId, protocolId, p, !!inline)
-          }
+          protocolId={effectiveProtocolId}
+          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, effectiveProtocolId)}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, effectiveProtocolId, p)}
+          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, effectiveProtocolId, p)}
+          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projectId, effectiveProtocolId, p, !!inline)}
           onPick={(relativePath) => {
             const stateKey = pathDialog.stateKey;
 
@@ -2667,6 +2754,279 @@ export default function ProtocolForm({
         onSelect={handleSelectOutput}
         multiSelect={false}
       />
+
+      {/* Workflow execution confirmation */}
+      <Dialog
+        open={Boolean(pendingWorkflowExecution)}
+        onClose={() => {
+          if (!isBusy) setPendingWorkflowExecution(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "22px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.16)",
+            boxShadow: "0 28px 80px rgba(15, 23, 42, 0.30)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            p: 0,
+            backgroundColor: "#333d49",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, px: 2.5, py: 2 }}>
+            <Box
+              sx={{
+                width: 38,
+                height: 38,
+                borderRadius: "10px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: "0 0 auto",
+                backgroundColor: "rgba(255,255,255,0.10)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: pendingWorkflowExecution?.modeKey === "continue" ? "#bae6fd" : "#fde68a",
+              }}
+            >
+              <ExecuteIcon fontSize="small" />
+            </Box>
+
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography component="div" sx={{ color: "#ffffff", fontSize: "1rem", fontWeight: 600, lineHeight: 1.5 }}>
+                {pendingWorkflowExecution?.modeKey === "continue" ? "Continue workflow?" : "Restart workflow?"}
+              </Typography>
+
+              <Typography sx={{ mt: 0.4, color: "rgba(255,255,255,0.75)", fontSize: "0.875rem", lineHeight: 1.45 }}>
+                This action affects protocols that depend on the selected protocol.
+              </Typography>
+            </Box>
+
+            <IconButton
+              size="small"
+              onClick={() => setPendingWorkflowExecution(null)}
+              disabled={isBusy}
+              sx={{
+                mt: -0.25,
+                mr: -0.5,
+                color: "rgba(255,255,255,0.82)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                backgroundColor: "rgba(255,255,255,0.06)",
+                "&:hover": {
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 2.5, py: 2.5 }}>
+          <Box
+            sx={(theme) => ({
+              borderRadius: "12px",
+              border: "1px solid",
+              borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "#e2e8f0",
+              backgroundColor: theme.palette.mode === "dark" ? "rgba(30,41,59,0.45)" : "#f8fafc",
+              px: 2,
+              py: 1.75,
+            })}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: pendingWorkflowExecution?.modeKey === "continue" ? "#0ea5e9" : "#f59e0b",
+                }}
+              />
+
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+                {pendingWorkflowExecution?.preflight?.affectedProtocols?.length === 1
+                  ? "1 dependent protocol will be affected"
+                  : `${pendingWorkflowExecution?.preflight?.affectedProtocols?.length ?? 0} dependent protocols will be affected`}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: "grid", gap: 1, maxHeight: 190, overflowY: "auto", pr: 0.5 }}>
+              {(pendingWorkflowExecution?.preflight?.affectedProtocols ?? []).map((protocol) => (
+                <Box
+                  key={protocol.protocolId}
+                  sx={(theme) => ({
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    minWidth: 0,
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: "9px",
+                    backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.50)" : "#ffffff",
+                    border: "1px solid",
+                    borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "#e2e8f0",
+                  })}
+                >
+                  <Box
+                    component="span"
+                    sx={(theme) => ({
+                      flex: "0 0 auto",
+                      borderRadius: "999px",
+                      px: 1,
+                      py: 0.35,
+                      fontFamily: "monospace",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      backgroundColor: theme.palette.mode === "dark" ? "rgba(51,65,85,0.90)" : "#f1f5f9",
+                      color: theme.palette.mode === "dark" ? "#e2e8f0" : "#475569",
+                      border: "1px solid",
+                      borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.22)" : "#e2e8f0",
+                    })}
+                  >
+                    {protocol.protocolId}
+                  </Box>
+
+                  <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.875rem", fontWeight: 600 }} noWrap>
+                    {protocol.runName}
+                  </Typography>
+
+                  <Box
+                    component="span"
+                    sx={{
+                      flex: "0 0 auto",
+                      borderRadius: "999px",
+                      px: 1,
+                      py: 0.35,
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      textTransform: "capitalize",
+                      backgroundColor: protocol.active ? "#ffedd5" : "#f1f5f9",
+                      color: protocol.active ? "#c2410c" : "#64748b",
+                    }}
+                  >
+                    {protocol.status}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          <Box
+            sx={(theme) => ({
+              mt: 2,
+              borderRadius: "12px",
+              border: "1px solid",
+              borderColor: theme.palette.mode === "dark" ? "rgba(245,158,11,0.30)" : "#fde68a",
+              backgroundColor: theme.palette.mode === "dark" ? "rgba(120,53,15,0.20)" : "#fffbeb",
+              px: 2,
+              py: 1.5,
+            })}
+          >
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+              Do you really want to {String(pendingWorkflowExecution?.modeKey ?? "").toUpperCase()} the workflow?
+            </Typography>
+
+            <Typography sx={(theme) => ({ mt: 0.5, fontSize: "0.82rem", color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b", lineHeight: 1.5 })}>
+              Choose whether to execute only the selected protocol or the complete affected subworkflow.
+            </Typography>
+          </Box>
+
+          <Box sx={{ mt: 2, display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+            <Box
+              sx={(theme) => ({
+                borderRadius: "12px",
+                border: "1px solid",
+                borderColor: theme.palette.mode === "dark" ? "rgba(59,130,246,0.30)" : "#bfdbfe",
+                backgroundColor: theme.palette.mode === "dark" ? "rgba(30,58,138,0.15)" : "#eff6ff",
+                px: 1.75,
+                py: 1.5,
+              })}
+            >
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#2563eb" }}>
+                Single
+              </Typography>
+
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+                Execute only this protocol. All listed descendants will be reset to Saved.
+              </Typography>
+            </Box>
+
+            <Box
+              sx={(theme) => ({
+                borderRadius: "12px",
+                border: "1px solid",
+                borderColor: theme.palette.mode === "dark" ? "rgba(245,158,11,0.30)" : "#fde68a",
+                backgroundColor: theme.palette.mode === "dark" ? "rgba(120,53,15,0.15)" : "#fffbeb",
+                px: 1.75,
+                py: 1.5,
+              })}
+            >
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#d97706" }}>
+                All
+              </Typography>
+
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+                Execute this protocol and every affected descendant in the subworkflow.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={(theme) => ({
+            px: 2.5,
+            py: 2,
+            gap: 1,
+            borderTop: "1px solid",
+            borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "#e2e8f0",
+            backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.45)" : "#f8fafc",
+          })}
+        >
+          <Button
+            variant="outlined"
+            onClick={() => setPendingWorkflowExecution(null)}
+            disabled={isBusy}
+            sx={{ textTransform: "none", minWidth: 90, borderRadius: "9px" }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={() => executeWorkflowScope("single")}
+            disabled={isBusy}
+            sx={{ textTransform: "none", minWidth: 90, borderRadius: "9px" }}
+          >
+            Single
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={() => executeWorkflowScope("all")}
+            disabled={isBusy}
+            sx={{
+              textTransform: "none",
+              minWidth: 90,
+              borderRadius: "9px",
+              backgroundColor: "#f59e0b",
+              color: "#ffffff",
+              "&:hover": {
+                backgroundColor: "#d97706",
+              },
+            }}
+          >
+            All
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Queue dialog */}
       <Dialog

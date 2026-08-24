@@ -36,6 +36,7 @@ import type {
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
+  JobMonitoringOverview,
   HostSettings,
   HostSettingsPatch,
   ProjectEffectiveSettings,
@@ -63,6 +64,7 @@ import type {
   TiltSeriesBatchPreviewOptions,
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
+  InstanceResources,
 
 } from "@/services/ProjectService";
 
@@ -140,6 +142,8 @@ const defaultService: ProjectService = {
   fetchProtocolDetails: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
 
+  fetchProtocolRuntimeSummaries: (projectId: Id, protocolIds: Id[],) => api.fetchProtocolRuntimeSummaries(toId(projectId), protocolIds,),
+
   fetchNewProtocolDetails: (projectId: Id, protocolClass: string) =>
     api.fetchNewProtocolDetails(toId(projectId), protocolClass),
 
@@ -214,6 +218,12 @@ const defaultService: ProjectService = {
   continueAll: (projectId: Id, protocolId: Id) =>
     api.continueAll(toId(projectId), toId(protocolId)),
 
+  getProtocolWorkflowExecutionPreflight: (projectId, protocolId, mode) =>
+    api.getProtocolWorkflowExecutionPreflight(toId(projectId), toId(protocolId), mode),
+
+  executeProtocolWorkflow: (projectId, protocolId, protocolClassName, params, mode, scope) =>
+    api.executeProtocolWorkflow(toId(projectId), toId(protocolId), protocolClassName, params, mode, scope),
+
   resetFrom: (projectId: Id, protocolId: Id) =>
     api.resetFrom(toId(projectId), toId(protocolId)),
 
@@ -243,7 +253,7 @@ const defaultService: ProjectService = {
     projectId: Id,
     protocolId: Id,
     path: string,
-    opts?: { table?: string },
+    opts?: { table?: string; signal?: AbortSignal },
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
@@ -881,8 +891,14 @@ const defaultService: ProjectService = {
   patchUserSettings: (patch: UserSettingsPatch) => settingsApi.patchUserSettings(patch),
 
   fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
+  fetchInstanceResources: (): Promise<InstanceResources> => settingsApi.fetchInstanceResources(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+  fetchJobsOverview: (
+    recentLimit: number = 25,
+  ): Promise<JobMonitoringOverview> =>
+    settingsApi.fetchJobsOverview(recentLimit),
 
   fetchHostSettings: () => settingsApi.fetchHostSettings(),
   putHostSettings: (payload: HostSettings) => settingsApi.putHostSettings(payload),

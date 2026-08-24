@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
+import { Fragment, useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageMeta from "@/components/common/PageMeta";
 import ProjectCard from "@/components/projects/ProjectsCard";
@@ -6,7 +6,7 @@ import ProjectListRow from "@/components/projects/ProjectListRow";
 import { ChevronDownIcon } from "@/icons";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { ProjectService } from "@/services/ProjectService";
+import type { ImportProjectPayload, ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
 import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
@@ -180,24 +180,6 @@ interface ProjectsPageProps {
   fetchList?: () => Promise<Project[]>;
 }
 
-function StatCard(props: { label: string; value: ReactNode }) {
-  return (
-    <div
-      className={classNames(
-        crispText,
-        "rounded-xl border p-3 shadow-sm",
-        "border-gray-300/80 bg-white",
-        "dark:border-gray-700 dark:bg-slate-900",
-      )}
-    >
-      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{props.label}</div>
-      <div className="mt-1 text-xl font-bold tracking-[-0.01em] text-gray-950 dark:text-white">
-        {props.value}
-      </div>
-    </div>
-  );
-}
-
 export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const svcFromCtx = useProjectService();
   const svc = service ?? svcFromCtx;
@@ -270,22 +252,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   );
 
   const handleImportProject = useCallback(
-    async (payload: {
-      projectLocation: string;
-      projectName?: string;
-      copyProject: boolean;
-    }) => {
-      const api = svc as any;
-
-      if (typeof api.importProject !== "function") {
-        throw new Error("Missing ProjectService.importProject()");
-      }
-
-      await api.importProject({
-        projectLocation: payload.projectLocation,
-        projectName: payload.projectName,
-        copyProject: payload.copyProject,
-      });
+    async (payload: ImportProjectPayload) => {
+      await svc.importProject(payload);
 
       toast.success("Project imported successfully.");
       await loadProjects({ silent: true });
@@ -293,33 +261,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     [svc, loadProjects],
   );
 
-  const [compareOpen, setCompareOpen] = useState(false);
-
-  const projectWorkspaceTabs = useMemo(
-    () =>
-      workspaceTabs.filter(
-        (tab): tab is Extract<WorkspaceTab, { type: "project" }> =>
-          tab.type === "project",
-      ),
-    [workspaceTabs],
-  );
-
-  const canCompareProjects = projectWorkspaceTabs.length >= 2;
-
-  const fetchProtocolDetailsForComparison = useCallback(
-    (projectName: string, protocolId: string) =>
-      svc.fetchProtocolDetails(projectName, protocolId),
-    [svc],
-  );
-
-  const fetchProjectForComparison = useCallback(
-    (projectName: string) => svc.fetchProject(projectName),
-    [svc],
-  );
-
   useEffect(() => {
     if (!isProjectsWorkspaceActive) {
       setLoading(false);
+
+      if (!hasLoadedProjectsRef.current) {
+        void loadProjects({ silent: true });
+      }
+
       return;
     }
 
@@ -366,10 +315,22 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     setWorkspaceTabs((prev) => {
       const tabId = getProjectWorkspaceId(routeProjectName);
       const existingTab = prev.find((tab) => tab.id === tabId);
-      const title = project?.name ?? (existingTab?.type === "project" ? existingTab.title : routeProjectName);
+
+      const storedTitle =
+        existingTab?.type === "project" &&
+          existingTab.title &&
+          existingTab.title !== routeProjectName
+          ? existingTab.title
+          : null;
+
+      const title = project?.name ?? storedTitle ?? "Loading…";
 
       if (existingTab) {
-        return prev.map((tab) => (tab.id === tabId && tab.type === "project" ? { ...tab, title } : tab));
+        return prev.map((tab) =>
+          tab.id === tabId && tab.type === "project"
+            ? { ...tab, title }
+            : tab,
+        );
       }
 
       return [
@@ -399,14 +360,20 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const normalizedTerm = search.trim().toLowerCase();
 
   const filteredProjects = useMemo(() => {
-    if (!normalizedTerm) return projects;
+    const filtered = normalizedTerm
+      ? projects.filter((p) => {
+        const name = String(p.name ?? "").toLowerCase();
+        const id = String(p.id ?? "").toLowerCase();
+        const desc = String(p.description ?? "").toLowerCase();
+        return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
+      })
+      : projects;
 
-    return projects.filter((p) => {
-      const name = String(p.name ?? "").toLowerCase();
-      const id = String(p.id ?? "").toLowerCase();
-      const desc = String(p.description ?? "").toLowerCase();
-      return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
-    });
+    return [...filtered].sort(
+      (a, b) =>
+        (b.updatedAt ?? b.createdAt).getTime() -
+        (a.updatedAt ?? a.createdAt).getTime(),
+    );
   }, [projects, normalizedTerm]);
 
   const stats = useMemo(() => {
@@ -515,64 +482,54 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       )}
       aria-label="Project workspaces"
     >
-      {workspaceTabs.map((tab) => {
+      {workspaceTabs.map((tab, index) => {
         const active = tab.id === activeWorkspaceId;
 
         return (
-          <div
-            key={tab.id}
-            className={classNames(
-              "group inline-flex max-w-[260px] shrink-0 items-center overflow-hidden rounded-xl border text-sm transition",
-              active
-                ? "border-indigo-400 bg-indigo-50 text-indigo-900 shadow-sm dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100"
-                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => openWorkspaceTab(tab)}
-              className="min-w-0 flex-1 truncate px-3 py-2 text-left"
-              title={tab.title}
-            >
-              {tab.title}
-            </button>
+          <Fragment key={tab.id}>
+            {index === 1 && tab.type === "project" ? (
+              <span
+                aria-hidden="true"
+                className="shrink-0 select-none px-1 text-gray-300 dark:text-gray-600"
+              >
+                |
+              </span>
+            ) : null}
 
-            {tab.type === "project" ? (
+            <div
+              className={classNames(
+                "group inline-flex max-w-[260px] shrink-0 items-center overflow-hidden rounded-xl border text-sm transition",
+                active
+                  ? "border-indigo-400 bg-indigo-50 text-indigo-900 shadow-sm dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800",
+              )}
+            >
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  closeWorkspaceTab(tab.id);
-                }}
-                className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-slate-700 dark:hover:text-white"
-                aria-label={`Close ${tab.title}`}
+                onClick={() => openWorkspaceTab(tab)}
+                className="min-w-0 flex-1 truncate px-3 py-2 text-left"
+                title={tab.title}
               >
-                <X className="h-3.5 w-3.5" />
+                {tab.title}
               </button>
-            ) : null}
-          </div>
+
+              {tab.type === "project" ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeWorkspaceTab(tab.id);
+                  }}
+                  className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-slate-700 dark:hover:text-white"
+                  aria-label={`Close ${tab.title}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </Fragment>
         );
       })}
-      {/*
-      <button
-        type="button"
-        onClick={() => setCompareOpen(true)}
-        disabled={!canCompareProjects}
-        className={classNames(
-          "ml-auto inline-flex shrink-0 items-center rounded-xl border px-3 py-2 text-sm font-semibold transition",
-          canCompareProjects
-            ? "border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-900/50"
-            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
-        )}
-        title={
-          canCompareProjects
-            ? "Compare opened projects"
-            : "Open at least two project tabs to compare"
-        }
-      >
-        Compare
-      </button>
-*/}
     </div>
   );
 

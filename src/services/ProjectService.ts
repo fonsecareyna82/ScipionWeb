@@ -116,6 +116,22 @@ export type ProtocolStep = {
 
 export type ProtocolStepStatus = "new" | "finished";
 
+export type ProtocolRuntimeSummary = {
+  protocolId: string;
+  status: string;
+
+  cpuTimeSeconds: number;
+  elapsedTimeSeconds: number;
+
+  elapsedSessionId?:
+  | string
+  | null;
+
+  stepsDone: number;
+  numberOfSteps: number;
+  outputs?: unknown[];
+};
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -153,6 +169,8 @@ export type VolumeSliceOptions = {
   axis?: "x" | "y" | "z";
   cmap?: string;
   normalize?: "minmax" | "zscore" | "none";
+  windowMin?: number;
+  windowMax?: number;
   scale?: number;
   inline?: boolean;
   signal?: AbortSignal;
@@ -197,6 +215,8 @@ export type VolumeData3dOptions = {
   maxDim?: number; // default backend: 160
   /** Downsampling method. */
   method?: "binning" | "stride" | "none"; // default backend: "binning"
+  /** Optional abort signal to cancel the request. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -205,22 +225,21 @@ export type VolumeData3dOptions = {
  * `data` is a flat array; `order` tells how to reshape.
  */
 export type VolumeData3d = {
-  id: string | number;
+  id?: string | number;
   name?: string;
 
   /** Dimensions in (x, y, z). */
   dims: [number, number, number];
 
-  /** Flattened voxel values. */
-  data: number[];
+  /** Flattened voxel values, X varying fastest for order="zyx". */
+  values: number[] | Float32Array;
 
-  /** Ordering of the flattened array. */
+  /** Legacy compatibility payload. */
+  data?: number[];
+
   order?: "zyx" | "xyz";
-
-  /** Optional voxel size tuple. */
   voxelSize?: [number, number, number];
 
-  /** Optional stats. */
   min?: number;
   max?: number;
   mean?: number;
@@ -531,6 +550,10 @@ export interface VolumeSurfaceMesh {
   order: "zyx" | "xyz";
   vertexCount: number;
   triangleCount: number;
+  marchingCubesStep?: number;
+  minComponentTriangles?: number;
+  smoothingIterations?: number;
+  removedComponents?: number;
   vertices: number[];
   normals: number[];
   indices: number[];
@@ -548,6 +571,8 @@ export interface VolumeSurfaceMeshOptions {
   maxDim?: number;
   method?: VolumeSurfaceMethod;
   maxTriangles?: number;
+  minComponentTriangles?: number;
+  smoothingIterations?: number;
   signal?: AbortSignal;
 }
 
@@ -595,6 +620,7 @@ export type IntegratedContextStatus =
 
 export type IntegratedContextLink = {
   protocolId?: Id;
+  publicProtocolId?: Id;
   outputName?: string | null;
   itemId?: Id;
   label?: string | null;
@@ -668,30 +694,122 @@ export type WorkflowDescriptor = {
 export type SettingsObject = Record<string, unknown>;
 
 export type UserSettings = {
-  theme: "system" | "light" | "dark";
-  uiDensity: "comfortable" | "compact";
+  theme:
+  | "system"
+  | "light"
+  | "dark";
+
+  uiDensity:
+  | "comfortable"
+  | "compact";
+
   fontScale: number;
 
-  language: "en" | "es";
+  language:
+  | "en"
+  | "es";
+
   timeZone: string;
+
+  workflowViewMode:
+  | "treeTb"
+  | "treeLr"
+  | "grid"
+  | "table";
 
   graphMiniMapEnabled: boolean;
   graphFocusModeEnabled: boolean;
+
+  protocolOutputThumbnailsEnabled:
+  boolean;
+
   workflowsAutoRefreshSec: number;
 };
 
-export type UserSettingsPatch = Partial<UserSettings>;
+export type UserSettingsPatch =
+  Partial<UserSettings>;
 
 export type InstanceSettings = {
-  enableCelery: boolean;
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
+};
 
-  requireConfirmBeforeExecute: boolean;
-  requireConfirmBeforeDelete: boolean;
+
+export type InstanceGpuResource = {
+  index: number;
+  name: string;
+  memoryTotalBytes?: number | null;
+};
+
+export type InstanceResources = {
+  hostAlias: string;
+  hostname: string;
+  fqdn: string;
+  schedulerName: string;
+
+  operatingSystem: string;
+  architecture: string;
+  cpuModel: string;
+
+  physicalCores: number;
+  logicalCores: number;
+  ramTotalBytes: number;
+
+  gpuCount: number;
+  gpus: InstanceGpuResource[];
 };
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
+
+export type JobWorker = {
+  name: string;
+  queues: string[];
+  online: boolean;
+  concurrency: number;
+  active: number;
+  reserved: number;
+};
+
+export type ActiveProtocolJob = {
+  taskId: string;
+  projectId: number;
+  projectName?: string | null;
+  protocolId: string;
+  protocolClassName?: string | null;
+  runMode: string;
+  celeryState?: string | null;
+  step?: string | null;
+  protocolStatus: string;
+  worker?: string | null;
+  queue?: string | null;
+  workerPid?: number | null;
+  protocolPid?: number | null;
+  jobIds: string[];
+  startedAt?: string | null;
+  elapsedSeconds?: number | null;
+};
+
+export type RecentProtocolJob = {
+  projectId: number;
+  projectName: string;
+  protocolId: string;
+  protocolClassName: string;
+  status: string;
+  runtimePid?: number | null;
+  jobIds: string[];
+  elapsedTimeSeconds?: number | null;
+  createdAt: string;
+  updatedAt?: string | null;
+};
+
+export type JobMonitoringOverview = {
+  celeryAvailable: boolean;
+  celeryError?: string | null;
+  workers: JobWorker[];
+  activeJobs: ActiveProtocolJob[];
+  recentJobs: RecentProtocolJob[];
+  refreshedAt: string;
+};
 
 export type EnvironmentVariable = {
   name: string;
@@ -762,11 +880,8 @@ export type ProjectRuntimeHostSettings = {
 };
 
 export type ProjectRuntimeInstanceSettings = {
-  enableCelery?: boolean;
   defaultQueueName?: string | null;
   maxConcurrentRunsPerUser?: number;
-  requireConfirmBeforeExecute?: boolean;
-  requireConfirmBeforeDelete?: boolean;
 };
 
 export type ProjectEffectiveSettings = {
@@ -1356,6 +1471,33 @@ export type WriteRemoteFileResult = {
   mimeType?: string;
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol workflows launch / execution options
+// ─────────────────────────────────────────────────────────────────────────────  
+
+export type ProtocolWorkflowExecutionMode = "continue" | "restart";
+export type ProtocolWorkflowExecutionScope = "single" | "all";
+
+export type ProtocolWorkflowAffectedProtocol = {
+  protocolId: string;
+  runName: string;
+  status: string;
+  level: number;
+  active: boolean;
+};
+
+export type ProtocolWorkflowExecutionPreflight = {
+  protocolId: string;
+  mode: ProtocolWorkflowExecutionMode;
+  requiresConfirmation: boolean;
+  selectedProtocol?: ProtocolWorkflowAffectedProtocol | null;
+  affectedProtocols: ProtocolWorkflowAffectedProtocol[];
+  activeProtocolIds: string[];
+};
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -1427,6 +1569,8 @@ export interface ProjectService<
 
   /** Get protocol details by project/protocol ids. */
   fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<TProtocol>;
+
+  fetchProtocolRuntimeSummaries?: (projectId: Id, protocolIds: Id[],) => Promise<ProtocolRuntimeSummary[]>;
 
   /** Get "new protocol" details by class within a project. */
   fetchNewProtocolDetails(projectId: Id, protocolClass: string): Promise<TProtocol>;
@@ -1519,7 +1663,7 @@ export interface ProjectService<
     projectId: string,
     protocolId: string,
     path: string,
-    opts?: { table?: string }
+    opts?: { table?: string; signal?: AbortSignal }
   ): Promise<any>;
   previewRemoteEntry(
     projectId: Id,
@@ -1533,6 +1677,18 @@ export interface ProjectService<
     protocolId: Id,
     opts?: NextProtocolSuggestionsOptions
   ): Promise<NextProtocolSuggestion[]>;
+
+  getProtocolWorkflowExecutionPreflight(
+    projectId: Id,
+    protocolId: Id,
+    mode: ProtocolWorkflowExecutionMode): Promise<ProtocolWorkflowExecutionPreflight>;
+  executeProtocolWorkflow(
+    projectId: Id,
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>,
+    mode: ProtocolWorkflowExecutionMode,
+    scope: ProtocolWorkflowExecutionScope): Promise<TProject>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (FSCs)
@@ -1747,6 +1903,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
 
@@ -1923,8 +2080,11 @@ export interface ProjectService<
   patchUserSettings(patch: UserSettingsPatch): Promise<UserSettings>;
 
   fetchInstanceSettings(): Promise<InstanceSettings>;
+  fetchInstanceResources(): Promise<InstanceResources>;
   putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
+
+  fetchJobsOverview(recentLimit?: number): Promise<JobMonitoringOverview>;
 
   fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
   patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;

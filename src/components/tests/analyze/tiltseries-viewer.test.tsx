@@ -162,6 +162,32 @@ function makeFramesPayload(seriesId: string) {
     };
 }
 
+function makeFramesPayloadWithCount(
+    seriesId: string,
+    count: number,
+) {
+    return {
+        tiltSeriesId: seriesId,
+        label: `Series ${seriesId}`,
+        tiltAxisAngle: 23.5,
+        frames: Array.from(
+            { length: count },
+            (_, index) => ({
+                viewId: `${seriesId}-v${index}`,
+                index,
+                order: index,
+                tiltAngle: -60 + index,
+                excluded: false,
+                dose: index,
+                path: `/data/${seriesId}_${index}.mrc`,
+                rot: 0,
+                shiftX: 0,
+                shiftY: 0,
+            }),
+        ),
+    };
+}
+
 function renderViewer() {
     return render(
         <TiltSeriesViewer
@@ -567,6 +593,179 @@ describe("TiltSeriesViewer", () => {
         await waitFor(() => {
             expect(toastMocks.error).toHaveBeenCalledWith("Create failed");
         });
+    });
+
+    it("warms the full active tilt series in batches of 24", async () => {
+        const frameCount = 50;
+
+        serviceMocks.listOutputTiltSeries.mockResolvedValueOnce([
+            {
+                id: "TS1",
+                label: "Series 1",
+                nViews: frameCount,
+                tiltAxisAngle: 23.5,
+                pixelSize: 1.5,
+                dims: [100, 80, frameCount],
+            },
+        ]);
+
+        serviceMocks.fetchTiltSeriesFrames.mockResolvedValueOnce(
+            makeFramesPayloadWithCount(
+                "TS1",
+                frameCount,
+            ),
+        );
+
+        serviceMocks.fetchTiltSeriesViewImagesBatch.mockImplementation(
+            async (...args: any[]) => {
+                const options = args[4];
+
+                return {
+                    items: options.indices.map(
+                        (index: number) => ({
+                            index,
+                            dataUrl:
+                                "data:image/webp;base64,AA==",
+                        }),
+                    ),
+                    errors: [],
+                };
+            },
+        );
+
+        renderViewer();
+
+        expect(
+            await screen.findByText(
+                `View 1 of ${frameCount}`,
+            ),
+        ).toBeInTheDocument();
+
+        await waitFor(() => {
+            const warmupCalls =
+                serviceMocks.fetchTiltSeriesViewImagesBatch.mock.calls.filter(
+                    (call) =>
+                        call[4]?.size === 512,
+                );
+
+            expect(warmupCalls).toHaveLength(3);
+        });
+
+        const warmupCalls =
+            serviceMocks.fetchTiltSeriesViewImagesBatch.mock.calls.filter(
+                (call) =>
+                    call[4]?.size === 512,
+            );
+
+        expect(
+            warmupCalls.map(
+                (call) =>
+                    call[4].indices.length,
+            ),
+        ).toEqual([
+            24,
+            24,
+            2,
+        ]);
+
+        expect(
+            warmupCalls.flatMap(
+                (call) =>
+                    call[4].indices,
+            ),
+        ).toEqual(
+            Array.from(
+                { length: frameCount },
+                (_, index) => index,
+            ),
+        );
+
+        warmupCalls.forEach((call) => {
+            expect(call[4].format).toBe("webp");
+            expect(call[4].applyTransform).toBe(true);
+            expect(call[4].signal).toBeInstanceOf(
+                AbortSignal,
+            );
+        });
+    });
+
+
+    it("uses the warmed interactive preview while scrubbing", async () => {
+        serviceMocks.fetchTiltSeriesViewImagesBatch.mockImplementation(
+            async (...args: any[]) => {
+                const options = args[4];
+
+                return {
+                    items: options.indices.map(
+                        (index: number) => ({
+                            index,
+                            dataUrl:
+                                "data:image/webp;base64,AA==",
+                        }),
+                    ),
+                    errors: [],
+                };
+            },
+        );
+
+        renderViewer();
+
+        expect(
+            await screen.findByText(
+                "View 1 of 2",
+            ),
+        ).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(
+                serviceMocks.fetchTiltSeriesViewImagesBatch.mock.calls.some(
+                    (call) =>
+                        call[4]?.size === 512 &&
+                        call[4]?.indices?.includes(1),
+                ),
+            ).toBe(true);
+        });
+
+        await flushMicrotasks();
+
+        const individualCallsBefore =
+            serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.length;
+
+        const sliders =
+            screen.getAllByRole("slider");
+
+        const tiltSlider =
+            sliders[sliders.length - 1];
+
+        fireEvent.change(
+            tiltSlider,
+            {
+                target: {
+                    value: "1",
+                },
+            },
+        );
+
+        expect(
+            await screen.findByText(
+                "View 2 of 2",
+            ),
+        ).toBeInTheDocument();
+
+        await flushMicrotasks();
+
+        const newIndividualCalls =
+            serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.slice(
+                individualCallsBefore,
+            );
+
+        expect(
+            newIndividualCalls.some(
+                (call) =>
+                    Number(call[4]) === 1 &&
+                    call[5]?.size === 512,
+            ),
+        ).toBe(false);
     });
 
     it("stops autoplay when switching to metadata", async () => {

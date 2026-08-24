@@ -13,13 +13,12 @@ import PluginListTable from "./PluginListTable";
 import PluginQuickDetailsPanel from "./PluginQuickDetailsPanel";
 import PluginSelectionBar from "./PluginSelectionBar";
 import PluginViewToggle from "./PluginViewToggle";
+import PluginTaskCenter from "./PluginTaskCenter";
 import {
   canBatchInstallPlugin,
   classNames,
-  formatTimeAgo,
   getPluginCategoryIds,
   getPluginCategoryMetadata,
-  getTaskOperationLabel,
   type PluginCategoryTab,
   type PluginProcessingState,
   type PluginViewMode,
@@ -134,8 +133,26 @@ function TabButton(props: {
 
 export default function Plugins() {
   const navigate = useNavigate();
-  const { tasks, installing, removing, registerTask } = useProcessingPlugins();
-  const tasksCount = tasks.length;
+  const {
+    tasks,
+    installing,
+    removing,
+    registerTask,
+    refreshTasks,
+  } = useProcessingPlugins();
+
+
+  const activeTasksCount = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          !["SUCCESS", "FAILURE", "CANCELLED"].includes(
+            String(task.status).toUpperCase(),
+          ),
+      ).length,
+    [tasks],
+  );
+
 
   const {
     data: plugins = [],
@@ -143,7 +160,7 @@ export default function Plugins() {
     isError,
     refetch,
   } = usePlugins({
-    refetchInterval: tasksCount > 0 ? 2000 : false,
+    refetchInterval: activeTasksCount > 0 ? 2000 : false,
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>("available");
@@ -157,10 +174,10 @@ export default function Plugins() {
   const [batchBusy, setBatchBusy] = useState(false);
 
   useEffect(() => {
-    if (tasksCount === 0) {
+    if (activeTasksCount === 0) {
       void refetch();
     }
-  }, [tasksCount, refetch]);
+  }, [activeTasksCount, refetch]);
 
   useEffect(() => {
     setActiveCategoryId("all");
@@ -247,18 +264,6 @@ export default function Plugins() {
       return name.includes(term) || pipName.includes(term) || localPath.includes(term) || categoryText.includes(term);
     });
   }, [displayedPlugins, search, activeCategoryId]);
-
-  const filteredTasks = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return tasks;
-
-    return tasks.filter((t) => {
-      const a = (t.pluginName ?? "").toLowerCase();
-      const b = (t.pipName ?? "").toLowerCase();
-      const c = (t.pipNames ?? []).join(" ").toLowerCase();
-      return a.includes(term) || b.includes(term) || c.includes(term);
-    });
-  }, [tasks, search]);
 
   const activeListPlugin = useMemo(() => {
     if (!activeListPluginPipName) return null;
@@ -426,7 +431,7 @@ export default function Plugins() {
                         active={activeTab === "tasks"}
                         onClick={() => setActiveTab("tasks")}
                       >
-                        Tasks ({tasksCount})
+                        Tasks ({activeTasksCount})
                       </TabButton>
                     </div>
                   </div>
@@ -440,10 +445,11 @@ export default function Plugins() {
                       <FolderPlus className="h-4 w-4 text-white" />
                       Install local plugin
                     </SecondaryButton>
+                    {/*
                     <StatPill label="Installed" value={installedPlugins.length} />
                     <StatPill label="Available" value={availablePlugins.length} />
                     <StatPill label="Devel" value={develPlugins.length} />
-                    <StatPill label="Tasks" value={tasksCount} />
+                    <StatPill label="Tasks" value={tasksCount} /> */}
                   </div>
                 </div>
 
@@ -507,85 +513,12 @@ export default function Plugins() {
               </div>
 
               {activeTab === "tasks" ? (
-                <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
-                  <div
-                    className={classNames(
-                      "grid grid-cols-12 gap-3 border-b border-gray-200/70 px-4 py-3 text-xs font-semibold text-gray-600 dark:border-gray-800/70 dark:bg-white/[0.02] dark:text-gray-300",
-                      "bg-gray-50/80",
-                    )}
-                  >
-                    <div className="col-span-4">Plugin</div>
-                    <div className="col-span-3">Operation</div>
-                    <div className="col-span-3">Status</div>
-                    <div className="col-span-2 text-right">Updated</div>
-                  </div>
-
-                  <div className="min-h-0 flex-1 divide-y divide-gray-200/70 overflow-y-auto overscroll-contain dark:divide-gray-800/70">
-                    {filteredTasks.map((t) => (
-                      <button
-                        key={t.taskId}
-                        type="button"
-                        onClick={() => openTaskPlugin(t.pipName)}
-                        className={classNames(
-                          "grid w-full grid-cols-12 gap-3 px-4 py-3 text-left transition",
-                          "cursor-pointer hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20",
-                          "dark:hover:bg-white/[0.02] dark:focus:ring-indigo-400/20",
-                        )}
-                        title={`Open ${t.pluginName ?? t.pipName}`}
-                        aria-label={`Open ${t.pluginName ?? t.pipName}`}
-                      >
-                        <div className="col-span-12 min-w-0 md:col-span-4">
-                          <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90">
-                            {t.pluginName ?? t.pipName}
-                          </div>
-                          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
-                            {t.pipName}
-                          </div>
-                          {t.pipNames && t.pipNames.length > 0 ? (
-                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {t.pipNames.length} selected plugin{t.pipNames.length === 1 ? "" : "s"}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
-                          {getTaskOperationLabel(t.operation)}
-                        </div>
-
-                        <div className="col-span-6 md:col-span-3">
-                          <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800 dark:bg-white/10 dark:text-gray-200">
-                            {(t.status === "PENDING" || t.status === "STARTED" || t.status === "PROGRESS") && (
-                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                            )}
-                            {t.status}
-                          </span>
-
-                          {t.step ? (
-                            <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-400">
-                              {t.step}
-                            </div>
-                          ) : null}
-
-                          {t.error ? (
-                            <div className="mt-1 break-all text-xs text-red-500 dark:text-red-300">
-                              {t.error}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="col-span-12 text-left text-xs text-gray-600 dark:text-gray-400 md:col-span-2 md:text-right">
-                          {formatTimeAgo(t.updatedAtMs)}
-                        </div>
-                      </button>
-                    ))}
-
-                    {filteredTasks.length === 0 && (
-                      <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No active tasks.
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <PluginTaskCenter
+                  tasks={tasks}
+                  search={search}
+                  onOpenPlugin={openTaskPlugin}
+                  onTasksChanged={refreshTasks}
+                />
               ) : viewMode === "cards" ? (
                 <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-gray-200/70 bg-white/40 p-4 dark:border-gray-800/80 dark:bg-white/[0.01]">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">

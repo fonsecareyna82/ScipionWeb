@@ -209,6 +209,7 @@ type MetadataImageCellProps = {
   size: number;
   isSelected?: boolean;
   onClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  scrollRootRef: MutableRefObject<HTMLDivElement | null>;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
 };
 
@@ -326,6 +327,7 @@ const BASE_THUMB_SIZE = 200;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_PADDING = 16;
 const EXTRA_BUFFER_ROWS = 10;
+const MIN_TABLE_WINDOW_ROWS = 60;
 
 const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
 
@@ -1467,6 +1469,8 @@ function useVirtualTableWindow(params: {
   const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
   const viewModeRef = useRef<ViewMode>(viewMode);
+  const hasWindowRowsRef = useRef(false);
+  const latestWindowTargetRef = useRef(0);
 
   useEffect(() => {
     viewModeRef.current = viewMode;
@@ -1484,11 +1488,13 @@ function useVirtualTableWindow(params: {
     windowRequestInFlightRef.current = false;
     pendingWindowOffsetRef.current = null;
     inFlightOffsetRef.current = null;
+    latestWindowTargetRef.current = 0;
 
     setWindowLoading(false);
     setWindowError(null);
 
     if (!options?.keepRows) {
+      hasWindowRowsRef.current = false;
       setWindowRows([]);
       setWindowOffset(0);
     }
@@ -1501,6 +1507,8 @@ function useVirtualTableWindow(params: {
       const limit = desiredWindowSizeRef.current || 60;
       const maxOffset = Math.max(0, totalRows - limit);
       const clampedOffset = Math.min(Math.max(0, requestedOffset), maxOffset);
+
+      latestWindowTargetRef.current = clampedOffset;
 
       if (windowRequestInFlightRef.current) {
         // avoidQueuingSameOffsetTwice
@@ -1515,10 +1523,15 @@ function useVirtualTableWindow(params: {
       }
 
       const requestEpoch = windowEpochRef.current;
+      const showLoading = !hasWindowRowsRef.current;
 
       windowRequestInFlightRef.current = true;
       inFlightOffsetRef.current = clampedOffset; // trackInFlightOffset
-      setWindowLoading(true);
+
+      if (showLoading) {
+        setWindowLoading(true);
+      }
+
       setWindowError(null);
 
       try {
@@ -1541,6 +1554,12 @@ function useVirtualTableWindow(params: {
         }
 
         const parsed = parseWindowResponse(response);
+
+        if (clampedOffset !== latestWindowTargetRef.current) {
+          return;
+        }
+
+        hasWindowRowsRef.current = parsed.rows.length > 0;
         setWindowRows(parsed.rows);
         setWindowOffset(parsed.offset ?? clampedOffset);
       } catch (error) {
@@ -1548,6 +1567,11 @@ function useVirtualTableWindow(params: {
           return;
         }
 
+        if (clampedOffset !== latestWindowTargetRef.current) {
+          return;
+        }
+
+        hasWindowRowsRef.current = false;
         setWindowRows([]);
         setWindowError(getErrorMessage(error, "Failed to load rows"));
       } finally {
@@ -1555,14 +1579,22 @@ function useVirtualTableWindow(params: {
           return;
         }
 
-        setWindowLoading(false);
-        windowRequestInFlightRef.current = false;
-        inFlightOffsetRef.current = null; // clearInFlightOffset
-
         const pendingOffset = pendingWindowOffsetRef.current;
         pendingWindowOffsetRef.current = null;
 
-        if (pendingOffset != null && totalRows > 0) {
+        const shouldLoadPending =
+          pendingOffset != null &&
+          pendingOffset === latestWindowTargetRef.current &&
+          totalRows > 0;
+
+        windowRequestInFlightRef.current = false;
+        inFlightOffsetRef.current = null;
+
+        if (showLoading && !shouldLoadPending) {
+          setWindowLoading(false);
+        }
+
+        if (shouldLoadPending) {
           void loadWindow(pendingOffset);
         }
       }
@@ -1584,7 +1616,9 @@ function useVirtualTableWindow(params: {
     invalidateWindowState({ keepRows: true });
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewModeRef.current === "table") void loadWindow(0);
+    if (viewModeRef.current === "table") {
+      void loadWindow(0);
+    }
   }, [schema, selectedTable, totalRows, sortBy, sortAsc, loadWindow, invalidateWindowState]);
 
 
@@ -2129,6 +2163,7 @@ function MetadataImageCell({
   size,
   isSelected = false,
   onClick,
+  scrollRootRef,
   imageCacheRef,
 }: MetadataImageCellProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -2184,7 +2219,7 @@ function MetadataImageCell({
         observer.disconnect();
       },
       {
-        root: null,
+        root: scrollRootRef.current,
         rootMargin: IMAGE_LAZY_ROOT_MARGIN,
         threshold: 0.01,
       },
@@ -2195,7 +2230,7 @@ function MetadataImageCell({
     return () => {
       observer.disconnect();
     };
-  }, [imageCacheKey]);
+  }, [imageCacheKey, scrollRootRef]);
 
   useEffect(() => {
     const cache = imageCacheRef.current;
@@ -2216,6 +2251,7 @@ function MetadataImageCell({
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
 
     setThumbUrl(null);
     setLoading(true);
@@ -2228,6 +2264,7 @@ function MetadataImageCell({
           size,
           applyTransform: false,
           inline: true,
+          signal: abortController.signal,
         };
 
         try {
@@ -2243,7 +2280,11 @@ function MetadataImageCell({
               format: METADATA_IMAGE_PRIMARY_FORMAT,
             },
           );
-        } catch {
+        } catch (error) {
+          if (abortController.signal.aborted) {
+            throw error;
+          }
+
           return svcRef.current.fetchMetadataImageCellObjectUrl(
             projectId,
             protocolId,
@@ -2280,6 +2321,7 @@ function MetadataImageCell({
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [
     columnName,
@@ -2391,6 +2433,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
+        position: "relative",
         display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
@@ -2662,6 +2705,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                                   columnName: column.name,
                                 });
                               }}
+                              scrollRootRef={scrollRef}
                               imageCacheRef={imageCacheRef}
                             />
                           </Box>
@@ -2755,12 +2799,20 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
       {windowLoading && hasData && (
         <Box
           sx={{
+            position: "absolute",
+            right: 8,
+            bottom: 8,
+            zIndex: 4,
             py: 0.5,
-            px: 1.5,
-            borderTop: "1px solid rgba(148,163,184,0.4)",
+            px: 1,
             display: "flex",
             alignItems: "center",
-            gap: 1,
+            gap: 0.75,
+            border: "1px solid rgba(148,163,184,0.4)",
+            borderRadius: 1,
+            backgroundColor: "background.paper",
+            boxShadow: "0 1px 3px rgba(15,23,42,0.12)",
+            pointerEvents: "none",
           }}
         >
           <CircularProgress size={14} />
@@ -2931,6 +2983,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                       cell={imageCell}
                       size={imageThumbSize}
                       isSelected={isFocusedImageCell || isSelected}
+                      scrollRootRef={galleryScrollRef}
                       imageCacheRef={imageCacheRef}
                     />
                   ) : (
@@ -3384,9 +3437,18 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   }, [viewMode, hasImageColumns]);
 
   const desiredWindowSize = useMemo(() => {
-    if (!rowHeight || viewportHeight <= 0) return 60;
+    if (!rowHeight || viewportHeight <= 0) {
+      return MIN_TABLE_WINDOW_ROWS;
+    }
+
     const approxVisible = Math.ceil(viewportHeight / rowHeight);
-    return approxVisible * 2 + EXTRA_BUFFER_ROWS;
+    const calculatedWindowSize =
+      approxVisible * 2 + EXTRA_BUFFER_ROWS;
+
+    return Math.max(
+      MIN_TABLE_WINDOW_ROWS,
+      calculatedWindowSize,
+    );
   }, [viewportHeight, rowHeight]);
 
   const {
