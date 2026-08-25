@@ -713,12 +713,19 @@ export default function JobsSettingsPanel() {
                                         direction="row"
                                         spacing={1}
                                         justifyContent="flex-end"
-                                        sx={{ mt: 2 }}
+                                        sx={{
+                                            gridColumn: "1 / -1",
+                                            mt: 1,
+                                            pt: 1.5,
+                                            borderTop: 1,
+                                            borderColor: "divider",
+                                        }}
                                     >
                                         {worker.state === "offline" ? (
                                             <Button
                                                 size="small"
                                                 variant="contained"
+                                                color="success"
                                                 startIcon={<Play size={15} />}
                                                 disabled={
                                                     workerAction !== null
@@ -738,6 +745,7 @@ export default function JobsSettingsPanel() {
                                                 <Button
                                                     size="small"
                                                     variant="outlined"
+                                                    color="error"
                                                     startIcon={<Square size={15} />}
                                                     disabled={
                                                         workerAction !== null
@@ -756,7 +764,8 @@ export default function JobsSettingsPanel() {
 
                                                 <Button
                                                     size="small"
-                                                    variant="outlined"
+                                                    variant="contained"
+                                                    color="warning"
                                                     startIcon={<RefreshCw size={15} />}
                                                     disabled={
                                                         workerAction !== null
