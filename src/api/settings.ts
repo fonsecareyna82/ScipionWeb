@@ -215,6 +215,33 @@ export async function fetchJobsOverview(
   return safeJson<JobMonitoringOverview>(res);
 }
 
+export type JobWorkerKind =
+  "plugins" | "protocols";
+
+export type JobWorkerAction =
+  "start" | "stop" | "restart";
+
+export async function controlJobWorker(
+  workerKind: JobWorkerKind,
+  action: JobWorkerAction,
+): Promise<any> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/jobs/workers/${workerKind}/${action}`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      `Failed to ${action} ${workerKind} worker`,
+    );
+  }
+
+  return safeJson<any>(res);
+}
+
 /* ======================= environmentVariables ======================= */
 
 export async function fetchEnvironmentVariables(): Promise<EnvironmentVariable[]> {

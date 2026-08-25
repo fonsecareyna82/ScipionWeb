@@ -23,6 +23,7 @@ import {
     TableHead,
     TableRow,
     Typography,
+    Button,
 } from "@mui/material";
 
 import {
@@ -30,9 +31,17 @@ import {
     Cpu,
     History,
     Server,
+    Play,
+    RefreshCw,
+    Square,
 } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
+import {
+    controlJobWorker,
+    type JobWorkerAction,
+    type JobWorkerKind,
+} from "@/api/settings";
 
 import type {
     ActiveProtocolJob,
@@ -279,6 +288,9 @@ export default function JobsSettingsPanel() {
     const [error, setError] =
         useState<string | null>(null);
 
+    const [workerAction, setWorkerAction] =
+        useState<string | null>(null);
+
     const requestInFlightRef =
         useRef(false);
 
@@ -338,6 +350,62 @@ export default function JobsSettingsPanel() {
             }
         },
         [svc],
+    );
+
+
+    const handleWorkerAction = useCallback(
+        async (
+            workerKind: JobWorkerKind,
+            action: JobWorkerAction,
+            activeTasks: number,
+        ) => {
+            if (
+                activeTasks > 0
+                && (
+                    action === "stop"
+                    || action === "restart"
+                )
+            ) {
+                const confirmed =
+                    window.confirm(
+                        `The ${workerKind} worker has `
+                        + `${activeTasks} active task(s). `
+                        + `${action === "restart"
+                            ? "Restarting"
+                            : "Stopping"} it may interrupt them. Continue?`
+                    );
+
+                if (!confirmed) {
+                    return;
+                }
+            }
+
+            const actionKey =
+                `${workerKind}:${action}`;
+
+            setWorkerAction(actionKey);
+            setError(null);
+
+            try {
+                await controlJobWorker(
+                    workerKind,
+                    action,
+                );
+
+                await loadJobs(false);
+
+            } catch (requestError: any) {
+                setError(
+                    getErrorMessage(
+                        requestError
+                    )
+                );
+
+            } finally {
+                setWorkerAction(null);
+            }
+        },
+        [loadJobs],
     );
 
 
@@ -620,6 +688,73 @@ export default function JobsSettingsPanel() {
                                             {worker.reserved}
                                         </Typography>
                                     </Box>
+
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        justifyContent="flex-end"
+                                        sx={{ mt: 2 }}
+                                    >
+                                        {worker.state === "offline" ? (
+                                            <Button
+                                                size="small"
+                                                variant="contained"
+                                                startIcon={<Play size={15} />}
+                                                disabled={
+                                                    workerAction !== null
+                                                }
+                                                onClick={() => {
+                                                    void handleWorkerAction(
+                                                        worker.kind as JobWorkerKind,
+                                                        "start",
+                                                        worker.active,
+                                                    );
+                                                }}
+                                            >
+                                                Start
+                                            </Button>
+                                        ) : (
+                                            <>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<Square size={15} />}
+                                                    disabled={
+                                                        workerAction !== null
+                                                        || !worker.pid
+                                                    }
+                                                    onClick={() => {
+                                                        void handleWorkerAction(
+                                                            worker.kind as JobWorkerKind,
+                                                            "stop",
+                                                            worker.active,
+                                                        );
+                                                    }}
+                                                >
+                                                    Stop
+                                                </Button>
+
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<RefreshCw size={15} />}
+                                                    disabled={
+                                                        workerAction !== null
+                                                        || !worker.pid
+                                                    }
+                                                    onClick={() => {
+                                                        void handleWorkerAction(
+                                                            worker.kind as JobWorkerKind,
+                                                            "restart",
+                                                            worker.active,
+                                                        );
+                                                    }}
+                                                >
+                                                    Restart
+                                                </Button>
+                                            </>
+                                        )}
+                                    </Stack>
                                 </Box>
                             </CardContent>
                         </Card>

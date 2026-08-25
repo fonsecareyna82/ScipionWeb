@@ -763,8 +763,11 @@ export type InstanceSettingsPatch = Partial<InstanceSettings>;
 
 export type JobWorker = {
   name: string;
+  kind?: "plugins" | "protocols" | null;
   queues: string[];
   online: boolean;
+  state?: "online" | "offline" | "unresponsive";
+  pid?: number | null;
   concurrency: number;
   active: number;
   reserved: number;
