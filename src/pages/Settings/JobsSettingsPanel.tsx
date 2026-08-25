@@ -5,6 +5,8 @@ import {
     useState,
 } from "react";
 
+import toast from "react-hot-toast";
+
 import {
     Alert,
     Box,
@@ -392,14 +394,32 @@ export default function JobsSettingsPanel() {
                     action,
                 );
 
+                const workerLabel =
+                    workerKind === "protocols"
+                        ? "Protocol worker"
+                        : "Plugin worker";
+
+                const actionLabel =
+                    action === "start"
+                        ? "started"
+                        : action === "stop"
+                            ? "stopped"
+                            : "restarted";
+
+                toast.success(
+                    `${workerLabel} ${actionLabel}.`
+                );
+
                 await loadJobs(false);
 
             } catch (requestError: any) {
-                setError(
+                const message =
                     getErrorMessage(
                         requestError
-                    )
-                );
+                    );
+
+                setError(message);
+                toast.error(message);
 
             } finally {
                 setWorkerAction(null);
