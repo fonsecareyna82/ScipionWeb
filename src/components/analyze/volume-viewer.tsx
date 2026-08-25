@@ -150,7 +150,7 @@ const HELP_TEXT: Record<string, string> = {
   zoom2d:
     "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
   surfaceLevel3d:
-    "Absolute iso level for the marching-cubes surface. Leave it empty to let the backend choose an automatic level.",
+    "Contour level used to generate the cryo-EM map surface. Lower values reveal more density, while higher values retain only stronger density. Changing it does not modify the original map.",
   hideDust3d:
     "Removes small disconnected surface fragments. Standard is a good default for cryo-EM maps; turn it off when small isolated densities are scientifically relevant.",
   surfaceSmoothing3d:
@@ -2796,7 +2796,7 @@ export default function VolumeViewer({
                               }}
                               sx={{ textTransform: "none", borderRadius: 1.5 }}
                             >
-                              Auto level
+                              Auto contour
                             </Button>
 
                             {surfaceRefreshing && (
@@ -2824,7 +2824,7 @@ export default function VolumeViewer({
 
                           {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">
-                              Current level: {formatSci(surfaceResolvedLevel)}
+                              Current contour: {formatSci(surfaceResolvedLevel)}
                             </Typography>
                           )}
                         </>
@@ -2832,7 +2832,7 @@ export default function VolumeViewer({
 
                       {!surfaceLevelRange && (
                         <Typography variant="caption" color="text.secondary">
-                          Level control will be available when the surface is ready.
+                          Contour control will be available when the surface is ready.
                         </Typography>
                       )}
                     </Box>
@@ -2993,7 +2993,7 @@ function SurfaceLevelHistogramSlider({
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
         <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
           <Typography variant="caption" color="text.secondary">
-            Level
+            Contour
           </Typography>
           <IconButton size="small" onClick={onHelp}>
             <HelpCircle size={14} />
