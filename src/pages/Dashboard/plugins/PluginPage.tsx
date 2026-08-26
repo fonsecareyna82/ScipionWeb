@@ -113,6 +113,18 @@ function getAnsiColorClass(color: AnsiColor | null): string {
     }
 }
 
+function stripAnsiTerminalControls(
+    value: string,
+): string {
+    return value.replace(
+        // Keep SGR sequences (...m) because parseAnsiSegments
+        // uses them to render colors. Remove cursor/erase/etc.
+        // eslint-disable-next-line no-control-regex
+        /\x1B\[(?![0-9;]*m)[0-?]*[ -/]*[@-~]/g,
+        "",
+    );
+}
+
 function parseAnsiSegments(text: string): AnsiSegment[] {
     if (!text) return [];
 
@@ -338,11 +350,20 @@ function LogViewer(props: {
     onToggleExpanded: () => void;
     logContainerRef: React.RefObject<HTMLDivElement | null>;
 }) {
-    const parsedSegments = useMemo(() => parseAnsiSegments(props.taskLog), [props.taskLog]);
+    const displayLog = useMemo(
+        () => stripAnsiTerminalControls(props.taskLog),
+        [props.taskLog],
+    );
+
+    const parsedSegments = useMemo(
+        () => parseAnsiSegments(displayLog),
+        [displayLog],
+    );
+
     const logLineCount = useMemo(() => {
-        if (!props.taskLog) return 0;
-        return props.taskLog.split(/\r?\n/).length;
-    }, [props.taskLog]);
+        if (!displayLog) return 0;
+        return displayLog.split(/\r?\n/).filter(Boolean).length;
+    }, [displayLog]);
 
     return (
         <CardShell
