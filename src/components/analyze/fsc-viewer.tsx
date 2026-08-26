@@ -477,7 +477,7 @@ function FscPlot({
             key={series.key}
             fill="none"
             stroke={palette[index % palette.length]}
-            strokeWidth="2.5"
+            strokeWidth="1.5"
             points={buildPolyline(series.points, mapX, mapY)}
           />
         ))}
@@ -513,7 +513,7 @@ function FscPlot({
                     stroke={palette[index % palette.length]}
                     strokeWidth="2.5"
                   />
-                  <text x={24} y={0} fontSize="12" stroke={axisColor}>
+                  <text x={24} y={0} fontSize="12">
                     {`${series.label} (${resolutionText})`}
                   </text>
                 </g>
