@@ -31,6 +31,7 @@ import {
   HelpIcon,
 } from "@/icons";
 import MultiParamRow from "./MultiParamRow";
+import TableParamRow from "./TableParamRow";
 import ParamRow from "./ParamRow";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -59,6 +60,11 @@ import {
   normalizeEnumOptions,
   normalizeEnumSelection,
   normalizeMultiPointerValue,
+  buildEmptyTableRow,
+  getTableColumns,
+  normalizeTableParamValue,
+  serializeTableParamValue,
+  validateTableRows,
 } from "@/utils/protocolform.utils";
 
 import {
@@ -76,6 +82,9 @@ import {
   setParamValueAndEditableValue,
   setPointerSelection,
   updateMultiPointerItem,
+  updateTableCell,
+  addTableRow,
+  removeTableRow,
 } from "@/utils/protocolform.state";
 
 import {
@@ -713,6 +722,23 @@ export default function ProtocolForm({
         return;
       }
 
+      if (cls === "TableParam") {
+        const columns = getTableColumns(def);
+        const rawCandidate = getInitialRawForParam(name, def, valuesMap);
+        const fallbackRaw = def?.value ?? def?.default ?? "[]";
+        const rawEffective =
+          rawCandidate === null || rawCandidate === undefined || rawCandidate === ""
+            ? fallbackRaw
+            : rawCandidate;
+
+        params[key] = {
+          ...defResolved,
+          paramClass: "TableParam",
+          editableValue: normalizeTableParamValue(rawEffective, columns),
+        };
+        return;
+      }
+
 
       if (cls === "PointerParam") {
         const token = normalizePointerToken(rawFromApi);
@@ -1288,6 +1314,11 @@ export default function ProtocolForm({
         return;
       }
 
+      if (cls === "TableParam" && Array.isArray(p.editableValue)) {
+        out[newKey] = serializeTableParamValue(p.editableValue, getTableColumns(p));
+        return;
+      }
+
       if (cls === "BooleanParam") {
         const boolVal = coerceBooleanValue(p.editableValue ?? p.value ?? p.value ?? p.default);
         out[newKey] = boolVal ? true : false;
@@ -1342,6 +1373,11 @@ export default function ProtocolForm({
             nextParam.editableValue = token;
           } else if (cls === "MultiPointerParam") {
             nextParam.editableValue = normalizeMultiPointerValue(rawValue);
+          } else if (cls === "TableParam") {
+            nextParam.editableValue = normalizeTableParamValue(
+              rawValue,
+              getTableColumns(current)
+            );
           } else if (cls === "EnumParam" && current?.choices) {
             nextParam.editableValue = normalizeEnumSelection(
               rawValue,
@@ -1731,6 +1767,55 @@ export default function ProtocolForm({
             ) : null}
           </Box>
         );
+
+      // TableParam (requires stateKey)
+      if (defClass === "TableParam") {
+        if (!stateKey) return null;
+
+        const columns = getTableColumns(defResolved);
+        const rows = Array.isArray(value)
+          ? value
+          : normalizeTableParamValue(def.default ?? "[]", columns);
+        const cellErrors = validateTableRows(rows, columns);
+        const emptyRow = buildEmptyTableRow(columns);
+
+        return (
+          <ParamRow
+            key={stableKey}
+            label={def.label || name || ""}
+            control={
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
+                {advancedSlot}
+                <TableParamRow
+                  def={defResolved}
+                  rows={rows}
+                  cellErrors={cellErrors}
+                  onCellChange={(rowIndex, colName, nextValue) => {
+                    setProtocolDetails((prev: any) =>
+                      updateTableCell(prev, stateKey, rowIndex, colName, nextValue)
+                    );
+                  }}
+                  onAddRow={() => {
+                    setProtocolDetails((prev: any) =>
+                      addTableRow(prev, stateKey, emptyRow)
+                    );
+                  }}
+                  onRemoveRow={(rowIndex) => {
+                    setProtocolDetails((prev: any) =>
+                      removeTableRow(prev, stateKey, rowIndex, emptyRow)
+                    );
+                  }}
+                />
+              </Box>
+            }
+            helpText={def.help}
+            rowIndex={rowIndex}
+            hasWizard={wizardUi.hasWizard}
+            onOpenWizard={wizardUi.onOpenWizard}
+            wizardTooltip={wizardUi.wizardTooltip}
+          />
+        );
+      }
 
       // MultiPointerParam (requires stateKey)
       if (defClass === "MultiPointerParam") {
