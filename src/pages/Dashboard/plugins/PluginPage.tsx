@@ -525,7 +525,24 @@ export default function PluginPage() {
         waitForTask,
     } = useProcessingPlugins();
 
-    const currentTask = useMemo(() => tasks.find((t) => t.pipName === pipName), [tasks, pipName]);
+    const currentTask = useMemo(
+        () =>
+            tasks.find((task) => {
+                if (task.pipName !== pipName) return false;
+
+                const status = String(task.status ?? "")
+                    .trim()
+                    .toUpperCase();
+
+                return ![
+                    "SUCCESS",
+                    "FAILURE",
+                    "CANCELLED",
+                ].includes(status);
+            }),
+        [tasks, pipName],
+    );
+
     const currentStep = currentTask?.step;
 
     useEffect(() => {
@@ -570,7 +587,7 @@ export default function PluginPage() {
                     ...prev,
                     status: String(currentTask.status ?? prev.status),
                     error: currentTask.error ?? prev.error ?? null,
-                    completed: ["SUCCESS", "FAILURE"].includes(String(currentTask.status ?? "")),
+                    completed: ["SUCCESS", "FAILURE", "CANCELLED"].includes(String(currentTask.status ?? "")),
                 };
             }
 
@@ -578,7 +595,7 @@ export default function PluginPage() {
                 taskId: currentTask.taskId,
                 operation: currentTask.operation === "uninstall" ? "uninstall" : "install",
                 status: String(currentTask.status ?? "PENDING"),
-                completed: ["SUCCESS", "FAILURE"].includes(String(currentTask.status ?? "")),
+                completed: ["SUCCESS", "FAILURE", "CANCELLED"].includes(String(currentTask.status ?? "")),
                 pluginName: plugin?.name,
                 error: currentTask.error ?? null,
             };
@@ -610,7 +627,7 @@ export default function PluginPage() {
                             status: String(result.status ?? prev.status),
                             completed:
                                 Boolean(result.completed) ||
-                                ["SUCCESS", "FAILURE"].includes(String(result.status ?? prev.status)),
+                                ["SUCCESS", "FAILURE", "CANCELLED"].includes(String(result.status ?? prev.status)),
                         }
                         : prev,
                 );
@@ -622,7 +639,7 @@ export default function PluginPage() {
 
         void readLog();
 
-        const shouldPoll = !logTask.completed && !["SUCCESS", "FAILURE"].includes(String(logTask.status ?? ""));
+        const shouldPoll = !logTask.completed && !["SUCCESS", "FAILURE", "CANCELLED"].includes(String(logTask.status ?? ""));
         if (!shouldPoll) {
             return () => {
                 cancelled = true;
