@@ -134,6 +134,18 @@ function getAnsiColorClass(
 }
 
 
+function stripAnsiTerminalControls(
+    value: string,
+): string {
+    return value.replace(
+        // Keep SGR sequences (...m) because parseAnsiSegments
+        // uses them to render colors. Remove cursor/erase/etc.
+        // eslint-disable-next-line no-control-regex
+        /\x1B\[(?![0-9;]*m)[0-?]*[ -/]*[@-~]/g,
+        "",
+    );
+}
+
 function parseAnsiSegments(
     text: string,
 ): AnsiSegment[] {
@@ -690,7 +702,9 @@ export default function PluginTaskCenter({
     const parsedLogSegments = useMemo(
         () =>
             parseAnsiSegments(
-                logText,
+                stripAnsiTerminalControls(
+                    logText,
+                ),
             ),
         [logText],
     );

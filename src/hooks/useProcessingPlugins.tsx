@@ -788,7 +788,7 @@ export function ProcessingProvider({
         () => {
           void refreshTasks();
         },
-        1500,
+        3000,
       );
 
     return () =>
