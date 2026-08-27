@@ -2675,19 +2675,22 @@ export default function ProtocolNodeCard({
                                       </div>
                                     ) : null}
 
-                                    {overlayBottomLeft ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}>
-                                        {overlayBottomLeft}
-                                      </div>
-                                    ) : null}
+
+                                  </div>
+                                </div>
+                                {overlayBottomLeft || overlayBottomRight ? (
+                                  <div className={styles.outputThumbMeta}>
+                                    <div className={styles.outputThumbMetaPrimary}>
+                                      {overlayBottomLeft || "Preview"}
+                                    </div>
 
                                     {overlayBottomRight ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}>
+                                      <div className={styles.outputThumbMetaSecondary}>
                                         {overlayBottomRight}
                                       </div>
                                     ) : null}
                                   </div>
-                                </div>
+                                ) : null}
                               </div>
                             );
                           }
