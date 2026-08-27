@@ -8,7 +8,15 @@ export type CompatibleReleaseInfo = {
 };
 
 export type CompatibleReleases = Record<string, CompatibleReleaseInfo>;
-export type PluginBinaries = Record<string, Record<string, boolean>>;
+export type PluginBinary = {
+  name: string;
+  version: string;
+  target: string;
+  installed: boolean;
+  default: boolean;
+};
+
+export type PluginBinaries = PluginBinary[];
 
 export interface Plugin {
   author?: string;
@@ -239,6 +247,52 @@ export async function uninstallPlugin(pipName: string): Promise<TaskStartRespons
     method: "POST",
   });
   if (!response.ok) throw new Error(await readErrorMessage(response, "Error uninstalling plugin"));
+  return response.json();
+}
+
+export async function installPluginBinary(
+  pipName: string,
+  binaryTarget: string,
+): Promise<TaskStartResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/${encodeURIComponent(pipName)}/binaries/${encodeURIComponent(binaryTarget)}/install`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error installing plugin binary",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+export async function uninstallPluginBinary(
+  pipName: string,
+  binaryTarget: string,
+): Promise<TaskStartResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/${encodeURIComponent(pipName)}/binaries/${encodeURIComponent(binaryTarget)}/uninstall`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error uninstalling plugin binary",
+      ),
+    );
+  }
+
   return response.json();
 }
 

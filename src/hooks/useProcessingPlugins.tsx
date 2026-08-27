@@ -21,13 +21,16 @@ export type PluginTaskOperation =
   | "install"
   | "install-batch"
   | "install-devel"
-  | "uninstall";
+  | "uninstall"
+  | "install-binary"
+  | "uninstall-binary";
 
 export type PluginTask = {
   taskId: string;
   pipName: string;
   pipNames?: string[];
   pluginName?: string;
+  binaryTarget?: string;
   operation: PluginTaskOperation;
   status: string;
   error?: string | null;
@@ -59,6 +62,7 @@ type ProcessingContextType = {
     pipName: string;
     pipNames?: string[];
     pluginName?: string;
+    binaryTarget?: string;
     operation: PluginTaskOperation;
     initialStatus?: string;
   }) => void;
@@ -150,6 +154,14 @@ function getTaskNotificationSubject(
 function getTaskNotificationOperation(
   operation: PluginTaskOperation,
 ): string {
+  if (operation === "install-binary") {
+    return "Binary installation";
+  }
+
+  if (operation === "uninstall-binary") {
+    return "Binary uninstall";
+  }
+
   if (operation === "uninstall") {
     return "Uninstall";
   }
@@ -295,6 +307,11 @@ function mapPersistentTask(
       ? payload.pluginName.trim()
       : "";
 
+  const binaryTarget =
+    typeof payload.binaryTarget === "string"
+      ? payload.binaryTarget.trim()
+      : "";
+
   const pipName =
     payloadPluginName ||
     pipNames[0] ||
@@ -332,6 +349,8 @@ function mapPersistentTask(
     pluginName:
       task.subjectLabel ??
       task.subject,
+    binaryTarget:
+      binaryTarget || undefined,
     operation:
       task.operation as PluginTaskOperation,
     status: normalizeStatus(
@@ -842,6 +861,8 @@ export function ProcessingProvider({
               pipNames,
               pluginName:
                 task.pluginName,
+              binaryTarget:
+                task.binaryTarget,
               operation:
                 task.operation,
               status:

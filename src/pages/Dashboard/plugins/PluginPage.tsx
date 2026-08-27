@@ -6,8 +6,11 @@ import { ArrowRight, RefreshCw, FileText, ChevronDown, ChevronUp, Trash2 } from 
 import {
     fetchPlugin,
     type Plugin,
+    type PluginBinary,
     installPlugin,
     uninstallPlugin,
+    installPluginBinary,
+    uninstallPluginBinary,
     fetchPluginTaskLog,
 } from "@/api/plugins";
 import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, ExecuteIcon } from "@/icons";
@@ -17,7 +20,12 @@ type LocationState = { plugin?: Plugin };
 
 type LogTaskState = {
     taskId: string;
-    operation: "install" | "install-devel" | "uninstall";
+    operation:
+    | "install"
+    | "install-devel"
+    | "uninstall"
+    | "install-binary"
+    | "uninstall-binary";
     status: string;
     completed: boolean;
     pluginName?: string;
@@ -227,6 +235,25 @@ function CardShell(props: {
     );
 }
 
+function getPluginTaskOperationLabel(
+    operation: string,
+): string {
+    switch (operation) {
+        case "install":
+            return "Install/Update";
+        case "install-devel":
+            return "Install devel";
+        case "uninstall":
+            return "Uninstall";
+        case "install-binary":
+            return "Install binary";
+        case "uninstall-binary":
+            return "Uninstall binary";
+        default:
+            return operation;
+    }
+}
+
 function InfoCard(props: {
     icon: ReactNode;
     title: string;
@@ -370,7 +397,7 @@ function LogViewer(props: {
             title="Task log"
             subtitle={
                 props.logTask
-                    ? `${props.logTask.operation === "install" ? "Install/Update" : "Uninstall"} output for ${props.logTask.pluginName ?? "plugin"}`
+                    ? `${getPluginTaskOperationLabel(props.logTask.operation)} output for ${props.logTask.pluginName ?? "plugin"}`
                     : "Live output from the current plugin operation."
             }
             right={
@@ -593,7 +620,16 @@ export default function PluginPage() {
 
             return {
                 taskId: currentTask.taskId,
-                operation: currentTask.operation === "uninstall" ? "uninstall" : "install",
+                operation:
+                    currentTask.operation === "install-binary"
+                        ? "install-binary"
+                        : currentTask.operation === "uninstall-binary"
+                            ? "uninstall-binary"
+                            : currentTask.operation === "install-devel"
+                                ? "install-devel"
+                                : currentTask.operation === "uninstall"
+                                    ? "uninstall"
+                                    : "install",
                 status: String(currentTask.status ?? "PENDING"),
                 completed: ["SUCCESS", "FAILURE", "CANCELLED"].includes(String(currentTask.status ?? "")),
                 pluginName: plugin?.name,
@@ -677,6 +713,63 @@ export default function PluginPage() {
     const isUpdateAvailable = Boolean(plugin?.installed && plugin?.toUpdate);
     const canInstallOrUpdate = !plugin?.installed || isUpdateAvailable;
 
+    const binaries = plugin?.binaries ?? [];
+
+    const installedBinaryCount = useMemo(
+        () =>
+            binaries.filter(
+                (binary) => binary.installed,
+            ).length,
+        [binaries],
+    );
+
+    const activeBinaryTasks = useMemo(() => {
+        const active = new Map<
+            string,
+            (typeof tasks)[number]
+        >();
+
+        for (const task of tasks) {
+            if (task.pipName !== pipName) {
+                continue;
+            }
+
+            if (
+                task.operation !== "install-binary" &&
+                task.operation !== "uninstall-binary"
+            ) {
+                continue;
+            }
+
+            if (!task.binaryTarget) {
+                continue;
+            }
+
+            const status = String(
+                task.status ?? "",
+            )
+                .trim()
+                .toUpperCase();
+
+            if (
+                ["SUCCESS", "FAILURE", "CANCELLED"].includes(
+                    status,
+                )
+            ) {
+                continue;
+            }
+
+            if (!active.has(task.binaryTarget)) {
+                active.set(
+                    task.binaryTarget,
+                    task,
+                );
+            }
+        }
+
+        return active;
+    }, [tasks, pipName]);
+
     async function refreshPlugin() {
         if (!pipName) return;
         const updated = await fetchPlugin(pipName);
@@ -684,7 +777,10 @@ export default function PluginPage() {
         setPlugin(updated);
     }
 
-    function startLogViewer(taskId: string, operation: "install" | "uninstall") {
+    function startLogViewer(
+        taskId: string,
+        operation: LogTaskState["operation"],
+    ) {
         setLogTask({
             taskId,
             operation,
@@ -856,6 +952,123 @@ export default function PluginPage() {
         return uploadTime.split("T")[0];
     })();
 
+    const handleBinaryOperation = async (
+        binary: PluginBinary,
+        operation: "install" | "uninstall",
+    ) => {
+        if (!pipName) return;
+
+        setError(null);
+        setSuccess(null);
+
+        const taskOperation =
+            operation === "install"
+                ? "install-binary"
+                : "uninstall-binary";
+
+        try {
+            const started =
+                operation === "install"
+                    ? await installPluginBinary(
+                        pipName,
+                        binary.target,
+                    )
+                    : await uninstallPluginBinary(
+                        pipName,
+                        binary.target,
+                    );
+
+            startLogViewer(
+                started.taskId,
+                taskOperation,
+            );
+
+            registerTask({
+                taskId: started.taskId,
+                pipName,
+                pluginName: plugin?.name,
+                binaryTarget: binary.target,
+                operation: taskOperation,
+                initialStatus: started.status,
+            });
+
+            const finalTask = await waitForTask(
+                started.taskId,
+            );
+
+            setLogTask((prev) =>
+                prev &&
+                    prev.taskId === started.taskId
+                    ? {
+                        ...prev,
+                        status: String(
+                            finalTask.status ??
+                            prev.status,
+                        ),
+                        completed: true,
+                        error:
+                            finalTask.status === "FAILURE"
+                                ? String(
+                                    finalTask.error ??
+                                    "Binary operation failed",
+                                )
+                                : null,
+                    }
+                    : prev,
+            );
+
+            if (
+                finalTask.status === "FAILURE"
+            ) {
+                const message =
+                    typeof finalTask.error === "string" &&
+                        finalTask.error.trim().length > 0
+                        ? finalTask.error
+                        : "Binary operation failed";
+
+                throw new Error(message);
+            }
+
+            await refreshPlugin();
+
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            setSuccess(
+                operation === "install"
+                    ? `Binary ${binary.target} installed successfully`
+                    : `Binary ${binary.target} uninstalled successfully`,
+            );
+        } catch (err) {
+            console.error(err);
+
+            setLogTask((prev) =>
+                prev
+                    ? {
+                        ...prev,
+                        status: "FAILURE",
+                        completed: true,
+                        error:
+                            err instanceof Error
+                                ? err.message
+                                : "Binary operation failed",
+                    }
+                    : prev,
+            );
+
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : "Binary operation failed",
+            );
+        }
+    };
+
     if (loading || !plugin) {
         return (
             <div className="mx-auto max-w-6xl px-4 py-6">
@@ -1015,9 +1228,14 @@ export default function PluginPage() {
                             <div className="mt-4 rounded-xl border border-gray-300/80 bg-gray-50/80 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-slate-800/70 dark:text-gray-300">
                                 <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white">
                                     <ExecuteIcon className="h-4 w-4 animate-spin" />
-                                    Active task: {currentTask.operation === "install-devel" ? "Install devel" : currentTask.operation === "install" ? "Install/Update" : "Uninstall"}
+                                    Active task: {getPluginTaskOperationLabel(currentTask.operation)}
                                 </div>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Status: {currentTask.status}</div>
+                                {currentTask.binaryTarget ? (
+                                    <div className="mt-1 break-all text-xs font-medium text-gray-700 dark:text-gray-200">
+                                        Binary: {currentTask.binaryTarget}
+                                    </div>
+                                ) : null}
                                 {currentStep ? (
                                     <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-300">{currentStep}</div>
                                 ) : null}
@@ -1096,6 +1314,130 @@ export default function PluginPage() {
                     )}
                 </InfoCard>
             </div>
+
+            {plugin.installed && binaries.length > 0 ? (
+                <CardShell
+                    title="Binaries"
+                    subtitle={`${installedBinaryCount} installed / ${binaries.length} available`}
+                >
+                    <div className="overflow-hidden rounded-xl border border-gray-300/80 dark:border-gray-700">
+                        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] gap-4 border-b border-gray-300/80 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-slate-950/50 dark:text-gray-400 md:grid">
+                            <div>Binary</div>
+                            <div>Version</div>
+                            <div>Status</div>
+                            <div className="min-w-[110px] text-right">
+                                Action
+                            </div>
+                        </div>
+
+                        <div className="divide-y divide-gray-200 dark:divide-gray-800">
+                            {binaries.map((binary) => {
+                                const activeTask =
+                                    activeBinaryTasks.get(
+                                        binary.target,
+                                    );
+
+                                const isInstallingBinary =
+                                    activeTask?.operation ===
+                                    "install-binary";
+
+                                const isUninstallingBinary =
+                                    activeTask?.operation ===
+                                    "uninstall-binary";
+
+                                return (
+                                    <div
+                                        key={binary.target}
+                                        className="grid gap-3 bg-white px-4 py-4 dark:bg-slate-900 md:grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] md:items-center md:gap-4"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="break-all text-sm font-semibold text-gray-950 dark:text-white">
+                                                    {binary.name}
+                                                </span>
+
+                                                {binary.default ? (
+                                                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300">
+                                                        Default
+                                                    </span>
+                                                ) : null}
+                                            </div>
+
+                                            <div className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">
+                                                {binary.target}
+                                            </div>
+                                        </div>
+
+                                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                                            {binary.version || "—"}
+                                        </div>
+
+                                        <div>
+                                            {binary.installed ? (
+                                                <span className="inline-flex rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-300">
+                                                    Installed
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded-full border border-gray-300 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-300">
+                                                    Available
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex min-w-[110px] justify-start md:justify-end">
+                                            {binary.installed ? (
+                                                <SecondaryButton
+                                                    onClick={() =>
+                                                        void handleBinaryOperation(
+                                                            binary,
+                                                            "uninstall",
+                                                        )
+                                                    }
+                                                    disabled={Boolean(activeTask)}
+                                                    title={`Uninstall ${binary.target}`}
+                                                    className="border-red-300/80 text-red-700 hover:border-red-400 dark:border-red-900/50 dark:text-red-300 dark:hover:border-red-800"
+                                                >
+                                                    {isUninstallingBinary ? (
+                                                        <>
+                                                            <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                                            Removing…
+                                                        </>
+                                                    ) : (
+                                                        "Uninstall"
+                                                    )}
+                                                </SecondaryButton>
+                                            ) : (
+                                                <PrimaryButton
+                                                    onClick={() =>
+                                                        void handleBinaryOperation(
+                                                            binary,
+                                                            "install",
+                                                        )
+                                                    }
+                                                    disabled={Boolean(activeTask)}
+                                                    title={`Install ${binary.target}`}
+                                                >
+                                                    {isInstallingBinary ? (
+                                                        <>
+                                                            <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                                            Installing…
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Install
+                                                            <ArrowRight className="h-4 w-4" />
+                                                        </>
+                                                    )}
+                                                </PrimaryButton>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </CardShell>
+            ) : null}
 
             {logTask || taskLog || taskLogError ? (
                 <LogViewer
