@@ -540,6 +540,12 @@ export default function PluginPage() {
 
     const [skipBinaries, setSkipBinaries] = useState(false);
 
+    const [pendingPluginAction, setPendingPluginAction] =
+        useState<"install" | "uninstall" | null>(null);
+
+    const [pendingBinaryActions, setPendingBinaryActions] =
+        useState<Record<string, "install" | "uninstall">>({});
+
     const {
         tasks,
         installing,
@@ -707,8 +713,37 @@ export default function PluginPage() {
         };
     }, [taskLog, autoScroll, logExpanded, logTask?.taskId]);
 
-    const isInstalling = useMemo(() => (pipName ? installing.has(pipName) : false), [installing, pipName]);
-    const isRemoving = useMemo(() => (pipName ? removing.has(pipName) : false), [removing, pipName]);
+    const isInstalling = useMemo(
+        () =>
+            Boolean(
+                pipName &&
+                (
+                    installing.has(pipName) ||
+                    pendingPluginAction === "install"
+                )
+            ),
+        [
+            installing,
+            pipName,
+            pendingPluginAction,
+        ],
+    );
+
+    const isRemoving = useMemo(
+        () =>
+            Boolean(
+                pipName &&
+                (
+                    removing.has(pipName) ||
+                    pendingPluginAction === "uninstall"
+                )
+            ),
+        [
+            removing,
+            pipName,
+            pendingPluginAction,
+        ],
+    );
 
     const isUpdateAvailable = Boolean(plugin?.installed && plugin?.toUpdate);
     const canInstallOrUpdate = !plugin?.installed || isUpdateAvailable;
@@ -777,6 +812,105 @@ export default function PluginPage() {
         setPlugin(updated);
     }
 
+    function applyPluginInstalledState() {
+        setPlugin((current) => {
+            if (!current) return current;
+
+            return {
+                ...current,
+                installed: true,
+                pipVersion:
+                    current.latestRelease ||
+                    current.pipVersion,
+                toUpdate: false,
+            };
+        });
+    }
+
+    function applyPluginUninstalledState() {
+        setPlugin((current) => {
+            if (!current) return current;
+
+            return {
+                ...current,
+                installed: false,
+                pipVersion: "",
+                toUpdate: false,
+                binaries: [],
+            };
+        });
+    }
+
+    function applyBinaryInstalledState(
+        binaryTarget: string,
+        installed: boolean,
+    ) {
+        setPlugin((current) => {
+            if (!current) return current;
+
+            return {
+                ...current,
+                binaries:
+                    current.binaries?.map(
+                        (binary) =>
+                            binary.target === binaryTarget
+                                ? {
+                                    ...binary,
+                                    installed,
+                                }
+                                : binary,
+                    ) ?? [],
+            };
+        });
+    }
+
+    async function refreshPluginUntil(
+        matches: (plugin: Plugin) => boolean,
+        attempts = 8,
+    ) {
+        if (!pipName) return;
+
+        for (
+            let attempt = 0;
+            attempt < attempts;
+            attempt += 1
+        ) {
+            try {
+                const updated =
+                    await fetchPlugin(pipName);
+
+                if (matches(updated)) {
+                    if (isMountedRef.current) {
+                        setPlugin(updated);
+                    }
+
+                    return;
+                }
+            } catch (err) {
+                console.error(
+                    "Error refreshing plugin state",
+                    err,
+                );
+            }
+
+            if (attempt < attempts - 1) {
+                await new Promise<void>(
+                    (resolve) => {
+                        window.setTimeout(
+                            resolve,
+                            300,
+                        );
+                    },
+                );
+            }
+        }
+
+        console.warn(
+            "Plugin task completed but API state did not converge yet:",
+            pipName,
+        );
+    }
+
     function startLogViewer(
         taskId: string,
         operation: LogTaskState["operation"],
@@ -811,6 +945,7 @@ export default function PluginPage() {
         setError(null);
         setSuccess(null);
 
+        setPendingPluginAction("install");
         startInstall(pipName);
 
         try {
@@ -846,8 +981,16 @@ export default function PluginPage() {
                 throw new Error(msg);
             }
 
-            await refreshPlugin();
+            applyPluginInstalledState();
+
             finishInstall(pipName);
+            setPendingPluginAction(null);
+
+            void refreshPluginUntil(
+                (updated) =>
+                    updated.installed &&
+                    !updated.toUpdate,
+            );
 
             if (!isMountedRef.current) return;
 
@@ -863,6 +1006,7 @@ export default function PluginPage() {
         } catch (err) {
             console.error(err);
             finishInstall(pipName);
+            setPendingPluginAction(null);
 
             setLogTask((prev) =>
                 prev
@@ -886,6 +1030,7 @@ export default function PluginPage() {
         setError(null);
         setSuccess(null);
 
+        setPendingPluginAction("uninstall");
         startRemove(pipName);
 
         try {
@@ -921,14 +1066,22 @@ export default function PluginPage() {
                 throw new Error(msg);
             }
 
-            await refreshPlugin();
+            applyPluginUninstalledState();
+
             finishRemove(pipName);
+            setPendingPluginAction(null);
+
+            void refreshPluginUntil(
+                (updated) =>
+                    !updated.installed,
+            );
 
             if (!isMountedRef.current) return;
             setSuccess("Plugin removed successfully");
         } catch (err) {
             console.error(err);
             finishRemove(pipName);
+            setPendingPluginAction(null);
 
             setLogTask((prev) =>
                 prev
@@ -957,6 +1110,12 @@ export default function PluginPage() {
         operation: "install" | "uninstall",
     ) => {
         if (!pipName) return;
+        setPendingBinaryActions(
+            (current) => ({
+                ...current,
+                [binary.target]: operation,
+            }),
+        );
 
         setError(null);
         setSuccess(null);
@@ -1029,7 +1188,43 @@ export default function PluginPage() {
                 throw new Error(message);
             }
 
-            await refreshPlugin();
+            const expectedInstalled =
+                operation === "install";
+
+            applyBinaryInstalledState(
+                binary.target,
+                expectedInstalled,
+            );
+
+            setPendingBinaryActions(
+                (current) => {
+                    const next = {
+                        ...current,
+                    };
+
+                    delete next[
+                        binary.target
+                    ];
+
+                    return next;
+                },
+            );
+
+            void refreshPluginUntil(
+                (updated) => {
+                    const updatedBinary =
+                        updated.binaries?.find(
+                            (item) =>
+                                item.target ===
+                                binary.target,
+                        );
+
+                    return (
+                        updatedBinary?.installed ===
+                        expectedInstalled
+                    );
+                },
+            );
 
             if (!isMountedRef.current) {
                 return;
@@ -1042,6 +1237,19 @@ export default function PluginPage() {
             );
         } catch (err) {
             console.error(err);
+            setPendingBinaryActions(
+                (current) => {
+                    const next = {
+                        ...current,
+                    };
+
+                    delete next[
+                        binary.target
+                    ];
+
+                    return next;
+                },
+            );
 
             setLogTask((prev) =>
                 prev
@@ -1337,9 +1545,16 @@ export default function PluginPage() {
                                         binary.target,
                                     );
 
+                                const pendingAction =
+                                    pendingBinaryActions[
+                                    binary.target
+                                    ];
+
                                 const isInstallingBinary =
                                     activeTask?.operation ===
-                                    "install-binary";
+                                    "install-binary" ||
+                                    pendingAction ===
+                                    "install";
 
                                 const isUninstallingBinary =
                                     activeTask?.operation ===
@@ -1393,7 +1608,10 @@ export default function PluginPage() {
                                                             "uninstall",
                                                         )
                                                     }
-                                                    disabled={Boolean(activeTask)}
+                                                    disabled={Boolean(
+                                                        activeTask ||
+                                                        pendingAction
+                                                    )}
                                                     title={`Uninstall ${binary.target}`}
                                                     className="border-red-300/80 text-red-700 hover:border-red-400 dark:border-red-900/50 dark:text-red-300 dark:hover:border-red-800"
                                                 >
@@ -1414,7 +1632,10 @@ export default function PluginPage() {
                                                             "install",
                                                         )
                                                     }
-                                                    disabled={Boolean(activeTask)}
+                                                    disabled={Boolean(
+                                                        activeTask ||
+                                                        pendingAction
+                                                    )}
                                                     title={`Install ${binary.target}`}
                                                 >
                                                     {isInstallingBinary ? (
