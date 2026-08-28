@@ -394,19 +394,17 @@
   box-sizing: border-box;
   padding: 7px;
 
-  border: 1px solid rgba(148, 163, 184, 0.38);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 14px;
 
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.98),
-      rgba(248, 250, 252, 0.98)
-    );
+      rgba(248, 250, 252, 0.98));
 
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
-    0 6px 16px rgba(15, 23, 42, 0.06);
+    0 4px 12px rgba(15, 23, 42, 0.045);
 
   overflow: hidden;
 
@@ -417,13 +415,13 @@
 }
 
 .outputThumbTile:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 
   border-color: rgba(59, 130, 246, 0.42);
 
   box-shadow:
-    0 2px 4px rgba(15, 23, 42, 0.06),
-    0 12px 28px rgba(15, 23, 42, 0.13);
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    0 8px 20px rgba(15, 23, 42, 0.09);
 }
 
 .outputThumbImageWrap {
@@ -566,28 +564,27 @@
   position: absolute;
   z-index: 2;
 
-  max-width: calc(100% - 16px);
+  max-width: calc(100% - 12px);
 
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  padding: 4px 9px;
+  padding: 3px 7px;
 
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
 
-  background: rgba(15, 23, 42, 0.78);
+  background: rgba(15, 23, 42, 0.66);
 
   box-shadow:
-    0 2px 8px rgba(15, 23, 42, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 1px 3px rgba(15, 23, 42, 0.14);
 
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(6px);
 
   color: #ffffff;
 
-  font-size: 1.32rem;
+  font-size: 1.08rem;
   font-weight: 650;
   line-height: 1;
 
@@ -595,15 +592,15 @@
 }
 
 .outputThumbBadgeTopLeft {
-  top: 8px;
-  left: 8px;
+  top: 6px;
+  left: 6px;
 
   max-width: 62%;
 }
 
 .outputThumbBadgeTopRight {
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
 
   max-width: 46%;
   text-align: right;
@@ -1346,11 +1343,9 @@
   border-color: rgba(148, 163, 184, 0.22);
 
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(30, 41, 59, 0.96),
-      rgba(15, 23, 42, 0.96)
-    );
+      rgba(15, 23, 42, 0.96));
 
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.18),
