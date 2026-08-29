@@ -448,6 +448,34 @@ export function renderBooleanParamRow({
     isPointerEnabled &&
     current.pointerMode === true;
 
+  const control = pointerMode ? (
+    <TextField
+      size="small"
+      value={String(current.editableValue ?? current.value ?? "")}
+      InputProps={{ readOnly: true }}
+      sx={{
+        width: isInline ? fieldWidth : "100%",
+        "& .MuiInputBase-input": {
+          fontSize: 12,
+          padding: "8px 10px",
+        },
+      }}
+    />
+  ) : (
+    <Switch
+      checked={checked}
+      onChange={(e) =>
+        setProtocolDetails((prev: any) =>
+          isPointerEnabled
+            ? setScalarParamValue(prev, stateKey, e.target.checked)
+            : setParamValueAndEditableValue(prev, stateKey, e.target.checked),
+        )
+      }
+      color="primary"
+      sx={{ m: 0 }}
+    />
+  );
+
   return (
     <ParamRow
       key={stableKey}
@@ -463,38 +491,38 @@ export function renderBooleanParamRow({
           }}
         >
           {advancedSlot}
+
           <Box sx={fieldContainerSx}>
-            const control = pointerMode ? (
-            <TextField
-              size="small"
-              value={String(current.editableValue ?? current.value ?? "")}
-              InputProps={{ readOnly: true }}
-              sx={{
-                width: isInline ? fieldWidth : "100%",
-                "& .MuiInputBase-input": {
-                  fontSize: 12,
-                  padding: "8px 10px",
-                },
-              }}
-            />
+            {isPointerEnabled ? (
+              <WrapWithDrop
+                control={control}
+                def={{ ...def, ...current }}
+                paramKey={stateKey}
+                setProtocolDetails={setProtocolDetails}
+                setDragOverKey={setDragOverKey}
+                dragOverKey={dragOverKey}
+              />
             ) : (
-            <Switch
-              checked={checked}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) =>
-                  isPointerEnabled
-                    ? setScalarParamValue(prev, stateKey, e.target.checked)
-                    : setParamValueAndEditableValue(prev, stateKey, e.target.checked),
-                )
-              }
-              color="primary"
-              sx={{ m: 0 }}
-            />
-            );
+              control
+            )}
           </Box>
         </Box>
       }
       helpText={helpText}
+      isPointerParam={isPointerEnabled}
+      onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
+      onClear={
+        isPointerEnabled
+          ? () =>
+            setProtocolDetails((prev: any) =>
+              setScalarParamValue(
+                prev,
+                stateKey,
+                coerceBooleanValue(def.default),
+              ),
+            )
+          : undefined
+      }
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={wizardUi?.hasWizard ?? false}
@@ -530,9 +558,9 @@ export function renderDefaultParamRow({
     def.allowsPointers === true;
 
   const textValue =
+    value ??
     current.editableValue ??
     current.value ??
-    value ??
     def.default ??
     "";
 

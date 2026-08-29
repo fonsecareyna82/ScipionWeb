@@ -280,10 +280,12 @@ describe("VolumeViewer", () => {
             );
         });
 
-        expect(screen.getByText("-1.200")).toBeInTheDocument();
-        expect(screen.getByText("2.800")).toBeInTheDocument();
-        expect(screen.getByText("0.700")).toBeInTheDocument();
-        expect(screen.getByText("0.900")).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByText("-1.200")).toBeInTheDocument();
+            expect(screen.getByText("2.800")).toBeInTheDocument();
+            expect(screen.getByText("0.700")).toBeInTheDocument();
+            expect(screen.getByText("0.900")).toBeInTheDocument();
+        });
     });
 
     it("changes the selected volume and refreshes metadata", async () => {
