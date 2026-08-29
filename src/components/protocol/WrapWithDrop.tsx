@@ -1,6 +1,7 @@
 import React from "react";
 import { useDrag } from "./DragContext";
 import { Box } from "@mui/material";
+import { setScalarPointerSelection } from "@/utils/protocolform.state";
 
 export type WrapWithDropProps = {
   control: React.ReactNode;
@@ -147,6 +148,13 @@ export default function WrapWithDrop({
     setDragOverKey(null);
 
     if (!isMatch || !currentDraggedOutput) return;
+
+    if (def?.allowsPointers === true) {
+      setProtocolDetails((prev: any) =>
+        setScalarPointerSelection(prev, paramKey, currentDraggedOutput),
+      );
+      return;
+    }
 
     setProtocolDetails((prev: any) => ({
       ...prev,

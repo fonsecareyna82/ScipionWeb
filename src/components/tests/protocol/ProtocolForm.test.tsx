@@ -76,6 +76,11 @@ vi.mock("@/utils/protocolform.utils", () => ({
     normalizeEnumSelection: (value: any) => value,
     normalizeMultiPointerValue: (value: any) =>
         Array.isArray(value) ? value : [],
+    isScalarPointerParam: (def: any) =>
+        def?.allowsPointers === true &&
+        def?.paramClass !== "PointerParam" &&
+        def?.paramClass !== "MultiPointerParam" &&
+        def?.paramClass !== "RelationParam",
 }));
 
 vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({

@@ -16,7 +16,9 @@ import {
   clearParamValue,
   setParamEditableValue,
   setParamValueAndEditableValue,
+  setScalarParamValue,
 } from "@/utils/protocolform.state";
+
 import {
   coerceBooleanValue,
   coerceReadOnlyFlag,
@@ -24,6 +26,12 @@ import {
   normalizeEnumSelection,
 } from "@/utils/protocolform.utils";
 import type { WizardUiProps } from "./wizards/protocol_wizard_meta";
+
+type ScalarPointerRendererProps = {
+  dragOverKey: string | null;
+  setDragOverKey: (value: string | null) => void;
+  onOpenFind: (stateKey: string) => void;
+};
 
 type LayoutVariant = "standard" | "inline";
 
@@ -59,17 +67,17 @@ type PathRendererProps = CommonRendererProps & {
   onOpenFind: (stateKey: string) => void;
 };
 
-type EnumRendererProps = CommonRendererProps & {
+type EnumRendererProps = CommonRendererProps & ScalarPointerRendererProps & {
   def: any;
   value: any;
 };
 
-type BooleanRendererProps = CommonRendererProps & {
+type BooleanRendererProps = CommonRendererProps & ScalarPointerRendererProps & {
   def: any;
   value: any;
 };
 
-type DefaultRendererProps = CommonRendererProps & {
+type DefaultRendererProps = CommonRendererProps & ScalarPointerRendererProps & {
   def: any;
   value: any;
 };
@@ -107,17 +115,17 @@ export function renderPointerParamRow({
       fullWidth={!isInline}
       value={String(
         protocolDetails.params?.[stateKey]?.editableValue ??
-          protocolDetails.params?.[stateKey]?.value ??
-          def.default ??
-          "",
+        protocolDetails.params?.[stateKey]?.value ??
+        def.default ??
+        "",
       )}
       onChange={
         isReadOnly
           ? undefined
           : (e) =>
-              setProtocolDetails((prev: any) =>
-                setParamValueAndEditableValue(prev, stateKey, e.target.value),
-              )
+            setProtocolDetails((prev: any) =>
+              setParamValueAndEditableValue(prev, stateKey, e.target.value),
+            )
       }
       InputProps={isReadOnly ? { readOnly: true } : undefined}
       onClick={isReadOnly ? () => onOpenFind(stateKey) : undefined}
@@ -200,9 +208,12 @@ export function renderPathParamRow({
   const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
 
   const isPointerEnabled =
-    typeof current.pointerClass === "string"
-      ? current.pointerClass.trim().length > 0
-      : typeof def.pointerClass === "string" && def.pointerClass.trim().length > 0;
+    current.allowsPointers === true ||
+    def.allowsPointers === true ||
+    (typeof current.pointerClass === "string" &&
+      current.pointerClass.trim().length > 0) ||
+    (typeof def.pointerClass === "string" &&
+      def.pointerClass.trim().length > 0);
 
   const field = (
     <TextField
@@ -212,7 +223,7 @@ export function renderPathParamRow({
       value={textValue}
       onChange={(e) =>
         setProtocolDetails((prev: any) =>
-          setParamValueAndEditableValue(prev, stateKey, e.target.value),
+          setScalarParamValue(prev, stateKey, e.target.value)
         )
       }
       sx={{
@@ -256,7 +267,11 @@ export function renderPathParamRow({
       helpText={helpText}
       isPathParam
       onBrowsePath={onBrowsePath}
-      onClear={() => setProtocolDetails((prev: any) => clearParamValue(prev, stateKey))}
+      onClear={() =>
+        setProtocolDetails((prev: any) =>
+          setScalarParamValue(prev, stateKey, def.default ?? ""),
+        )
+      }
       isPointerParam={isPointerEnabled}
       onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
       rowIndex={rowIndex}
@@ -282,14 +297,30 @@ export function renderEnumParamRow({
   def,
   value,
   wizardUi,
+  protocolDetails,
+  dragOverKey,
+  setDragOverKey,
+  onOpenFind,
 }: EnumRendererProps): JSX.Element | null {
   const options = normalizeEnumOptions(def.choices);
+  const current = protocolDetails.params?.[stateKey] || {};
+  const isPointerEnabled =
+    current.allowsPointers === true ||
+    def.allowsPointers === true;
+
+  const pointerMode =
+    isPointerEnabled &&
+    current.pointerMode === true;
   if (options.length === 0) return null;
 
   const safeSel = normalizeEnumSelection(value ?? def.default ?? "", def.choices, def.default);
 
   const onChange = (nextValue: any) =>
-    setProtocolDetails((prev: any) => setParamEditableValue(prev, stateKey, nextValue));
+    setProtocolDetails((prev: any) =>
+      isPointerEnabled
+        ? setScalarParamValue(prev, stateKey, nextValue)
+        : setParamEditableValue(prev, stateKey, nextValue),
+    );
 
   const controlBase =
     def.display === 0 ? (
@@ -325,6 +356,33 @@ export function renderEnumParamRow({
       </TextField>
     );
 
+  const control = pointerMode ? (
+    <TextField
+      size="small"
+      value={String(current.editableValue ?? current.value ?? "")}
+      InputProps={{ readOnly: true }}
+      sx={{
+        width: isInline ? fieldWidth : "69%",
+        "& .MuiInputBase-input": { fontSize: 12 },
+      }}
+    />
+  ) : (
+    controlBase
+  );
+
+  const wrappedControl = isPointerEnabled ? (
+    <WrapWithDrop
+      control={control}
+      def={{ ...def, ...current }}
+      paramKey={stateKey}
+      setProtocolDetails={setProtocolDetails}
+      setDragOverKey={setDragOverKey}
+      dragOverKey={dragOverKey}
+    />
+  ) : (
+    control
+  );
+
   return (
     <ParamRow
       key={stableKey}
@@ -332,7 +390,7 @@ export function renderEnumParamRow({
       control={
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
-          {controlBase}
+          {wrappedControl}
         </Box>
       }
       helpText={helpText}
@@ -341,6 +399,16 @@ export function renderEnumParamRow({
       hasWizard={wizardUi?.hasWizard ?? false}
       onOpenWizard={wizardUi?.onOpenWizard}
       wizardTooltip={wizardUi?.wizardTooltip}
+      isPointerParam={isPointerEnabled}
+      onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
+      onClear={
+        isPointerEnabled
+          ? () =>
+            setProtocolDetails((prev: any) =>
+              setScalarParamValue(prev, stateKey, def.default ?? ""),
+            )
+          : undefined
+      }
     />
   );
 }
@@ -361,12 +429,24 @@ export function renderBooleanParamRow({
   def,
   value,
   wizardUi,
+  dragOverKey,
+  setDragOverKey,
+  onOpenFind,
 }: BooleanRendererProps): JSX.Element {
   const checked = coerceBooleanValue(
     value !== undefined
       ? value
       : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default,
   );
+
+  const current = protocolDetails.params?.[stateKey] || {};
+  const isPointerEnabled =
+    current.allowsPointers === true ||
+    def.allowsPointers === true;
+
+  const pointerMode =
+    isPointerEnabled &&
+    current.pointerMode === true;
 
   return (
     <ParamRow
@@ -384,16 +464,33 @@ export function renderBooleanParamRow({
         >
           {advancedSlot}
           <Box sx={fieldContainerSx}>
+            const control = pointerMode ? (
+            <TextField
+              size="small"
+              value={String(current.editableValue ?? current.value ?? "")}
+              InputProps={{ readOnly: true }}
+              sx={{
+                width: isInline ? fieldWidth : "100%",
+                "& .MuiInputBase-input": {
+                  fontSize: 12,
+                  padding: "8px 10px",
+                },
+              }}
+            />
+            ) : (
             <Switch
               checked={checked}
               onChange={(e) =>
                 setProtocolDetails((prev: any) =>
-                  setParamValueAndEditableValue(prev, stateKey, e.target.checked),
+                  isPointerEnabled
+                    ? setScalarParamValue(prev, stateKey, e.target.checked)
+                    : setParamValueAndEditableValue(prev, stateKey, e.target.checked),
                 )
               }
               color="primary"
               sx={{ m: 0 }}
             />
+            );
           </Box>
         </Box>
       }
@@ -418,42 +515,88 @@ export function renderDefaultParamRow({
   fieldContainerSx,
   advancedSlot,
   stateKey,
+  protocolDetails,
   setProtocolDetails,
   def,
   value,
+  dragOverKey,
+  setDragOverKey,
+  onOpenFind,
   wizardUi,
 }: DefaultRendererProps): JSX.Element {
-  const defaultControl = (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
-      {advancedSlot}
-      <Box sx={fieldContainerSx}>
-        <TextField
-          size="small"
-          fullWidth={!isInline}
-          name={stateKey}
-          value={value ?? def.default ?? ""}
-          onChange={(e) =>
-            setProtocolDetails((prev: any) =>
-              setParamEditableValue(prev, stateKey, e.target.value),
-            )
-          }
-          sx={{
-            width: isInline ? fieldWidth : "100%",
-            minWidth: 0,
-            "& .MuiInputBase-root": { minHeight: 36 },
-            "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
-          }}
-        />
-      </Box>
-    </Box>
+  const current = protocolDetails.params?.[stateKey] || {};
+  const isPointerEnabled =
+    current.allowsPointers === true ||
+    def.allowsPointers === true;
+
+  const textValue =
+    current.editableValue ??
+    current.value ??
+    value ??
+    def.default ??
+    "";
+
+  const field = (
+    <TextField
+      size="small"
+      fullWidth={!isInline}
+      name={stateKey}
+      value={textValue}
+      onChange={(e) =>
+        setProtocolDetails((prev: any) =>
+          isPointerEnabled
+            ? setScalarParamValue(prev, stateKey, e.target.value)
+            : setParamEditableValue(prev, stateKey, e.target.value),
+        )
+      }
+      sx={{
+        width: isInline ? fieldWidth : "100%",
+        minWidth: 0,
+        "& .MuiInputBase-root": { minHeight: 36 },
+        "& .MuiInputBase-input": {
+          fontSize: 12,
+          padding: "8px 10px",
+          lineHeight: 1.2,
+        },
+      }}
+    />
   );
 
   return (
     <ParamRow
       key={stableKey}
       label={label}
-      control={defaultControl}
+      control={
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
+          {advancedSlot}
+
+          <Box sx={fieldContainerSx}>
+            {isPointerEnabled ? (
+              <WrapWithDrop
+                control={field}
+                def={{ ...def, ...current }}
+                paramKey={stateKey}
+                setProtocolDetails={setProtocolDetails}
+                setDragOverKey={setDragOverKey}
+                dragOverKey={dragOverKey}
+              />
+            ) : (
+              field
+            )}
+          </Box>
+        </Box>
+      }
       helpText={helpText}
+      isPointerParam={isPointerEnabled}
+      onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
+      onClear={
+        isPointerEnabled
+          ? () =>
+            setProtocolDetails((prev: any) =>
+              setScalarParamValue(prev, stateKey, def.default ?? ""),
+            )
+          : undefined
+      }
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={wizardUi?.hasWizard ?? false}

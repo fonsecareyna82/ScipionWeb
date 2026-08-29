@@ -59,6 +59,7 @@ import {
   normalizeEnumOptions,
   normalizeEnumSelection,
   normalizeMultiPointerValue,
+  isScalarPointerParam,
 } from "@/utils/protocolform.utils";
 
 import {
@@ -76,6 +77,8 @@ import {
   setParamValueAndEditableValue,
   setPointerSelection,
   updateMultiPointerItem,
+  setScalarParamValue,
+  setScalarPointerSelection,
 } from "@/utils/protocolform.state";
 
 import {
@@ -688,6 +691,21 @@ export default function ProtocolForm({
       const rawFromApi = getInitialRawForParam(name, def, valuesMap);
       const parsedFromApi = parseFromJSONValue(rawFromApi);
 
+      if (
+        isScalarPointerParam(defResolved) &&
+        defResolved.pointerMode === true
+      ) {
+        const token = normalizePointerToken(rawFromApi);
+
+        params[key] = {
+          ...defResolved,
+          value: token,
+          editableValue: token,
+          pointerMode: true,
+        };
+        return;
+      }
+
       if (cls === "BooleanParam") {
         const initBool = coerceBooleanValue(parsedFromApi);
 
@@ -1270,8 +1288,17 @@ export default function ProtocolForm({
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const newKey = getParamNameFromStateKey(k);
 
+
       const p = pRaw ?? {};
       const cls = resolveParamClass(p);
+
+      if (isScalarPointerParam(p)) {
+        out[newKey] = {
+          pointerMode: p.pointerMode === true,
+          value: p.editableValue ?? p.value ?? "",
+        };
+        return;
+      }
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
@@ -1359,6 +1386,12 @@ export default function ProtocolForm({
           } else {
             const parsed = parseFromJSONValue(rawValue);
             nextParam.editableValue = parsed ?? rawValue ?? "";
+          }
+
+          if (isScalarPointerParam(current)) {
+            nextParam.pointerMode = false;
+            nextParam.info = "";
+            nextParam.parentId = null;
           }
 
           ensureClone();
@@ -1828,6 +1861,21 @@ export default function ProtocolForm({
           </Box>
         );
 
+      const handleOpenFind = (targetKey: string) => {
+        const liveParam = protocolDetails.params?.[targetKey];
+        const expected = getExpectedClass(liveParam);
+
+        setExpectedClass(expected);
+        setSelectorTarget({
+          key: targetKey,
+          def: liveParam,
+          expectedClass: expected,
+        });
+
+        setAllOutputs(getFilteredOutputsForKey(targetKey));
+        setOpenSelector(true);
+      };
+
       // MultiPointerParam (requires stateKey)
       if (defClass === "MultiPointerParam") {
         if (!stateKey) return null;
@@ -1920,17 +1968,6 @@ export default function ProtocolForm({
       if (defClass === "PointerParam") {
         if (!stateKey) return null;
 
-        const handleOpenFind = (targetKey: string) => {
-          const liveParam = protocolDetails.params?.[targetKey];
-          const expected = getExpectedClass(liveParam);
-          setExpectedClass(expected);
-          setSelectorTarget({ key: targetKey, def: liveParam, expectedClass: expected });
-
-          const finalOutputs = getFilteredOutputsForKey(targetKey);
-          setAllOutputs(finalOutputs);
-          setOpenSelector(true);
-        };
-
         return renderPointerParamRow({
           stableKey,
           label: def.label || name || "",
@@ -1966,17 +2003,6 @@ export default function ProtocolForm({
             return;
           }
           setPathDialog({ open: true, stateKey, title: label });
-        };
-
-        const handleOpenFind = (targetKey: string) => {
-          const liveParam = protocolDetails.params?.[targetKey];
-          const expected = getExpectedClass(liveParam);
-          setExpectedClass(expected);
-          setSelectorTarget({ key: targetKey, def: liveParam, expectedClass: expected });
-
-          const finalOutputs = getFilteredOutputsForKey(targetKey);
-          setAllOutputs(finalOutputs);
-          setOpenSelector(true);
         };
 
         return renderPathParamRow({
@@ -2020,7 +2046,10 @@ export default function ProtocolForm({
           setProtocolDetails,
           def,
           value,
-          wizardUi
+          wizardUi,
+          dragOverKey,
+          setDragOverKey,
+          onOpenFind: handleOpenFind,
         });
       }
 
@@ -2242,6 +2271,9 @@ export default function ProtocolForm({
           def,
           value,
           wizardUi,
+          dragOverKey,
+          setDragOverKey,
+          onOpenFind: handleOpenFind,
         });
       }
 
@@ -2282,6 +2314,9 @@ export default function ProtocolForm({
         def,
         value,
         wizardUi,
+        dragOverKey,
+        setDragOverKey,
+        onOpenFind: handleOpenFind,
       });
     },
     [
@@ -2332,6 +2367,19 @@ export default function ProtocolForm({
         key: paramState?.key ?? "",
         protocolId: paramState?.protocolId ?? paramState?.parentId ?? "",
       });
+      if (id && !id.endsWith("::")) ids.add(id);
+    }
+
+    if (
+      isScalarPointerParam(paramState) &&
+      paramState?.pointerMode === true
+    ) {
+      const id = getOutputStableIdentity({
+        value: paramState?.value ?? paramState?.editableValue ?? "",
+        key: paramState?.key ?? "",
+        protocolId: paramState?.protocolId ?? paramState?.parentId ?? "",
+      });
+
       if (id && !id.endsWith("::")) ids.add(id);
     }
 
@@ -2434,6 +2482,10 @@ export default function ProtocolForm({
 
       if (defClass === "MultiPointerParam") {
         return setMultiPointerSelection(prev, key, picks);
+      }
+
+      if (isScalarPointerParam(def)) {
+        return setScalarPointerSelection(prev, key, picks[0]);
       }
 
       return setPointerSelection(prev, key, picks[0]);
@@ -2733,7 +2785,7 @@ export default function ProtocolForm({
 
             if (stateKey) {
               setProtocolDetails((prev: any) =>
-                setParamValueAndEditableValue(prev, stateKey, relativePath)
+                setScalarParamValue(prev, stateKey, relativePath)
               );
             }
 

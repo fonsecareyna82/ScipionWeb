@@ -92,6 +92,43 @@ export function setParamValueAndEditableValue(
   });
 }
 
+export function setScalarParamValue(
+  prev: ProtocolDetailsState,
+  stateKey: string,
+  value: any
+): ProtocolDetailsState {
+  return updateParamState(prev, stateKey, (prevParam) => ({
+    ...prevParam,
+    editableValue: value,
+    value,
+    ...(prevParam?.allowsPointers === true
+      ? {
+        pointerMode: false,
+        info: "",
+        parentId: null,
+      }
+      : {}),
+  }));
+}
+
+export function setScalarPointerSelection(
+  prev: ProtocolDetailsState,
+  stateKey: string,
+  selected: any
+): ProtocolDetailsState {
+  const item = buildPointerSelectionItem(selected);
+
+  return updateParamState(prev, stateKey, (prevParam) => ({
+    ...prevParam,
+    editableValue: item.value,
+    value: item.value,
+    pointerMode: true,
+    info: item.info,
+    parentId: item.parentId,
+    pointerClass: prevParam?.pointerClass || item.pointerClass,
+  }));
+}
+
 export function clearParamValue(
   prev: ProtocolDetailsState,
   stateKey: string

@@ -8,6 +8,11 @@ import {
   renderPointerParamRow,
 } from "@/components/protocol/ProtocolFormRenderers";
 
+const mockSetScalarParamValue = vi.fn((prev, key, value) => ({
+  ...prev,
+  _scalarValue: { key, value },
+}));
+
 const mockClearParamValue = vi.fn((prev, key) => ({
   ...prev,
   _clear: key,
@@ -38,6 +43,8 @@ const mockNormalizeEnumSelection = vi.fn(
 );
 
 vi.mock("@/utils/protocolform.state", () => ({
+  setScalarParamValue: (prev: any, key: any, value: any) =>
+  mockSetScalarParamValue(prev, key, value),
   clearParamValue: (prev: any, key: any) => mockClearParamValue(prev, key),
   setParamEditableValue: (prev: any, key: any, value: any) =>
     mockSetParamEditableValue(prev, key, value),
@@ -319,4 +326,56 @@ describe("ProtocolFormRenderers", () => {
       "updated text",
     );
   });
+
+  it("renderDefaultParamRow supports scalar values and pointers", () => {
+  const prev = { params: {} };
+  const setProtocolDetails = vi.fn((updater) => updater(prev));
+  const onOpenFind = vi.fn();
+
+  render(
+    renderDefaultParamRow({
+      ...getCommonProps(),
+      protocolDetails: {
+        params: {
+          inputParam: {
+            paramClass: "IntParam",
+            allowsPointers: true,
+            pointerClass: "Integer",
+            pointerMode: false,
+            value: 256,
+            editableValue: 256,
+          },
+        },
+      },
+      setProtocolDetails,
+      def: {
+        paramClass: "IntParam",
+        allowsPointers: true,
+        pointerClass: "Integer",
+        default: 128,
+      },
+      value: 256,
+      dragOverKey: null,
+      setDragOverKey: vi.fn(),
+      onOpenFind,
+    }),
+  );
+
+  expect(screen.getByTestId("wrap-with-drop")).toBeInTheDocument();
+  expect(screen.getByDisplayValue("256")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Find" }));
+  expect(onOpenFind).toHaveBeenCalledWith("inputParam");
+
+  fireEvent.change(screen.getByDisplayValue("256"), {
+    target: { value: "128" },
+  });
+
+  expect(mockSetScalarParamValue).toHaveBeenCalledWith(
+    prev,
+    "inputParam",
+    "128",
+  );
+});
+
 });

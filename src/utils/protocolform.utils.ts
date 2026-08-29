@@ -20,6 +20,18 @@ export function hasPointerClass(def: any): boolean {
   return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
 }
 
+export function isScalarPointerParam(defLike: any): boolean {
+  const rawCls = getParamClass(defLike);
+
+  return (
+    defLike?.allowsPointers === true &&
+    rawCls !== "" &&
+    rawCls !== "PointerParam" &&
+    rawCls !== "MultiPointerParam" &&
+    rawCls !== "RelationParam"
+  );
+}
+
 export function hasMinMax(defLike: any): boolean {
   if (!defLike || typeof defLike !== "object") return false;
   return "min" in defLike || "max" in defLike;
@@ -30,6 +42,8 @@ export function resolveParamClass(defLike: any): string {
 
   if (rawCls === "PointerParam" || rawCls === "MultiPointerParam") return rawCls;
   if (rawCls === "PathParam") return "PathParam";
+
+  if (isScalarPointerParam(defLike)) return rawCls;
 
   const pointerLike = hasPointerClass(defLike);
 
