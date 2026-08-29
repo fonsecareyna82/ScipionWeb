@@ -185,7 +185,8 @@ export default function ProtocolLogsPanel({
           }}
         >
           {activeLogText && activeLogText.length > 0 ? (
-            activeLogText.split("\n").map((line, idx) => {
+            activeLogText.split(/\r\n|\r|\n/).map((rawLine, idx) => {
+              const line = rawLine.replace(/\x08/g, "");
               const lineNoColor = activeLogChannelId === "stderr" ? "#f87171" : "#60a5fa";
 
               return (

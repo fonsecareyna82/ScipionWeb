@@ -137,4 +137,19 @@ describe("ProtocolLogsPanel", () => {
 
         expect(logsContainerRef.current).not.toBeNull();
     });
+
+    it("renders carriage-return progress updates as separate lines", () => {
+        renderComponent({
+            activeLogText:
+                "1/70 progress\r\b\b\b2/70 progress\r\b\b\b3/70 progress",
+        });
+
+        expect(screen.getByText("00001:")).toBeInTheDocument();
+        expect(screen.getByText("00002:")).toBeInTheDocument();
+        expect(screen.getByText("00003:")).toBeInTheDocument();
+
+        expect(screen.getByText("1/70 progress")).toBeInTheDocument();
+        expect(screen.getByText("2/70 progress")).toBeInTheDocument();
+        expect(screen.getByText("3/70 progress")).toBeInTheDocument();
+    });
 });
