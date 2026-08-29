@@ -973,6 +973,39 @@ export default function PluginPage() {
                     : prev,
             );
 
+            if (
+                String(
+                    finalTask.status,
+                ).toUpperCase() ===
+                "CANCELLED"
+            ) {
+                finishInstall(
+                    pipName,
+                );
+
+                setPendingPluginAction(
+                    null,
+                );
+
+                try {
+                    await refreshPlugin();
+                } catch (error) {
+                    console.error(
+                        error,
+                    );
+                }
+
+                if (
+                    isMountedRef.current
+                ) {
+                    setError(
+                        "Plugin operation was cancelled",
+                    );
+                }
+
+                return;
+            }
+
             if (finalTask.status === "FAILURE") {
                 const msg =
                     typeof finalTask.error === "string" && finalTask.error.trim().length > 0
@@ -1057,6 +1090,39 @@ export default function PluginPage() {
                     }
                     : prev,
             );
+
+            if (
+                String(
+                    finalTask.status,
+                ).toUpperCase() ===
+                "CANCELLED"
+            ) {
+                finishRemove(
+                    pipName,
+                );
+
+                setPendingPluginAction(
+                    null,
+                );
+
+                try {
+                    await refreshPlugin();
+                } catch (error) {
+                    console.error(
+                        error,
+                    );
+                }
+
+                if (
+                    isMountedRef.current
+                ) {
+                    setError(
+                        "Plugin operation was cancelled",
+                    );
+                }
+
+                return;
+            }
 
             if (finalTask.status === "FAILURE") {
                 const msg =
@@ -1175,6 +1241,45 @@ export default function PluginPage() {
                     }
                     : prev,
             );
+
+            if (
+                String(
+                    finalTask.status,
+                ).toUpperCase() ===
+                "CANCELLED"
+            ) {
+                setPendingBinaryActions(
+                    (current) => {
+                        const next = {
+                            ...current,
+                        };
+
+                        delete next[
+                            binary.target
+                        ];
+
+                        return next;
+                    },
+                );
+
+                try {
+                    await refreshPlugin();
+                } catch (error) {
+                    console.error(
+                        error,
+                    );
+                }
+
+                if (
+                    isMountedRef.current
+                ) {
+                    setError(
+                        "Binary operation was cancelled",
+                    );
+                }
+
+                return;
+            }
 
             if (
                 finalTask.status === "FAILURE"

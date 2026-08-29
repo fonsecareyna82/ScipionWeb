@@ -17,10 +17,12 @@ import {
     X,
     XCircle,
     RotateCcw,
+    Square,
 } from "lucide-react";
 
 import {
     acknowledgePluginTask,
+    cancelPluginTask,
     acknowledgePluginTasks,
     fetchPluginTaskLog,
     retryPluginTask,
@@ -510,6 +512,13 @@ export default function PluginTaskCenter({
     const [
         dismissingTaskIds,
         setDismissingTaskIds,
+    ] = useState<Set<string>>(
+        new Set(),
+    );
+
+    const [
+        stoppingTaskIds,
+        setStoppingTaskIds,
     ] = useState<Set<string>>(
         new Set(),
     );
@@ -1010,6 +1019,71 @@ export default function PluginTaskCenter({
         }
     }
 
+    async function stopTask(
+        task: PluginTask,
+    ) {
+        if (
+            isTerminalStatus(
+                task.status,
+            )
+        ) {
+            return;
+        }
+
+        setStoppingTaskIds(
+            (current) => {
+                const next = new Set(
+                    current,
+                );
+
+                next.add(
+                    task.taskId,
+                );
+
+                return next;
+            },
+        );
+
+        try {
+            await cancelPluginTask(
+                task.taskId,
+            );
+
+            await onTasksChanged();
+
+            toast.success(
+                "Plugin task stopped",
+            );
+
+        } catch (error) {
+            console.error(
+                "Could not stop plugin task",
+                error,
+            );
+
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Could not stop plugin task",
+            );
+
+        } finally {
+            setStoppingTaskIds(
+                (current) => {
+                    const next = new Set(
+                        current,
+                    );
+
+                    next.delete(
+                        task.taskId,
+                    );
+
+                    return next;
+                },
+            );
+        }
+    }
+
     async function dismissTask(
         task: PluginTask,
     ) {
@@ -1110,6 +1184,11 @@ export default function PluginTaskCenter({
                 task.taskId,
             );
 
+        const stopping =
+            stoppingTaskIds.has(
+                task.taskId,
+            );
+
         return (
             <div
                 key={task.taskId}
@@ -1204,6 +1283,29 @@ export default function PluginTaskCenter({
                             <FileText className="h-3.5 w-3.5" />
                             View log
                         </TaskActionButton>
+
+                        {!terminal ? (
+                            <TaskActionButton
+                                onClick={() =>
+                                    void stopTask(
+                                        task,
+                                    )
+                                }
+                                disabled={
+                                    stopping
+                                }
+                                danger
+                                title="Stop this plugin task"
+                            >
+                                {stopping ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Square className="h-3.5 w-3.5" />
+                                )}
+
+                                Stop
+                            </TaskActionButton>
+                        ) : null}
 
                         {task.error ? (
                             <TaskActionButton

@@ -479,6 +479,28 @@ export async function retryPluginTask(
   return response.json();
 }
 
+export async function cancelPluginTask(
+  taskId: string,
+): Promise<PersistentPluginTask> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/tasks/${encodeURIComponent(taskId)}/cancel`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error stopping plugin task",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
 export async function fetchPluginTaskLog(
   taskId: string,
   offset = 0,
