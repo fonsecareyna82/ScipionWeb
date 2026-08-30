@@ -3989,10 +3989,40 @@ export async function fetchCoords2dMicrographImageObjectUrl(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
     `/coords2d/micrographs/${enc(String(micId))}/image?${params.toString()}`;
 
-  const objectUrl = await fetchBlobObjectUrl(url, { signal: opts.signal });
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+  });
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to fetch 2D micrograph image",
+    );
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  const originalWidth = Number(
+    response.headers.get("X-Preview-Original-Width"),
+  );
+
+  const originalHeight = Number(
+    response.headers.get("X-Preview-Original-Height"),
+  );
+
   return {
     url: objectUrl,
     revoke: () => URL.revokeObjectURL(objectUrl),
+    originalWidth:
+      Number.isFinite(originalWidth) && originalWidth > 0
+        ? originalWidth
+        : null,
+    originalHeight:
+      Number.isFinite(originalHeight) && originalHeight > 0
+        ? originalHeight
+        : null,
   };
 }
 

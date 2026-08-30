@@ -504,6 +504,8 @@ export type CTFTomoExclusionsPayload = TiltExclusionsPayload;
 export type ObjectUrlResult = {
   url: string;
   revoke: () => void;
+  originalWidth?: number | null;
+  originalHeight?: number | null;
 };
 
 // Generic options for fetching 2D image slices / previews from the API

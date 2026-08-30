@@ -747,6 +747,10 @@ function Coords2dViewer({
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [imageOriginalSize, setImageOriginalSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
   const selectedMicKey = useMemo(() => {
     return selectedMicId === null || selectedMicId === undefined ? "" : toStringId(selectedMicId);
@@ -1084,6 +1088,7 @@ function Coords2dViewer({
     }
 
     if (selectedMicId === null || selectedMicId === undefined) {
+      setImageOriginalSize(null);
       setImageUrl(null);
       setImage(null);
       setLoadingImage(false);
@@ -1097,6 +1102,14 @@ function Coords2dViewer({
     if (cached) {
       cached.usedAt = Date.now();
 
+      setImageOriginalSize(
+        cached.originalWidth && cached.originalHeight
+          ? {
+            width: cached.originalWidth,
+            height: cached.originalHeight,
+          }
+          : null,
+      );
       setImageUrl(cached.url);
       setImage(cached.image);
       setLoadingImage(false);
@@ -1110,6 +1123,7 @@ function Coords2dViewer({
     let objectUrl: ObjectUrlResult | null = null;
     let storedInCache = false;
 
+    setImageOriginalSize(null);
     setImageUrl(null);
     setImage(null);
     setLoadingImage(true);
@@ -1179,6 +1193,14 @@ function Coords2dViewer({
           }
 
           setImageUrl(objectUrl.url);
+          setImageOriginalSize(
+            objectUrl.originalWidth && objectUrl.originalHeight
+              ? {
+                width: objectUrl.originalWidth,
+                height: objectUrl.originalHeight,
+              }
+              : null,
+          );
           setImage(img);
           setImageLoadAttempted(true);
           setLoadingImage(false);
@@ -1252,6 +1274,10 @@ function Coords2dViewer({
   }, []);
 
   const imageWorldSize = useMemo(() => {
+    if (imageOriginalSize) {
+      return imageOriginalSize;
+    }
+
     if (!selectedMicrograph && !image) return null;
 
     const width =
@@ -1267,7 +1293,11 @@ function Coords2dViewer({
     if (!width || !height) return null;
 
     return { width, height };
-  }, [image, selectedMicrograph]);
+  }, [
+    image,
+    imageOriginalSize,
+    selectedMicrograph,
+  ]);
 
   const activeImageFilter = useMemo(() => {
     return buildCanvasFilter(filters);
@@ -1281,7 +1311,7 @@ function Coords2dViewer({
     setTransform(computeFitTransform(bounds, size));
   }, [bounds, size]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!selectedMicKey || loadingCoordinates) return;
 
     const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
