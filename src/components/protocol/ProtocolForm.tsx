@@ -473,15 +473,30 @@ export default function ProtocolForm({
   };
 
   const getParamCurrentValue = (sectionIdx: number, paramName: string) => {
-    const key = `${sectionIdx}_${paramName}`;
-    const state = protocolDetails.params?.[key];
+    const params = protocolDetails.params ?? {};
+    const sectionKey = `${sectionIdx}_${paramName}`;
+
+    let state = params[sectionKey];
+
+    if (!state) {
+      const globalKey = Object.keys(params).find(
+        (key) => getParamNameFromStateKey(key) === paramName
+      );
+
+      if (globalKey) {
+        state = params[globalKey];
+      }
+    }
+
     if (!state) return "";
+
     if (getParamClass(state) === "EnumParam" && state.choices) {
       const choicesRaw = state.choices;
 
       // arrayChoicesReturnIndexForLegacyConditions
       if (Array.isArray(choicesRaw)) {
         const v = state.editableValue ?? state.default ?? "";
+
         if (typeof v === "number") return v;
 
         if (typeof v === "string" && /^\d+$/.test(v.trim())) {
@@ -505,11 +520,18 @@ export default function ProtocolForm({
           const trimmed = v.trim();
 
           // ifKeyExistsReturnKey
-          if (Object.prototype.hasOwnProperty.call(choicesRaw, trimmed)) return trimmed;
+          if (Object.prototype.hasOwnProperty.call(choicesRaw, trimmed)) {
+            return trimmed;
+          }
 
           // ifValueProvidedReturnMatchingKey
-          const byLabel = options.find((o) => o.label === trimmed);
-          if (byLabel) return byLabel.value;
+          const byLabel = options.find(
+            (option) => option.label === trimmed
+          );
+
+          if (byLabel) {
+            return byLabel.value;
+          }
 
           // numericStringAsIndex
           if (/^\d+$/.test(trimmed)) {
@@ -563,6 +585,12 @@ export default function ProtocolForm({
       neg = true;
       a = a.slice(1).trim();
     }
+
+    if (/^(true|false)$/i.test(a)) {
+      const value = /^true$/i.test(a);
+      return neg ? !value : value;
+    }
+
     const m = a.match(/^(.*?)\s*(==|!=|>=|<=|>|<|=)\s*(.*)$/);
     let res = false;
     if (m) {

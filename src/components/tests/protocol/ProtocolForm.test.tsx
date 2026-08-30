@@ -379,6 +379,165 @@ describe("ProtocolForm", () => {
         mockFormatErrorsForDialog.mockImplementation((errors) => errors.join("\n"));
     });
 
+    it("renders parameters with a literal True condition", async () => {
+        const data: any = createData();
+
+        data.form.sections = [
+            {
+                label: "Import",
+                params: [
+                    {
+                        paramName: "filesPath",
+                        paramDef: {
+                            paramClass: "PathParam",
+                            label: "Files directory",
+                            default: "",
+                            condition: "True",
+                        },
+                    },
+                    {
+                        paramName: "filesPattern",
+                        paramDef: {
+                            paramClass: "StringParam",
+                            label: "Pattern",
+                            default: "",
+                            condition: "True",
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            filesPath: "",
+            filesPattern: "",
+        };
+
+        renderComponent({ data });
+
+        expect(
+            await screen.findByText("Files directory")
+        ).toBeInTheDocument();
+
+        expect(
+            screen.getByText("Pattern")
+        ).toBeInTheDocument();
+    });
+
+        it("evaluates EnumParam conditions using the Scipion choice index", async () => {
+        const data: any = createData();
+
+        data.form.sections = [
+            {
+                label: "Import",
+                params: [
+                    {
+                        paramName: "importFrom",
+                        paramDef: {
+                            paramClass: "EnumParam",
+                            label: "Import from",
+                            choices: [
+                                "auto",
+                                "xmipp",
+                                "relion",
+                                "eman",
+                                "dogpicker",
+                                "scipion",
+                                "cryosparc",
+                            ],
+                            default: 0,
+                        },
+                    },
+                    {
+                        paramName: "scale",
+                        paramDef: {
+                            paramClass: "FloatParam",
+                            label: "Scale",
+                            default: 1,
+                            condition: "importFrom!=5",
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            importFrom: "scipion",
+            scale: 1,
+        };
+
+        renderComponent({ data });
+
+        expect(
+            await screen.findByText("Import from")
+        ).toBeInTheDocument();
+
+        expect(
+            screen.queryByText("Scale")
+        ).not.toBeInTheDocument();
+    });
+
+        it("resolves condition parameters across form sections", async () => {
+        const data: any = createData();
+
+        data.form.sections = [
+            {
+                label: "Import",
+                params: [
+                    {
+                        paramName: "importFrom",
+                        paramDef: {
+                            paramClass: "EnumParam",
+                            label: "Import from",
+                            choices: [
+                                "auto",
+                                "xmipp",
+                                "relion",
+                                "eman",
+                                "dogpicker",
+                                "scipion",
+                                "cryosparc",
+                            ],
+                            default: 0,
+                        },
+                    },
+                ],
+            },
+            {
+                label: "Options",
+                params: [
+                    {
+                        paramName: "scale",
+                        paramDef: {
+                            paramClass: "FloatParam",
+                            label: "Scale",
+                            default: 1,
+                            condition: "importFrom!=5",
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            importFrom: "scipion",
+            scale: 1,
+        };
+
+        renderComponent({ data });
+
+        fireEvent.click(
+            screen.getByRole("tab", {
+                name: "Options",
+            })
+        );
+
+        expect(
+            screen.queryByText("Scale")
+        ).not.toBeInTheDocument();
+    });
+
+
     it("reuses the created protocol after a new protocol launch fails validation", async () => {
         const data: any = createData();
         data.info.protocolId = null;
