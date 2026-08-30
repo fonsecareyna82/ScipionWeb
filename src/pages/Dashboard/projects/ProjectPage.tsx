@@ -4558,6 +4558,46 @@ export default function ProjectPage() {
             return;
           }
 
+          const finalDetailsByProtocolId =
+            new Map<string, any>();
+
+          for (const summary of summaries) {
+            if (
+              isLiveProtocolStatus(
+                summary.status
+              )
+            ) {
+              continue;
+            }
+
+            try {
+              const details =
+                await svc.fetchProtocolDetails(
+                  projectId,
+                  summary.protocolId,
+                );
+
+              if (cancelled) {
+                return;
+              }
+
+              finalDetailsByProtocolId.set(
+                String(summary.protocolId),
+                details,
+              );
+
+            } catch (error) {
+              console.warn(
+                "Final protocol details refresh failed",
+                error,
+              );
+            }
+          }
+
+          if (cancelled) {
+            return;
+          }
+
           applyProtocolRuntimeSummaries(summaries);
 
           if (protocolOutputThumbnailsEnabled) {
@@ -4636,66 +4676,45 @@ export default function ProjectPage() {
           }
 
           for (
-            const summary
-            of summaries
+            const [
+              protocolId,
+              details,
+            ]
+            of finalDetailsByProtocolId
           ) {
-            // Once the protocol leaves the
-            // active state, refresh its
-            // details once to obtain outputs.
-            if (
-              !isLiveProtocolStatus(
-                summary.status
-              )
-            ) {
-              try {
+            syncProtocolDetailsToGraphRef
+              .current?.(
+                protocolId,
+                details,
+              );
+          }
+
+          if (
+            finalDetailsByProtocolId.size
+          ) {
+            setOpenForms((currentForms) =>
+              currentForms.map((form) => {
                 const details =
-                  await (
-                    svc
-                      .fetchProtocolDetails(
-                        projectId,
-                        summary.protocolId,
-                      )
+                  finalDetailsByProtocolId.get(
+                    String(form.id)
                   );
 
-                if (cancelled) {
-                  return;
+                if (!details) {
+                  return form;
                 }
 
-                syncProtocolDetailsToGraphRef
-                  .current?.(
-                    String(
-                      summary.protocolId
-                    ),
+                return {
+                  ...form,
+                  details: mergeLiveProtocolFormDetails(
+                    form.details,
                     details,
-                  );
-
-                setOpenForms((currentForms) =>
-                  currentForms.map((form) => {
-                    if (
-                      String(form.id) !==
-                      String(summary.protocolId)
-                    ) {
-                      return form;
-                    }
-
-                    return {
-                      ...form,
-                      details: mergeLiveProtocolFormDetails(
-                        form.details,
-                        details,
-                      ),
-                    };
-                  })
-                );
-
-              } catch (error) {
-                console.warn(
-                  "Final protocol details refresh failed",
-                  error,
-                );
-              }
-            }
+                  ),
+                };
+              })
+            );
           }
+
+
 
         } catch (error) {
           console.warn(
