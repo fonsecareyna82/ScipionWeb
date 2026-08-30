@@ -458,6 +458,29 @@ function mergeLiveProtocolFormDetails(currentDetails: any, freshDetails: any): a
   };
 }
 
+function mergeProtocolFormRuntimeSummary(
+  details: any,
+  summary: ProtocolRuntimeSummary,
+): any {
+  if (!details || typeof details !== "object") return details;
+
+  const status = String(summary.status ?? "");
+  if (!status) return details;
+
+  return {
+    ...details,
+    status,
+    info: {
+      ...(details.info ?? {}),
+      status,
+    },
+    form: {
+      ...(details.form ?? {}),
+      status,
+    },
+  };
+}
+
 type SearchResult = { id: string; label: string; status?: string };
 
 type ProtocolHelpState = {
@@ -1963,6 +1986,26 @@ export default function ProjectPage() {
           };
 
           return mergeTableElapsedTick(freshRow, row);
+        })
+      );
+
+      setOpenForms((currentForms) =>
+        currentForms.map((form) => {
+          const summary = summaryByProtocolId.get(
+            String(form.id)
+          );
+
+          if (!summary) {
+            return form;
+          }
+
+          return {
+            ...form,
+            details: mergeProtocolFormRuntimeSummary(
+              form.details,
+              summary,
+            ),
+          };
         })
       );
 
@@ -4625,6 +4668,25 @@ export default function ProjectPage() {
                     ),
                     details,
                   );
+
+                setOpenForms((currentForms) =>
+                  currentForms.map((form) => {
+                    if (
+                      String(form.id) !==
+                      String(summary.protocolId)
+                    ) {
+                      return form;
+                    }
+
+                    return {
+                      ...form,
+                      details: mergeLiveProtocolFormDetails(
+                        form.details,
+                        details,
+                      ),
+                    };
+                  })
+                );
 
               } catch (error) {
                 console.warn(
