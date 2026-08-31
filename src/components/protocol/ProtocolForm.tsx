@@ -715,6 +715,55 @@ export default function ProtocolForm({
       : "";
   };
 
+  const findGeneralExpertLocator = useCallback(() => {
+    if (!Array.isArray(sections)) {
+      return null;
+    }
+
+    for (let sectionIdx = 0; sectionIdx < sections.length; sectionIdx++) {
+      const section = sections[sectionIdx];
+      const params = section?.params ?? [];
+
+      for (const paramLike of params) {
+        const {
+          paramName,
+          paramDef,
+        } = unwrapParamDef(paramLike);
+
+        if (
+          paramName === "expertLevel" &&
+          getParamClass(paramDef) === "EnumParam"
+        ) {
+          return {
+            sectionIdx,
+            name: paramName,
+          };
+        }
+      }
+    }
+
+    return null;
+  }, [sections]);
+
+  const generalExpertLevel = (() => {
+    const locator =
+      findGeneralExpertLocator();
+
+    if (!locator) {
+      return null;
+    }
+
+    const value =
+      getParamCurrentValue(
+        locator.sectionIdx,
+        "expertLevel",
+      );
+
+    return typeof value === "number"
+      ? value
+      : Number(value) || 0;
+  })();
+
   // Load initial parameters into protocolDetails
   useEffect(() => {
     if (!form) {
@@ -1978,6 +2027,22 @@ export default function ProtocolForm({
           </Box>
         );
 
+      const expertLocator =
+        findGeneralExpertLocator();
+
+      const isExpertSelector =
+        !!expertLocator &&
+        expertLocator.sectionIdx === sectionIdx &&
+        name === "expertLevel";
+
+      if (
+        generalExpertLevel === 0 &&
+        def?.expertLevel === 1 &&
+        !isExpertSelector
+      ) {
+        return null;
+      }
+
       const handleOpenFind = (targetKey: string) => {
         const liveParam = protocolDetails.params?.[targetKey];
         const expected = getExpectedClass(liveParam);
@@ -2441,6 +2506,8 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
+      generalExpertLevel,
+      findGeneralExpertLocator,
       getExpectedClass,
       projectId,
       protocolId,

@@ -774,5 +774,113 @@ describe("ProtocolForm", () => {
         expect(onExecuted).toHaveBeenCalledTimes(1);
     });
 
+        it("hides advanced parameters at normal expert level", async () => {
+        const data: any = createData();
+
+        data.form.sections = [
+            {
+                label: "General",
+                params: [
+                    {
+                        paramName: "expertLevel",
+                        paramDef: {
+                            paramClass: "EnumParam",
+                            label: "Expert Level",
+                            choices: [
+                                "Normal",
+                                "Advanced",
+                            ],
+                            default: 0,
+                            expertLevel: 0,
+                        },
+                    },
+                    {
+                        paramName: "normalParam",
+                        paramDef: {
+                            paramClass: "StringParam",
+                            label: "Normal parameter",
+                            default: "normal",
+                            expertLevel: 0,
+                        },
+                    },
+                    {
+                        paramName: "advancedParam",
+                        paramDef: {
+                            paramClass: "StringParam",
+                            label: "Advanced parameter",
+                            default: "advanced",
+                            expertLevel: 1,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            expertLevel: 0,
+            normalParam: "normal",
+            advancedParam: "advanced",
+        };
+
+        renderComponent({ data });
+
+        expect(
+            await screen.findByText("Expert Level")
+        ).toBeInTheDocument();
+
+        expect(
+            screen.getByText("Normal parameter")
+        ).toBeInTheDocument();
+
+        expect(
+            screen.queryByText("Advanced parameter")
+        ).not.toBeInTheDocument();
+    });
+
+        it("shows advanced parameters at advanced expert level", async () => {
+        const data: any = createData();
+
+        data.form.sections = [
+            {
+                label: "General",
+                params: [
+                    {
+                        paramName: "expertLevel",
+                        paramDef: {
+                            paramClass: "EnumParam",
+                            label: "Expert Level",
+                            choices: [
+                                "Normal",
+                                "Advanced",
+                            ],
+                            default: 0,
+                            expertLevel: 0,
+                        },
+                    },
+                    {
+                        paramName: "advancedParam",
+                        paramDef: {
+                            paramClass: "StringParam",
+                            label: "Advanced parameter",
+                            default: "advanced",
+                            expertLevel: 1,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            expertLevel: 1,
+            advancedParam: "advanced",
+        };
+
+        renderComponent({ data });
+
+        expect(
+            await screen.findByText("Advanced parameter")
+        ).toBeInTheDocument();
+    });
+
 
 });
