@@ -2441,8 +2441,6 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
-      generalExpertLevel,
-      findGeneralExpertLocator,
       getExpectedClass,
       projectId,
       protocolId,
