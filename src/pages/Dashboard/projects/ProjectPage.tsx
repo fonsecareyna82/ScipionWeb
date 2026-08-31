@@ -14,6 +14,10 @@ import React, {
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
+import {
+  PROJECT_REFRESH_REQUESTED_EVENT,
+  type ProjectRefreshRequestedDetail,
+} from "@/utils/project-events";
 
 import ReactFlow, {
   Background,
@@ -4476,8 +4480,47 @@ export default function ProjectPage() {
       ],
     );
 
-  const handleRefreshRef = useRef(handleRefresh);
-  useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
+    const handleRefreshRef = useRef(handleRefresh);
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh;
+  }, [handleRefresh]);
+
+  useEffect(() => {
+    const handleProjectRefreshRequested = (event: Event) => {
+      if (projectId == null) {
+        return;
+      }
+
+      const detail = (
+        event as CustomEvent<ProjectRefreshRequestedDetail>
+      ).detail;
+
+      const requestedProjectId = Number(
+        detail?.projectId,
+      );
+
+      if (
+        !Number.isFinite(requestedProjectId) ||
+        requestedProjectId !== projectId
+      ) {
+        return;
+      }
+
+      void handleRefreshRef.current?.();
+    };
+
+    window.addEventListener(
+      PROJECT_REFRESH_REQUESTED_EVENT,
+      handleProjectRefreshRequested,
+    );
+
+    return () => {
+      window.removeEventListener(
+        PROJECT_REFRESH_REQUESTED_EVENT,
+        handleProjectRefreshRequested,
+      );
+    };
+  }, [projectId]);
 
 
   // Refresh only active protocols without rebuilding the workflow graph.

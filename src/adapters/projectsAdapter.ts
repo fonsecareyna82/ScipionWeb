@@ -69,6 +69,7 @@ import type {
 } from "@/services/ProjectService";
 
 import * as settingsApi from "@/api/settings";
+import { requestProjectRefresh } from "@/utils/project-events";
 
 /** Normalize id */
 const toId = (id: string | number | null | undefined): string => String(id);
@@ -721,20 +722,27 @@ const defaultService: ProjectService = {
       opts ?? {},
     ),
 
-  runMetadataTableAction: (
+    runMetadataTableAction: async (
     projectId: Id,
     protocolId: Id,
     outputName: string,
     tableName: string,
     payload: MetadataTableActionPayload,
-  ): Promise<MetadataTableActionResult> =>
-    api.runMetadataTableAction(
+  ): Promise<MetadataTableActionResult> => {
+    const result = await api.runMetadataTableAction(
       toId(projectId),
       toId(protocolId),
       outputName,
       tableName,
       payload,
-    ),
+    );
+
+    if (result.success) {
+      requestProjectRefresh(projectId);
+    }
+
+    return result;
+  },
 
   // ──────────────────────────── Analyze Results: Tilt series ────────────────────────────
 
