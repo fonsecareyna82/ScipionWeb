@@ -61,6 +61,9 @@ import {
   normalizeMultiPointerValue,
   isScalarPointerParam,
 } from "@/utils/protocolform.utils";
+import {
+  evaluateScipionCondition,
+} from "@/utils/protocolform.conditions";
 
 import {
   getBackendPayloadFromError,
@@ -460,182 +463,256 @@ export default function ProtocolForm({
   };
 
 
-  const coerceToken = (raw: any) => {
-    if (raw === undefined || raw === null) return "";
-    if (typeof raw === "boolean" || typeof raw === "number") return raw;
-    if (typeof raw !== "string") return raw;
-    const trimmed = raw.trim();
-    if (/^["'].*["']$/.test(trimmed)) return trimmed.slice(1, -1);
-    if (/^(True|true)$/.test(trimmed)) return true;
-    if (/^(False|false)$/.test(trimmed)) return false;
-    if (!isNaN(Number(trimmed))) return Number(trimmed);
-    return trimmed;
-  };
+  const findConditionParamState = (
+    sectionIdx: number,
+    paramName: string,
+  ) => {
+    const params =
+      protocolDetails.params ?? {};
 
-  const getParamCurrentValue = (sectionIdx: number, paramName: string) => {
-    const params = protocolDetails.params ?? {};
-    const sectionKey = `${sectionIdx}_${paramName}`;
+    const sectionKey =
+      `${sectionIdx}_${paramName}`;
 
-    let state = params[sectionKey];
-
-    if (!state) {
-      const globalKey = Object.keys(params).find(
-        (key) => getParamNameFromStateKey(key) === paramName
-      );
-
-      if (globalKey) {
-        state = params[globalKey];
-      }
+    if (params[sectionKey]) {
+      return params[sectionKey];
     }
 
-    if (!state) return "";
+    const globalKey =
+      Object.keys(params).find(
+        (key) =>
+          getParamNameFromStateKey(key) ===
+          paramName,
+      );
 
-    if (getParamClass(state) === "EnumParam" && state.choices) {
-      const choicesRaw = state.choices;
+    return globalKey
+      ? params[globalKey]
+      : undefined;
+  };
 
-      // arrayChoicesReturnIndexForLegacyConditions
-      if (Array.isArray(choicesRaw)) {
-        const v = state.editableValue ?? state.default ?? "";
+  const getConditionStateValue = (
+    state: any,
+  ) => {
+    if (!state) {
+      return undefined;
+    }
 
-        if (typeof v === "number") return v;
+    const cls =
+      resolveParamClass(state);
 
-        if (typeof v === "string" && /^\d+$/.test(v.trim())) {
-          return Number(v.trim());
+    if (
+      cls === "EnumParam" &&
+      state.choices
+    ) {
+      const choicesRaw =
+        state.choices;
+
+      if (
+        Array.isArray(choicesRaw)
+      ) {
+        const value =
+          state.editableValue ??
+          state.default ??
+          "";
+
+        if (
+          typeof value === "number"
+        ) {
+          return value;
         }
 
-        const idx = choicesRaw.indexOf(v);
-        return idx >= 0 ? idx : 0;
+        if (
+          typeof value === "string" &&
+          /^\d+$/.test(value.trim())
+        ) {
+          return Number(
+            value.trim(),
+          );
+        }
+
+        const index =
+          choicesRaw.indexOf(value);
+
+        return index >= 0
+          ? index
+          : 0;
       }
 
-      // dictChoicesReturnKey
-      if (choicesRaw && typeof choicesRaw === "object") {
-        const options = normalizeEnumOptions(choicesRaw);
-        const v = state.editableValue ?? state.default ?? "";
+      if (
+        choicesRaw &&
+        typeof choicesRaw === "object"
+      ) {
+        const options =
+          normalizeEnumOptions(
+            choicesRaw,
+          );
 
-        if (typeof v === "number" && Number.isFinite(v)) {
-          return options[v]?.value ?? options[0]?.value ?? "";
+        const value =
+          state.editableValue ??
+          state.default ??
+          "";
+
+        if (
+          typeof value === "number" &&
+          Number.isFinite(value)
+        ) {
+          return (
+            options[value]?.value ??
+            options[0]?.value ??
+            ""
+          );
         }
 
-        if (typeof v === "string") {
-          const trimmed = v.trim();
+        if (
+          typeof value === "string"
+        ) {
+          const trimmed =
+            value.trim();
 
-          // ifKeyExistsReturnKey
-          if (Object.prototype.hasOwnProperty.call(choicesRaw, trimmed)) {
+          if (
+            Object.prototype
+              .hasOwnProperty.call(
+                choicesRaw,
+                trimmed,
+              )
+          ) {
             return trimmed;
           }
 
-          // ifValueProvidedReturnMatchingKey
-          const byLabel = options.find(
-            (option) => option.label === trimmed
-          );
+          const byLabel =
+            options.find(
+              (option) =>
+                option.label ===
+                trimmed,
+            );
 
           if (byLabel) {
             return byLabel.value;
           }
 
-          // numericStringAsIndex
-          if (/^\d+$/.test(trimmed)) {
-            const idx = Number(trimmed);
-            return options[idx]?.value ?? options[0]?.value ?? "";
+          if (
+            /^\d+$/.test(trimmed)
+          ) {
+            const index =
+              Number(trimmed);
+
+            return (
+              options[index]?.value ??
+              options[0]?.value ??
+              ""
+            );
           }
 
-          return options[0]?.value ?? "";
+          return (
+            options[0]?.value ??
+            ""
+          );
         }
 
-        return options[0]?.value ?? "";
+        return (
+          options[0]?.value ??
+          ""
+        );
       }
     }
 
-    return state.editableValue ?? "";
-  };
+    if (cls === "BooleanParam") {
+      return coerceBooleanValue(
+        state.editableValue ??
+        state.value ??
+        state.default,
+      );
+    }
 
-  // Locate the global expertLevel EnumParam if present
-  const findGeneralExpertLocator = useCallback(() => {
-    if (!Array.isArray(sections)) return null;
+    if (cls === "PointerParam") {
+      const token =
+        normalizePointerToken(
+          state.editableValue ??
+          state.value ??
+          "",
+        );
 
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      const params = section?.params ?? [];
-      for (const p of params) {
-        const { paramName, paramDef: def } = unwrapParamDef(p);
-        if (paramName === "expertLevel" && getParamClass(def) === "EnumParam") {
-          return { sectionIdx: i, name: paramName };
+      return token
+        ? token
+        : null;
+    }
+
+    if (
+      cls === "IntParam" ||
+      cls === "FloatParam"
+    ) {
+      const value =
+        state.editableValue ??
+        state.value ??
+        state.default;
+
+      if (
+        typeof value === "number"
+      ) {
+        return value;
+      }
+
+      if (
+        typeof value === "string" &&
+        value.trim() !== ""
+      ) {
+        const numeric =
+          Number(value);
+
+        if (
+          Number.isFinite(numeric)
+        ) {
+          return numeric;
         }
       }
-    }
-    return null;
-  }, [sections]);
 
-  // 0 = Normal, 1 = Advanced
-  const generalExpertLevel = (() => {
-    const loc = findGeneralExpertLocator();
-    if (!loc) return null;
-    const v = getParamCurrentValue(loc.sectionIdx, "expertLevel");
-    return typeof v === "number" ? v : Number(v) || 0;
-  })();
-
-  // Show/hide params with logical conditions
-  const evalAtom = (sectionIdx: number, atom: string): boolean => {
-    let a = atom.replace(/[()]/g, "").trim();
-    let neg = false;
-    if (/^not\s+/i.test(a)) {
-      neg = true;
-      a = a.replace(/^not\s+/i, "").trim();
-    } else if (a.startsWith("!")) {
-      neg = true;
-      a = a.slice(1).trim();
+      return value;
     }
 
-    if (/^(true|false)$/i.test(a)) {
-      const value = /^true$/i.test(a);
-      return neg ? !value : value;
-    }
-
-    const m = a.match(/^(.*?)\s*(==|!=|>=|<=|>|<|=)\s*(.*)$/);
-    let res = false;
-    if (m) {
-      const [, leftRaw, opRaw, rightRaw] = m;
-      const left = coerceToken(getParamCurrentValue(sectionIdx, leftRaw.trim()));
-      const op = opRaw === "=" ? "==" : opRaw;
-      const right = coerceToken(rightRaw.replace(/[()]/g, "").trim());
-      switch (op) {
-        case "==":
-          res = left === right;
-          break;
-        case "!=":
-          res = left !== right;
-          break;
-        case ">":
-          res = (left as any) > (right as any);
-          break;
-        case "<":
-          res = (left as any) < (right as any);
-          break;
-        case ">=":
-          res = (left as any) >= (right as any);
-          break;
-        case "<=":
-          res = (left as any) <= (right as any);
-          break;
-      }
-    } else {
-      const v = coerceToken(getParamCurrentValue(sectionIdx, a));
-      res = !!(v === true || v === "True" || v === 1 || v === "1");
-    }
-    return neg ? !res : res;
+    return (
+      state.editableValue ??
+      state.value ??
+      state.default ??
+      ""
+    );
   };
 
-  const evalExpr = (sectionIdx: number, exprRaw: string): boolean => {
-    const expr = exprRaw
-      .replace(/[()]/g, " ")
-      .replace(/\band\b/gi, "&&")
-      .replace(/\bor\b/gi, "||")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!expr) return true;
-    return expr
-      .split("||")
-      .some((part) => part.split("&&").every((atom) => evalAtom(sectionIdx, atom.trim())));
+  const resolveConditionIdentifier = (
+    sectionIdx: number,
+    paramName: string,
+  ) => {
+    const state =
+      findConditionParamState(
+        sectionIdx,
+        paramName,
+      );
+
+    if (!state) {
+      return {
+        found: false,
+        value: undefined,
+      };
+    }
+
+    return {
+      found: true,
+      value:
+        getConditionStateValue(state),
+    };
+  };
+
+  const getParamCurrentValue = (
+    sectionIdx: number,
+    paramName: string,
+  ) => {
+    const resolved =
+      resolveConditionIdentifier(
+        sectionIdx,
+        paramName,
+      );
+
+    return resolved.found
+      ? resolved.value
+      : "";
   };
 
   // Load initial parameters into protocolDetails
@@ -1822,16 +1899,28 @@ export default function ProtocolForm({
         ? { width: fieldWidth, flex: "0 0 auto", minWidth: 0 }
         : { flex: 1, minWidth: 0, maxWidth: "100%" };
 
-      if (typeof def?.condition === "string" && def.condition.trim()) {
-        if (!evalExpr(sectionIdx, def.condition)) return null;
-      }
+      const condition =
+        def?.condition;
 
-      const expertLocator = findGeneralExpertLocator();
-      const isExpertSelector =
-        !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
+      if (
+        condition !== null &&
+        condition !== undefined &&
+        String(condition).trim()
+      ) {
+        const conditionMatches =
+          evaluateScipionCondition(
+            condition,
+            (identifier) =>
+              resolveConditionIdentifier(
+                sectionIdx,
+                identifier,
+              ),
+            def?.conditionContext ?? {},
+          );
 
-      if (generalExpertLevel === 0 && def?.expertLevel === 1 && !isExpertSelector) {
-        return null;
+        if (!conditionMatches) {
+          return null;
+        }
       }
 
       const advancedSlot = isInline
