@@ -123,14 +123,13 @@ describe("ProtocolOutputsPanel", () => {
     expect(screen.getByRole("button", { name: "Analyze results" })).toBeEnabled();
   });
 
-    it("renders SetOfMovies preview metadata below the representative gallery", async () => {
+  it("renders image previews without output-specific presentation", async () => {
     mockFetchOutputPreview.mockResolvedValue({
       kind: "image",
-      url: "blob:movie-set-preview",
+      url: "blob:image-preview",
       meta: {
         type: "movie-set",
         rowCount: 10,
-        note: "SetOfMovies · 10 items · showing 4 representative movies",
       },
       downloadUrl: "",
     });
@@ -153,14 +152,14 @@ describe("ProtocolOutputsPanel", () => {
 
     expect(image).toHaveAttribute(
       "src",
-      "blob:movie-set-preview",
+      "blob:image-preview",
     );
 
     expect(
-      screen.getByText(
-        "SetOfMovies · 10 items · showing 4 representative movies",
+      screen.queryByText(
+        /representative movies/i,
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it("fetches and renders the selected output preview when clicking another output", async () => {

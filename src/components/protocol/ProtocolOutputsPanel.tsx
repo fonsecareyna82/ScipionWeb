@@ -295,31 +295,14 @@ export default function ProtocolOutputsPanel({
         }
 
         switch (previewData?.kind) {
-            case "image": {
-                const isMovieSetPreview =
-                    previewData.meta?.type === "movie-set";
-
-                const movieSetCaption =
-                    isMovieSetPreview
-                        ? String(
-                            previewData.meta?.note
-                            ?? (
-                                previewData.meta?.rowCount != null
-                                    ? `SetOfMovies · ${previewData.meta.rowCount} items`
-                                    : "SetOfMovies"
-                            ),
-                        )
-                        : "";
-
+                        case "image":
                 return (
                     <Box
                         sx={{
                             width: "100%",
                             display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "flex-start",
-                            alignItems: "center",
-                            gap: 0.75,
+                            justifyContent: "center",
+                            alignItems: "flex-start",
                         }}
                     >
                         <img
@@ -331,22 +314,8 @@ export default function ProtocolOutputsPanel({
                                 height: "auto",
                             }}
                         />
-
-                        {movieSetCaption && (
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color: "#6b7280",
-                                    fontSize: "0.72rem",
-                                    textAlign: "center",
-                                }}
-                            >
-                                {movieSetCaption}
-                            </Typography>
-                        )}
                     </Box>
                 );
-            }
 
             case "pdf":
                 return (
