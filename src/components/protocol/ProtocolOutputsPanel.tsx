@@ -3,6 +3,10 @@ import { Box, Button, CircularProgress, Typography } from "@mui/material";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import {
+    getOutputClassName,
+    isScalarOutputClass,
+} from "@/utils/protocol_outputs";
 
 type ProtocolOutputsPanelProps = {
     projectId: number | string | null;
@@ -14,6 +18,8 @@ type ProtocolOutputsPanelProps = {
 type NormalizedOutput = {
     name: string;
     infoText: string;
+    className: string;
+    isScalar: boolean;
     raw: any;
 };
 
@@ -41,10 +47,30 @@ export default function ProtocolOutputsPanel({
 
     const normalizedOutputs = useMemo<NormalizedOutput[]>(() => {
         const arr = Array.isArray(outputsFromApi) ? outputsFromApi : [];
+
         return arr.map((entry: any, idx: number) => {
-            const outputName = String(entry?.outputName ?? entry?.name ?? entry?._key ?? idx);
-            const infoText = entry?.info ?? entry?.pointerClass ?? "";
-            return { name: outputName, infoText, raw: entry };
+            const outputName = String(
+                entry?.outputName ??
+                entry?.name ??
+                entry?._key ??
+                idx
+            );
+
+            const infoText =
+                entry?.info ??
+                entry?.pointerClass ??
+                "";
+
+            const className =
+                getOutputClassName(entry);
+
+            return {
+                name: outputName,
+                infoText,
+                className,
+                isScalar: isScalarOutputClass(className),
+                raw: entry,
+            };
         });
     }, [outputsFromApi]);
 
@@ -86,18 +112,33 @@ export default function ProtocolOutputsPanel({
     }, []);
 
     useEffect(() => {
-        if (!projectIdStr || !protocolIdStr) {
-            setPreviewData(null);
-            setPreviewError("Missing projectId or protocolId");
-            setPreviewLoading(false);
-            return;
-        }
-
         if (!activeOutput) {
             setPreviewData(null);
             setPreviewError(null);
             setPreviewLoading(false);
             setSqliteTable(null);
+            return;
+        }
+
+        if (activeOutput.isScalar) {
+            if (previewUrlRef.current) {
+                URL.revokeObjectURL(
+                    previewUrlRef.current
+                );
+                previewUrlRef.current = null;
+            }
+
+            setPreviewData(null);
+            setPreviewError(null);
+            setPreviewLoading(false);
+            setSqliteTable(null);
+            return;
+        }
+
+        if (!projectIdStr || !protocolIdStr) {
+            setPreviewData(null);
+            setPreviewError("Missing projectId or protocolId");
+            setPreviewLoading(false);
             return;
         }
 
@@ -114,23 +155,46 @@ export default function ProtocolOutputsPanel({
                     protocolIdStr,
                     activeOutput.name,
                     sqliteTable
-                        ? { table: sqliteTable, signal: abortController.signal }
-                        : { signal: abortController.signal }
+                        ? {
+                            table: sqliteTable,
+                            signal: abortController.signal,
+                        }
+                        : {
+                            signal: abortController.signal,
+                        }
                 );
 
                 if (cancelled) return;
 
-                if ((res?.kind === "image" || res?.kind === "pdf" || res?.kind === "binary") && res.url) {
+                if (
+                    (
+                        res?.kind === "image" ||
+                        res?.kind === "pdf" ||
+                        res?.kind === "binary"
+                    ) &&
+                    res.url
+                ) {
                     if (previewUrlRef.current) {
-                        URL.revokeObjectURL(previewUrlRef.current);
+                        URL.revokeObjectURL(
+                            previewUrlRef.current
+                        );
                     }
-                    previewUrlRef.current = res.url;
+
+                    previewUrlRef.current =
+                        res.url;
                 }
 
-                setPreviewData(res ?? null);
+                setPreviewData(
+                    res ?? null
+                );
             } catch (err: any) {
                 if (cancelled) return;
-                setPreviewError(err?.message || "Failed to load preview");
+
+                setPreviewError(
+                    err?.message ||
+                    "Failed to load preview"
+                );
+
                 setPreviewData(null);
             } finally {
                 if (!cancelled) {
@@ -143,13 +207,19 @@ export default function ProtocolOutputsPanel({
             cancelled = true;
             abortController.abort();
         };
-    }, [activeOutput, protocolIdStr, sqliteTable, svc, projectIdStr]);
+    }, [
+        activeOutput,
+        protocolIdStr,
+        sqliteTable,
+        svc,
+        projectIdStr,
+    ]);
 
     const handleAnalyzeResultsClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!activeOutput) return;
+        if (!activeOutput || activeOutput.isScalar) return;
 
         const outputRaw = activeOutput.raw ?? null;
         const ctx = {
@@ -206,6 +276,62 @@ export default function ProtocolOutputsPanel({
                 >
                     Select an output on the left to preview it here.
                 </Typography>
+            );
+        }
+
+        if (activeOutput.isScalar) {
+            const valueText =
+                String(
+                    activeOutput.infoText ?? ""
+                ).trim();
+
+            return (
+                <Box
+                    sx={{
+                        width: "100%",
+                        minHeight: 180,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 1,
+                        px: 2,
+                        py: 3,
+                    }}
+                >
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "#6b7280",
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                        }}
+                    >
+                        {activeOutput.className || "Scalar"}
+                    </Typography>
+
+                    <Typography
+                        variant="h5"
+                        sx={{
+                            color: "#111827",
+                            fontWeight: 600,
+                            wordBreak: "break-word",
+                            textAlign: "center",
+                        }}
+                    >
+                        {valueText || "—"}
+                    </Typography>
+
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "#6b7280",
+                            fontSize: "0.72rem",
+                        }}
+                    >
+                        {activeOutput.name}
+                    </Typography>
+                </Box>
             );
         }
 
@@ -295,7 +421,7 @@ export default function ProtocolOutputsPanel({
         }
 
         switch (previewData?.kind) {
-                        case "image":
+            case "image":
                 return (
                     <Box
                         sx={{
@@ -833,7 +959,9 @@ export default function ProtocolOutputsPanel({
                                             whiteSpace: "pre-wrap",
                                         }}
                                     >
-                                        {o.infoText}
+                                        {o.isScalar
+                                            ? `${o.name}: ${o.infoText || "—"}`
+                                            : o.infoText}
                                     </Typography>
                                 </Box>
                             ))
@@ -870,25 +998,37 @@ export default function ProtocolOutputsPanel({
                             variant="subtitle2"
                             sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
                         >
-                            Preview
+                            {activeOutput?.isScalar
+                                ? "Output value"
+                                : "Preview"}
                         </Typography>
 
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Button
-                                size="small"
-                                variant="contained"
-                                disabled={!activeOutput}
-                                onClick={handleAnalyzeResultsClick}
+                        {!activeOutput?.isScalar && (
+                            <Box
                                 sx={{
-                                    textTransform: "none",
-                                    ml: 1,
-                                    backgroundColor: "#333d49",
-                                    "&:hover": { backgroundColor: "#596472ff" },
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
                                 }}
                             >
-                                Analyze results
-                            </Button>
-                        </Box>
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={!activeOutput}
+                                    onClick={handleAnalyzeResultsClick}
+                                    sx={{
+                                        textTransform: "none",
+                                        ml: 1,
+                                        backgroundColor: "#333d49",
+                                        "&:hover": {
+                                            backgroundColor: "#596472ff",
+                                        },
+                                    }}
+                                >
+                                    Analyze results
+                                </Button>
+                            </Box>
+                        )}
                     </Box>
 
                     <Box

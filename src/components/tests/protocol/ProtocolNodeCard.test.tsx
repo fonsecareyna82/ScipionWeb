@@ -310,6 +310,61 @@ describe("ProtocolNodeCard", () => {
         expect(screen.getByText("moviesOutput")).toBeInTheDocument();
     });
 
+    it("renders scalar outputs without a viewer action and keeps them draggable", () => {
+        renderComponent({
+            data: createProtocolData({
+                outputs: [
+                    {
+                        outputName: "boxsize",
+                        info: "256",
+                        paramClass: "PointerParam",
+                        pointerClass: "Integer",
+                        value: "Import Movies.boxsize",
+                        parentId: "12",
+                    },
+                ],
+            }),
+        });
+
+        expect(
+            screen.getByText("boxsize: 256"),
+        ).toBeInTheDocument();
+
+        expect(
+            screen.queryByRole(
+                "button",
+                { name: "View output" },
+            ),
+        ).not.toBeInTheDocument();
+
+        const pill =
+            screen
+                .getByText("boxsize: 256")
+                .closest("div") as HTMLElement;
+
+        const setData = vi.fn();
+        const setDragImage = vi.fn();
+
+        fireEvent.dragStart(pill, {
+            dataTransfer: {
+                setData,
+                setDragImage,
+            },
+        });
+
+        expect(
+            mockSetCurrentDraggedOutput,
+        ).toHaveBeenCalledWith({
+            paramClass: "PointerParam",
+            pointerClass: "Integer",
+            _expectedClass: "Integer",
+            value: "Import Movies.boxsize",
+            info: "256",
+            parentId: "12",
+            name: "boxsize",
+        });
+    });
+
     it("uses the external analyze viewer resolver when it handles the output", async () => {
         const resolveAnalyzeViewer = vi.fn().mockResolvedValue({
             handled: true,

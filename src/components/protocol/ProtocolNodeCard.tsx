@@ -85,6 +85,10 @@ import { useTagStore } from "@/stores/tag_store";
 import { useProjectService } from "@/ProjectServiceContext";
 import { CloseIcon } from "@/icons";
 import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
+import {
+  isScalarOutput,
+  isScalarOutputClass,
+} from "@/utils/protocol_outputs";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -1473,9 +1477,21 @@ export default function ProtocolNodeCard({
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
-  const outputThumbnails = (data.outputThumbnails ?? {}) as Record<string, any>;
-  const outputThumbnailsEnabled = data.protocolOutputThumbnailsEnabled === true;
-  const thumbnailMode = outputThumbnailsEnabled && !isProjectNode;
+  const outputThumbnails =
+    (data.outputThumbnails ?? {}) as Record<string, any>;
+
+  const outputThumbnailsEnabled =
+    data.protocolOutputThumbnailsEnabled === true;
+
+  const hasPreviewableOutputs =
+    outputsArray.some(
+      (output) => !isScalarOutput(output)
+    );
+
+  const thumbnailMode =
+    outputThumbnailsEnabled &&
+    hasPreviewableOutputs &&
+    !isProjectNode;
 
   const renderableOutputThumbnailCount = useMemo(() => {
     return outputsArray.reduce((count, outputObj) => {
@@ -1487,7 +1503,7 @@ export default function ProtocolNodeCard({
     }, 0);
   }, [outputsArray, outputThumbnails]);
 
-  const shouldUseOutputTiles = outputThumbnailsEnabled && hasOutputs;
+  const shouldUseOutputTiles = thumbnailMode && hasOutputs;
 
   const outputThumbnailLayoutCount = shouldUseOutputTiles
     ? outputsArray.length
@@ -2490,11 +2506,47 @@ export default function ProtocolNodeCard({
 
                           const isDragging = draggingIdx === idx;
 
-                          const labelText = value.info ?? value.name ?? value.pointerClass ?? value.paramClass ?? "Output";
-                          const pillKey = value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+                          const isScalar =
+                            isScalarOutputClass(
+                              value.pointerClass
+                            );
 
-                          const outputName = String(value.name ?? "");
-                          const isViewerEnabled = canOpenViewer && !!outputName;
+                          const scalarName =
+                            String(
+                              value.name ?? ""
+                            ).trim();
+
+                          const scalarValue =
+                            String(
+                              value.info ?? ""
+                            ).trim();
+
+                          const labelText =
+                            isScalar && scalarName
+                              ? scalarValue
+                                ? `${scalarName}: ${scalarValue}`
+                                : scalarName
+                              : (
+                                value.info ??
+                                value.name ??
+                                value.pointerClass ??
+                                value.paramClass ??
+                                "Output"
+                              );
+
+                          const pillKey =
+                            value.value ??
+                            `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+
+                          const outputName =
+                            String(
+                              value.name ?? ""
+                            );
+
+                          const isViewerEnabled =
+                            canOpenViewer &&
+                            !!outputName &&
+                            !isScalar;
 
                           const thumbnail = outputName ? outputThumbnails[outputName] : null;
                           const thumbnailSrc =
@@ -2614,7 +2666,7 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
-                          if (shouldUseOutputTiles) {
+                          if (shouldUseOutputTiles && !isScalar) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
                             const outputThumbSizeClassName =
@@ -2714,28 +2766,38 @@ export default function ProtocolNodeCard({
                               <ArrowUpRight className={styles.outputIcon} />
                               <span className={styles.outputText}>{labelText}</span>
 
-                              <button
-                                type="button"
-                                className={`${styles.outputActionBtn} nodrag`}
-                                draggable={false}
-                                data-nodrag
-                                aria-label="View output"
-                                title={isViewerEnabled ? "View output" : "Viewer not available"}
-                                onPointerDown={(e) => {
-                                  // preventDragStartFromViewerButton
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                }}
-                                onMouseDown={(e) => {
-                                  // preventDragStartFromViewerButtonMouse
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                }}
-                                onClick={handleOpenOutput}
-                                disabled={!isViewerEnabled}
-                              >
-                                <Eye className={styles.outputEyeIcon} />
-                              </button>
+                              {!isScalar && (
+                                <button
+                                  type="button"
+                                  className={`${styles.outputActionBtn} nodrag`}
+                                  draggable={false}
+                                  data-nodrag
+                                  aria-label="View output"
+                                  title={
+                                    isViewerEnabled
+                                      ? "View output"
+                                      : "Viewer not available"
+                                  }
+                                  onPointerDown={(e) => {
+                                    // preventDragStartFromViewerButton
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onMouseDown={(e) => {
+                                    // preventDragStartFromViewerButtonMouse
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={handleOpenOutput}
+                                  disabled={!isViewerEnabled}
+                                >
+                                  <Eye
+                                    className={
+                                      styles.outputEyeIcon
+                                    }
+                                  />
+                                </button>
+                              )}
                             </div>
                           );
                         })}

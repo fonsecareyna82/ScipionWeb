@@ -76,6 +76,50 @@ describe("ProtocolOutputsPanel", () => {
     expect(screen.getByRole("button", { name: "Analyze results" })).toBeDisabled();
   });
 
+  it("renders scalar outputs locally without requesting a preview", () => {
+    renderComponent({
+      outputsFromApi: [
+        {
+          outputName: "boxsize",
+          info: "256",
+          paramClass: "PointerParam",
+          pointerClass: "Integer",
+        },
+      ],
+    });
+
+    expect(
+      screen.getByText("boxsize: 256"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText("Output value"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText("Integer"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText("256"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole(
+        "button",
+        { name: "Analyze results" },
+      ),
+    ).not.toBeInTheDocument();
+
+    expect(
+      mockFetchOutputPreview,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      mockResolveAnalyzeViewer,
+    ).not.toHaveBeenCalled();
+  });
+
   it("shows an error when projectId or protocolId is missing", async () => {
     renderComponent({
       projectId: null,

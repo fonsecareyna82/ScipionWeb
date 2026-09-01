@@ -14,6 +14,7 @@ import React, {
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
+import { isScalarOutput } from "@/utils/protocol_outputs";
 import {
   PROJECT_REFRESH_REQUESTED_EVENT,
   type ProjectRefreshRequestedDetail,
@@ -2091,7 +2092,13 @@ export default function ProjectPage() {
         const outputs = Array.isArray(node.data?.outputs) ? node.data.outputs : [];
 
         for (const output of outputs) {
-          const outputName = getOutputNameFromNodeOutput(output);
+          if (isScalarOutput(output)) {
+            continue;
+          }
+
+          const outputName =
+            getOutputNameFromNodeOutput(output);
+
           if (!outputName) continue;
 
           const cacheKey = getOutputThumbnailCacheKey(
