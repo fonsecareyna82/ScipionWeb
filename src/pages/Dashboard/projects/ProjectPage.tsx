@@ -4056,18 +4056,37 @@ export default function ProjectPage() {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      const data = await svc.fetchProject(projectName);
+      const [
+        data,
+        effectiveSettings,
+      ] = await Promise.all([
+        svc.fetchProject(
+          projectName,
+        ),
+        loadProjectEffectiveSettings(
+          projectName,
+        ),
+      ]);
+
       setProject(data);
-      setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
+
+      setTagAssignments(
+        extractAssignmentsFromProjectProtocols(
+          (data as any)?.protocols,
+        ),
+      );
 
       const loadedProjectId =
         (data as any)?.id ??
         (data as any)?.projectId;
 
-      const effectiveSettings = await loadProjectEffectiveSettings(loadedProjectId);
-
       const effectiveUserSettings =
-        effectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+        effectiveSettings
+          ?.settings
+          ?.user as
+        Record<string, unknown>
+        | null
+        | undefined;
 
       const shouldLoadProtocolThumbnails =
         effectiveUserSettings?.protocolOutputThumbnailsEnabled === true;
@@ -4480,7 +4499,7 @@ export default function ProjectPage() {
       ],
     );
 
-    const handleRefreshRef = useRef(handleRefresh);
+  const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
   }, [handleRefresh]);
