@@ -49,8 +49,22 @@ function renderComponent(
 describe("ProtocolOutputsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
     mockFetchOutputPreview.mockResolvedValue(null);
-    mockResolveAnalyzeViewer.mockResolvedValue({ handled: false });
+    mockResolveAnalyzeViewer.mockResolvedValue({
+      handled: false,
+    });
+
+    if (typeof URL.revokeObjectURL !== "function") {
+      Object.defineProperty(
+        URL,
+        "revokeObjectURL",
+        {
+          configurable: true,
+          value: vi.fn(),
+        },
+      );
+    }
   });
 
   it("renders empty outputs state and disables analyze button when there are no outputs", () => {
@@ -107,6 +121,46 @@ describe("ProtocolOutputsPanel", () => {
 
     expect(await screen.findByText("This is the first preview")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Analyze results" })).toBeEnabled();
+  });
+
+    it("renders SetOfMovies preview metadata below the representative gallery", async () => {
+    mockFetchOutputPreview.mockResolvedValue({
+      kind: "image",
+      url: "blob:movie-set-preview",
+      meta: {
+        type: "movie-set",
+        rowCount: 10,
+        note: "SetOfMovies · 10 items · showing 4 representative movies",
+      },
+      downloadUrl: "",
+    });
+
+    renderComponent({
+      outputsFromApi: [
+        {
+          outputName: "outputMovies",
+          info: "Movies (10 items)",
+        },
+      ],
+    });
+
+    const image = await screen.findByRole(
+      "img",
+      {
+        name: "outputMovies",
+      },
+    );
+
+    expect(image).toHaveAttribute(
+      "src",
+      "blob:movie-set-preview",
+    );
+
+    expect(
+      screen.getByText(
+        "SetOfMovies · 10 items · showing 4 representative movies",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("fetches and renders the selected output preview when clicking another output", async () => {

@@ -295,9 +295,33 @@ export default function ProtocolOutputsPanel({
         }
 
         switch (previewData?.kind) {
-            case "image":
+            case "image": {
+                const isMovieSetPreview =
+                    previewData.meta?.type === "movie-set";
+
+                const movieSetCaption =
+                    isMovieSetPreview
+                        ? String(
+                            previewData.meta?.note
+                            ?? (
+                                previewData.meta?.rowCount != null
+                                    ? `SetOfMovies · ${previewData.meta.rowCount} items`
+                                    : "SetOfMovies"
+                            ),
+                        )
+                        : "";
+
                 return (
-                    <Box sx={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+                    <Box
+                        sx={{
+                            width: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "flex-start",
+                            alignItems: "center",
+                            gap: 0.75,
+                        }}
+                    >
                         <img
                             src={previewData.url}
                             alt={activeOutput.name}
@@ -307,8 +331,22 @@ export default function ProtocolOutputsPanel({
                                 height: "auto",
                             }}
                         />
+
+                        {movieSetCaption && (
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "#6b7280",
+                                    fontSize: "0.72rem",
+                                    textAlign: "center",
+                                }}
+                            >
+                                {movieSetCaption}
+                            </Typography>
+                        )}
                     </Box>
                 );
+            }
 
             case "pdf":
                 return (
