@@ -510,24 +510,50 @@
 
 .projectpage-widget-root .ppt-stateCell {
   min-width: 0;
+
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.32rem;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .projectpage-widget-root .ppt-statusBadge {
+  width: fit-content;
+  min-width: 76px;
+
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+
+  gap: 3px;
+
+  padding:
+    0.22rem 0.48rem 0.26rem;
+
+  border-radius: 0.5rem;
+
+  border:
+    1px solid rgba(15,
+      23,
+      42,
+      0.10);
+
+  color: #1f2937;
+
+  font-size: 0.72rem;
+  font-weight: 650;
+
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .ppt-statusLabel {
+  min-height: 16px;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
-  padding: 0.18rem 0.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  color: #1f2937;
-  font-size: 0.72rem;
-  font-weight: 650;
-  white-space: nowrap;
+
+  line-height: 1;
 }
 
 .projectpage-widget-root .ppt-statusRunning {
@@ -536,12 +562,18 @@
 
 .projectpage-widget-root .ppt-statusRunning::after {
   content: "";
+
   width: 5px;
   height: 5px;
-  margin-left: 6px;
+
+  margin-left: 5px;
+
   border-radius: 9999px;
+
   background: #92400e;
-  animation: pptStatusPulse 1.3s ease-in-out infinite;
+
+  animation:
+    pptStatusPulse 1.3s ease-in-out infinite;
 }
 
 @keyframes pptStatusPulse {
@@ -557,32 +589,66 @@
 }
 
 .projectpage-widget-root .ppt-stepProgress {
-  width: 100%;
+  min-width: 68px;
+
   display: grid;
-  grid-template-columns: minmax(42px, 1fr) auto;
+
+  grid-template-columns:
+    minmax(30px,
+      1fr) auto;
+
   align-items: center;
-  gap: 0.4rem;
+
+  gap: 4px;
 }
 
 .projectpage-widget-root .ppt-stepTrack {
-  height: 4px;
+  height: 3px;
+
   overflow: hidden;
+
   border-radius: 9999px;
-  background: rgba(148, 163, 184, 0.24);
+
+  background:
+    rgba(15,
+      23,
+      42,
+      0.15);
 }
 
 .projectpage-widget-root .ppt-stepFill {
+  display: block;
+
   height: 100%;
+
   border-radius: inherit;
-  background: #3b82f6;
-  transition: width 220ms ease;
+
+  background:
+    rgba(15,
+      23,
+      42,
+      0.52);
+
+  transition:
+    width 220ms ease;
 }
 
 .projectpage-widget-root .ppt-stepText {
-  color: var(--muted-foreground, #64748b);
-  font-size: 0.64rem;
+  color:
+    rgba(31,
+      41,
+      55,
+      0.72);
+
+  font-size: 0.57rem;
+  font-weight: 650;
+
+  line-height: 1;
+
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+
+  font-variant-numeric:
+    tabular-nums;
 }
 
 .projectpage-widget-root .ppt-tagsCell {
@@ -811,22 +877,25 @@
   padding-bottom: 0.3rem;
 }
 
-.projectpage-widget-root[data-density="compact"] .ppt-stateCell {
-  gap: 0.2rem;
+.projectpage-widget-root[data-density="compact"] .ppt-statusBadge {
+  min-width: 72px;
+
+  gap: 2px;
+
+  padding:
+    0.16rem 0.42rem 0.18rem;
 }
 
-.projectpage-widget-root[data-density="compact"] .ppt-statusBadge {
-  min-height: 21px;
-  padding-top: 0.08rem;
-  padding-bottom: 0.08rem;
+.projectpage-widget-root[data-density="compact"] .ppt-stepProgress {
+  min-width: 62px;
 }
 
 .projectpage-widget-root[data-density="compact"] .ppt-stepTrack {
-  height: 3px;
+  height: 2px;
 }
 
 .projectpage-widget-root[data-density="compact"] .ppt-stepText {
-  font-size: 0.59rem;
+  font-size: 0.54rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

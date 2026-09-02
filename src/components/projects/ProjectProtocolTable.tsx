@@ -131,7 +131,7 @@ type TableGroupBy =
   | "tag";
 
 type TableSettings = {
-  version: 2;
+  version: 3;
 
   visible: Record<
     ColumnId,
@@ -300,8 +300,8 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     label: "State",
     sortable: true,
     defaultVisible: true,
-    defaultWidth: 210,
-    minWidth: 155,
+    defaultWidth: 130,
+    minWidth: 105,
   },
   {
     id: "tags",
@@ -413,7 +413,7 @@ function readSettings(
 
     if (
       !parsed ||
-      parsed.version !== 2
+      parsed.version !== 3
     ) {
       return defaults;
     }
@@ -2880,16 +2880,7 @@ const ProjectProtocolTable =
           return (
             <div className="ppt-stateCell">
               <span
-                className={[
-                  "ppt-statusBadge",
-
-                  status ===
-                    "running"
-                    ? "ppt-statusRunning"
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+                className="ppt-statusBadge"
                 style={{
                   backgroundColor:
                     getStatusBackground(
@@ -2897,30 +2888,42 @@ const ProjectProtocolTable =
                     ),
                 }}
               >
-                {getStatusLabel(
-                  status,
-                )}
-              </span>
+                <span
+                  className={[
+                    "ppt-statusLabel",
 
-              {steps.total >
-                0 && (
-                  <div className="ppt-stepProgress">
-                    <div className="ppt-stepTrack">
-                      <div
-                        className="ppt-stepFill"
-                        style={{
-                          width:
-                            `${steps.percentage}%`,
-                        }}
-                      />
-                    </div>
+                    status ===
+                      "running"
+                      ? "ppt-statusRunning"
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {getStatusLabel(
+                    status,
+                  )}
+                </span>
 
-                    <span className="ppt-stepText">
-                      {steps.done} /{" "}
-                      {steps.total} steps
+                {steps.total >
+                  0 && (
+                    <span className="ppt-stepProgress">
+                      <span className="ppt-stepTrack">
+                        <span
+                          className="ppt-stepFill"
+                          style={{
+                            width:
+                              `${steps.percentage}%`,
+                          }}
+                        />
+                      </span>
+
+                      <span className="ppt-stepText">
+                        {steps.done}/{steps.total}
+                      </span>
                     </span>
-                  </div>
-                )}
+                  )}
+              </span>
             </div>
           );
         };
