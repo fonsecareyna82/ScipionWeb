@@ -1,8 +1,10 @@
 import {
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
     useEffect,
     useLayoutEffect,
     useRef,
+    useState,
 } from "react";
 
 import {
@@ -30,6 +32,16 @@ type OpenExternalWindowOptions = {
     width?: number;
 
     height?: number;
+};
+
+type ExternalWindowDragState = {
+    pointerId: number;
+
+    startScreenX: number;
+    startScreenY: number;
+
+    startWindowX: number;
+    startWindowY: number;
 };
 
 
@@ -237,7 +249,7 @@ function mirrorDocumentStyles(
                     currentNode
                         ?.tagName
                         ?.toLowerCase() ===
-                        "link" &&
+                    "link" &&
                     (
                         currentNode as
                         HTMLLinkElement
@@ -291,13 +303,13 @@ function mirrorDocumentStyles(
 
                 targetStyle =
                     ownerTag ===
-                    "style"
+                        "style"
                         ? (
                             ownerElement
                                 ?.cloneNode(
                                     false,
                                 ) as
-                                HTMLStyleElement
+                            HTMLStyleElement
                         )
                         : targetDocument
                             .createElement(
@@ -366,14 +378,39 @@ export function openExternalWindow({
         return null;
     }
 
+    const left =
+        Math.round(
+            window.screenX +
+            (
+                window.outerWidth -
+                width
+            ) /
+            2,
+        );
+
+    const top =
+        Math.round(
+            window.screenY +
+            (
+                window.outerHeight -
+                height
+            ) /
+            2,
+        );
+
     const popup =
         window.open(
             "",
             "_blank",
             [
                 "popup=yes",
+
                 `width=${width}`,
                 `height=${height}`,
+
+                `left=${left}`,
+                `top=${top}`,
+
                 "resizable=yes",
                 "scrollbars=no",
             ].join(
@@ -554,6 +591,22 @@ function ExternalWindowPortal({
             false,
         );
 
+    const dragStateRef =
+        useRef<
+            ExternalWindowDragState |
+            null
+        >(
+            null,
+        );
+
+    const [
+        isDragging,
+        setIsDragging,
+    ] =
+        useState(
+            false,
+        );
+
     const targetDocument =
         popupWindow.document;
 
@@ -668,7 +721,7 @@ function ExternalWindowPortal({
 
             const observer =
                 typeof MutationObserver !==
-                "undefined"
+                    "undefined"
                     ? new MutationObserver(
                         scheduleStyleSync,
                     )
@@ -786,6 +839,139 @@ function ExternalWindowPortal({
     );
 
 
+    const handleDragStart =
+        (
+            event:
+                ReactPointerEvent<HTMLDivElement>,
+        ) => {
+            if (
+                event.button !== 0
+            ) {
+                return;
+            }
+
+            const target =
+                event.target as
+                HTMLElement;
+
+            if (
+                target.closest(
+                    "button,[data-external-window-no-drag]",
+                )
+            ) {
+                return;
+            }
+
+            dragStateRef.current = {
+                pointerId:
+                    event.pointerId,
+
+                startScreenX:
+                    event.screenX,
+
+                startScreenY:
+                    event.screenY,
+
+                startWindowX:
+                    popupWindow.screenX,
+
+                startWindowY:
+                    popupWindow.screenY,
+            };
+
+            setIsDragging(
+                true,
+            );
+
+            event.currentTarget
+                .setPointerCapture?.(
+                    event.pointerId,
+                );
+
+            event.preventDefault();
+
+            event.stopPropagation();
+        };
+
+
+    const handleDragMove =
+        (
+            event:
+                ReactPointerEvent<HTMLDivElement>,
+        ) => {
+            const state =
+                dragStateRef.current;
+
+            if (
+                !state ||
+                state.pointerId !==
+                event.pointerId
+            ) {
+                return;
+            }
+
+            const deltaX =
+                event.screenX -
+                state.startScreenX;
+
+            const deltaY =
+                event.screenY -
+                state.startScreenY;
+
+            try {
+                popupWindow.moveTo(
+                    Math.round(
+                        state.startWindowX +
+                        deltaX,
+                    ),
+
+                    Math.round(
+                        state.startWindowY +
+                        deltaY,
+                    ),
+                );
+            } catch {
+                // Some browsers/window managers may restrict
+                // scripted window movement.
+            }
+
+            event.preventDefault();
+
+            event.stopPropagation();
+        };
+
+
+    const finishDragging =
+        (
+            event:
+                ReactPointerEvent<HTMLDivElement>,
+        ) => {
+            const state =
+                dragStateRef.current;
+
+            if (
+                !state ||
+                state.pointerId !==
+                event.pointerId
+            ) {
+                return;
+            }
+
+            dragStateRef.current =
+                null;
+
+            setIsDragging(
+                false,
+            );
+
+            event.currentTarget
+                .releasePointerCapture?.(
+                    event.pointerId,
+                );
+
+            event.stopPropagation();
+        };
+
     return createPortal(
         <div
             className={[
@@ -803,8 +989,30 @@ function ExternalWindowPortal({
                     " ",
                 )}
         >
-            <div className="sew-window">
-                <div className="sew-header">
+            <div
+                className="sew-window"
+                data-dragging={
+                    isDragging
+                        ? "true"
+                        : "false"
+                }
+            >
+                <div
+                    className="sew-header"
+                    data-testid="external-window-drag-handle"
+                    onPointerDown={
+                        handleDragStart
+                    }
+                    onPointerMove={
+                        handleDragMove
+                    }
+                    onPointerUp={
+                        finishDragging
+                    }
+                    onPointerCancel={
+                        finishDragging
+                    }
+                >
                     <div className="sew-headerText">
                         <div className="sew-title">
                             {title}
@@ -827,7 +1035,10 @@ function ExternalWindowPortal({
                         )
                         : null}
 
-                    <div className="sew-controls">
+                    <div
+                        className="sew-controls"
+                        data-external-window-no-drag
+                    >
                         <button
                             type="button"
                             className="sew-controlButton"
