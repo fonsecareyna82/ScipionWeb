@@ -21,6 +21,13 @@ import {
   InputLabel,
   Select,
 } from "@mui/material";
+import {
+  createTheme,
+  ThemeProvider as MuiThemeProvider,
+} from "@mui/material/styles";
+import {
+  useTheme as useScipionTheme,
+} from "@/context/ThemeContext";
 import styles from "./protocolform.module.css";
 import {
   ChevronDownIcon,
@@ -105,12 +112,18 @@ import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
 import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
 import {
+  ExternalLink,
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
 
 import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
 
+import ExternalWindowPortal, {
+  DetachableContentMount,
+  PersistentContentPortal,
+  openExternalWindow,
+} from "@/components/ui/external-window/ExternalWindowPortal";
 
 type ProtocolFormPresentation =
   | "docked"
@@ -231,7 +244,14 @@ export default function ProtocolForm({
   onPresentationChange,
   projectEffectiveSettings = null,
 }: ProtocolFormProps) {
-  const svc = useProjectService();
+  const svc =
+    useProjectService();
+
+  const {
+    theme:
+    appTheme,
+  } =
+    useScipionTheme();
 
   // unwrapEnvelope
   const info = useMemo(() => {
@@ -391,6 +411,144 @@ export default function ProtocolForm({
     return "";
   }, [protocolDetails?.runName, protocolDetails?.label, info, form, protocolId]);
 
+  const externalWindowRef =
+    useRef<
+      Window |
+      null
+    >(
+      null,
+    );
+
+
+  const externalWindowActionRef =
+    useRef<
+      | "return"
+      | "close"
+      | null
+    >(
+      null,
+    );
+
+
+  const externalReturnModeRef =
+    useRef<
+      ProtocolFormPresentation
+    >(
+      "floating",
+    );
+
+
+  const [
+    externalWindow,
+    setExternalWindow,
+  ] =
+    useState<
+      Window |
+      null
+    >(
+      null,
+    );
+
+
+  const protocolContentHost =
+    useMemo(
+      () => {
+        if (
+          typeof document ===
+          "undefined"
+        ) {
+          return null;
+        }
+
+        const host =
+          document.createElement(
+            "div",
+          );
+
+        host.setAttribute(
+          "data-scipion-protocol-form-host",
+          "true",
+        );
+
+        host.style.cssText = `
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        flex: 1 1 auto;
+        display: flex;
+        overflow: hidden;
+      `;
+
+        return host;
+      },
+      [],
+    );
+
+
+  const externalPortalContainer =
+    externalWindow &&
+      !externalWindow.closed
+      ? externalWindow
+        .document.body
+      : undefined;
+
+
+  const isExternal =
+    Boolean(
+      externalPortalContainer,
+    );
+
+
+  const protocolMuiTheme =
+    useMemo(
+      () =>
+        createTheme({
+          palette: {
+            mode:
+              appTheme,
+          },
+
+          ...(externalPortalContainer
+            ? {
+              components: {
+                MuiDialog: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiPopover: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiMenu: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiPopper: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+              },
+            }
+            : {}),
+        }),
+      [
+        appTheme,
+        externalPortalContainer,
+      ],
+    );
+
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
 
   // actionLoadingState
@@ -471,6 +629,188 @@ export default function ProtocolForm({
   });
 
 
+  const handleOpenExternal =
+    useCallback(
+      () => {
+        const existing =
+          externalWindowRef.current;
+
+        if (
+          existing &&
+          !existing.closed
+        ) {
+          existing.focus();
+
+          return;
+        }
+
+
+        const popup =
+          openExternalWindow({
+            title:
+              `ScipionWeb - ${protocolDisplayName || "Protocol"}`,
+
+            width:
+              960,
+
+            height:
+              900,
+          });
+
+
+        if (!popup) {
+          toast.error(
+            "The browser blocked the external protocol window. Allow pop-ups for ScipionWeb and try again.",
+          );
+
+          return;
+        }
+
+
+        externalReturnModeRef.current =
+          variant ===
+            "docked"
+            ? "docked"
+            : "floating";
+
+
+        externalWindowActionRef.current =
+          null;
+
+        externalWindowRef.current =
+          popup;
+
+        setExternalWindow(
+          popup,
+        );
+
+
+        if (
+          variant ===
+          "docked" &&
+          onPresentationChange
+        ) {
+          onPresentationChange(
+            "floating",
+          );
+        }
+      },
+      [
+        onPresentationChange,
+        protocolDisplayName,
+        variant,
+      ],
+    );
+
+
+  const handleReturnFromExternal =
+    useCallback(
+      () => {
+        const popup =
+          externalWindowRef.current;
+
+        const returnMode =
+          externalReturnModeRef.current;
+
+
+        externalWindowActionRef.current =
+          "return";
+
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+
+
+        if (
+          returnMode ===
+          "docked" &&
+          onPresentationChange
+        ) {
+          onPresentationChange(
+            "docked",
+          );
+        }
+      },
+      [
+        onPresentationChange,
+      ],
+    );
+
+
+  const handleExternalWindowClosed =
+    useCallback(
+      () => {
+        const action =
+          externalWindowActionRef.current;
+
+        externalWindowActionRef.current =
+          null;
+
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+
+
+        if (
+          action ===
+          null
+        ) {
+          onClose();
+        }
+      },
+      [
+        onClose,
+      ],
+    );
+
+
+  const closeProtocolForm =
+    useCallback(
+      () => {
+        const popup =
+          externalWindowRef.current;
+
+
+        externalWindowActionRef.current =
+          "close";
+
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+
+
+        onClose();
+      },
+      [
+        onClose,
+      ],
+    );
+
   const headerActionBtnSx = {
     // headerActionBtnSx
     color: "#e5e7eb",
@@ -486,9 +826,10 @@ export default function ProtocolForm({
     () => {
       if (
         variant ===
-        "floating"
+        "floating" ||
+        externalWindowRef.current
       ) {
-        onClose();
+        closeProtocolForm();
 
         return;
       }
@@ -497,6 +838,29 @@ export default function ProtocolForm({
         true,
       );
     };
+
+  useEffect(
+    () => {
+      return () => {
+        const popup =
+          externalWindowRef.current;
+
+        externalWindowActionRef.current =
+          "close";
+
+        externalWindowRef.current =
+          null;
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+      };
+    },
+    [],
+  );
 
 
   const handleAnimationEnd =
@@ -2731,6 +3095,10 @@ export default function ProtocolForm({
     variant ===
     "floating";
 
+  const isDetachedPresentation =
+    isFloating ||
+    isExternal;
+
   const formContent = (
     <div
       className={[
@@ -2738,12 +3106,12 @@ export default function ProtocolForm({
 
         (
           isDocked ||
-          isFloating
+          isDetachedPresentation
         )
           ? styles.asDocked
           : "",
 
-        isFloating
+        isDetachedPresentation
           ? styles.asFloating
           : "",
 
@@ -2756,7 +3124,7 @@ export default function ProtocolForm({
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
-      {!isFloating && (
+      {!isDetachedPresentation && (
         <div
           className={
             styles.formHeader
@@ -2852,6 +3220,28 @@ export default function ProtocolForm({
                     }
                   >
                     <PanelRightOpen
+                      size={
+                        16
+                      }
+                    />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+            {isDocked &&
+              onPresentationChange && (
+                <Tooltip title="Open in external window">
+                  <IconButton
+                    onClick={
+                      handleOpenExternal
+                    }
+                    aria-label="Open protocol form in external window"
+                    size="small"
+                    sx={
+                      headerActionBtnSx
+                    }
+                  >
+                    <ExternalLink
                       size={
                         16
                       }
@@ -3090,7 +3480,14 @@ export default function ProtocolForm({
       {pathDialog.open && pathDialog.stateKey && projectId && (
 
         <RemoteFileDialog
-          open={pathDialog.open}
+          open={
+            pathDialog.open
+          }
+          portalContainer={
+            externalPortalContainer ??
+            null
+          }
+
           onClose={() =>
             setPathDialog({
               open: false,
@@ -3823,116 +4220,239 @@ export default function ProtocolForm({
     </div>
   );
 
-  if (!isFloating) {
+  if (
+    variant ===
+    "drawer" ||
+    !protocolContentHost
+  ) {
     return formContent;
   }
 
+
   return (
-    <FloatingWindow
-      open
-      onClose={
-        requestClose
-      }
-      ariaLabel={
-        `Protocol form ${protocolDisplayName}`
-      }
-      closeAriaLabel="Close protocol form"
-      initialWidth="720px"
-      initialHeight="88vh"
-      minWidth={
-        620
-      }
-      minHeight={
-        520
-      }
-      title={
-        <div
-          className={
-            styles.formTitleWrapper
-          }
-        >
-          <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {effectiveProtocolId}
-          </Box>
-
-          <span className="text-white">
-            {protocolDetails.label}
-          </span>
-
-          <span
-            className={
-              styles.nodeStatusPill
-            }
-            style={{
-              backgroundColor:
-                protocolDetails.color,
-
-              color:
-                "black",
-            }}
-          >
-            {protocolDetails.status ||
-              "Unknown"}
-          </span>
-        </div>
-      }
-      headerActions={
-        <>
-          {hasFormHelp && (
-            <Tooltip title="Help">
-              <IconButton
-                onClick={
-                  () =>
-                    setOpenFormHelp(
-                      true,
-                    )
-                }
-                aria-label="Open protocol help"
-                size="small"
-                sx={
-                  headerActionBtnSx
-                }
-              >
-                <span
-                  style={{
-                    fontSize:
-                      "1.1rem",
-                  }}
-                  className="ml-2 mr-2 text-white"
-                >
-                  ?
-                </span>
-              </IconButton>
-            </Tooltip>
-          )}
-
-          {onPresentationChange && (
-            <Tooltip title="Dock protocol form">
-              <IconButton
-                onClick={
-                  () =>
-                    onPresentationChange(
-                      "docked",
-                    )
-                }
-                aria-label="Dock protocol form"
-                size="small"
-                sx={
-                  headerActionBtnSx
-                }
-              >
-                <PanelRightClose
-                  size={
-                    16
-                  }
-                />
-              </IconButton>
-            </Tooltip>
-          )}
-        </>
+    <MuiThemeProvider
+      theme={
+        protocolMuiTheme
       }
     >
-      {formContent}
-    </FloatingWindow>
+      <PersistentContentPortal
+        host={
+          protocolContentHost
+        }
+      >
+        {formContent}
+      </PersistentContentPortal>
+
+
+      {isExternal &&
+        externalWindow
+        ? (
+          <ExternalWindowPortal
+            popupWindow={
+              externalWindow
+            }
+            contentHost={
+              protocolContentHost
+            }
+            title={
+              effectiveProtocolId
+                ? `Protocol ${effectiveProtocolId} - ${protocolDisplayName}`
+                : `Protocol - ${protocolDisplayName}`
+            }
+            subtitle="ScipionWeb protocol form"
+            badge={
+              protocolDetails.status ||
+              undefined
+            }
+            darkMode={
+              appTheme ===
+              "dark"
+            }
+            headerActions={
+              hasFormHelp
+                ? (
+                  <Tooltip title="Help">
+                    <IconButton
+                      onClick={
+                        () =>
+                          setOpenFormHelp(
+                            true,
+                          )
+                      }
+                      aria-label="Open protocol help"
+                      size="small"
+                      sx={
+                        headerActionBtnSx
+                      }
+                    >
+                      <span
+                        style={{
+                          fontSize:
+                            "1.1rem",
+                        }}
+                        className="ml-2 mr-2 text-white"
+                      >
+                        ?
+                      </span>
+                    </IconButton>
+                  </Tooltip>
+                )
+                : null
+            }
+            returnAriaLabel="Return protocol form to ScipionWeb"
+            returnTitle="Return protocol form to ScipionWeb"
+            closeAriaLabel="Close protocol form"
+            closeTitle="Close protocol form"
+            onReturn={
+              handleReturnFromExternal
+            }
+            onClose={
+              closeProtocolForm
+            }
+            onWindowClosed={
+              handleExternalWindowClosed
+            }
+          />
+        )
+        : isFloating
+          ? (
+            <FloatingWindow
+              open
+              onClose={
+                requestClose
+              }
+              ariaLabel={
+                `Protocol form ${protocolDisplayName}`
+              }
+              closeAriaLabel="Close protocol form"
+              initialWidth="720px"
+              initialHeight="88vh"
+              minWidth={
+                620
+              }
+              minHeight={
+                520
+              }
+              title={
+                <div
+                  className={
+                    styles.formTitleWrapper
+                  }
+                >
+                  <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+                    {effectiveProtocolId}
+                  </Box>
+
+                  <span className="text-white">
+                    {protocolDetails.label}
+                  </span>
+
+                  <span
+                    className={
+                      styles.nodeStatusPill
+                    }
+                    style={{
+                      backgroundColor:
+                        protocolDetails.color,
+
+                      color:
+                        "black",
+                    }}
+                  >
+                    {protocolDetails.status ||
+                      "Unknown"}
+                  </span>
+                </div>
+              }
+              headerActions={
+                <>
+                  {hasFormHelp && (
+                    <Tooltip title="Help">
+                      <IconButton
+                        onClick={
+                          () =>
+                            setOpenFormHelp(
+                              true,
+                            )
+                        }
+                        aria-label="Open protocol help"
+                        size="small"
+                        sx={
+                          headerActionBtnSx
+                        }
+                      >
+                        <span
+                          style={{
+                            fontSize:
+                              "1.1rem",
+                          }}
+                          className="ml-2 mr-2 text-white"
+                        >
+                          ?
+                        </span>
+                      </IconButton>
+                    </Tooltip>
+                  )}
+
+                  {onPresentationChange && (
+                    <Tooltip title="Dock protocol form">
+                      <IconButton
+                        onClick={
+                          () =>
+                            onPresentationChange(
+                              "docked",
+                            )
+                        }
+                        aria-label="Dock protocol form"
+                        size="small"
+                        sx={
+                          headerActionBtnSx
+                        }
+                      >
+                        <PanelRightClose
+                          size={
+                            16
+                          }
+                        />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+
+                  <Tooltip title="Open in external window">
+                    <IconButton
+                      onClick={
+                        handleOpenExternal
+                      }
+                      aria-label="Open protocol form in external window"
+                      size="small"
+                      sx={
+                        headerActionBtnSx
+                      }
+                    >
+                      <ExternalLink
+                        size={
+                          16
+                        }
+                      />
+                    </IconButton>
+                  </Tooltip>
+                </>
+              }
+            >
+              <DetachableContentMount
+                host={
+                  protocolContentHost
+                }
+              />
+            </FloatingWindow>
+          )
+          : (
+            <DetachableContentMount
+              host={
+                protocolContentHost
+              }
+            />
+          )}
+    </MuiThemeProvider>
   );
 }

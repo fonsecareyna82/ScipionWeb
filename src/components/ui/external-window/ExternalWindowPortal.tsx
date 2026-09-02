@@ -72,6 +72,16 @@ type ExternalWindowPortalProps = {
 
     darkMode?: boolean;
 
+    headerActions?: ReactNode;
+
+    returnAriaLabel?: string;
+
+    returnTitle?: string;
+
+    closeAriaLabel?: string;
+
+    closeTitle?: string;
+
     onReturn: () => void;
 
     onClose: () => void;
@@ -161,6 +171,7 @@ function prepareExternalDocument(
 
     targetDocument.body.classList.add(
         "sfw-active",
+        "projectpage-widget-root",
     );
 }
 
@@ -582,6 +593,15 @@ function ExternalWindowPortal({
     subtitle,
     badge,
     darkMode = false,
+    headerActions,
+    returnAriaLabel =
+    "Return viewer to ScipionWeb",
+    returnTitle =
+    "Return to ScipionWeb",
+    closeAriaLabel =
+    "Close analyze dialog",
+    closeTitle =
+    "Close viewer",
     onReturn,
     onClose,
     onWindowClosed,
@@ -613,6 +633,39 @@ function ExternalWindowPortal({
     prepareExternalDocument(
         targetDocument,
     );
+
+    targetDocument.documentElement
+        .classList.toggle(
+            "dark",
+            darkMode,
+        );
+
+    targetDocument.body
+        .classList.toggle(
+            "dark",
+            darkMode,
+        );
+
+    const externalTheme =
+        darkMode
+            ? "dark"
+            : "light";
+
+    targetDocument.documentElement
+        .dataset.theme =
+        externalTheme;
+
+    targetDocument.body
+        .dataset.theme =
+        externalTheme;
+
+    targetDocument.documentElement
+        .style.colorScheme =
+        externalTheme;
+
+    targetDocument.body
+        .style.colorScheme =
+        externalTheme;
 
     ensureExternalBase(
         targetDocument,
@@ -1039,11 +1092,16 @@ function ExternalWindowPortal({
                         className="sew-controls"
                         data-external-window-no-drag
                     >
+                        {headerActions}
                         <button
                             type="button"
                             className="sew-controlButton"
-                            aria-label="Return viewer to ScipionWeb"
-                            title="Return to ScipionWeb"
+                            aria-label={
+                                returnAriaLabel
+                            }
+                            title={
+                                returnTitle
+                            }
                             onClick={
                                 onReturn
                             }
@@ -1059,8 +1117,12 @@ function ExternalWindowPortal({
                             ].join(
                                 " ",
                             )}
-                            aria-label="Close analyze dialog"
-                            title="Close viewer"
+                            aria-label={
+                                closeAriaLabel
+                            }
+                            title={
+                                closeTitle
+                            }
                             onClick={
                                 onClose
                             }

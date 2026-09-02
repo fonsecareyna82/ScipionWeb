@@ -41,6 +41,19 @@ vi.mock("@/ProjectServiceContext", () => ({
     useProjectService: () => mockProjectService,
 }));
 
+vi.mock("@/context/ThemeContext", () => ({
+    useTheme: () => ({
+        theme:
+            "light",
+
+        toggleTheme:
+            vi.fn(),
+
+        setThemeMode:
+            vi.fn(),
+    }),
+}));
+
 vi.mock("@/hooks/useProtocolLogs", () => ({
     useProtocolLogs: () => ({
         sortedLogChannels: [],
@@ -951,6 +964,168 @@ describe("ProtocolForm", () => {
             ).toHaveBeenCalledWith(
                 "docked",
             );
+        },
+    );
+
+    it(
+        "moves the protocol form to an external window and returns without losing the selected tab",
+        () => {
+            const iframe =
+                document.createElement(
+                    "iframe",
+                );
+
+            document.body.appendChild(
+                iframe,
+            );
+
+
+            const popup =
+                iframe.contentWindow;
+
+            if (!popup) {
+                throw new Error(
+                    "Unable to create test popup window",
+                );
+            }
+
+
+            const closeMock =
+                vi.fn();
+
+
+            Object.defineProperty(
+                popup,
+                "close",
+                {
+                    configurable:
+                        true,
+
+                    value:
+                        closeMock,
+                },
+            );
+
+
+            Object.defineProperty(
+                popup,
+                "focus",
+                {
+                    configurable:
+                        true,
+
+                    value:
+                        vi.fn(),
+                },
+            );
+
+
+            const openSpy =
+                vi.spyOn(
+                    window,
+                    "open",
+                )
+                    .mockReturnValue(
+                        popup,
+                    );
+
+
+            renderComponent({
+                variant:
+                    "floating",
+
+                onPresentationChange:
+                    vi.fn(),
+            });
+
+
+            fireEvent.click(
+                screen.getByRole(
+                    "tab",
+                    {
+                        name:
+                            "Outputs",
+                    },
+                ),
+            );
+
+
+            expect(
+                screen.getByTestId(
+                    "outputs-panel",
+                ),
+            ).toBeInTheDocument();
+
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Open protocol form in external window",
+                    },
+                ),
+            );
+
+
+            const externalDocument =
+                within(
+                    popup.document.body,
+                );
+
+
+            const externalOutputs =
+                externalDocument.getByTestId(
+                    "outputs-panel",
+                );
+
+
+            expect(
+                externalOutputs
+                    .ownerDocument,
+            ).toBe(
+                popup.document,
+            );
+
+
+            expect(
+                popup.document.body
+                    .contains(
+                        externalOutputs,
+                    ),
+            ).toBe(
+                true,
+            );
+
+
+            fireEvent.click(
+                externalDocument.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Return protocol form to ScipionWeb",
+                    },
+                ),
+            );
+
+
+            expect(
+                screen.getByTestId(
+                    "outputs-panel",
+                ),
+            ).toBeInTheDocument();
+
+
+            expect(
+                closeMock,
+            ).toHaveBeenCalledTimes(
+                1,
+            );
+
+
+            openSpy.mockRestore();
+
+            iframe.remove();
         },
     );
 

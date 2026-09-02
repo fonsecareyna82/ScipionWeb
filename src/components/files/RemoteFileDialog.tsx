@@ -137,6 +137,10 @@ type RemoteFileDialogProps = {
   closeOnPick?: boolean;
   busy?: boolean;
 
+  portalContainer?:
+  HTMLElement |
+  null;
+
   onPick?: (path: string, entry: RemoteEntry, filename?: string) => void;
 };
 
@@ -188,6 +192,8 @@ export default function RemoteFileDialog({
   confirmLabel,
   closeOnPick = true,
   busy = false,
+  portalContainer:
+  portalContainerOverride,
 }: RemoteFileDialogProps) {
   // directoryState (cwdRel is relative to root; "" means root)
   const [cwdRel, setCwdRel] = useState<string>(initialPath);
@@ -430,41 +436,96 @@ export default function RemoteFileDialog({
   }, [open, defaultFilename]);
 
   useEffect(() => {
-    // ensureDialogPortalRootExists
-    const doc = typeof document !== "undefined" ? document : null;
-    if (!doc) return;
+    if (
+      portalContainerOverride
+    ) {
+      setPortalContainer(
+        portalContainerOverride,
+      );
 
-    let host = doc.getElementById("projectpage-portal-root") as HTMLElement | null;
+      return;
+    }
+
+    // ensureDialogPortalRootExists
+    const doc =
+      typeof document !==
+        "undefined"
+        ? document
+        : null;
+
+    if (!doc) {
+      return;
+    }
+
+    let host =
+      doc.getElementById(
+        "projectpage-portal-root",
+      ) as HTMLElement | null;
 
     if (!host) {
-      host = doc.createElement("div");
-      host.id = "projectpage-portal-root";
+      host =
+        doc.createElement(
+          "div",
+        );
+
+      host.id =
+        "projectpage-portal-root";
 
       // keepTailwindScopeForWidgetBuild
-      host.classList.add("projectpage-widget-root");
+      host.classList.add(
+        "projectpage-widget-root",
+      );
 
       // avoidAffectingHostLayout
-      host.style.position = "fixed";
-      host.style.left = "0";
-      host.style.top = "0";
-      host.style.width = "0";
-      host.style.height = "0";
-      host.style.zIndex = "2147483647";
+      host.style.position =
+        "fixed";
 
-      doc.body.appendChild(host);
+      host.style.left =
+        "0";
+
+      host.style.top =
+        "0";
+
+      host.style.width =
+        "0";
+
+      host.style.height =
+        "0";
+
+      host.style.zIndex =
+        "2147483647";
+
+      doc.body.appendChild(
+        host,
+      );
     } else {
-      host.classList.add("projectpage-widget-root");
+      host.classList.add(
+        "projectpage-widget-root",
+      );
     }
 
     // keepDarkModeConsistentIfNeeded
-    if (doc.documentElement.classList.contains("dark")) {
-      host.classList.add("dark");
+    if (
+      doc.documentElement
+        .classList.contains(
+          "dark",
+        )
+    ) {
+      host.classList.add(
+        "dark",
+      );
     } else {
-      host.classList.remove("dark");
+      host.classList.remove(
+        "dark",
+      );
     }
 
-    setPortalContainer(host);
-  }, []);
+    setPortalContainer(
+      host,
+    );
+  }, [
+    portalContainerOverride,
+  ]);
 
   /** normalizePosixPath */
   const normalizePosixPath = (p: string) => (p || "").replace(/\\/g, "/").replace(/\/+/g, "/").trim();
@@ -1217,29 +1278,29 @@ export default function RemoteFileDialog({
   }, [items, filterText, sortDir]);
 
   useEffect(() => {
-  // autoSelectFirstVisibleEntry
-  if (!open || loading || error) return;
+    // autoSelectFirstVisibleEntry
+    if (!open || loading || error) return;
 
-  const firstVisible = visibleItems[0] ?? null;
+    const firstVisible = visibleItems[0] ?? null;
 
-  if (!firstVisible) {
-    if (selected) {
-      setSelected(null);
-      clearPreviewState();
+    if (!firstVisible) {
+      if (selected) {
+        setSelected(null);
+        clearPreviewState();
+      }
+      return;
     }
-    return;
-  }
 
-  const stillThere = selected
-    ? visibleItems.some((e) => sameEntry(e, selected))
-    : false;
+    const stillThere = selected
+      ? visibleItems.some((e) => sameEntry(e, selected))
+      : false;
 
-  if (!stillThere) {
-    handleSelectEntry(firstVisible);
-  }
+    if (!stillThere) {
+      handleSelectEntry(firstVisible);
+    }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [open, loading, error, visibleItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, loading, error, visibleItems]);
 
   const onKeyDown: React.KeyboardEventHandler = (e) => {
     if (!open) return;
