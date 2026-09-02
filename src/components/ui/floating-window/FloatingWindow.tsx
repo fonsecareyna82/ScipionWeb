@@ -248,6 +248,14 @@ function FloatingWindow({
         );
 
     const [
+        isResizing,
+        setIsResizing,
+    ] =
+        useState(
+            false,
+        );
+
+    const [
         isMaximized,
         setIsMaximized,
     ] =
