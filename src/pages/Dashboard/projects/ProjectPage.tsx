@@ -67,9 +67,6 @@ import {
   Square,
   ClipboardPaste,
   CheckSquare,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -97,6 +94,7 @@ import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 import TagsDialog from "@/components/tags/TagsDialog";
 import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
+import ProjectProtocolTable, { ProjectProtocolTableHandle } from "@/components/projects/ProjectProtocolTable";
 
 
 /* --------------------- Types --------------------- */
@@ -809,31 +807,6 @@ function pickFirstNonEmptyTagIds(...candidates: unknown[]): string[] {
   return [];
 }
 
-function normalizeTagColor(raw: unknown): string {
-  // normalizeTagColor
-  const s = String(raw ?? "").trim();
-  if (!s) return "#9ca3af";
-  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) return s;
-  return "#9ca3af";
-}
-
-function getReadableTextColor(hexColor: string): string {
-  // getReadableTextColor
-  const hex = String(hexColor ?? "").trim();
-  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex);
-  if (!m) return "#111827";
-
-  const raw = m[1];
-  const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
-  const r = Number.parseInt(full.slice(0, 2), 16);
-  const g = Number.parseInt(full.slice(2, 4), 16);
-  const b = Number.parseInt(full.slice(4, 6), 16);
-  if (![r, g, b].every((v) => Number.isFinite(v))) return "#111827";
-
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.62 ? "#111827" : "#f9fafb";
-}
-
 const getProtocolRowDisplayName = (row: any) => {
   const runName = String(row?.runName ?? "").trim();
   if (runName) return runName;
@@ -843,51 +816,6 @@ const getProtocolRowDisplayName = (row: any) => {
 
   return String(row?.id ?? "");
 };
-
-type ProjectTableSortKey =
-  | "id"
-  | "protocol"
-  | "state"
-  | "tags"
-  | "elapsed"
-  | "dependent";
-
-type ProjectTableSortDirection =
-  | "asc"
-  | "desc";
-
-type ProjectTableSortState = {
-  key: ProjectTableSortKey;
-  direction: ProjectTableSortDirection;
-};
-
-function compareProjectTableText(
-  left: unknown,
-  right: unknown,
-): number {
-  return String(left ?? "").localeCompare(
-    String(right ?? ""),
-    undefined,
-    {
-      numeric: true,
-      sensitivity: "base",
-    },
-  );
-}
-
-function getProjectTableElapsedSeconds(
-  row: any,
-): number {
-  const value = Number(
-    row?.tick ??
-    row?.elapsedTime ??
-    0,
-  );
-
-  return Number.isFinite(value)
-    ? value
-    : 0;
-}
 
 const PROTOCOL_OUTPUT_THUMBNAIL_SIZE = 128;
 
@@ -1654,242 +1582,6 @@ export default function ProjectPage() {
   const [tableData, setTableData] =
     useState<any[]>([]);
 
-  const [tableSort, setTableSort] =
-    useState<ProjectTableSortState>({
-      key: "id",
-      direction: "desc",
-    });
-
-  const handleTableSort = useCallback(
-    (key: ProjectTableSortKey) => {
-      setTableSort((current) => {
-        if (current.key === key) {
-          return {
-            key,
-            direction:
-              current.direction === "asc"
-                ? "desc"
-                : "asc",
-          };
-        }
-
-        return {
-          key,
-          direction: "asc",
-        };
-      });
-    },
-    [],
-  );
-
-  const filteredTableData = useMemo(() => {
-    // filteredAndSortedTableData
-    let rows =
-      Array.isArray(tableData)
-        ? [...tableData]
-        : [];
-
-    if (tagFilterIds.length) {
-      const filterSet =
-        new Set(tagFilterIds);
-
-      rows = rows.filter((row) => {
-        const pid =
-          String(row?.id ?? "");
-
-        const assigned =
-          pickFirstNonEmptyTagIds(
-            tagAssignments[pid],
-            row?.tagIds,
-            row?.tags,
-          );
-
-        return assigned.some(
-          (tagId) =>
-            filterSet.has(tagId),
-        );
-      });
-    }
-
-    const tagTitleById =
-      new Map(
-        allTags.map((tag) => [
-          String(tag.id),
-          String(
-            tag.title ??
-            tag.id ??
-            "",
-          ),
-        ]),
-      );
-
-    const getTagsSortText = (
-      row: any,
-    ): string => {
-      const pid =
-        String(row?.id ?? "");
-
-      const assignedTagIds =
-        pickFirstNonEmptyTagIds(
-          tagAssignments[pid],
-          row?.tagIds,
-          row?.tags,
-        );
-
-      return assignedTagIds
-        .map(
-          (tagId) =>
-            tagTitleById.get(
-              String(tagId),
-            ) ??
-            String(tagId),
-        )
-        .sort((a, b) =>
-          compareProjectTableText(a, b)
-        )
-        .join(" ");
-    };
-
-    const compareRows = (
-      left: any,
-      right: any,
-    ): number => {
-      switch (tableSort.key) {
-        case "id":
-          return compareProjectTableText(
-            left?.id,
-            right?.id,
-          );
-
-        case "protocol":
-          return compareProjectTableText(
-            getProtocolRowDisplayName(
-              left,
-            ),
-            getProtocolRowDisplayName(
-              right,
-            ),
-          );
-
-        case "state":
-          return compareProjectTableText(
-            left?.status,
-            right?.status,
-          );
-
-        case "tags":
-          return compareProjectTableText(
-            getTagsSortText(left),
-            getTagsSortText(right),
-          );
-
-        case "elapsed":
-          return (
-            getProjectTableElapsedSeconds(
-              left,
-            ) -
-            getProjectTableElapsedSeconds(
-              right,
-            )
-          );
-
-        case "dependent":
-          return (
-            (
-              Array.isArray(
-                left?.children,
-              )
-                ? left.children.length
-                : 0
-            ) -
-            (
-              Array.isArray(
-                right?.children,
-              )
-                ? right.children.length
-                : 0
-            )
-          );
-
-        default:
-          return 0;
-      }
-    };
-
-    const directionMultiplier =
-      tableSort.direction === "asc"
-        ? 1
-        : -1;
-
-    rows.sort((left, right) => {
-      const result =
-        compareRows(left, right);
-
-      if (result !== 0) {
-        return (
-          result *
-          directionMultiplier
-        );
-      }
-
-      return compareProjectTableText(
-        left?.id,
-        right?.id,
-      );
-    });
-
-    return rows;
-  }, [
-    tableData,
-    tagFilterIds,
-    tagAssignments,
-    allTags,
-    tableSort,
-  ]);
-
-  const renderTableSortIcon = (
-    key: ProjectTableSortKey,
-  ) => {
-    if (tableSort.key !== key) {
-      return (
-        <ArrowUpDown
-          className="pp-tableSortIcon"
-        />
-      );
-    }
-
-    if (
-      tableSort.direction === "asc"
-    ) {
-      return (
-        <ArrowUp
-          className="pp-tableSortIcon pp-tableSortIconActive"
-        />
-      );
-    }
-
-    return (
-      <ArrowDown
-        className="pp-tableSortIcon pp-tableSortIconActive"
-      />
-    );
-  };
-
-  const getTableAriaSort = (
-    key: ProjectTableSortKey,
-  ):
-    | "ascending"
-    | "descending"
-    | "none" => {
-    if (tableSort.key !== key) {
-      return "none";
-    }
-
-    return tableSort.direction === "asc"
-      ? "ascending"
-      : "descending";
-  };
-
   const [isRefreshing, setIsRefreshing] = useState(false);
   const delayedRefreshTimerRef = useRef<number | null>(null);
 
@@ -1899,8 +1591,10 @@ export default function ProjectPage() {
 
   const [viewMode, setViewMode] = useState<"hierarchical" | "grid" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
-  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const projectTableRef =
+    useRef<ProjectProtocolTableHandle | null>(
+      null,
+    );
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
@@ -1973,59 +1667,6 @@ export default function ProjectPage() {
     // tagById
     return new Map(allTags.map((t) => [t.id, t]));
   }, [allTags]);
-
-  const renderTableTagsCell = useCallback(
-    (row: any): JSX.Element => {
-      // renderTableTagsCell
-      const pid = String(row?.id ?? "");
-      const assignedTagIds = pickFirstNonEmptyTagIds(
-        tagAssignments[pid],
-        row?.tagIds,
-        row?.tags
-      );
-
-      if (!assignedTagIds.length) {
-        return <span style={{ opacity: 0.7 }}>—</span>;
-      }
-
-      const tags = assignedTagIds.map((id) => {
-        const hit = tagById.get(id);
-        if (hit) return hit;
-        return { id, title: id, color: "#9ca3af" } as ProtocolTag;
-      });
-
-      return (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-          {tags.map((t) => {
-            const bg = normalizeTagColor((t as any)?.color);
-            const fg = getReadableTextColor(bg);
-            return (
-              <span
-                key={t.id}
-                title={String((t as any)?.title ?? t.id)}
-                style={{
-                  backgroundColor: bg,
-                  color: fg,
-                  borderRadius: 9999,
-                  padding: "2px 8px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  lineHeight: 1.2,
-                  maxWidth: 260,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {String((t as any)?.title ?? t.id)}
-              </span>
-            );
-          })}
-        </div>
-      );
-    },
-    [tagAssignments, tagById]
-  );
 
   useEffect(() => {
     // loadTagsCatalogFromBackend
@@ -3040,15 +2681,18 @@ export default function ProjectPage() {
 
     // In table mode, rows are already filtered; optional: scroll to the first match.
     if (viewMode === "table") {
-      const first = filteredTableData[0];
-      if (first) scrollToProtocol(String(first.id));
+      requestAnimationFrame(() => {
+        projectTableRef.current
+          ?.scrollToFirstVisible();
+      });
+
       return;
     }
 
     // No-op on graph modes: renderNodes already dims non-matching nodes via tagFilterIds.
     // This prevents applyPathSelection() from selecting nodes while filtering.
     void hadPrev;
-  }, [tagFilterIds, viewMode, filteredTableData]);
+  }, [tagFilterIds, viewMode]);
 
 
 
@@ -3327,6 +2971,79 @@ export default function ProjectPage() {
     pathEdgeModeRef.current = 'all';
     applyPathSelection(Array.from(ids));
   }, [applyPathSelection]);
+
+  const handleTableSelectionChange =
+    useCallback(
+      (
+        protocolIds: string[],
+      ) => {
+        const normalizedIds =
+          Array.from(
+            new Set(
+              protocolIds
+                .map(String)
+                .filter(
+                  (id) =>
+                    id &&
+                    id !==
+                    "PROJECT",
+                ),
+            ),
+          );
+
+        if (
+          !normalizedIds.length
+        ) {
+          clearAllSelectionHard();
+
+          applyEdgeHighlight(
+            null,
+          );
+
+          return;
+        }
+
+        if (
+          normalizedIds.length === 1
+        ) {
+          const id =
+            normalizedIds[0];
+
+          selectedIdRef.current =
+            id;
+
+          setPreviousNodeId(
+            id,
+          );
+
+          setHighlightedId(
+            id,
+          );
+        } else {
+          selectedIdRef.current =
+            null;
+
+          setPreviousNodeId(
+            null,
+          );
+
+          setHighlightedId(
+            null,
+          );
+        }
+
+        applyGenericSelectionFromSet(
+          new Set(
+            normalizedIds,
+          ),
+        );
+      },
+      [
+        applyGenericSelectionFromSet,
+        clearAllSelectionHard,
+        applyEdgeHighlight,
+      ],
+    );
 
   const getAllWorkflowProtocolIds = useCallback((): Set<string> => {
     // getAllWorkflowProtocolIds
@@ -5705,12 +5422,12 @@ export default function ProjectPage() {
 
     setHighlightedId(id);
 
-    const row = rowRefs.current[id];
-    const container = tableContainerRef.current;
-    if (row && container && container.offsetHeight > 0) {
-      const rowTop = row.offsetTop;
-      const desired = rowTop - container.offsetHeight / 2 + row.offsetHeight / 2;
-      container.scrollTop = Math.max(0, desired);
+    const didScroll =
+      projectTableRef.current
+        ?.scrollToProtocol(id) ===
+      true;
+
+    if (didScroll) {
       didScrollForTableRef.current = true;
       tableScrollRetriesRef.current = 0;
       return;
@@ -5763,16 +5480,20 @@ export default function ProjectPage() {
   }, [isRefreshing, viewMode]);
 
   /* --------------------- Search helpers --------------------- */
-  const scrollToProtocol = (id: string) => {
-    const row = rowRefs.current[id];
-    const container = tableContainerRef.current;
-    if (row && container) {
-      setHighlightedId(id);
-      const rowTop = row.offsetTop;
-      const rowHeight = row.offsetHeight;
-      const containerHeight = container.offsetHeight;
-      container.scrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeight / 2);
-    }
+  const scrollToProtocol = (
+    id: string,
+  ) => {
+    const protocolId =
+      String(id);
+
+    setHighlightedId(
+      protocolId,
+    );
+
+    projectTableRef.current
+      ?.scrollToProtocol(
+        protocolId,
+      );
   };
 
   const getStatusStyle = (status?: string) => {
@@ -5956,7 +5677,7 @@ export default function ProjectPage() {
     };
 
     if (viewMode === "table") {
-      for (const row of filteredTableData) {
+      for (const row of tableData) {
         pushIfMatch(row?.id, getProtocolRowDisplayName(row), row?.status);
       }
     } else {
@@ -5973,7 +5694,7 @@ export default function ProjectPage() {
     });
 
     return results.slice(0, limit).map((x) => x.item);
-  }, [searchQuery, viewMode, filteredTableData, nodes]);
+  }, [searchQuery, viewMode, tableData, nodes]);
 
   const jumpToSearchResult = useCallback(
     async (res: SearchResult, opts?: { openForm?: boolean }) => {
@@ -8234,6 +7955,178 @@ export default function ProjectPage() {
     });
   };
 
+  const handleTableToggleTag =
+    async (
+      protocolIds: string[],
+      tagId: string,
+      enabled: boolean,
+    ) => {
+      const currentProjectId =
+        getProjectId();
+
+      if (
+        currentProjectId == null
+      ) {
+        return;
+      }
+
+      const normalizedIds =
+        Array.from(
+          new Set(
+            protocolIds
+              .map(String)
+              .filter(Boolean),
+          ),
+        );
+
+      if (
+        !normalizedIds.length
+      ) {
+        return;
+      }
+
+      const rowsById =
+        new Map(
+          tableData.map(
+            (row) => [
+              String(row.id),
+              row,
+            ],
+          ),
+        );
+
+      const updates =
+        normalizedIds.map(
+          (protocolId) => {
+            const row =
+              rowsById.get(
+                protocolId,
+              );
+
+            const currentTags =
+              pickFirstNonEmptyTagIds(
+                tagAssignments[
+                protocolId
+                ],
+
+                row?.tagIds,
+
+                row?.tags,
+              );
+
+            const nextTags =
+              enabled
+                ? Array.from(
+                  new Set([
+                    ...currentTags,
+                    tagId,
+                  ]),
+                )
+                : currentTags.filter(
+                  (id) =>
+                    id !==
+                    tagId,
+                );
+
+            return {
+              protocolId,
+              tagIds:
+                nextTags,
+            };
+          },
+        );
+
+      try {
+        await Promise.all(
+          updates.map(
+            (update) =>
+              svc.setProtocolTagIds(
+                currentProjectId,
+                update.protocolId,
+                update.tagIds,
+              ),
+          ),
+        );
+
+        setTagAssignments(
+          (current) => {
+            const next = {
+              ...current,
+            };
+
+            for (
+              const update
+              of updates
+            ) {
+              if (
+                update.tagIds.length
+              ) {
+                next[
+                  update.protocolId
+                ] =
+                  update.tagIds;
+              } else {
+                delete next[
+                  update.protocolId
+                ];
+              }
+            }
+
+            return next;
+          },
+        );
+
+        toast.success(
+          enabled
+            ? (
+              normalizedIds.length >
+                1
+                ? "Tag added to protocols."
+                : "Tag added to protocol."
+            )
+            : (
+              normalizedIds.length >
+                1
+                ? "Tag removed from protocols."
+                : "Tag removed from protocol."
+            ),
+        );
+      } catch (error) {
+        console.error(
+          "table tag update failed",
+          error,
+        );
+
+        toast.error(
+          getErrorMsg(error),
+        );
+      }
+    };
+
+  const handleTableCopyWorkflow =
+    async (
+      protocolIds: string[],
+    ) => {
+      const ids =
+        protocolIds
+          .map(String)
+          .filter(
+            (id) =>
+              id &&
+              id !==
+              "PROJECT",
+          );
+
+      if (!ids.length) {
+        return;
+      }
+
+      applyGenericSelectionFromSet(
+        new Set(ids),
+      );
+
+      await handleCopyWorkflow();
+    };
 
   const submitRename = async () => {
     if (!projectName || !dlgRename.id) return;
@@ -8912,307 +8805,145 @@ export default function ProjectPage() {
           )}
 
           {/* TABLE */}
-          <div
-            className={
-              viewMode === "table"
-                ? "pp-tableShell"
-                : "pp-tableShell pp-hidden"
-            }
-            aria-hidden={
-              viewMode !== "table"
-            }
-          >
-            <div className="pp-tableToolbar">
-              <button
-                type="button"
-                className="pp-iconBtn"
-                title="Refresh project"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={`pp-icon ${isRefreshing ? "pp-spin" : ""}`} />
-              </button>
-            </div>
-
-            <div
-              ref={tableContainerRef}
-              className="pp-tableCard"
-            >
-              <table className="pp-table" role="grid">
-                <thead className="pp-thead">
-                  <tr className="pp-trHead">
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort("id")
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key === "id"
-                        }
-                        onClick={() =>
-                          handleTableSort("id")
-                        }
-                      >
-                        <span>Id</span>
-                        {renderTableSortIcon("id")}
-                      </button>
-                    </th>
-
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort(
-                          "protocol"
-                        )
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key ===
-                          "protocol"
-                        }
-                        onClick={() =>
-                          handleTableSort(
-                            "protocol"
-                          )
-                        }
-                      >
-                        <span>Protocol</span>
-                        {renderTableSortIcon(
-                          "protocol"
-                        )}
-                      </button>
-                    </th>
-
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort("state")
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key === "state"
-                        }
-                        onClick={() =>
-                          handleTableSort("state")
-                        }
-                      >
-                        <span>State</span>
-                        {renderTableSortIcon(
-                          "state"
-                        )}
-                      </button>
-                    </th>
-
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort("tags")
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key === "tags"
-                        }
-                        onClick={() =>
-                          handleTableSort("tags")
-                        }
-                      >
-                        <span>Tags</span>
-                        {renderTableSortIcon(
-                          "tags"
-                        )}
-                      </button>
-                    </th>
-
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort(
-                          "elapsed"
-                        )
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key ===
-                          "elapsed"
-                        }
-                        onClick={() =>
-                          handleTableSort(
-                            "elapsed"
-                          )
-                        }
-                      >
-                        <span>Elapsed</span>
-                        {renderTableSortIcon(
-                          "elapsed"
-                        )}
-                      </button>
-                    </th>
-
-                    <th
-                      className="pp-th"
-                      aria-sort={
-                        getTableAriaSort(
-                          "dependent"
-                        )
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="pp-tableSortButton"
-                        data-active={
-                          tableSort.key ===
-                          "dependent"
-                        }
-                        onClick={() =>
-                          handleTableSort(
-                            "dependent"
-                          )
-                        }
-                      >
-                        <span>Dependent</span>
-                        {renderTableSortIcon(
-                          "dependent"
-                        )}
-                      </button>
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="pp-tbody">
-                  {filteredTableData.map((row) => (
-                    <tr
-                      key={row.id}
-                      ref={(el) => {
-                        rowRefs.current[row.id] = el;
-                      }}
-                      onClick={(e) => {
-                        const target = e.target as HTMLElement;
-                        if (target.closest("button,a")) return;
-
-                        if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                          clearPathSelection();
-                        }
-
-                        suppressOneFrame();
-                        setNodes((prev) =>
-                          prev.map((n) =>
-                            n.id === row.id
-                              ? n.selected
-                                ? n
-                                : { ...n, selected: true }
-                              : n.selected
-                                ? { ...n, selected: false }
-                                : n
-                          )
-                        );
-
-                        selectedIdRef.current = row.id;
-                        setPreviousNodeId(row.id);
-                        setHighlightedId(row.id);
-                        applyEdgeHighlight(row.id);
-                      }}
-                      onDoubleClick={() => handleRowDoubleClick(row.id)}
-                      className={[
-                        "pp-tr",
-                        highlightedId === row.id ? "pp-trHighlighted" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <td className="pp-td">
-                        <div className="pp-idPill">{row.id}</div>
-                      </td>
-
-                      <td className="pp-td">
-                        <div
-                          className="pp-protocolCell"
-                          title={String(row?.label ?? "")}
-                        >
-                          {getProtocolRowDisplayName(row)}
-                        </div>
-                      </td>
-
-                      <td className="pp-td">
-                        <div className="pp-stateCell">
-                          <span
-                            className={[
-                              "pp-statusBadge",
-                              row.status === "running" ? "pp-statusPulse" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            style={getStatusStyle(row.status)}
-                          >
-                            {row.status ?? "—"}
-                          </span>
-
-                          {(row.status === "running" ||
-                            row.status === "failed" ||
-                            row.status === "aborted") && (
-                              <div className="pp-progressWrap" data-status={row.status}>
-                                <div className="pp-progressTrack">
-                                  <div
-                                    className="pp-progressFill"
-                                    style={{
-                                      width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="pp-progressText">
-                                  {row.stepsDone}/{row.numberOfSteps}
-                                </span>
-                              </div>
-                            )}
-                        </div>
-                      </td>
-
-                      <td className="pp-td">
-                        {renderTableTagsCell(row)}
-                      </td>
-
-                      <td className="pp-td">
-                        <span className="pp-elapsedText">
-                          {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
-                        </span>
-                      </td>
-
-                      <td className="pp-td">
-                        <div className="pp-deps">
-                          {row.children?.map((childId: string) => (
-                            <button
-                              key={childId}
-                              type="button"
-                              className="pp-linkBtn"
-                              onClick={() => scrollToProtocol(childId)}
-                              title={`Go to ${childId}`}
-                            >
-                              {childId}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {viewMode === "table" && (
+            <ProjectProtocolTable
+              key={
+                `project-table-${String(
+                  project?.id ??
+                  projectName ??
+                  "project",
+                )}`
+              }
+              ref={projectTableRef}
+              projectStorageKey={
+                String(
+                  project?.id ??
+                  projectName ??
+                  "project",
+                )
+              }
+              rows={tableData}
+              allTags={allTags}
+              tagAssignments={
+                tagAssignments
+              }
+              externalTagFilterIds={
+                tagFilterIds
+              }
+              searchQuery={
+                searchQuery
+              }
+              highlightedId={
+                highlightedId
+              }
+              selectedIds={
+                Array.from(
+                  unifiedSelectedIdsState,
+                )
+              }
+              isRefreshing={
+                isRefreshing
+              }
+              contextMenuVisibility={
+                contextMenuVisibilityPolicyRef
+                  .current
+              }
+              onRefresh={
+                handleRefresh
+              }
+              onActivate={(
+                protocolId,
+              ) => {
+                handleNodeClick({
+                  id: protocolId,
+                });
+              }}
+              onOpen={(
+                protocolId,
+              ) => {
+                void handleRowDoubleClick(
+                  protocolId,
+                );
+              }}
+              onBrowse={(
+                protocolId,
+                protocolLabel,
+              ) => {
+                openBrowse(
+                  protocolId,
+                  getProjectId(),
+                  protocolLabel,
+                );
+              }}
+              onAnnotate={
+                openRename
+              }
+              onDuplicate={(
+                protocolIds,
+              ) => {
+                void duplicateNow(
+                  protocolIds,
+                );
+              }}
+              onCopyWorkflow={(
+                protocolIds,
+              ) => {
+                void handleTableCopyWorkflow(
+                  protocolIds,
+                );
+              }}
+              onDelete={(
+                protocolIds,
+              ) => {
+                setDlgDelete({
+                  open: true,
+                  ids: protocolIds,
+                });
+              }}
+              onRestartAll={
+                openRestartAll
+              }
+              onContinueAll={
+                openContinueAll
+              }
+              onResetFrom={
+                openResetFrom
+              }
+              onStop={(
+                protocolIds,
+              ) => {
+                setDlgStop({
+                  open: true,
+                  ids: protocolIds,
+                });
+              }}
+              onSelectFrom={
+                handleSelectFrom
+              }
+              onSelectTo={
+                handleSelectTo
+              }
+              onSelectionChange={
+                handleTableSelectionChange
+              }
+              onToggleTag={(
+                protocolIds,
+                tagId,
+                enabled,
+              ) =>
+                handleTableToggleTag(
+                  protocolIds,
+                  tagId,
+                  enabled,
+                )
+              }
+              onManageTags={() =>
+                setTagManagerOpen(
+                  true,
+                )
+              }
+            />
+          )}
 
 
           {/* ReactFlow */}

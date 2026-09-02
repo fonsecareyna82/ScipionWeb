@@ -1039,13 +1039,32 @@ export function buildGraphElements(
       runName: prot.runName,
       comment: prot.comment,
       parameters: prot.parameters,
-      children: prot.children,
+
+      parents: Array.isArray(prot.parents)
+        ? prot.parents
+        : [],
+
+      children: Array.isArray(prot.children)
+        ? prot.children
+        : [],
+
+      inputs: Array.isArray(prot.inputs)
+        ? prot.inputs
+        : [],
+
+      outputs: Array.isArray(prot.outputs)
+        ? prot.outputs
+        : [],
+
       cpuTime: prot.cpuTime,
       stepsDone: prot.stepsDone,
       numberOfSteps: prot.numberOfSteps,
       elapsedTime: prot.elapsedTime,
       tick: Number(prot.elapsedTime) || 0,
-      tags: Array.isArray(prot.tags) ? prot.tags : [],
+
+      tags: Array.isArray(prot.tags)
+        ? prot.tags
+        : [],
     }));
 
     return { nodes: [], edges: [], table: tableData };

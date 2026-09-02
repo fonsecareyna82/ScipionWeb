@@ -1,0 +1,705 @@
+.projectpage-widget-root .ppt-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.75rem;
+  overflow: hidden;
+  outline: none;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .ppt-toolbar {
+  flex: 0 0 auto;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.projectpage-widget-root .ppt-statusFilters {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.projectpage-widget-root .ppt-filterChip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.65rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--card);
+  color: var(--ppInk);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 130ms ease,
+    border-color 130ms ease,
+    box-shadow 130ms ease;
+}
+
+.projectpage-widget-root .ppt-filterChip span {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.16);
+  font-size: 0.68rem;
+}
+
+.projectpage-widget-root .ppt-filterChip:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.projectpage-widget-root .ppt-filterChip[data-active="true"] {
+  border-color: rgba(37, 99, 235, 0.45);
+  background: rgba(59, 130, 246, 0.10);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
+}
+
+.projectpage-widget-root .ppt-toolbarRight {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.projectpage-widget-root .ppt-rowCounter {
+  margin-right: 0.3rem;
+  white-space: nowrap;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.75rem;
+}
+
+.projectpage-widget-root .ppt-toolbarButton,
+.projectpage-widget-root .ppt-bulkButton {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  padding: 0 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--card);
+  color: var(--ppInk);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.projectpage-widget-root .ppt-toolbarButton svg,
+.projectpage-widget-root .ppt-bulkButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+.projectpage-widget-root .ppt-toolbarButton:hover,
+.projectpage-widget-root .ppt-bulkButton:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.projectpage-widget-root .ppt-refreshButton {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--card);
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .ppt-refreshButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.projectpage-widget-root .ppt-spin {
+  animation: pptSpin 900ms linear infinite;
+}
+
+@keyframes pptSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.projectpage-widget-root .ppt-bulkToolbar {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin-bottom: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 0.7rem;
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.projectpage-widget-root .ppt-bulkSelection {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.projectpage-widget-root .ppt-bulkSelection svg {
+  width: 15px;
+  height: 15px;
+}
+
+.projectpage-widget-root .ppt-bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.projectpage-widget-root .ppt-bulkButtonDanger {
+  color: #b91c1c;
+}
+
+.projectpage-widget-root.dark .ppt-bulkButtonDanger {
+  color: #fca5a5;
+}
+
+.projectpage-widget-root .ppt-clearSelection {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .ppt-clearSelection:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.projectpage-widget-root .ppt-clearSelection svg {
+  width: 14px;
+  height: 14px;
+}
+
+.projectpage-widget-root .ppt-tableCard {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  position: relative;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: var(--ppShadowMd, 0 10px 26px rgba(15, 23, 42, 0.18));
+}
+
+.projectpage-widget-root .ppt-table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .ppt-headCell {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 42px;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  background: #e5e7eb;
+  color: var(--ppInk);
+  white-space: nowrap;
+}
+
+.projectpage-widget-root.dark .ppt-headCell {
+  background: #111827;
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.projectpage-widget-root .ppt-stickyHead {
+  z-index: 30;
+}
+
+.projectpage-widget-root .ppt-stickyLeft {
+  position: sticky;
+  left: 0;
+  z-index: 12;
+}
+
+.projectpage-widget-root .ppt-stickyCell {
+  z-index: 11;
+  background: var(--card) !important;
+}
+
+.projectpage-widget-root .ppt-idColumn {
+  z-index: 13;
+}
+
+.projectpage-widget-root .ppt-protocolColumn {
+  z-index: 13;
+  box-shadow: 7px 0 9px -9px rgba(15, 23, 42, 0.55);
+}
+
+.projectpage-widget-root .ppt-actionsColumn {
+  z-index: 13;
+  box-shadow: -7px 0 9px -9px rgba(15, 23, 42, 0.55);
+}
+
+.projectpage-widget-root .ppt-headCell.ppt-idColumn,
+.projectpage-widget-root .ppt-headCell.ppt-protocolColumn,
+.projectpage-widget-root .ppt-headCell.ppt-actionsColumn {
+  z-index: 35;
+}
+
+.projectpage-widget-root .ppt-selectCell {
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
+  background: inherit;
+}
+
+.projectpage-widget-root .ppt-checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
+.projectpage-widget-root .ppt-sortButton {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.38rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.projectpage-widget-root .ppt-sortButton:hover {
+  color: #2563eb;
+}
+
+.projectpage-widget-root.dark .ppt-sortButton:hover {
+  color: #60a5fa;
+}
+
+.projectpage-widget-root .ppt-sortIcon {
+  width: 13px;
+  height: 13px;
+  opacity: 0.3;
+}
+
+.projectpage-widget-root .ppt-sortIconActive {
+  opacity: 0.95;
+}
+
+.projectpage-widget-root .ppt-sortActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.projectpage-widget-root .ppt-sortPriority {
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(37, 99, 235, 0.13);
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.projectpage-widget-root .ppt-resizeHandle {
+  position: absolute;
+  top: 5px;
+  right: -3px;
+  bottom: 5px;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 50;
+}
+
+.projectpage-widget-root .ppt-resizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: 1px;
+  background: rgba(100, 116, 139, 0.22);
+}
+
+.projectpage-widget-root .ppt-resizeHandle:hover::after {
+  width: 2px;
+  background: #3b82f6;
+}
+
+.projectpage-widget-root .ppt-row {
+  background: var(--card);
+  transition: background 100ms ease;
+}
+
+.projectpage-widget-root .ppt-cell {
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  vertical-align: middle;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  overflow: hidden;
+}
+
+.projectpage-widget-root.dark .ppt-cell {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.projectpage-widget-root .ppt-row:first-of-type .ppt-cell {
+  border-top: 0;
+}
+
+.projectpage-widget-root .ppt-row:hover,
+.projectpage-widget-root .ppt-row:hover .ppt-cell,
+.projectpage-widget-root .ppt-row:hover .ppt-stickyCell {
+  background: rgba(59, 130, 246, 0.055) !important;
+}
+
+.projectpage-widget-root.dark .ppt-row:hover,
+.projectpage-widget-root.dark .ppt-row:hover .ppt-cell,
+.projectpage-widget-root.dark .ppt-row:hover .ppt-stickyCell {
+  background: rgba(59, 130, 246, 0.10) !important;
+}
+
+.projectpage-widget-root .ppt-rowSelected,
+.projectpage-widget-root .ppt-rowSelected .ppt-cell,
+.projectpage-widget-root .ppt-rowSelected .ppt-stickyCell {
+  background: rgba(59, 130, 246, 0.10) !important;
+}
+
+.projectpage-widget-root .ppt-rowHighlighted,
+.projectpage-widget-root .ppt-rowHighlighted .ppt-cell,
+.projectpage-widget-root .ppt-rowHighlighted .ppt-stickyCell {
+  background: rgba(252, 206, 98, 0.22) !important;
+}
+
+.projectpage-widget-root .ppt-idPill {
+  min-width: 42px;
+  height: 23px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(148, 163, 184, 0.16);
+  font-size: 0.71rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectpage-widget-root .ppt-protocolCell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.projectpage-widget-root .ppt-stateCell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.32rem;
+}
+
+.projectpage-widget-root .ppt-statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0.18rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  color: #1f2937;
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .ppt-statusRunning {
+  position: relative;
+}
+
+.projectpage-widget-root .ppt-statusRunning::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 9999px;
+  background: #92400e;
+  animation: pptStatusPulse 1.3s ease-in-out infinite;
+}
+
+@keyframes pptStatusPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.projectpage-widget-root .ppt-stepProgress {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(42px, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.projectpage-widget-root .ppt-stepTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.24);
+}
+
+.projectpage-widget-root .ppt-stepFill {
+  height: 100%;
+  border-radius: inherit;
+  background: #3b82f6;
+  transition: width 220ms ease;
+}
+
+.projectpage-widget-root .ppt-stepText {
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.64rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectpage-widget-root .ppt-tagsCell {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .ppt-tagChip {
+  max-width: 95px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.projectpage-widget-root .ppt-tagMore,
+.projectpage-widget-root .ppt-dependencyMore {
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .ppt-elapsed {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .ppt-ioCell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.projectpage-widget-root .ppt-countPill {
+  flex: 0 0 auto;
+  min-width: 25px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.09);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  color: #2563eb;
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.projectpage-widget-root.dark .ppt-countPill {
+  color: #93c5fd;
+}
+
+.projectpage-widget-root .ppt-ioName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.7rem;
+}
+
+.projectpage-widget-root .ppt-emptyValue {
+  opacity: 0.55;
+}
+
+.projectpage-widget-root .ppt-depsCell {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.projectpage-widget-root .ppt-dependencyButton {
+  flex: 0 0 auto;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.projectpage-widget-root.dark .ppt-dependencyButton {
+  color: #93c5fd;
+}
+
+.projectpage-widget-root .ppt-rowMenuButton {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .ppt-rowMenuButton:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.projectpage-widget-root .ppt-rowMenuButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.projectpage-widget-root .ppt-groupRow td {
+  position: relative;
+  z-index: 8;
+  padding: 0;
+  background: rgba(148, 163, 184, 0.12);
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.projectpage-widget-root .ppt-groupButton {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--ppInk);
+  text-align: left;
+}
+
+.projectpage-widget-root .ppt-groupCount {
+  min-width: 24px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.18);
+  font-size: 0.68rem;
+}
+
+.projectpage-widget-root .ppt-emptyTable {
+  height: 110px;
+  text-align: center;
+  color: var(--muted-foreground, #64748b);
+}
+
+.projectpage-widget-root .ppt-spacerCell {
+  padding: 0 !important;
+  border: 0 !important;
+  pointer-events: none;
+}
+
+.projectpage-widget-root[data-density="compact"] .ppt-cell {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.projectpage-widget-root[data-density="compact"] .ppt-stateCell {
+  gap: 0.2rem;
+}
+
+.projectpage-widget-root[data-density="compact"] .ppt-statusBadge {
+  min-height: 21px;
+  padding-top: 0.08rem;
+  padding-bottom: 0.08rem;
+}
+
+.projectpage-widget-root[data-density="compact"] .ppt-stepTrack {
+  height: 3px;
+}
+
+.projectpage-widget-root[data-density="compact"] .ppt-stepText {
+  font-size: 0.59rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projectpage-widget-root .ppt-spin,
+  .projectpage-widget-root .ppt-statusRunning::after {
+    animation: none;
+  }
+}
