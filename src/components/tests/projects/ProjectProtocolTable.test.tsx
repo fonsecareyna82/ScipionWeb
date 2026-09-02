@@ -172,8 +172,10 @@ describe(
                 ).toBeInTheDocument();
 
                 expect(
-                    screen.getByText(
-                        "7 / 10 steps",
+                    within(
+                        motionRow!,
+                    ).getByText(
+                        "7/10",
                     ),
                 ).toBeInTheDocument();
             },
@@ -202,8 +204,41 @@ describe(
         );
 
         it(
+            "hides outputs by default",
+            () => {
+                renderTable({
+                    projectId: 1,
+                });
+
+                expect(
+                    screen.queryByText(
+                        "outputMicrographs",
+                    ),
+                ).not.toBeInTheDocument();
+
+                expect(
+                    screen.queryByText(
+                        "outputMovies",
+                    ),
+                ).not.toBeInTheDocument();
+            },
+        );
+
+        it(
             "renders protocol outputs using node-like output pills",
             () => {
+
+                window.localStorage.setItem(
+                    "scipion-project-table:test-project",
+                    JSON.stringify({
+                        version: 4,
+
+                        visible: {
+                            outputs: true,
+                        },
+                    }),
+                );
+
                 renderTable({
                     projectId: 1,
                 });

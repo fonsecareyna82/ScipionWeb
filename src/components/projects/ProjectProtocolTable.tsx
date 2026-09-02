@@ -131,7 +131,7 @@ type TableGroupBy =
   | "tag";
 
 type TableSettings = {
-  version: 3;
+  version: 4;
 
   visible: Record<
     ColumnId,
@@ -323,7 +323,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     id: "outputs",
     label: "Outputs",
     sortable: true,
-    defaultVisible: true,
+    defaultVisible: false,
     defaultWidth: 480,
     minWidth: 260,
   },
@@ -370,7 +370,7 @@ function createDefaultSettings(): TableSettings {
   }
 
   return {
-    version: 2,
+    version: 4,
     visible,
     widths,
     sorts: [
@@ -413,7 +413,7 @@ function readSettings(
 
     if (
       !parsed ||
-      parsed.version !== 3
+      parsed.version !== 4
     ) {
       return defaults;
     }

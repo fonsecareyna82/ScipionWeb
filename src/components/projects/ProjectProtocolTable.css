@@ -505,7 +505,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: 400;
 }
 
 .projectpage-widget-root .ppt-stateCell {
@@ -541,7 +541,7 @@
   color: #1f2937;
 
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 400;
 
   white-space: nowrap;
 }
@@ -641,7 +641,7 @@
       0.72);
 
   font-size: 0.57rem;
-  font-weight: 650;
+  font-weight: 400;
 
   line-height: 1;
 
@@ -746,7 +746,7 @@
   white-space: nowrap;
   color: #000;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .projectpage-widget-root .ppt-outputViewButton {
