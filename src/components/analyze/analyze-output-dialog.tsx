@@ -143,6 +143,15 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
       null,
     );
 
+  const externalWindowActionRef =
+    useRef<
+      | "return"
+      | "close"
+      | null
+    >(
+      null,
+    );
+
   const [
     externalWindow,
     setExternalWindow,
@@ -290,6 +299,9 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
           return;
         }
 
+        externalWindowActionRef.current =
+          null;
+
         externalWindowRef.current =
           popup;
 
@@ -306,14 +318,29 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const handleExternalWindowClosed =
     useCallback(
       () => {
+        const action =
+          externalWindowActionRef.current;
+
+        externalWindowActionRef.current =
+          null;
+
         externalWindowRef.current =
           null;
 
         setExternalWindow(
           null,
         );
+
+        if (
+          action ===
+          null
+        ) {
+          onClose();
+        }
       },
-      [],
+      [
+        onClose,
+      ],
     );
 
 
@@ -322,6 +349,9 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
       () => {
         const popup =
           externalWindowRef.current;
+
+        externalWindowActionRef.current =
+          "return";
 
         externalWindowRef.current =
           null;
@@ -346,6 +376,9 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
       () => {
         const popup =
           externalWindowRef.current;
+
+        externalWindowActionRef.current =
+          "close";
 
         externalWindowRef.current =
           null;
