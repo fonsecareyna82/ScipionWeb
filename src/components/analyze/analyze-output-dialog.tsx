@@ -285,10 +285,10 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
               `ScipionWeb - ${outputName}`,
 
             width:
-              1280,
+              1400,
 
             height:
-              860,
+              920,
           });
 
         if (!popup) {
@@ -623,13 +623,13 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                 `Analyze result ${outputName}`
               }
               closeAriaLabel="Close analyze dialog"
-              initialWidth="70vw"
-              initialHeight="78vh"
+              initialWidth="80vw"
+              initialHeight="84vh"
               minWidth={
-                680
+                760
               }
               minHeight={
-                520
+                560
               }
               headerActions={
                 <button

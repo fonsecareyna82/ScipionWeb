@@ -325,6 +325,19 @@ describe("AnalyzeOutputDialog", () => {
             );
 
             expect(
+                dialog.style.width,
+            ).toBe(
+                "80vw",
+            );
+
+
+            expect(
+                dialog.style.height,
+            ).toBe(
+                "84vh",
+            );
+
+            expect(
                 screen.getByRole(
                     "button",
                     {

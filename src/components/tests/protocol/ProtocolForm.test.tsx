@@ -1074,6 +1074,29 @@ describe("ProtocolForm", () => {
                 );
 
 
+            const externalStatusPill =
+                externalDocument.getByTestId(
+                    "external-protocol-status-pill",
+                );
+
+
+            expect(
+                externalStatusPill
+                    .textContent,
+            ).toBe(
+                "saved",
+            );
+
+
+            expect(
+                (
+                    externalStatusPill as
+                    HTMLElement
+                ).style.backgroundColor,
+            ).not.toBe(
+                "",
+            );
+
             const externalOutputs =
                 externalDocument.getByTestId(
                     "outputs-panel",

@@ -72,6 +72,8 @@ type ExternalWindowPortalProps = {
 
     darkMode?: boolean;
 
+    headerContent?: ReactNode;
+
     headerActions?: ReactNode;
 
     returnAriaLabel?: string;
@@ -612,6 +614,7 @@ function ExternalWindowPortal({
     subtitle,
     badge,
     darkMode = false,
+    headerContent,
     headerActions,
     returnAriaLabel =
     "Return viewer to ScipionWeb",
@@ -1086,20 +1089,29 @@ function ExternalWindowPortal({
                     }
                 >
                     <div className="sew-headerText">
-                        <div className="sew-title">
-                            {title}
-                        </div>
-
-                        {subtitle
+                        {headerContent
                             ? (
-                                <div className="sew-subtitle">
-                                    {subtitle}
-                                </div>
+                                headerContent
                             )
-                            : null}
+                            : (
+                                <>
+                                    <div className="sew-title">
+                                        {title}
+                                    </div>
+
+                                    {subtitle
+                                        ? (
+                                            <div className="sew-subtitle">
+                                                {subtitle}
+                                            </div>
+                                        )
+                                        : null}
+                                </>
+                            )}
                     </div>
 
-                    {badge
+                    {!headerContent &&
+                        badge
                         ? (
                             <span className="sew-badge">
                                 {badge}

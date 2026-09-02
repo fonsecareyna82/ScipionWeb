@@ -4259,14 +4259,41 @@ export default function ProtocolForm({
                 ? `Protocol ${effectiveProtocolId} - ${protocolDisplayName}`
                 : `Protocol - ${protocolDisplayName}`
             }
-            subtitle="ScipionWeb protocol form"
-            badge={
-              protocolDetails.status ||
-              undefined
-            }
             darkMode={
               appTheme ===
               "dark"
+            }
+            headerContent={
+              <div
+                className={
+                  styles.formTitleWrapper
+                }
+              >
+                <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+                  {effectiveProtocolId}
+                </Box>
+
+                <span className="text-white">
+                  {protocolDetails.label}
+                </span>
+
+                <span
+                  data-testid="external-protocol-status-pill"
+                  className={
+                    styles.nodeStatusPill
+                  }
+                  style={{
+                    backgroundColor:
+                      protocolDetails.color,
+
+                    color:
+                      "black",
+                  }}
+                >
+                  {protocolDetails.status ||
+                    "Unknown"}
+                </span>
+              </div>
             }
             headerActions={
               hasFormHelp
