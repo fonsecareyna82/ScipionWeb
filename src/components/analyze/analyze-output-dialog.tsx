@@ -206,9 +206,9 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
               appTheme,
           },
 
-          components:
-            externalPortalContainer
-              ? {
+          ...(externalPortalContainer
+            ? {
+              components: {
                 MuiDialog: {
                   defaultProps: {
                     container:
@@ -236,8 +236,9 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                       externalPortalContainer,
                   },
                 },
-              }
-              : undefined,
+              },
+            }
+            : {}),
         }),
       [
         appTheme,

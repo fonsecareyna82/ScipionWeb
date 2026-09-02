@@ -209,7 +209,7 @@ describe(
                 );
 
 
-                expect(
+                const externalStateButton =
                     within(
                         popupWindow.document.body,
                     ).getByRole(
@@ -218,8 +218,25 @@ describe(
                             name:
                                 "State 1",
                         },
-                    ),
-                ).toBeInTheDocument();
+                    );
+
+
+                expect(
+                    externalStateButton
+                        .ownerDocument,
+                ).toBe(
+                    popupWindow.document,
+                );
+
+
+                expect(
+                    popupWindow.document.body
+                        .contains(
+                            externalStateButton,
+                        ),
+                ).toBe(
+                    true,
+                );
 
 
                 rerender(

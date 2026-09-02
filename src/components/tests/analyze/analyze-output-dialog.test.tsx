@@ -432,18 +432,34 @@ describe("AnalyzeOutputDialog", () => {
                 1,
             );
 
-
             const externalDocument =
                 within(
                     popup.document.body,
                 );
 
 
-            expect(
+            const externalViewer =
                 externalDocument.getByText(
                     "Mock MetadataViewer",
-                ),
-            ).toBeInTheDocument();
+                );
+
+
+            expect(
+                externalViewer
+                    .ownerDocument,
+            ).toBe(
+                popup.document,
+            );
+
+
+            expect(
+                popup.document.body
+                    .contains(
+                        externalViewer,
+                    ),
+            ).toBe(
+                true,
+            );
 
 
             expect(
