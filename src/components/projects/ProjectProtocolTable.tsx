@@ -3743,10 +3743,11 @@ const ProjectProtocolTable =
                       >
                         <button
                           type="button"
-                          className="ppt-toolbarButton"
+                          className="ppt-selectionActionsButton"
+                          aria-label="Selected protocol actions"
+                          title="Selected protocol actions"
                         >
-                          <CheckSquare2 />
-                          Actions
+                          <MoreHorizontal />
                         </button>
                       </DropdownMenuTrigger>
 
@@ -3899,6 +3900,7 @@ const ProjectProtocolTable =
                   <button
                     type="button"
                     className="ppt-toolbarButton"
+                    title="Choose visible columns"
                   >
                     <Columns3 />
                     Columns
@@ -3973,6 +3975,7 @@ const ProjectProtocolTable =
                   <button
                     type="button"
                     className="ppt-toolbarButton"
+                    title="Change table density"
                   >
                     <Rows3 />
                     Density
@@ -4022,6 +4025,7 @@ const ProjectProtocolTable =
                   <button
                     type="button"
                     className="ppt-toolbarButton"
+                    title="Group protocols"
                   >
                     <Layers3 />
                     Group

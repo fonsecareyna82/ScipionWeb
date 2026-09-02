@@ -86,16 +86,154 @@
   font-size: 0.75rem;
 }
 
-.projectpage-widget-root .ppt-refreshButton {
-  width: 30px;
+.projectpage-widget-root .ppt-toolbarButton {
+  -webkit-appearance: none;
+  appearance: none;
+
   height: 30px;
+  padding: 0 0.48rem;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.3rem;
+
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.55rem;
+
+  background: var(--card);
+
+  color: var(--muted-foreground, #64748b);
+
+  font: inherit;
+  font-size: 0.69rem;
+  font-weight: 500;
+  line-height: 1;
+
+  cursor: pointer;
+
+  transition:
+    color 130ms ease,
+    background 130ms ease,
+    border-color 130ms ease;
+}
+
+.projectpage-widget-root .ppt-toolbarButton svg {
+  width: 14px;
+  height: 14px;
+
+  flex: 0 0 auto;
+
+  color: currentColor;
+  stroke: currentColor;
+}
+
+.projectpage-widget-root .ppt-toolbarButton:hover {
+  color: var(--ppInk);
+
+  border-color:
+    rgba(59,
+      130,
+      246,
+      0.35);
+
+  background:
+    rgba(148,
+      163,
+      184,
+      0.08);
+}
+
+.projectpage-widget-root .ppt-selectionActionsButton {
+  -webkit-appearance: none;
+  appearance: none;
+
+  width: 30px;
+  height: 30px;
+  padding: 0;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+
   border-radius: 9999px;
   border: 1px solid var(--color-border, #e5e7eb);
+
   background: var(--card);
+
+  color: var(--muted-foreground, #64748b);
+
+  cursor: pointer;
+
+  transition:
+    color 130ms ease,
+    background 130ms ease,
+    border-color 130ms ease;
+}
+
+.projectpage-widget-root .ppt-selectionActionsButton svg {
+  width: 15px;
+  height: 15px;
+
+  color: currentColor;
+  stroke: currentColor;
+}
+
+.projectpage-widget-root .ppt-selectionActionsButton:hover {
   color: var(--ppInk);
+
+  border-color:
+    rgba(59,
+      130,
+      246,
+      0.35);
+
+  background:
+    rgba(148,
+      163,
+      184,
+      0.08);
+}
+
+.projectpage-widget-root .ppt-refreshButton {
+  width: 30px;
+  height: 30px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 9999px;
+  border: 1px solid var(--color-border, #e5e7eb);
+
+  background: var(--card);
+
+  color: var(--muted-foreground, #64748b);
+
+  cursor: pointer;
+
+  transition:
+    color 130ms ease,
+    background 130ms ease,
+    border-color 130ms ease;
+}
+
+.projectpage-widget-root .ppt-refreshButton:hover {
+  color: var(--ppInk);
+
+  border-color:
+    rgba(59,
+      130,
+      246,
+      0.35);
+
+  background:
+    rgba(148,
+      163,
+      184,
+      0.08);
 }
 
 .projectpage-widget-root .ppt-refreshButton svg {
