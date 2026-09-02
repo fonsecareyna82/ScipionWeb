@@ -1,9 +1,25 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { memo, useMemo } from "react";
-import { Box, Chip, Dialog, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
-import { createTheme, ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
-import { useTheme as useScipionTheme } from "@/context/ThemeContext";
-import { CloseIcon } from "@/icons";
+import {
+  memo,
+  useMemo,
+} from "react";
+
+import {
+  Box,
+  Chip,
+  Typography,
+} from "@mui/material";
+
+import {
+  createTheme,
+  ThemeProvider as MuiThemeProvider,
+} from "@mui/material/styles";
+
+import {
+  useTheme as useScipionTheme,
+} from "@/context/ThemeContext";
+
+import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
@@ -71,41 +87,6 @@ function isSetOfMetadataKind(k?: string) {
     !isSetOfFSCsKind(k)
   );
 }
-
-const dialogPaperSx = {
-  borderRadius: 2,
-  overflow: "hidden",
-  border: "1px solid",
-  borderColor: "divider",
-  bgcolor: "background.paper",
-  boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
-  display: "flex",
-  flexDirection: "column",
-  width: "93vw",
-  maxWidth: "93vw",
-  height: "97vh",
-  maxHeight: "98vh",
-  minHeight: 650,
-};
-const headerSx = {
-  px: 2,
-  py: 1.25,
-  display: "flex",
-  alignItems: "center",
-  gap: 1.5,
-  background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
-  color: "#e5e7eb",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
-  flexShrink: 0,
-};
-
-const closeBtnSx = {
-  ml: "auto",
-  color: "#e5e7eb",
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.06)",
-  "&:hover": { background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.28)" },
-};
 
 function toStringSafe(v: unknown): string {
   if (v == null) return "";
@@ -205,43 +186,184 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     );
   }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose]);
 
-  const handleDialogClose = (_event: object, reason: "backdropClick" | "escapeKeyDown") => {
-    if (reason === "backdropClick") return;
-    onClose();
-  };
 
   return (
-    <MuiThemeProvider theme={muiTheme}>
-      <Dialog
-        open={open}
-        onClose={handleDialogClose}
-        maxWidth={false}
-        fullWidth
-        PaperProps={{ sx: dialogPaperSx }}
-        onDoubleClickCapture={(event) => {
-          event.stopPropagation();
-        }}
-      >
-        <DialogTitle component="div" sx={headerSx}>
-          <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 0.25, flex: 1 }}>
-            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>
-              <Typography variant="subtitle1" sx={{ color: "#f3f4f6", fontWeight: 600, letterSpacing: 0.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                Analyze Result - {outputName}
+    <MuiThemeProvider
+      theme={
+        muiTheme
+      }
+    >
+      <FloatingWindow
+        open={
+          open
+        }
+        onClose={
+          onClose
+        }
+        ariaLabel={
+          `Analyze result ${outputName}`
+        }
+        closeAriaLabel="Close analyze dialog"
+        initialWidth="70vw"
+        initialHeight="78vh"
+        minWidth={
+          680
+        }
+        minHeight={
+          520
+        }
+        title={
+          <Box
+            sx={{
+              minWidth: 0,
+
+              display:
+                "flex",
+
+              flexDirection:
+                "column",
+
+              gap:
+                0.25,
+            }}
+          >
+            <Box
+              sx={{
+                minWidth: 0,
+
+                display:
+                  "flex",
+
+                alignItems:
+                  "baseline",
+
+                gap:
+                  1,
+              }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  minWidth: 0,
+
+                  overflow:
+                    "hidden",
+
+                  whiteSpace:
+                    "nowrap",
+
+                  textOverflow:
+                    "ellipsis",
+
+                  color:
+                    "#f3f4f6",
+
+                  fontWeight:
+                    600,
+
+                  letterSpacing:
+                    0.2,
+                }}
+              >
+                Analyze Result -{" "}
+                {outputName}
               </Typography>
-              {pointerClass ? <Chip size="small" label={pointerClass} sx={{ height: 22, color: "#e5e7eb", bgcolor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", "& .MuiChip-label": { px: 1, py: 0.25 } }} /> : null}
+
+              {pointerClass
+                ? (
+                  <Chip
+                    size="small"
+                    label={
+                      pointerClass
+                    }
+                    sx={{
+                      height:
+                        22,
+
+                      flex:
+                        "0 0 auto",
+
+                      color:
+                        "#e5e7eb",
+
+                      bgcolor:
+                        "rgba(255,255,255,0.08)",
+
+                      border:
+                        "1px solid rgba(255,255,255,0.18)",
+
+                      "& .MuiChip-label":
+                      {
+                        px: 1,
+                        py: 0.25,
+                      },
+                    }}
+                  />
+                )
+                : null}
             </Box>
-            <Typography variant="caption" sx={{ color: "rgba(229,231,235,0.78)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-              Protocol: {String(protocolLabel)}
+
+            <Typography
+              variant="caption"
+              sx={{
+                overflow:
+                  "hidden",
+
+                whiteSpace:
+                  "nowrap",
+
+                textOverflow:
+                  "ellipsis",
+
+                color:
+                  "rgba(229,231,235,0.78)",
+              }}
+            >
+              Protocol:{" "}
+              {String(
+                protocolLabel,
+              )}
             </Typography>
           </Box>
-          <IconButton onClick={onClose} aria-label="Close analyze dialog" size="small" sx={closeBtnSx}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers={false} sx={{ p: 0, display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-          <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{body}</Box>
-        </DialogContent>
-      </Dialog>
+        }
+      >
+        <Box
+          sx={{
+            minWidth: 0,
+            minHeight: 0,
+
+            flex:
+              1,
+
+            display:
+              "flex",
+
+            overflow:
+              "hidden",
+
+            bgcolor:
+              "background.paper",
+          }}
+        >
+          <Box
+            sx={{
+              minWidth:
+                0,
+
+              minHeight:
+                0,
+
+              flex:
+                1,
+
+              overflow:
+                "hidden",
+            }}
+          >
+            {body}
+          </Box>
+        </Box>
+      </FloatingWindow>
     </MuiThemeProvider>
   );
 }

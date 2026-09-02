@@ -30,11 +30,11 @@ vi.mock("@/ProjectServiceContext", () => ({
 }));
 
 vi.mock("@/context/ThemeContext", () => ({
-  useTheme: () => ({
-    theme: "light",
-    toggleTheme: vi.fn(),
-    setThemeMode: vi.fn(),
-  }),
+    useTheme: () => ({
+        theme: "light",
+        toggleTheme: vi.fn(),
+        setThemeMode: vi.fn(),
+    }),
 }));
 
 vi.mock("../../analyze/volume-viewer", () => ({
@@ -293,6 +293,43 @@ describe("AnalyzeOutputDialog", () => {
         expect(screen.getAllByText("CustomUnsupportedThing").length).toBeGreaterThan(0);
         expect(screen.getByText("CustomParam")).toBeInTheDocument();
     });
+
+    it(
+        "renders the analyze viewer as a non-modal floating window",
+        () => {
+            render(
+                <AnalyzeOutputDialog
+                    {...makeProps()}
+                />,
+            );
+
+            const dialog =
+                screen.getByRole(
+                    "dialog",
+                    {
+                        name:
+                            "Analyze result outputA",
+                    },
+                );
+
+            expect(
+                dialog,
+            ).toHaveAttribute(
+                "aria-modal",
+                "false",
+            );
+
+            expect(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Maximize window",
+                    },
+                ),
+            ).toBeInTheDocument();
+        },
+    );
 
     it("calls onClose when the close button is clicked", () => {
         const onClose = vi.fn();
