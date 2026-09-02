@@ -98,21 +98,40 @@ function ensureExternalWindowRoot(
             EXTERNAL_WINDOW_ROOT_ID,
         ) as HTMLElement | null;
 
-    if (root) {
-        return root;
+
+    if (!root) {
+        root =
+            targetDocument.createElement(
+                "div",
+            );
+
+        root.id =
+            EXTERNAL_WINDOW_ROOT_ID;
+
+        targetDocument.body.appendChild(
+            root,
+        );
     }
 
-    root =
-        targetDocument.createElement(
-            "div",
-        );
 
-    root.id =
-        EXTERNAL_WINDOW_ROOT_ID;
+    root.style.width =
+        "100%";
 
-    targetDocument.body.appendChild(
-        root,
-    );
+    root.style.height =
+        "100%";
+
+    root.style.minWidth =
+        "0";
+
+    root.style.minHeight =
+        "0";
+
+    root.style.display =
+        "flex";
+
+    root.style.overflow =
+        "hidden";
+
 
     return root;
 }

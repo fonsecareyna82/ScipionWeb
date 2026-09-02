@@ -174,6 +174,42 @@ describe(
                     );
 
 
+                const externalRoot =
+                    popupWindow.document
+                        .getElementById(
+                            "scipion-external-window-root",
+                        );
+
+
+                expect(
+                    externalRoot,
+                ).not.toBeNull();
+
+
+                expect(
+                    externalRoot?.style
+                        .width,
+                ).toBe(
+                    "100%",
+                );
+
+
+                expect(
+                    externalRoot?.style
+                        .height,
+                ).toBe(
+                    "100%",
+                );
+
+
+                expect(
+                    externalRoot?.style
+                        .display,
+                ).toBe(
+                    "flex",
+                );
+
+
                 fireEvent.click(
                     screen.getByRole(
                         "button",
