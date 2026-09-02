@@ -14,7 +14,10 @@ import React, {
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
-import { isScalarOutput } from "@/utils/protocol_outputs";
+import {
+  isScalarOutput,
+  mergeProtocolOutputsPreservingOrder,
+} from "@/utils/protocol_outputs";
 import {
   PROJECT_REFRESH_REQUESTED_EVENT,
   type ProjectRefreshRequestedDetail,
@@ -1877,7 +1880,13 @@ export default function ProjectPage() {
             data: {
               ...node.data,
               ...(outputs !== undefined
-                ? { outputs }
+                ? {
+                  outputs:
+                    mergeProtocolOutputsPreservingOrder(
+                      node.data?.outputs,
+                      outputs,
+                    ),
+                }
                 : {}),
               ...(status !== undefined
                 ? { status }
@@ -1899,7 +1908,13 @@ export default function ProjectPage() {
           return {
             ...row,
             ...(outputs !== undefined
-              ? { outputs }
+              ? {
+                outputs:
+                  mergeProtocolOutputsPreservingOrder(
+                    row?.outputs,
+                    outputs,
+                  ),
+              }
               : {}),
             ...(status !== undefined
               ? { status }
