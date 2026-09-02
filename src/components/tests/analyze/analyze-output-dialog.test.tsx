@@ -1,5 +1,10 @@
 import type { ComponentProps } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+    fireEvent,
+    render,
+    screen,
+    within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -328,6 +333,169 @@ describe("AnalyzeOutputDialog", () => {
                     },
                 ),
             ).toBeInTheDocument();
+        },
+    );
+    it(
+        "moves the viewer to an external window and returns it to ScipionWeb",
+        () => {
+            const iframe =
+                document.createElement(
+                    "iframe",
+                );
+
+            document.body.appendChild(
+                iframe,
+            );
+
+            const popup =
+                iframe.contentWindow;
+
+            if (!popup) {
+                throw new Error(
+                    "Unable to create test popup window",
+                );
+            }
+
+            const closeMock =
+                vi.fn();
+
+            const focusMock =
+                vi.fn();
+
+            Object.defineProperty(
+                popup,
+                "close",
+                {
+                    configurable:
+                        true,
+
+                    value:
+                        closeMock,
+                },
+            );
+
+            Object.defineProperty(
+                popup,
+                "focus",
+                {
+                    configurable:
+                        true,
+
+                    value:
+                        focusMock,
+                },
+            );
+
+            const openSpy =
+                vi.spyOn(
+                    window,
+                    "open",
+                )
+                    .mockReturnValue(
+                        popup,
+                    );
+
+
+            render(
+                <AnalyzeOutputDialog
+                    {...makeProps({
+                        outputRaw: {
+                            _class:
+                                "SetOfParticles",
+                        },
+                    })}
+                />,
+            );
+
+
+            expect(
+                screen.getByText(
+                    "Mock MetadataViewer",
+                ),
+            ).toBeInTheDocument();
+
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Open viewer in external window",
+                    },
+                ),
+            );
+
+
+            expect(
+                openSpy,
+            ).toHaveBeenCalledTimes(
+                1,
+            );
+
+
+            const externalDocument =
+                within(
+                    popup.document.body,
+                );
+
+
+            expect(
+                externalDocument.getByText(
+                    "Mock MetadataViewer",
+                ),
+            ).toBeInTheDocument();
+
+
+            expect(
+                screen.queryByRole(
+                    "dialog",
+                    {
+                        name:
+                            "Analyze result outputA",
+                    },
+                ),
+            ).not.toBeInTheDocument();
+
+
+            fireEvent.click(
+                externalDocument.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Return viewer to ScipionWeb",
+                    },
+                ),
+            );
+
+
+            expect(
+                screen.getByRole(
+                    "dialog",
+                    {
+                        name:
+                            "Analyze result outputA",
+                    },
+                ),
+            ).toBeInTheDocument();
+
+
+            expect(
+                screen.getByText(
+                    "Mock MetadataViewer",
+                ),
+            ).toBeInTheDocument();
+
+
+            expect(
+                closeMock,
+            ).toHaveBeenCalledTimes(
+                1,
+            );
+
+
+            openSpy.mockRestore();
+
+            iframe.remove();
         },
     );
 

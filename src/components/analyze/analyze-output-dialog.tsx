@@ -1,7 +1,11 @@
 // src/components/analyze/analyze-output-dialog.tsx
 import {
   memo,
+  useCallback,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import {
@@ -16,10 +20,24 @@ import {
 } from "@mui/material/styles";
 
 import {
+  ExternalLink,
+} from "lucide-react";
+
+import toast from "react-hot-toast";
+
+
+import {
   useTheme as useScipionTheme,
 } from "@/context/ThemeContext";
 
 import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
+
+import ExternalWindowPortal, {
+  DetachableContentMount,
+  PersistentContentPortal,
+  openExternalWindow,
+} from "@/components/ui/external-window/ExternalWindowPortal";
+
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
@@ -117,10 +135,115 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
 function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw }: AnalyzeOutputDialogProps) {
   const { theme: appTheme } = useScipionTheme();
 
-  const muiTheme = useMemo(
-    () => createTheme({ palette: { mode: appTheme } }),
-    [appTheme],
-  );
+  const externalWindowRef =
+    useRef<
+      Window |
+      null
+    >(
+      null,
+    );
+
+  const [
+    externalWindow,
+    setExternalWindow,
+  ] =
+    useState<
+      Window |
+      null
+    >(
+      null,
+    );
+
+
+  const viewerContentHost =
+    useMemo(
+      () => {
+        if (
+          typeof document ===
+          "undefined"
+        ) {
+          return null;
+        }
+
+        const host =
+          document.createElement(
+            "div",
+          );
+
+        host.setAttribute(
+          "data-scipion-viewer-host",
+          "true",
+        );
+
+        host.style.cssText = `
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        flex: 1 1 auto;
+        display: flex;
+        overflow: hidden;
+      `;
+
+        return host;
+      },
+      [],
+    );
+
+  const externalPortalContainer =
+    externalWindow &&
+      !externalWindow.closed
+      ? externalWindow.document.body
+      : undefined;
+
+
+  const muiTheme =
+    useMemo(
+      () =>
+        createTheme({
+          palette: {
+            mode:
+              appTheme,
+          },
+
+          components:
+            externalPortalContainer
+              ? {
+                MuiDialog: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiPopover: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiMenu: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+
+                MuiPopper: {
+                  defaultProps: {
+                    container:
+                      externalPortalContainer,
+                  },
+                },
+              }
+              : undefined,
+        }),
+      [
+        appTheme,
+        externalPortalContainer,
+      ],
+    );
 
   const pointerClass = useMemo(() => {
     const r = unwrapOutputRaw(outputRaw);
@@ -130,6 +253,169 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const outputRef = useMemo(() => buildOutputRef(outputRaw), [outputRaw]);
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+
+  const handleOpenExternal =
+    useCallback(
+      () => {
+        const existing =
+          externalWindowRef.current;
+
+        if (
+          existing &&
+          !existing.closed
+        ) {
+          existing.focus();
+
+          return;
+        }
+
+        const popup =
+          openExternalWindow({
+            title:
+              `ScipionWeb - ${outputName}`,
+
+            width:
+              1280,
+
+            height:
+              860,
+          });
+
+        if (!popup) {
+          toast.error(
+            "The browser blocked the external viewer window. Allow pop-ups for ScipionWeb and try again.",
+          );
+
+          return;
+        }
+
+        externalWindowRef.current =
+          popup;
+
+        setExternalWindow(
+          popup,
+        );
+      },
+      [
+        outputName,
+      ],
+    );
+
+
+  const handleExternalWindowClosed =
+    useCallback(
+      () => {
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+      },
+      [],
+    );
+
+
+  const handleReturnToFloating =
+    useCallback(
+      () => {
+        const popup =
+          externalWindowRef.current;
+
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+      },
+      [],
+    );
+
+
+  const handleClose =
+    useCallback(
+      () => {
+        const popup =
+          externalWindowRef.current;
+
+        externalWindowRef.current =
+          null;
+
+        setExternalWindow(
+          null,
+        );
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+
+        onClose();
+      },
+      [
+        onClose,
+      ],
+    );
+
+
+  useEffect(
+    () => {
+      if (open) {
+        return;
+      }
+
+      const popup =
+        externalWindowRef.current;
+
+      externalWindowRef.current =
+        null;
+
+      if (
+        popup &&
+        !popup.closed
+      ) {
+        popup.close();
+      }
+
+      setExternalWindow(
+        null,
+      );
+    },
+    [
+      open,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      return () => {
+        const popup =
+          externalWindowRef.current;
+
+        externalWindowRef.current =
+          null;
+
+        if (
+          popup &&
+          !popup.closed
+        ) {
+          popup.close();
+        }
+      };
+    },
+    [],
+  );
 
   const body = useMemo(() => {
 
@@ -193,177 +479,270 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         muiTheme
       }
     >
-      <FloatingWindow
-        open={
-          open
-        }
-        onClose={
-          onClose
-        }
-        ariaLabel={
-          `Analyze result ${outputName}`
-        }
-        closeAriaLabel="Close analyze dialog"
-        initialWidth="70vw"
-        initialHeight="78vh"
-        minWidth={
-          680
-        }
-        minHeight={
-          520
-        }
-        title={
-          <Box
-            sx={{
-              minWidth: 0,
-
-              display:
-                "flex",
-
-              flexDirection:
-                "column",
-
-              gap:
-                0.25,
-            }}
-          >
-            <Box
-              sx={{
-                minWidth: 0,
-
-                display:
-                  "flex",
-
-                alignItems:
-                  "baseline",
-
-                gap:
-                  1,
-              }}
+      <>
+        {open &&
+          viewerContentHost
+          ? (
+            <PersistentContentPortal
+              host={
+                viewerContentHost
+              }
             >
-              <Typography
-                variant="subtitle1"
+              <Box
                 sx={{
-                  minWidth: 0,
+                  minWidth:
+                    0,
+
+                  minHeight:
+                    0,
+
+                  width:
+                    "100%",
+
+                  height:
+                    "100%",
+
+                  flex:
+                    1,
+
+                  display:
+                    "flex",
 
                   overflow:
                     "hidden",
 
-                  whiteSpace:
-                    "nowrap",
-
-                  textOverflow:
-                    "ellipsis",
-
-                  color:
-                    "#f3f4f6",
-
-                  fontWeight:
-                    600,
-
-                  letterSpacing:
-                    0.2,
+                  bgcolor:
+                    "background.paper",
                 }}
               >
-                Analyze Result -{" "}
-                {outputName}
-              </Typography>
+                <Box
+                  sx={{
+                    minWidth:
+                      0,
 
-              {pointerClass
-                ? (
-                  <Chip
-                    size="small"
-                    label={
-                      pointerClass
-                    }
+                    minHeight:
+                      0,
+
+                    flex:
+                      1,
+
+                    overflow:
+                      "hidden",
+                  }}
+                >
+                  {body}
+                </Box>
+              </Box>
+            </PersistentContentPortal>
+          )
+          : null}
+
+
+        {open &&
+          externalWindow &&
+          !externalWindow.closed &&
+          viewerContentHost
+          ? (
+            <ExternalWindowPortal
+              popupWindow={
+                externalWindow
+              }
+              contentHost={
+                viewerContentHost
+              }
+              title={
+                `Analyze Result - ${outputName}`
+              }
+              subtitle={
+                `Protocol: ${String(
+                  protocolLabel,
+                )}`
+              }
+              badge={
+                pointerClass ||
+                undefined
+              }
+              darkMode={
+                appTheme ===
+                "dark"
+              }
+              onReturn={
+                handleReturnToFloating
+              }
+              onClose={
+                handleClose
+              }
+              onWindowClosed={
+                handleExternalWindowClosed
+              }
+            />
+          )
+          : (
+            <FloatingWindow
+              open={
+                open
+              }
+              onClose={
+                handleClose
+              }
+              ariaLabel={
+                `Analyze result ${outputName}`
+              }
+              closeAriaLabel="Close analyze dialog"
+              initialWidth="70vw"
+              initialHeight="78vh"
+              minWidth={
+                680
+              }
+              minHeight={
+                520
+              }
+              headerActions={
+                <button
+                  type="button"
+                  className="sfw-controlButton"
+                  aria-label="Open viewer in external window"
+                  title="Open in external window"
+                  onClick={
+                    handleOpenExternal
+                  }
+                >
+                  <ExternalLink />
+                </button>
+              }
+              title={
+                <Box
+                  sx={{
+                    minWidth:
+                      0,
+
+                    display:
+                      "flex",
+
+                    flexDirection:
+                      "column",
+
+                    gap:
+                      0.25,
+                  }}
+                >
+                  <Box
                     sx={{
-                      height:
-                        22,
+                      minWidth:
+                        0,
 
-                      flex:
-                        "0 0 auto",
+                      display:
+                        "flex",
+
+                      alignItems:
+                        "baseline",
+
+                      gap:
+                        1,
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        minWidth:
+                          0,
+
+                        overflow:
+                          "hidden",
+
+                        whiteSpace:
+                          "nowrap",
+
+                        textOverflow:
+                          "ellipsis",
+
+                        color:
+                          "#f3f4f6",
+
+                        fontWeight:
+                          600,
+
+                        letterSpacing:
+                          0.2,
+                      }}
+                    >
+                      Analyze Result -{" "}
+                      {outputName}
+                    </Typography>
+
+                    {pointerClass
+                      ? (
+                        <Chip
+                          size="small"
+                          label={
+                            pointerClass
+                          }
+                          sx={{
+                            height:
+                              22,
+
+                            flex:
+                              "0 0 auto",
+
+                            color:
+                              "#e5e7eb",
+
+                            bgcolor:
+                              "rgba(255,255,255,0.08)",
+
+                            border:
+                              "1px solid rgba(255,255,255,0.18)",
+
+                            "& .MuiChip-label":
+                            {
+                              px:
+                                1,
+
+                              py:
+                                0.25,
+                            },
+                          }}
+                        />
+                      )
+                      : null}
+                  </Box>
+
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      overflow:
+                        "hidden",
+
+                      whiteSpace:
+                        "nowrap",
+
+                      textOverflow:
+                        "ellipsis",
 
                       color:
-                        "#e5e7eb",
-
-                      bgcolor:
-                        "rgba(255,255,255,0.08)",
-
-                      border:
-                        "1px solid rgba(255,255,255,0.18)",
-
-                      "& .MuiChip-label":
-                      {
-                        px: 1,
-                        py: 0.25,
-                      },
+                        "rgba(229,231,235,0.78)",
                     }}
+                  >
+                    Protocol:{" "}
+                    {String(
+                      protocolLabel,
+                    )}
+                  </Typography>
+                </Box>
+              }
+            >
+              {viewerContentHost
+                ? (
+                  <DetachableContentMount
+                    host={
+                      viewerContentHost
+                    }
                   />
                 )
                 : null}
-            </Box>
-
-            <Typography
-              variant="caption"
-              sx={{
-                overflow:
-                  "hidden",
-
-                whiteSpace:
-                  "nowrap",
-
-                textOverflow:
-                  "ellipsis",
-
-                color:
-                  "rgba(229,231,235,0.78)",
-              }}
-            >
-              Protocol:{" "}
-              {String(
-                protocolLabel,
-              )}
-            </Typography>
-          </Box>
-        }
-      >
-        <Box
-          sx={{
-            minWidth: 0,
-            minHeight: 0,
-
-            flex:
-              1,
-
-            display:
-              "flex",
-
-            overflow:
-              "hidden",
-
-            bgcolor:
-              "background.paper",
-          }}
-        >
-          <Box
-            sx={{
-              minWidth:
-                0,
-
-              minHeight:
-                0,
-
-              flex:
-                1,
-
-              overflow:
-                "hidden",
-            }}
-          >
-            {body}
-          </Box>
-        </Box>
-      </FloatingWindow>
+            </FloatingWindow>
+          )}
+      </>
     </MuiThemeProvider>
   );
 }

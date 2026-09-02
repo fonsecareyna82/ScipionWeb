@@ -1,0 +1,298 @@
+.dch-contentMount {
+    min-width: 0;
+    min-height: 0;
+
+    width: 100%;
+    height: 100%;
+
+    flex: 1 1 auto;
+
+    display: flex;
+
+    overflow: hidden;
+}
+
+
+.sew-root {
+    width: 100%;
+    height: 100%;
+
+    min-width: 0;
+    min-height: 0;
+}
+
+
+.sew-window {
+    width: 100%;
+    height: 100%;
+
+    min-width: 0;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    overflow: hidden;
+
+    background: #ffffff;
+
+    color: #111827;
+}
+
+
+.sew-root.dark .sew-window {
+    background: #0f172a;
+
+    color: #e5e7eb;
+}
+
+
+.sew-header {
+    min-height: 56px;
+
+    flex: 0 0 auto;
+
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+
+    padding:
+        8px
+        10px
+        8px
+        16px;
+
+    box-sizing: border-box;
+
+    background:
+        linear-gradient(
+            180deg,
+            #0b1220 0%,
+            #0a0f1e 100%
+        );
+
+    border-bottom:
+        1px solid
+        rgba(
+            255,
+            255,
+            255,
+            0.08
+        );
+
+    color: #e5e7eb;
+
+    user-select: none;
+}
+
+
+.sew-headerText {
+    min-width: 0;
+
+    flex: 1 1 auto;
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 2px;
+}
+
+
+.sew-title {
+    min-width: 0;
+
+    overflow: hidden;
+
+    white-space: nowrap;
+
+    text-overflow: ellipsis;
+
+    color: #f3f4f6;
+
+    font-size: 0.98rem;
+
+    font-weight: 600;
+
+    letter-spacing: 0.2px;
+}
+
+
+.sew-subtitle {
+    min-width: 0;
+
+    overflow: hidden;
+
+    white-space: nowrap;
+
+    text-overflow: ellipsis;
+
+    color:
+        rgba(
+            229,
+            231,
+            235,
+            0.76
+        );
+
+    font-size: 0.73rem;
+}
+
+
+.sew-badge {
+    flex: 0 0 auto;
+
+    max-width: 260px;
+
+    overflow: hidden;
+
+    white-space: nowrap;
+
+    text-overflow: ellipsis;
+
+    padding:
+        3px
+        8px;
+
+    border:
+        1px solid
+        rgba(
+            255,
+            255,
+            255,
+            0.18
+        );
+
+    border-radius: 9999px;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.08
+        );
+
+    color: #e5e7eb;
+
+    font-size: 0.72rem;
+}
+
+
+.sew-controls {
+    flex: 0 0 auto;
+
+    display: inline-flex;
+    align-items: center;
+
+    gap: 6px;
+}
+
+
+.sew-controlButton {
+    appearance: none;
+
+    width: 30px;
+    height: 30px;
+
+    padding: 0;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    border:
+        1px solid
+        rgba(
+            255,
+            255,
+            255,
+            0.18
+        );
+
+    border-radius: 8px;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.06
+        );
+
+    color: #e5e7eb;
+
+    cursor: pointer;
+
+    transition:
+        background-color 130ms ease,
+        border-color 130ms ease,
+        color 130ms ease;
+}
+
+
+.sew-controlButton:hover {
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.13
+        );
+
+    border-color:
+        rgba(
+            255,
+            255,
+            255,
+            0.30
+        );
+}
+
+
+.sew-controlButton svg {
+    width: 15px;
+    height: 15px;
+
+    stroke: currentColor;
+}
+
+
+.sew-closeButton:hover {
+    background:
+        rgba(
+            239,
+            68,
+            68,
+            0.22
+        );
+
+    border-color:
+        rgba(
+            248,
+            113,
+            113,
+            0.40
+        );
+
+    color: #fecaca;
+}
+
+
+.sew-content {
+    min-width: 0;
+    min-height: 0;
+
+    flex: 1 1 auto;
+
+    display: flex;
+
+    overflow: hidden;
+
+    background: #ffffff;
+}
+
+
+.sew-root.dark .sew-content {
+    background: #0f172a;
+}
