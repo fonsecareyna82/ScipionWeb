@@ -104,6 +104,18 @@ import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
 import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
+import {
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
+
+import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
+
+
+type ProtocolFormPresentation =
+  | "docked"
+  | "floating";
+
 
 type ProtocolFormProps = {
   data: any;
@@ -111,10 +123,24 @@ type ProtocolFormProps = {
   onClose: () => void;
   onExecuted?: () => void;
   onSaved?: () => void;
-  /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
-  variant?: "drawer" | "docked";
-  projectEffectiveSettings?: ProjectEffectiveSettings | null;
-  interactivePreviewLoading?: boolean;
+
+  /** Presentation variant: drawer, docked panel or movable floating window. */
+  variant?:
+  | "drawer"
+  | "docked"
+  | "floating";
+
+  onPresentationChange?: (
+    mode:
+      ProtocolFormPresentation,
+  ) => void;
+
+  projectEffectiveSettings?:
+  ProjectEffectiveSettings
+  | null;
+
+  interactivePreviewLoading?:
+  boolean;
 };
 
 type EffectiveHostQueueParam = {
@@ -202,6 +228,7 @@ export default function ProtocolForm({
   onExecuted,
   onSaved,
   variant = "drawer",
+  onPresentationChange,
   projectEffectiveSettings = null,
 }: ProtocolFormProps) {
   const svc = useProjectService();
@@ -455,12 +482,29 @@ export default function ProtocolForm({
     },
   };
 
-  // Use this instead of onClose() directly to play exit animation
-  const requestClose = () => setIsClosing(true);
-  const handleAnimationEnd = () => {
-    // Only propagate close to parent after the exit animation completes
-    if (isClosing) onClose();
-  };
+  const requestClose =
+    () => {
+      if (
+        variant ===
+        "floating"
+      ) {
+        onClose();
+
+        return;
+      }
+
+      setIsClosing(
+        true,
+      );
+    };
+
+
+  const handleAnimationEnd =
+    () => {
+      if (isClosing) {
+        onClose();
+      }
+    };
 
 
   const findConditionParamState = (
@@ -2676,62 +2720,161 @@ export default function ProtocolForm({
     setOpenSelector(false);
   };
 
-  const safeDefinition = sections;
-  const isDocked = variant === "docked";
+  const safeDefinition =
+    sections;
 
-  return (
+  const isDocked =
+    variant ===
+    "docked";
+
+  const isFloating =
+    variant ===
+    "floating";
+
+  const formContent = (
     <div
       className={[
         styles.protocolForm,
-        isDocked ? styles.asDocked : "",
-        isClosing ? styles.slideOutRight : styles.slideInRight,
+
+        (
+          isDocked ||
+          isFloating
+        )
+          ? styles.asDocked
+          : "",
+
+        isFloating
+          ? styles.asFloating
+          : "",
+
+        isClosing
+          ? styles.slideOutRight
+          : styles.slideInRight,
       ]
         .filter(Boolean)
         .join(" ")}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
-      <div className={styles.formHeader}>
-        <div className={styles.formTitleWrapper}>
-          <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {effectiveProtocolId}
-          </Box>
-          <span className="text-white">{protocolDetails.label}</span>
-          <span
-            className={styles.nodeStatusPill}
-            style={{
-              backgroundColor: protocolDetails.color,
-              color: "black",
+      {!isFloating && (
+        <div
+          className={
+            styles.formHeader
+          }
+        >
+          <div
+            className={
+              styles.formTitleWrapper
+            }
+          >
+            <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+              {effectiveProtocolId}
+            </Box>
+
+            <span className="text-white">
+              {protocolDetails.label}
+            </span>
+
+            <span
+              className={
+                styles.nodeStatusPill
+              }
+              style={{
+                backgroundColor:
+                  protocolDetails.color,
+
+                color:
+                  "black",
+              }}
+            >
+              {protocolDetails.status ||
+                "Unknown"}
+            </span>
+          </div>
+
+          <Box
+            sx={{
+              ml:
+                "auto",
+
+              display:
+                "inline-flex",
+
+              alignItems:
+                "center",
+
+              gap:
+                0.75,
             }}
           >
-            {protocolDetails.status || "Unknown"}
-          </span>
+            {hasFormHelp && (
+              <Tooltip title="Help">
+                <IconButton
+                  onClick={
+                    () =>
+                      setOpenFormHelp(
+                        true,
+                      )
+                  }
+                  aria-label="Open protocol help"
+                  size="small"
+                  sx={
+                    headerActionBtnSx
+                  }
+                >
+                  <span
+                    style={{
+                      fontSize:
+                        "1.1rem",
+                    }}
+                    className="ml-2 mr-2 text-white"
+                  >
+                    ?
+                  </span>
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {isDocked &&
+              onPresentationChange && (
+                <Tooltip title="Float protocol form">
+                  <IconButton
+                    onClick={
+                      () =>
+                        onPresentationChange(
+                          "floating",
+                        )
+                    }
+                    aria-label="Float protocol form"
+                    size="small"
+                    sx={
+                      headerActionBtnSx
+                    }
+                  >
+                    <PanelRightOpen
+                      size={
+                        16
+                      }
+                    />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+            <IconButton
+              onClick={
+                requestClose
+              }
+              aria-label="Close protocol form"
+              size="small"
+              sx={
+                headerActionBtnSx
+              }
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
         </div>
-
-        <Box sx={{ ml: "auto", display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-          {hasFormHelp && (
-            <Tooltip title="Help">
-              <IconButton
-                onClick={() => setOpenFormHelp(true)}
-                aria-label="Open protocol help"
-                size="small"
-                sx={headerActionBtnSx}
-              >
-                <span style={{ fontSize: "1.1rem" }} className="ml-2 mr-2 text-white">?</span>
-              </IconButton>
-            </Tooltip>
-          )}
-
-          <IconButton
-            onClick={requestClose}
-            aria-label="Close analyze dialog"
-            size="small"
-            sx={headerActionBtnSx}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </div>
+      )}
 
       {/* Protocol form help dialog */}
       {hasFormHelp && (
@@ -3678,5 +3821,118 @@ export default function ProtocolForm({
         errors={validationErrors}
       />
     </div>
+  );
+
+  if (!isFloating) {
+    return formContent;
+  }
+
+  return (
+    <FloatingWindow
+      open
+      onClose={
+        requestClose
+      }
+      ariaLabel={
+        `Protocol form ${protocolDisplayName}`
+      }
+      closeAriaLabel="Close protocol form"
+      initialWidth="720px"
+      initialHeight="88vh"
+      minWidth={
+        620
+      }
+      minHeight={
+        520
+      }
+      title={
+        <div
+          className={
+            styles.formTitleWrapper
+          }
+        >
+          <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+            {effectiveProtocolId}
+          </Box>
+
+          <span className="text-white">
+            {protocolDetails.label}
+          </span>
+
+          <span
+            className={
+              styles.nodeStatusPill
+            }
+            style={{
+              backgroundColor:
+                protocolDetails.color,
+
+              color:
+                "black",
+            }}
+          >
+            {protocolDetails.status ||
+              "Unknown"}
+          </span>
+        </div>
+      }
+      headerActions={
+        <>
+          {hasFormHelp && (
+            <Tooltip title="Help">
+              <IconButton
+                onClick={
+                  () =>
+                    setOpenFormHelp(
+                      true,
+                    )
+                }
+                aria-label="Open protocol help"
+                size="small"
+                sx={
+                  headerActionBtnSx
+                }
+              >
+                <span
+                  style={{
+                    fontSize:
+                      "1.1rem",
+                  }}
+                  className="ml-2 mr-2 text-white"
+                >
+                  ?
+                </span>
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {onPresentationChange && (
+            <Tooltip title="Dock protocol form">
+              <IconButton
+                onClick={
+                  () =>
+                    onPresentationChange(
+                      "docked",
+                    )
+                }
+                aria-label="Dock protocol form"
+                size="small"
+                sx={
+                  headerActionBtnSx
+                }
+              >
+                <PanelRightClose
+                  size={
+                    16
+                  }
+                />
+              </IconButton>
+            </Tooltip>
+          )}
+        </>
+      }
+    >
+      {formContent}
+    </FloatingWindow>
   );
 }

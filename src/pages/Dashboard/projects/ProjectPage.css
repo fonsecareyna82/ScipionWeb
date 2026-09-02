@@ -244,6 +244,11 @@
   pointer-events: auto;
 }
 
+.projectpage-widget-root
+  .dock-panel-host-floating {
+  display: contents;
+}
+
 .projectpage-widget-root .dock-panel>* {
   width: 100%;
   height: 100%;

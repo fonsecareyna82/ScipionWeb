@@ -424,7 +424,7 @@ describe("ProtocolForm", () => {
         ).toBeInTheDocument();
     });
 
-        it("evaluates EnumParam conditions using the Scipion choice index", async () => {
+    it("evaluates EnumParam conditions using the Scipion choice index", async () => {
         const data: any = createData();
 
         data.form.sections = [
@@ -477,7 +477,7 @@ describe("ProtocolForm", () => {
         ).not.toBeInTheDocument();
     });
 
-        it("resolves condition parameters across form sections", async () => {
+    it("resolves condition parameters across form sections", async () => {
         const data: any = createData();
 
         data.form.sections = [
@@ -774,7 +774,7 @@ describe("ProtocolForm", () => {
         expect(onExecuted).toHaveBeenCalledTimes(1);
     });
 
-        it("hides advanced parameters at normal expert level", async () => {
+    it("hides advanced parameters at normal expert level", async () => {
         const data: any = createData();
 
         data.form.sections = [
@@ -837,7 +837,7 @@ describe("ProtocolForm", () => {
         ).not.toBeInTheDocument();
     });
 
-        it("shows advanced parameters at advanced expert level", async () => {
+    it("shows advanced parameters at advanced expert level", async () => {
         const data: any = createData();
 
         data.form.sections = [
@@ -881,6 +881,78 @@ describe("ProtocolForm", () => {
             await screen.findByText("Advanced parameter")
         ).toBeInTheDocument();
     });
+
+    it(
+        "requests floating presentation from the docked header",
+        () => {
+            const onPresentationChange =
+                vi.fn();
+
+            renderComponent({
+                onPresentationChange,
+            });
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Float protocol form",
+                    },
+                ),
+            );
+
+            expect(
+                onPresentationChange,
+            ).toHaveBeenCalledWith(
+                "floating",
+            );
+        },
+    );
+
+    it(
+        "renders as a floating window and can return to the dock",
+        () => {
+            const onPresentationChange =
+                vi.fn();
+
+            renderComponent({
+                variant:
+                    "floating",
+
+                onPresentationChange,
+            });
+
+            expect(
+                screen.getByRole(
+                    "dialog",
+                    {
+                        name:
+                            "Protocol form Import Movies",
+                    },
+                ),
+            ).toHaveAttribute(
+                "aria-modal",
+                "false",
+            );
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Dock protocol form",
+                    },
+                ),
+            );
+
+            expect(
+                onPresentationChange,
+            ).toHaveBeenCalledWith(
+                "docked",
+            );
+        },
+    );
 
 
 });

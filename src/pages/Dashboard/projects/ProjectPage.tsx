@@ -401,7 +401,23 @@ type NodeActions = {
   onOpenProtocolClass?: (protocolClass: string) => void;
 };
 
-type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
+type OpenFormMode =
+  | "docked"
+  | "floating";
+
+
+type OpenForm = {
+  key: string;
+
+  id: string;
+
+  details: any;
+
+  mode:
+  OpenFormMode;
+
+  isClosing?: boolean;
+};
 
 function getProtocolFormStatus(details: any): string {
   const candidates = [
@@ -2798,8 +2814,18 @@ export default function ProjectPage() {
         pendingFlipRef.current = true;
 
         setOpenForms((prev) => [
-          { key, id, details },
-          ...prev.filter((f) => f.key !== key),
+          {
+            key,
+            id,
+            details,
+            mode:
+              "docked",
+          },
+
+          ...prev.filter(
+            (f) =>
+              f.key !== key,
+          ),
         ]);
       } catch (err) {
         console.error("openFormForProtocolClass failed", err);
@@ -2881,8 +2907,22 @@ export default function ProjectPage() {
 
         // useStableKeyToGuaranteeUniquenessPerId
         setOpenForms((prev) => [
-          { key: id, id, details },
-          ...prev.filter((f) => f.id !== id),
+          {
+            key:
+              id,
+
+            id,
+
+            details,
+
+            mode:
+              "docked",
+          },
+
+          ...prev.filter(
+            (f) =>
+              f.id !== id,
+          ),
         ]);
       } catch (err) {
         console.error("openFormForNode failed", err);
@@ -2914,6 +2954,35 @@ export default function ProjectPage() {
     pendingFlipRef.current = true;
     setOpenForms((prev) => prev.filter((f) => f.key !== key));
   }, []);
+
+  const setFormMode =
+    useCallback(
+      (
+        key: string,
+        mode:
+          OpenFormMode,
+      ) => {
+        captureDockPositions();
+
+        pendingFlipRef.current =
+          true;
+
+        setOpenForms(
+          (prev) =>
+            prev.map(
+              (form) =>
+                form.key ===
+                  key
+                  ? {
+                    ...form,
+                    mode,
+                  }
+                  : form,
+            ),
+        );
+      },
+      [],
+    );
 
   /* -------- Build adjacency from edges -------- */
   const buildAdjacency = useCallback(() => {
@@ -8782,6 +8851,13 @@ export default function ProjectPage() {
   const isGrid = viewMode === "grid";
   const canSelectAllWorkflow = getAllWorkflowProtocolIds().size > 0;
 
+  const hasDockedForms =
+    openForms.some(
+      (form) =>
+        form.mode !==
+        "floating",
+    );
+
   return (
     <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
       <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
@@ -9347,51 +9423,145 @@ export default function ProjectPage() {
           </div>
 
           {/* ===== Multi-Form Dock (right side) ===== */}
-          <div className="dock-wrapper" style={{ zIndex: 60 }}>
-
+          <div
+            className="dock-wrapper"
+            style={{
+              zIndex:
+                60,
+            }}
+          >
             <div
-              ref={dockRef}
-              className={openForms.length ? "dock-scroll custom-scrollbar" : "hidden"}
+              ref={
+                dockRef
+              }
+              className={
+                hasDockedForms
+                  ? "dock-scroll custom-scrollbar"
+                  : "hidden"
+              }
             >
-              {openForms.map((f) => (
-                <div
-                  key={f.key}
-                  role="dialog"
-                  aria-label={`Protocol ${f.id}`}
-                  data-dock-key={f.key}
-                  className="dock-panel"
-                >
-                  <ProtocolForm
-                    data={f.details}
-                    projectProtocols={project?.protocols ?? {}}
-                    variant="docked"
-                    projectEffectiveSettings={projectEffectiveSettings}
-                    onSaved={() => {
-                      if (String(f.key).startsWith("class:")) {
-                        preparePendingAddProtocolFromForm();
+              {openForms.map(
+                (f) => {
+                  const isFloatingForm =
+                    f.mode ===
+                    "floating";
+
+                  return (
+                    <div
+                      key={
+                        f.key
                       }
-                    }}
-                    onClose={() => {
-                      handleRefreshRef.current?.();
-                      setTimeout(() => handleRefreshRef.current?.(), 800);
-
-                      setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
-                      setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
-
-                      closeFormByKey(f.key);
-                    }}
-                    onExecuted={() => {
-                      if (String(f.key).startsWith("class:")) {
-                        preparePendingAddProtocolFromForm();
+                      role={
+                        isFloatingForm
+                          ? undefined
+                          : "dialog"
                       }
+                      aria-label={
+                        isFloatingForm
+                          ? undefined
+                          : `Protocol ${f.id}`
+                      }
+                      data-dock-key={
+                        isFloatingForm
+                          ? undefined
+                          : f.key
+                      }
+                      className={
+                        isFloatingForm
+                          ? "dock-panel-host-floating"
+                          : "dock-panel"
+                      }
+                    >
+                      <ProtocolForm
+                        data={
+                          f.details
+                        }
+                        projectProtocols={
+                          project?.protocols ??
+                          {}
+                        }
+                        variant={
+                          isFloatingForm
+                            ? "floating"
+                            : "docked"
+                        }
+                        onPresentationChange={(
+                          mode,
+                        ) => {
+                          setFormMode(
+                            f.key,
+                            mode,
+                          );
+                        }}
+                        projectEffectiveSettings={
+                          projectEffectiveSettings
+                        }
+                        onSaved={
+                          () => {
+                            if (
+                              String(
+                                f.key,
+                              ).startsWith(
+                                "class:",
+                              )
+                            ) {
+                              preparePendingAddProtocolFromForm();
+                            }
+                          }
+                        }
+                        onClose={
+                          () => {
+                            handleRefreshRef
+                              .current?.();
 
-                      scheduleDoubleRefresh(5000, true);
-                    }}
-                  />
-                </div>
-              ))}
+                            setTimeout(
+                              () =>
+                                handleRefreshRef
+                                  .current?.(),
+                              800,
+                            );
+
+                            setTimeout(
+                              () =>
+                                tryPlaceNewlyCreatedNode(),
+                              50,
+                            );
+
+                            setTimeout(
+                              () =>
+                                tryPlaceNewlyCreatedNode(),
+                              400,
+                            );
+
+                            closeFormByKey(
+                              f.key,
+                            );
+                          }
+                        }
+                        onExecuted={
+                          () => {
+                            if (
+                              String(
+                                f.key,
+                              ).startsWith(
+                                "class:",
+                              )
+                            ) {
+                              preparePendingAddProtocolFromForm();
+                            }
+
+                            scheduleDoubleRefresh(
+                              5000,
+                              true,
+                            );
+                          }
+                        }
+                      />
+                    </div>
+                  );
+                },
+              )}
             </div>
-
           </div>
 
           <ProjectWorkflowsPanel
