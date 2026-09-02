@@ -67,6 +67,9 @@ import {
   Square,
   ClipboardPaste,
   CheckSquare,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -841,6 +844,50 @@ const getProtocolRowDisplayName = (row: any) => {
   return String(row?.id ?? "");
 };
 
+type ProjectTableSortKey =
+  | "id"
+  | "protocol"
+  | "state"
+  | "tags"
+  | "elapsed"
+  | "dependent";
+
+type ProjectTableSortDirection =
+  | "asc"
+  | "desc";
+
+type ProjectTableSortState = {
+  key: ProjectTableSortKey;
+  direction: ProjectTableSortDirection;
+};
+
+function compareProjectTableText(
+  left: unknown,
+  right: unknown,
+): number {
+  return String(left ?? "").localeCompare(
+    String(right ?? ""),
+    undefined,
+    {
+      numeric: true,
+      sensitivity: "base",
+    },
+  );
+}
+
+function getProjectTableElapsedSeconds(
+  row: any,
+): number {
+  const value = Number(
+    row?.tick ??
+    row?.elapsedTime ??
+    0,
+  );
+
+  return Number.isFinite(value)
+    ? value
+    : 0;
+}
 
 const PROTOCOL_OUTPUT_THUMBNAIL_SIZE = 128;
 
@@ -1604,31 +1651,244 @@ export default function ProjectPage() {
   const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
-  const [tableData, setTableData] = useState<any[]>([]);
-  const sortedTableData = useMemo(() => {
-    if (!Array.isArray(tableData)) return [];
-    return [...tableData].sort((a, b) => {
-      const aId = Number(a?.id);
-      const bId = Number(b?.id);
-      if (!Number.isNaN(aId) && !Number.isNaN(bId)) return bId - aId;
-      return String(b?.id ?? "").localeCompare(String(a?.id ?? ""));
-    });
-  }, [tableData]);
-  const filteredTableData = useMemo(() => {
-    // filteredTableData
-    if (!tagFilterIds.length) return sortedTableData;
+  const [tableData, setTableData] =
+    useState<any[]>([]);
 
-    const filterSet = new Set(tagFilterIds);
-    return sortedTableData.filter((row) => {
-      const pid = String(row?.id ?? "");
-      const assigned = pickFirstNonEmptyTagIds(
-        tagAssignments[pid],
-        (row as any)?.tagIds,
-        (row as any)?.tags
-      );
-      return assigned.some((tid) => filterSet.has(tid));
+  const [tableSort, setTableSort] =
+    useState<ProjectTableSortState>({
+      key: "id",
+      direction: "desc",
     });
-  }, [sortedTableData, tagFilterIds, tagAssignments]);
+
+  const handleTableSort = useCallback(
+    (key: ProjectTableSortKey) => {
+      setTableSort((current) => {
+        if (current.key === key) {
+          return {
+            key,
+            direction:
+              current.direction === "asc"
+                ? "desc"
+                : "asc",
+          };
+        }
+
+        return {
+          key,
+          direction: "asc",
+        };
+      });
+    },
+    [],
+  );
+
+  const filteredTableData = useMemo(() => {
+    // filteredAndSortedTableData
+    let rows =
+      Array.isArray(tableData)
+        ? [...tableData]
+        : [];
+
+    if (tagFilterIds.length) {
+      const filterSet =
+        new Set(tagFilterIds);
+
+      rows = rows.filter((row) => {
+        const pid =
+          String(row?.id ?? "");
+
+        const assigned =
+          pickFirstNonEmptyTagIds(
+            tagAssignments[pid],
+            row?.tagIds,
+            row?.tags,
+          );
+
+        return assigned.some(
+          (tagId) =>
+            filterSet.has(tagId),
+        );
+      });
+    }
+
+    const tagTitleById =
+      new Map(
+        allTags.map((tag) => [
+          String(tag.id),
+          String(
+            tag.title ??
+            tag.id ??
+            "",
+          ),
+        ]),
+      );
+
+    const getTagsSortText = (
+      row: any,
+    ): string => {
+      const pid =
+        String(row?.id ?? "");
+
+      const assignedTagIds =
+        pickFirstNonEmptyTagIds(
+          tagAssignments[pid],
+          row?.tagIds,
+          row?.tags,
+        );
+
+      return assignedTagIds
+        .map(
+          (tagId) =>
+            tagTitleById.get(
+              String(tagId),
+            ) ??
+            String(tagId),
+        )
+        .sort((a, b) =>
+          compareProjectTableText(a, b)
+        )
+        .join(" ");
+    };
+
+    const compareRows = (
+      left: any,
+      right: any,
+    ): number => {
+      switch (tableSort.key) {
+        case "id":
+          return compareProjectTableText(
+            left?.id,
+            right?.id,
+          );
+
+        case "protocol":
+          return compareProjectTableText(
+            getProtocolRowDisplayName(
+              left,
+            ),
+            getProtocolRowDisplayName(
+              right,
+            ),
+          );
+
+        case "state":
+          return compareProjectTableText(
+            left?.status,
+            right?.status,
+          );
+
+        case "tags":
+          return compareProjectTableText(
+            getTagsSortText(left),
+            getTagsSortText(right),
+          );
+
+        case "elapsed":
+          return (
+            getProjectTableElapsedSeconds(
+              left,
+            ) -
+            getProjectTableElapsedSeconds(
+              right,
+            )
+          );
+
+        case "dependent":
+          return (
+            (
+              Array.isArray(
+                left?.children,
+              )
+                ? left.children.length
+                : 0
+            ) -
+            (
+              Array.isArray(
+                right?.children,
+              )
+                ? right.children.length
+                : 0
+            )
+          );
+
+        default:
+          return 0;
+      }
+    };
+
+    const directionMultiplier =
+      tableSort.direction === "asc"
+        ? 1
+        : -1;
+
+    rows.sort((left, right) => {
+      const result =
+        compareRows(left, right);
+
+      if (result !== 0) {
+        return (
+          result *
+          directionMultiplier
+        );
+      }
+
+      return compareProjectTableText(
+        left?.id,
+        right?.id,
+      );
+    });
+
+    return rows;
+  }, [
+    tableData,
+    tagFilterIds,
+    tagAssignments,
+    allTags,
+    tableSort,
+  ]);
+
+  const renderTableSortIcon = (
+    key: ProjectTableSortKey,
+  ) => {
+    if (tableSort.key !== key) {
+      return (
+        <ArrowUpDown
+          className="pp-tableSortIcon"
+        />
+      );
+    }
+
+    if (
+      tableSort.direction === "asc"
+    ) {
+      return (
+        <ArrowUp
+          className="pp-tableSortIcon pp-tableSortIconActive"
+        />
+      );
+    }
+
+    return (
+      <ArrowDown
+        className="pp-tableSortIcon pp-tableSortIconActive"
+      />
+    );
+  };
+
+  const getTableAriaSort = (
+    key: ProjectTableSortKey,
+  ):
+    | "ascending"
+    | "descending"
+    | "none" => {
+    if (tableSort.key !== key) {
+      return "none";
+    }
+
+    return tableSort.direction === "asc"
+      ? "ascending"
+      : "descending";
+  };
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const delayedRefreshTimerRef = useRef<number | null>(null);
@@ -8653,9 +8913,14 @@ export default function ProjectPage() {
 
           {/* TABLE */}
           <div
-            ref={tableContainerRef}
-            className={viewMode === "table" ? "pp-tableShell" : "pp-tableShell pp-hidden"}
-            aria-hidden={viewMode !== "table"}
+            className={
+              viewMode === "table"
+                ? "pp-tableShell"
+                : "pp-tableShell pp-hidden"
+            }
+            aria-hidden={
+              viewMode !== "table"
+            }
           >
             <div className="pp-tableToolbar">
               <button
@@ -8669,16 +8934,163 @@ export default function ProjectPage() {
               </button>
             </div>
 
-            <div className="pp-tableCard">
+            <div
+              ref={tableContainerRef}
+              className="pp-tableCard"
+            >
               <table className="pp-table" role="grid">
                 <thead className="pp-thead">
                   <tr className="pp-trHead">
-                    <th className="pp-th">Id</th>
-                    <th className="pp-th">Protocol</th>
-                    <th className="pp-th">State</th>
-                    <th className="pp-th">Tags</th>
-                    <th className="pp-th">Elapsed</th>
-                    <th className="pp-th">Dependent</th>
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort("id")
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key === "id"
+                        }
+                        onClick={() =>
+                          handleTableSort("id")
+                        }
+                      >
+                        <span>Id</span>
+                        {renderTableSortIcon("id")}
+                      </button>
+                    </th>
+
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort(
+                          "protocol"
+                        )
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key ===
+                          "protocol"
+                        }
+                        onClick={() =>
+                          handleTableSort(
+                            "protocol"
+                          )
+                        }
+                      >
+                        <span>Protocol</span>
+                        {renderTableSortIcon(
+                          "protocol"
+                        )}
+                      </button>
+                    </th>
+
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort("state")
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key === "state"
+                        }
+                        onClick={() =>
+                          handleTableSort("state")
+                        }
+                      >
+                        <span>State</span>
+                        {renderTableSortIcon(
+                          "state"
+                        )}
+                      </button>
+                    </th>
+
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort("tags")
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key === "tags"
+                        }
+                        onClick={() =>
+                          handleTableSort("tags")
+                        }
+                      >
+                        <span>Tags</span>
+                        {renderTableSortIcon(
+                          "tags"
+                        )}
+                      </button>
+                    </th>
+
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort(
+                          "elapsed"
+                        )
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key ===
+                          "elapsed"
+                        }
+                        onClick={() =>
+                          handleTableSort(
+                            "elapsed"
+                          )
+                        }
+                      >
+                        <span>Elapsed</span>
+                        {renderTableSortIcon(
+                          "elapsed"
+                        )}
+                      </button>
+                    </th>
+
+                    <th
+                      className="pp-th"
+                      aria-sort={
+                        getTableAriaSort(
+                          "dependent"
+                        )
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="pp-tableSortButton"
+                        data-active={
+                          tableSort.key ===
+                          "dependent"
+                        }
+                        onClick={() =>
+                          handleTableSort(
+                            "dependent"
+                          )
+                        }
+                      >
+                        <span>Dependent</span>
+                        {renderTableSortIcon(
+                          "dependent"
+                        )}
+                      </button>
+                    </th>
                   </tr>
                 </thead>
 
