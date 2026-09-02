@@ -770,19 +770,10 @@ export default function ProtocolOutputsPanel({
                             sx={{
                                 color: "#6b7280",
                                 display: "block",
-                                mb: 1,
                             }}
                         >
                             {previewData.meta?.mime || "application/octet-stream"} • {previewData.meta?.sizeBytes ?? "?"} bytes
                         </Typography>
-                        <Button
-                            size="small"
-                            variant="outlined"
-                            href={previewData.downloadUrl}
-                            sx={{ textTransform: "none" }}
-                        >
-                            Download
-                        </Button>
                     </Box>
                 );
 

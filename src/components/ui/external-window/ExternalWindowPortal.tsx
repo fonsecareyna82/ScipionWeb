@@ -454,6 +454,19 @@ export function openExternalWindow({
         return null;
     }
 
+
+    try {
+        popup.history.replaceState(
+            null,
+            "",
+            window.location.href,
+        );
+    } catch {
+        // Keep the popup usable even if the browser
+        // refuses to replace the initial about:blank URL.
+    }
+
+
     const targetDocument =
         popup.document;
 
