@@ -1048,10 +1048,6 @@ export function buildGraphElements(
         ? prot.children
         : [],
 
-      inputs: Array.isArray(prot.inputs)
-        ? prot.inputs
-        : [],
-
       outputs: Array.isArray(prot.outputs)
         ? prot.outputs
         : [],

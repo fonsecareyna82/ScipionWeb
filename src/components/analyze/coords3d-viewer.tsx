@@ -2926,13 +2926,52 @@ export default function Coords3dViewer({
                             <>
                               <Slider
                                 size="small"
-                                value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
-                                min={scoreMinMax[0]}
-                                max={scoreMinMax[1]}
-                                step={(scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001}
-                                onChange={(_, v) => setScoreRange(v as [number, number])}
+                                value={
+                                  scoreRange ?? [
+                                    scoreMinMax[0],
+                                    scoreMinMax[1],
+                                  ]
+                                }
+                                min={
+                                  scoreMinMax[0]
+                                }
+                                max={
+                                  scoreMinMax[1]
+                                }
+                                step={
+                                  (
+                                    scoreMinMax[1] -
+                                    scoreMinMax[0]
+                                  ) /
+                                  200 ||
+                                  0.001
+                                }
+                                onChange={(
+                                  _,
+                                  value,
+                                ) =>
+                                  setScoreRange(
+                                    value as [
+                                      number,
+                                      number,
+                                    ],
+                                  )
+                                }
+                                getAriaLabel={(
+                                  index,
+                                ) =>
+                                  index === 0
+                                    ? "Minimum score"
+                                    : "Maximum score"
+                                }
                                 valueLabelDisplay="auto"
-                                valueLabelFormat={(v) => (v as number).toFixed(3)}
+                                valueLabelFormat={(
+                                  value,
+                                ) =>
+                                  (
+                                    value as number
+                                  ).toFixed(3)
+                                }
                               />
                               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                                 <Typography variant="caption" color="text.secondary">

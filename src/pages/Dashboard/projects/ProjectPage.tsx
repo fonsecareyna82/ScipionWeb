@@ -3009,6 +3009,8 @@ export default function ProjectPage() {
           const id =
             normalizedIds[0];
 
+          clearPathSelection();
+
           selectedIdRef.current =
             id;
 
@@ -3019,18 +3021,42 @@ export default function ProjectPage() {
           setHighlightedId(
             id,
           );
-        } else {
-          selectedIdRef.current =
-            null;
 
-          setPreviousNodeId(
-            null,
+          applyEdgeHighlight(
+            id,
           );
 
-          setHighlightedId(
-            null,
+          suppressOneFrame();
+
+          setNodes(
+            (current) =>
+              current.map(
+                (node) => ({
+                  ...node,
+
+                  selected:
+                    String(
+                      node.id,
+                    ) === id,
+                }),
+              ),
           );
+
+          syncUnifiedSelectedIds();
+
+          return;
         }
+
+        selectedIdRef.current =
+          null;
+
+        setPreviousNodeId(
+          null,
+        );
+
+        setHighlightedId(
+          null,
+        );
 
         applyGenericSelectionFromSet(
           new Set(
@@ -3041,7 +3067,228 @@ export default function ProjectPage() {
       [
         applyGenericSelectionFromSet,
         clearAllSelectionHard,
+        clearPathSelection,
         applyEdgeHighlight,
+        setNodes,
+        syncUnifiedSelectedIds,
+      ],
+    );
+
+  const collectTableDescendants =
+    useCallback(
+      (
+        startId: string,
+      ): Set<string> => {
+        const rowsById =
+          new Map(
+            tableData.map(
+              (row) => [
+                String(
+                  row?.id,
+                ),
+                row,
+              ],
+            ),
+          );
+
+        const visited =
+          new Set<string>();
+
+        const queue =
+          [
+            String(
+              startId,
+            ),
+          ];
+
+        while (
+          queue.length
+        ) {
+          const current =
+            String(
+              queue.shift() ??
+              "",
+            );
+
+          if (
+            !current ||
+            visited.has(
+              current,
+            )
+          ) {
+            continue;
+          }
+
+          visited.add(
+            current,
+          );
+
+          const row =
+            rowsById.get(
+              current,
+            );
+
+          const children =
+            Array.isArray(
+              row?.children,
+            )
+              ? row.children
+              : [];
+
+          for (
+            const child
+            of children
+          ) {
+            const childId =
+              String(child);
+
+            if (
+              !visited.has(
+                childId,
+              )
+            ) {
+              queue.push(
+                childId,
+              );
+            }
+          }
+        }
+
+        return visited;
+      },
+      [
+        tableData,
+      ],
+    );
+
+  const collectTableAncestors =
+    useCallback(
+      (
+        startId: string,
+      ): Set<string> => {
+        const rowsById =
+          new Map(
+            tableData.map(
+              (row) => [
+                String(
+                  row?.id,
+                ),
+                row,
+              ],
+            ),
+          );
+
+        const visited =
+          new Set<string>();
+
+        const queue =
+          [
+            String(
+              startId,
+            ),
+          ];
+
+        while (
+          queue.length
+        ) {
+          const current =
+            String(
+              queue.shift() ??
+              "",
+            );
+
+          if (
+            !current ||
+            visited.has(
+              current,
+            )
+          ) {
+            continue;
+          }
+
+          visited.add(
+            current,
+          );
+
+          const row =
+            rowsById.get(
+              current,
+            );
+
+          const parents =
+            Array.isArray(
+              row?.parents,
+            )
+              ? row.parents
+              : [];
+
+          for (
+            const parent
+            of parents
+          ) {
+            const parentId =
+              String(parent);
+
+            if (
+              parentId !==
+              "PROJECT" &&
+              !visited.has(
+                parentId,
+              )
+            ) {
+              queue.push(
+                parentId,
+              );
+            }
+          }
+        }
+
+        visited.delete(
+          "PROJECT",
+        );
+
+        return visited;
+      },
+      [
+        tableData,
+      ],
+    );
+
+  const handleTableSelectFrom =
+    useCallback(
+      (
+        protocolId: string,
+      ) => {
+        handleTableSelectionChange(
+          Array.from(
+            collectTableDescendants(
+              protocolId,
+            ),
+          ),
+        );
+      },
+      [
+        collectTableDescendants,
+        handleTableSelectionChange,
+      ],
+    );
+
+  const handleTableSelectTo =
+    useCallback(
+      (
+        protocolId: string,
+      ) => {
+        handleTableSelectionChange(
+          Array.from(
+            collectTableAncestors(
+              protocolId,
+            ),
+          ),
+        );
+      },
+      [
+        collectTableAncestors,
+        handleTableSelectionChange,
       ],
     );
 
@@ -5858,17 +6105,93 @@ export default function ProjectPage() {
     });
   }, []);
 
-  const findNodeEditableRunName = (id: string) => {
-    const n = nodesRef.current.find((m) => m.id === id);
-    const data: any = (n as any)?.data ?? {};
-    return String(data.runName ?? "");
-  };
+  const findNodeEditableRunName =
+    (
+      id: string,
+    ) => {
+      const node =
+        nodesRef.current.find(
+          (candidate) =>
+            String(
+              candidate.id,
+            ) ===
+            String(id),
+        );
 
-  const findNodeComment = (id: string) => {
-    const n = nodesRef.current.find((m) => m.id === id);
-    const data: any = (n as any)?.data ?? {};
-    return String(data.comment ?? "");
-  };
+      const nodeData:
+        any =
+        (node as any)
+          ?.data ??
+        {};
+
+      const nodeRunName =
+        String(
+          nodeData.runName ??
+          "",
+        );
+
+      if (
+        nodeRunName.trim()
+      ) {
+        return nodeRunName;
+      }
+
+      const tableRow =
+        tableData.find(
+          (row) =>
+            String(
+              row?.id,
+            ) ===
+            String(id),
+        );
+
+      return String(
+        tableRow?.runName ??
+        "",
+      );
+    };
+
+  const findNodeComment =
+    (
+      id: string,
+    ) => {
+      const node =
+        nodesRef.current.find(
+          (candidate) =>
+            String(
+              candidate.id,
+            ) ===
+            String(id),
+        );
+
+      const nodeData:
+        any =
+        (node as any)
+          ?.data ??
+        {};
+
+      if (
+        nodeData.comment != null
+      ) {
+        return String(
+          nodeData.comment,
+        );
+      }
+
+      const tableRow =
+        tableData.find(
+          (row) =>
+            String(
+              row?.id,
+            ) ===
+            String(id),
+        );
+
+      return String(
+        tableRow?.comment ??
+        "",
+      );
+    };
 
   // layoutConstantsForHierarchical
   const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 480 : 1250);
@@ -7695,55 +8018,131 @@ export default function ProjectPage() {
     return "Operation failed";
   };
 
-  const getSelectedProtocolIdsForWorkflowCopy = (): string[] => {
-    return Array.from(new Set(
-      Array.from(getUnifiedSelectedIds())
-        .map(String)
-        .filter((id) => id && id !== "PROJECT")
-    ));
-  };
-
-  const handleCopyWorkflow = async () => {
-    const currentProjectId = getProjectId();
-
-    if (currentProjectId == null) {
-      toast.error("Project is not loaded yet.");
-      return;
-    }
-
-    const protocolIds = getSelectedProtocolIdsForWorkflowCopy();
-
-    if (!protocolIds.length) {
-      toast.error("Select at least one protocol to copy.");
-      return;
-    }
-
-    try {
-      const result = await svc.exportWorkflowProtocols(currentProjectId, {
-        protocolIds,
-        includeUpstream: false,
-      });
-
-      setWorkflowClipboard({
-        sourceProjectId: result.sourceProjectId ?? currentProjectId,
-        sourceProjectName:
-          result.sourceProjectName ??
-          String((project as any)?.name ?? (project as any)?.shortName ?? projectName ?? ""),
-        protocolIds: (result.protocolIds ?? protocolIds).map(String),
-        workflow: result.workflow,
-        copiedAt: new Date().toISOString(),
-      });
-
-      toast.success(
-        protocolIds.length > 1
-          ? `${protocolIds.length} protocols copied.`
-          : "Protocol copied."
+  const getSelectedProtocolIdsForWorkflowCopy =
+    (): string[] => {
+      return Array.from(
+        new Set(
+          Array.from(
+            getUnifiedSelectedIds(),
+          )
+            .map(String)
+            .filter(
+              (id) =>
+                id &&
+                id !==
+                "PROJECT",
+            ),
+        ),
       );
-    } catch (e) {
-      console.error("copy workflow failed", e);
-      toast.error(getErrorMsg(e));
-    }
-  };
+    };
+
+  const copyWorkflowProtocols =
+    async (
+      protocolIds: string[],
+    ) => {
+      const currentProjectId =
+        getProjectId();
+
+      if (
+        currentProjectId == null
+      ) {
+        toast.error(
+          "Project is not loaded yet.",
+        );
+
+        return;
+      }
+
+      const ids =
+        Array.from(
+          new Set(
+            protocolIds
+              .map(String)
+              .filter(
+                (id) =>
+                  id &&
+                  id !==
+                  "PROJECT",
+              ),
+          ),
+        );
+
+      if (!ids.length) {
+        toast.error(
+          "Select at least one protocol to copy.",
+        );
+
+        return;
+      }
+
+      try {
+        const result =
+          await svc.exportWorkflowProtocols(
+            currentProjectId,
+            {
+              protocolIds:
+                ids,
+
+              includeUpstream:
+                false,
+            },
+          );
+
+        setWorkflowClipboard({
+          sourceProjectId:
+            result.sourceProjectId ??
+            currentProjectId,
+
+          sourceProjectName:
+            result.sourceProjectName ??
+            String(
+              (project as any)
+                ?.name ??
+              (project as any)
+                ?.shortName ??
+              projectName ??
+              "",
+            ),
+
+          protocolIds:
+            (
+              result.protocolIds ??
+              ids
+            ).map(String),
+
+          workflow:
+            result.workflow,
+
+          copiedAt:
+            new Date()
+              .toISOString(),
+        });
+
+        toast.success(
+          ids.length > 1
+            ? `${ids.length} protocols copied.`
+            : "Protocol copied.",
+        );
+      } catch (error) {
+        console.error(
+          "copy workflow failed",
+          error,
+        );
+
+        toast.error(
+          getErrorMsg(
+            error,
+          ),
+        );
+      }
+    };
+
+  const handleCopyWorkflow =
+    async () => {
+      await copyWorkflowProtocols(
+        getSelectedProtocolIdsForWorkflowCopy(),
+      );
+    };
 
   const handlePasteWorkflow = async () => {
     const currentProjectId = getProjectId();
@@ -7811,10 +8210,49 @@ export default function ProjectPage() {
     }
   };
 
-  const getNodeLabelById = (id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    return ((node as any)?.data?.label as string) || id;
-  };
+  const getNodeLabelById =
+    (
+      id: string,
+    ) => {
+      const node =
+        nodesRef.current.find(
+          (candidate) =>
+            String(
+              candidate.id,
+            ) ===
+            String(id),
+        );
+
+      const nodeLabel =
+        String(
+          (node as any)
+            ?.data
+            ?.label ??
+          "",
+        ).trim();
+
+      if (nodeLabel) {
+        return nodeLabel;
+      }
+
+      const tableRow =
+        tableData.find(
+          (row) =>
+            String(
+              row?.id,
+            ) ===
+            String(id),
+        );
+
+      return (
+        String(
+          tableRow?.runName ??
+          tableRow?.label ??
+          id,
+        ).trim() ||
+        String(id)
+      );
+    };
 
   const genCopyName = (id: string) => {
     const label = getNodeLabelById(id);
@@ -8107,25 +8545,9 @@ export default function ProjectPage() {
     async (
       protocolIds: string[],
     ) => {
-      const ids =
-        protocolIds
-          .map(String)
-          .filter(
-            (id) =>
-              id &&
-              id !==
-              "PROJECT",
-          );
-
-      if (!ids.length) {
-        return;
-      }
-
-      applyGenericSelectionFromSet(
-        new Set(ids),
+      await copyWorkflowProtocols(
+        protocolIds,
       );
-
-      await handleCopyWorkflow();
     };
 
   const submitRename = async () => {
@@ -8854,9 +9276,9 @@ export default function ProjectPage() {
               onActivate={(
                 protocolId,
               ) => {
-                handleNodeClick({
-                  id: protocolId,
-                });
+                handleTableSelectionChange([
+                  protocolId,
+                ]);
               }}
               onOpen={(
                 protocolId,
@@ -8918,10 +9340,11 @@ export default function ProjectPage() {
                 });
               }}
               onSelectFrom={
-                handleSelectFrom
+                handleTableSelectFrom
               }
+
               onSelectTo={
-                handleSelectTo
+                handleTableSelectTo
               }
               onSelectionChange={
                 handleTableSelectionChange
@@ -8941,6 +9364,13 @@ export default function ProjectPage() {
                 setTagManagerOpen(
                   true,
                 )
+              }
+              projectId={
+                getProjectId()
+              }
+
+              resolveAnalyzeViewer={
+                svc.resolveAnalyzeViewer
               }
             />
           )}

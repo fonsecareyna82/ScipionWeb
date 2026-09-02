@@ -86,35 +86,6 @@
   font-size: 0.75rem;
 }
 
-.projectpage-widget-root .ppt-toolbarButton,
-.projectpage-widget-root .ppt-bulkButton {
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.38rem;
-  padding: 0 0.65rem;
-  border-radius: 0.55rem;
-  border: 1px solid var(--color-border, #e5e7eb);
-  background: var(--card);
-  color: var(--ppInk);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.projectpage-widget-root .ppt-toolbarButton svg,
-.projectpage-widget-root .ppt-bulkButton svg {
-  width: 14px;
-  height: 14px;
-}
-
-.projectpage-widget-root .ppt-toolbarButton:hover,
-.projectpage-widget-root .ppt-bulkButton:hover {
-  border-color: rgba(59, 130, 246, 0.4);
-  background: rgba(59, 130, 246, 0.06);
-}
-
 .projectpage-widget-root .ppt-refreshButton {
   width: 30px;
   height: 30px;
@@ -140,46 +111,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.projectpage-widget-root .ppt-bulkToolbar {
-  flex: 0 0 auto;
-  min-height: 40px;
-  margin-bottom: 0.6rem;
-  padding: 0.35rem 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  border-radius: 0.7rem;
-  background: rgba(59, 130, 246, 0.07);
-}
-
-.projectpage-widget-root .ppt-bulkSelection {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-}
-
-.projectpage-widget-root .ppt-bulkSelection svg {
-  width: 15px;
-  height: 15px;
-}
-
-.projectpage-widget-root .ppt-bulkActions {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.projectpage-widget-root .ppt-bulkButtonDanger {
-  color: #b91c1c;
-}
-
-.projectpage-widget-root.dark .ppt-bulkButtonDanger {
-  color: #fca5a5;
 }
 
 .projectpage-widget-root .ppt-clearSelection {
@@ -246,10 +177,28 @@
   z-index: 30;
 }
 
-.projectpage-widget-root .ppt-stickyLeft {
-  position: sticky;
-  left: 0;
-  z-index: 12;
+.projectpage-widget-root .ppt-selectionSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.projectpage-widget-root .ppt-selectionCount {
+  min-height: 26px;
+  padding: 0 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.20);
+  color: #2563eb;
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root.dark .ppt-selectionCount {
+  color: #93c5fd;
 }
 
 .projectpage-widget-root .ppt-stickyCell {
@@ -275,20 +224,6 @@
 .projectpage-widget-root .ppt-headCell.ppt-protocolColumn,
 .projectpage-widget-root .ppt-headCell.ppt-actionsColumn {
   z-index: 35;
-}
-
-.projectpage-widget-root .ppt-selectCell {
-  text-align: center;
-  padding-left: 0;
-  padding-right: 0;
-  background: inherit;
-}
-
-.projectpage-widget-root .ppt-checkbox {
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-  accent-color: #2563eb;
 }
 
 .projectpage-widget-root .ppt-sortButton {
@@ -472,6 +407,7 @@
 }
 
 @keyframes pptStatusPulse {
+
   0%,
   100% {
     opacity: 0.35;
@@ -542,41 +478,6 @@
   white-space: nowrap;
 }
 
-.projectpage-widget-root .ppt-ioCell {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.projectpage-widget-root .ppt-countPill {
-  flex: 0 0 auto;
-  min-width: 25px;
-  height: 22px;
-  padding: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background: rgba(59, 130, 246, 0.09);
-  border: 1px solid rgba(59, 130, 246, 0.18);
-  color: #2563eb;
-  font-size: 0.69rem;
-  font-weight: 700;
-}
-
-.projectpage-widget-root.dark .ppt-countPill {
-  color: #93c5fd;
-}
-
-.projectpage-widget-root .ppt-ioName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted-foreground, #64748b);
-  font-size: 0.7rem;
-}
-
 .projectpage-widget-root .ppt-emptyValue {
   opacity: 0.55;
 }
@@ -587,6 +488,99 @@
   gap: 0.3rem;
   min-width: 0;
   overflow: hidden;
+}
+
+.projectpage-widget-root .ppt-outputsCell {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.projectpage-widget-root .ppt-outputPill {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 280px;
+  min-height: 28px;
+  padding: 3px 8px;
+
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  border: 1px solid #9ca3af;
+  border-radius: 9999px;
+
+  background:
+    linear-gradient(to right,
+      #e5e7eb,
+      #d1d5db);
+
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08);
+
+  color: #000;
+}
+
+.projectpage-widget-root .ppt-outputIcon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: #000;
+}
+
+.projectpage-widget-root .ppt-outputText {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #000;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.projectpage-widget-root .ppt-outputViewButton {
+  flex: 0 0 auto;
+  width: 23px;
+  height: 23px;
+  margin-left: 2px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+
+  background: transparent;
+  color: #111827;
+
+  cursor: pointer;
+}
+
+.projectpage-widget-root .ppt-outputViewButton:hover:not(:disabled) {
+  background:
+    rgba(255,
+      255,
+      255,
+      0.65);
+}
+
+.projectpage-widget-root .ppt-outputViewButton:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.projectpage-widget-root .ppt-outputViewButton svg {
+  width: 15px;
+  height: 15px;
 }
 
 .projectpage-widget-root .ppt-dependencyButton {
@@ -698,6 +692,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .projectpage-widget-root .ppt-spin,
   .projectpage-widget-root .ppt-statusRunning::after {
     animation: none;

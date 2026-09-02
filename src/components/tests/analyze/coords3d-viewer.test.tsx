@@ -712,8 +712,14 @@ describe("Coords3dViewer", () => {
 
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
-        const sliders = screen.getAllByRole("slider");
-        const scoreUpperThumb = sliders[2];
+        const scoreUpperThumb =
+            screen.getByRole(
+                "slider",
+                {
+                    name:
+                        "Maximum score",
+                },
+            );
 
         await act(async () => {
             scoreUpperThumb.focus();

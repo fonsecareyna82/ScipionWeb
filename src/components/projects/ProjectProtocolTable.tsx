@@ -30,6 +30,8 @@ import {
   Tags,
   Trash2,
   X,
+  ArrowUpRight,
+  Eye,
 } from "lucide-react";
 
 import {
@@ -42,7 +44,21 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+
+import type {
+  AnalyzeViewerResolveContext,
+  AnalyzeViewerResolveDecision,
+} from "@/services/ProjectService";
+
+import {
+  isScalarOutput,
+} from "@/utils/protocol_outputs";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
@@ -61,7 +77,6 @@ export type ProjectProtocolTableRow = {
   parents?: string[];
   children?: string[];
 
-  inputs?: unknown[];
   outputs?: unknown[];
 
   tagIds?: unknown;
@@ -89,7 +104,6 @@ type ColumnId =
   | "state"
   | "tags"
   | "elapsed"
-  | "inputs"
   | "outputs"
   | "dependent"
   | "actions";
@@ -119,7 +133,7 @@ type TableGroupBy =
   | "tag";
 
 type TableSettings = {
-  version: 1;
+  version: 2;
 
   visible: Record<
     ColumnId,
@@ -167,8 +181,8 @@ type Props = {
   searchQuery: string;
 
   highlightedId:
-    | string
-    | null;
+  | string
+  | null;
 
   selectedIds: string[];
 
@@ -242,9 +256,17 @@ type Props = {
   ) => void | Promise<void>;
 
   onManageTags: () => void;
-};
 
-const SELECT_COLUMN_WIDTH = 44;
+  projectId?:
+  | string
+  | number;
+
+  resolveAnalyzeViewer?: (
+    ctx: AnalyzeViewerResolveContext,
+  ) => Promise<
+    AnalyzeViewerResolveDecision
+  >;
+};
 
 const HEADER_HEIGHT = 42;
 
@@ -314,20 +336,12 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     minWidth: 105,
   },
   {
-    id: "inputs",
-    label: "Inputs",
-    sortable: true,
-    defaultVisible: true,
-    defaultWidth: 150,
-    minWidth: 100,
-  },
-  {
     id: "outputs",
     label: "Outputs",
     sortable: true,
     defaultVisible: true,
-    defaultWidth: 160,
-    minWidth: 100,
+    defaultWidth: 480,
+    minWidth: 260,
   },
   {
     id: "dependent",
@@ -372,7 +386,7 @@ function createDefaultSettings(): TableSettings {
   }
 
   return {
-    version: 1,
+    version: 2,
     visible,
     widths,
     sorts: [
@@ -415,7 +429,7 @@ function readSettings(
 
     if (
       !parsed ||
-      parsed.version !== 1
+      parsed.version !== 2
     ) {
       return defaults;
     }
@@ -483,21 +497,21 @@ function readSettings(
 
       density:
         parsed.density ===
-        "compact"
+          "compact"
           ? "compact"
           : "comfortable",
 
       groupBy:
         parsed.groupBy ===
           "state" ||
-        parsed.groupBy ===
+          parsed.groupBy ===
           "tag"
           ? parsed.groupBy
           : "none",
 
       stateFilter:
         typeof parsed.stateFilter ===
-        "string"
+          "string"
           ? parsed.stateFilter
           : "all",
     };
@@ -620,16 +634,16 @@ function getStatusBackground(
 ): string {
   const colors:
     Record<string, string> = {
-      running: "#FCCE62",
-      saved: "#D9F1FA",
-      launched: "#D9F1FA",
-      finished: "#D2F5CB",
-      failed: "#F5CCCB",
-      aborted: "#F5CCCB",
-      interactive: "#f7f3bf",
-      scheduled: "#f7f3bf",
-      new: "#1E90FF",
-    };
+    running: "#FCCE62",
+    saved: "#D9F1FA",
+    launched: "#D9F1FA",
+    finished: "#D2F5CB",
+    failed: "#F5CCCB",
+    aborted: "#F5CCCB",
+    interactive: "#f7f3bf",
+    scheduled: "#f7f3bf",
+    new: "#1E90FF",
+  };
 
   return (
     colors[
@@ -805,6 +819,122 @@ function getIoInfo(
     record.info ??
     "",
   ).trim();
+}
+
+function getIoParamClass(
+  raw: unknown,
+): string {
+  const record =
+    getIoRecord(raw);
+
+  if (!record) {
+    return "";
+  }
+
+  return String(
+    record.paramClass ??
+    "",
+  ).trim();
+}
+
+function getIoValue(
+  raw: unknown,
+): string | undefined {
+  const record =
+    getIoRecord(raw);
+
+  if (!record) {
+    return undefined;
+  }
+
+  return typeof record.value ===
+    "string"
+    ? record.value
+    : undefined;
+}
+
+function getIoParentId(
+  raw: unknown,
+): string | number | undefined {
+  const record =
+    getIoRecord(raw);
+
+  if (!record) {
+    return undefined;
+  }
+
+  return (
+    typeof record.parentId ===
+    "string" ||
+    typeof record.parentId ===
+    "number"
+  )
+    ? record.parentId
+    : undefined;
+}
+
+function getOutputDisplayLabel(
+  output: unknown,
+): string {
+  const name =
+    getIoName(output);
+
+  const info =
+    getIoInfo(output);
+
+  if (
+    isScalarOutput(output)
+  ) {
+    if (name && info) {
+      return `${name}: ${info}`;
+    }
+
+    return (
+      name ||
+      info ||
+      "Output"
+    );
+  }
+
+  return (
+    info ||
+    name ||
+    getIoClass(output) ||
+    getIoParamClass(output) ||
+    "Output"
+  );
+}
+
+function openAnalyzeDecisionUrl(
+  decision:
+    AnalyzeViewerResolveDecision,
+): boolean {
+  if (
+    !decision ||
+    decision.handled !== true ||
+    !decision.url
+  ) {
+    return false;
+  }
+
+  if (
+    decision.target ===
+    "_self"
+  ) {
+    window.location.assign(
+      decision.url,
+    );
+
+    return true;
+  }
+
+  window.open(
+    decision.url,
+    "_blank",
+    "noopener,noreferrer",
+  );
+
+  return true;
 }
 
 function getIoTooltip(
@@ -998,52 +1128,6 @@ function getRowSteps(
   };
 }
 
-function SelectionCheckbox({
-  checked,
-  indeterminate = false,
-  ariaLabel,
-  onClick,
-}: {
-  checked: boolean;
-  indeterminate?: boolean;
-  ariaLabel: string;
-  onClick: (
-    event:
-      React.MouseEvent<
-        HTMLInputElement
-      >,
-  ) => void;
-}) {
-  const ref =
-    useRef<
-      HTMLInputElement
-      | null
-    >(null);
-
-  useEffect(() => {
-    if (
-      ref.current
-    ) {
-      ref.current.indeterminate =
-        indeterminate;
-    }
-  }, [
-    indeterminate,
-  ]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={checked}
-      readOnly
-      aria-label={ariaLabel}
-      className="ppt-checkbox"
-      onClick={onClick}
-    />
-  );
-}
-
 const ProjectProtocolTable =
   forwardRef<
     ProjectProtocolTableHandle,
@@ -1052,58 +1136,34 @@ const ProjectProtocolTable =
     (
       {
         projectStorageKey,
-
         rows,
-
         allTags,
-
         tagAssignments,
-
         externalTagFilterIds,
-
         searchQuery,
-
         highlightedId,
-
         selectedIds,
-
         isRefreshing,
-
         contextMenuVisibility,
-
         onRefresh,
-
         onActivate,
-
         onOpen,
-
         onBrowse,
-
         onAnnotate,
-
         onDuplicate,
-
         onCopyWorkflow,
-
         onDelete,
-
         onRestartAll,
-
         onContinueAll,
-
         onResetFrom,
-
         onStop,
-
         onSelectFrom,
-
         onSelectTo,
-
         onSelectionChange,
-
         onToggleTag,
-
         onManageTags,
+        projectId,
+        resolveAnalyzeViewer,
       },
       ref,
     ) => {
@@ -1119,6 +1179,19 @@ const ProjectProtocolTable =
             readSettings(
               storageKey,
             ),
+        );
+
+      const [
+        analyzeTarget,
+        setAnalyzeTarget,
+      ] =
+        useState<{
+          protocolId: string;
+          protocolLabel: string;
+          outputName: string;
+          outputRaw: unknown;
+        } | null>(
+          null,
         );
 
       const [
@@ -1164,12 +1237,6 @@ const ProjectProtocolTable =
             | null
           >
         >({});
-
-      const lastSelectionAnchorRef =
-        useRef<
-          string
-          | null
-        >(null);
 
       useEffect(() => {
         if (
@@ -1374,14 +1441,6 @@ const ProjectProtocolTable =
 
                   getIoSearchText(
                     Array.isArray(
-                      row.inputs,
-                    )
-                      ? row.inputs
-                      : [],
-                  ),
-
-                  getIoSearchText(
-                    Array.isArray(
                       row.outputs,
                     )
                       ? row.outputs
@@ -1576,18 +1635,6 @@ const ProjectProtocolTable =
                   )
                 );
 
-              case "inputs":
-                return (
-                  (
-                    left.inputs?.length ??
-                    0
-                  ) -
-                  (
-                    right.inputs?.length ??
-                    0
-                  )
-                );
-
               case "outputs":
                 return (
                   (
@@ -1689,7 +1736,7 @@ const ProjectProtocolTable =
                 key: string;
                 label: string;
                 rows:
-                  ProjectProtocolTableRow[];
+                ProjectProtocolTableRow[];
               }
             >();
 
@@ -1803,11 +1850,9 @@ const ProjectProtocolTable =
         );
 
       const totalColSpan =
-        1 +
         visibleColumns.length;
 
       const totalWidth =
-        SELECT_COLUMN_WIDTH +
         visibleColumns
           .reduce(
             (
@@ -1832,7 +1877,7 @@ const ProjectProtocolTable =
 
       const virtualizationEnabled =
         settings.groupBy ===
-          "none" &&
+        "none" &&
         sortedRows.length >
         VIRTUALIZE_AFTER_ROWS;
 
@@ -2169,7 +2214,7 @@ const ProjectProtocolTable =
               if (
                 current.sorts.length ===
                 1 &&
-              current.sorts[0].key ===
+                current.sorts[0].key ===
                 key
               ) {
                 return {
@@ -2393,8 +2438,7 @@ const ProjectProtocolTable =
             style.position =
               "sticky";
 
-            style.left =
-              SELECT_COLUMN_WIDTH;
+            style.left = 0;
           }
 
           if (
@@ -2405,7 +2449,6 @@ const ProjectProtocolTable =
               "sticky";
 
             style.left =
-              SELECT_COLUMN_WIDTH +
               settings.widths.id;
           }
 
@@ -2455,7 +2498,6 @@ const ProjectProtocolTable =
       const toggleRowSelection =
         (
           protocolId: string,
-          shiftPressed: boolean,
         ) => {
           const id =
             String(
@@ -2468,115 +2510,11 @@ const ProjectProtocolTable =
             );
 
           if (
-            shiftPressed &&
-            lastSelectionAnchorRef
-              .current
-          ) {
-            const anchorIndex =
-              sortedRows.findIndex(
-                (row) =>
-                  row.id ===
-                  lastSelectionAnchorRef
-                    .current,
-              );
-
-            const currentIndex =
-              sortedRows.findIndex(
-                (row) =>
-                  row.id ===
-                  id,
-              );
-
-            if (
-              anchorIndex >= 0 &&
-              currentIndex >= 0
-            ) {
-              const start =
-                Math.min(
-                  anchorIndex,
-                  currentIndex,
-                );
-
-              const end =
-                Math.max(
-                  anchorIndex,
-                  currentIndex,
-                );
-
-              for (
-                let index = start;
-                index <= end;
-                index += 1
-              ) {
-                next.add(
-                  sortedRows[
-                    index
-                  ].id,
-                );
-              }
-            }
-          } else if (
             next.has(id)
           ) {
             next.delete(id);
           } else {
             next.add(id);
-          }
-
-          lastSelectionAnchorRef
-            .current = id;
-
-          onSelectionChange(
-            Array.from(next),
-          );
-        };
-
-      const allVisibleSelected =
-        sortedRows.length >
-        0 &&
-        sortedRows.every(
-          (row) =>
-            selectedSet.has(
-              row.id,
-            ),
-        );
-
-      const someVisibleSelected =
-        !allVisibleSelected &&
-        sortedRows.some(
-          (row) =>
-            selectedSet.has(
-              row.id,
-            ),
-        );
-
-      const toggleAllVisible =
-        () => {
-          const next =
-            new Set(
-              selectedSet,
-            );
-
-          if (
-            allVisibleSelected
-          ) {
-            for (
-              const row
-              of sortedRows
-            ) {
-              next.delete(
-                row.id,
-              );
-            }
-          } else {
-            for (
-              const row
-              of sortedRows
-            ) {
-              next.add(
-                row.id,
-              );
-            }
           }
 
           onSelectionChange(
@@ -2715,19 +2653,127 @@ const ProjectProtocolTable =
           );
         };
 
-      const renderIoCell =
+      const openOutputViewer =
+        useCallback(
+          async (
+            row:
+              ProjectProtocolTableRow,
+            outputRaw: unknown,
+          ) => {
+            if (
+              projectId == null ||
+              isScalarOutput(
+                outputRaw,
+              )
+            ) {
+              return;
+            }
+
+            const outputName =
+              getIoName(
+                outputRaw,
+              );
+
+            if (!outputName) {
+              return;
+            }
+
+            const protocolLabel =
+              getProtocolDisplayName(
+                row,
+              );
+
+            if (
+              typeof resolveAnalyzeViewer ===
+              "function"
+            ) {
+              try {
+                const decision =
+                  await resolveAnalyzeViewer({
+                    projectId,
+
+                    protocolId:
+                      row.id,
+
+                    protocolLabel,
+
+                    outputName,
+
+                    pointerClass:
+                      getIoClass(
+                        outputRaw,
+                      ) ||
+                      undefined,
+
+                    paramClass:
+                      getIoParamClass(
+                        outputRaw,
+                      ) ||
+                      undefined,
+
+                    info:
+                      getIoInfo(
+                        outputRaw,
+                      ) ||
+                      undefined,
+
+                    value:
+                      getIoValue(
+                        outputRaw,
+                      ),
+
+                    parentId:
+                      getIoParentId(
+                        outputRaw,
+                      ),
+                  });
+
+                if (
+                  decision.handled ===
+                  true &&
+                  openAnalyzeDecisionUrl(
+                    decision,
+                  )
+                ) {
+                  return;
+                }
+              } catch {
+                // Same behavior as ProtocolNodeCard:
+                // fall back to the internal viewer.
+              }
+            }
+
+            setAnalyzeTarget({
+              protocolId:
+                row.id,
+
+              protocolLabel,
+
+              outputName,
+
+              outputRaw,
+            });
+          },
+          [
+            projectId,
+            resolveAnalyzeViewer,
+          ],
+        );
+
+      const renderOutputsCell =
         (
-          items:
-            unknown[]
-            | undefined,
+          row:
+            ProjectProtocolTableRow,
         ) => {
-          const normalized =
-            Array.isArray(items)
-              ? items
+          const outputs =
+            Array.isArray(
+              row.outputs,
+            )
+              ? row.outputs
               : [];
 
           if (
-            !normalized.length
+            !outputs.length
           ) {
             return (
               <span className="ppt-emptyValue">
@@ -2736,28 +2782,101 @@ const ProjectProtocolTable =
             );
           }
 
-          const firstName =
-            getIoName(
-              normalized[0],
-            );
-
           return (
             <div
-              className="ppt-ioCell"
+              className="ppt-outputsCell"
               title={
                 getIoTooltip(
-                  normalized,
+                  outputs,
                 )
               }
             >
-              <span className="ppt-countPill">
-                {normalized.length}
-              </span>
+              {outputs.map(
+                (
+                  output,
+                  index,
+                ) => {
+                  const outputName =
+                    getIoName(
+                      output,
+                    );
 
-              {firstName && (
-                <span className="ppt-ioName">
-                  {firstName}
-                </span>
+                  const isScalar =
+                    isScalarOutput(
+                      output,
+                    );
+
+                  const label =
+                    getOutputDisplayLabel(
+                      output,
+                    );
+
+                  const canView =
+                    projectId != null &&
+                    Boolean(
+                      outputName,
+                    ) &&
+                    !isScalar;
+
+                  return (
+                    <div
+                      key={
+                        outputName ||
+                        index
+                      }
+                      className="ppt-outputPill"
+                      title={label}
+                    >
+                      <ArrowUpRight
+                        className="ppt-outputIcon"
+                      />
+
+                      <span className="ppt-outputText">
+                        {label}
+                      </span>
+
+                      {!isScalar && (
+                        <button
+                          type="button"
+                          className="ppt-outputViewButton"
+                          aria-label={
+                            `View output ${outputName}`
+                          }
+                          title={
+                            canView
+                              ? "View output"
+                              : "Viewer not available"
+                          }
+                          disabled={
+                            !canView
+                          }
+                          onClick={(
+                            event,
+                          ) => {
+                            event
+                              .preventDefault();
+
+                            event
+                              .stopPropagation();
+
+                            if (
+                              !canView
+                            ) {
+                              return;
+                            }
+
+                            void openOutputViewer(
+                              row,
+                              output,
+                            );
+                          }}
+                        >
+                          <Eye />
+                        </button>
+                      )}
+                    </div>
+                  );
+                },
               )}
             </div>
           );
@@ -3210,14 +3329,9 @@ const ProjectProtocolTable =
                 </span>
               );
 
-            case "inputs":
-              return renderIoCell(
-                row.inputs,
-              );
-
             case "outputs":
-              return renderIoCell(
-                row.outputs,
+              return renderOutputsCell(
+                row,
               );
 
             case "dependent":
@@ -3288,12 +3402,10 @@ const ProjectProtocolTable =
 
                 if (
                   event.ctrlKey ||
-                  event.metaKey ||
-                  event.shiftKey
+                  event.metaKey
                 ) {
                   toggleRowSelection(
                     row.id,
-                    event.shiftKey,
                   );
 
                   return;
@@ -3309,51 +3421,15 @@ const ProjectProtocolTable =
                 )
               }
             >
-              <td
-                className="ppt-cell ppt-selectCell ppt-stickyLeft"
-                style={{
-                  width:
-                    SELECT_COLUMN_WIDTH,
-
-                  minWidth:
-                    SELECT_COLUMN_WIDTH,
-
-                  maxWidth:
-                    SELECT_COLUMN_WIDTH,
-
-                  left: 0,
-                }}
-              >
-                <SelectionCheckbox
-                  checked={
-                    selected
-                  }
-                  ariaLabel={
-                    `Select protocol ${row.id}`
-                  }
-                  onClick={(
-                    event,
-                  ) => {
-                    event
-                      .stopPropagation();
-
-                    toggleRowSelection(
-                      row.id,
-                      event.shiftKey,
-                    );
-                  }}
-                />
-              </td>
-
               {visibleColumns.map(
                 (column) => {
                   const sticky =
                     column.id ===
-                      "id" ||
+                    "id" ||
                     column.id ===
-                      "protocol" ||
+                    "protocol" ||
                     column.id ===
-                      "actions";
+                    "actions";
 
                   return (
                     <td
@@ -3654,6 +3730,163 @@ const ProjectProtocolTable =
             </div>
 
             <div className="ppt-toolbarRight">
+              {selectedIds.length >
+                1 && (
+                  <div className="ppt-selectionSummary">
+                    <span className="ppt-selectionCount">
+                      {selectedIds.length} selected
+                    </span>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        asChild
+                      >
+                        <button
+                          type="button"
+                          className="ppt-toolbarButton"
+                        >
+                          <CheckSquare2 />
+                          Actions
+                        </button>
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent
+                        align="end"
+                        className="min-w-[200px]"
+                      >
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            onDuplicate(
+                              selectedIds,
+                            )
+                          }
+                        >
+                          <CopyPlus />
+                          Duplicate
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            onCopyWorkflow(
+                              selectedIds,
+                            )
+                          }
+                        >
+                          <Copy />
+                          Copy workflow
+                        </DropdownMenuItem>
+
+                        {allTags.length >
+                          0 && (
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                <Tags />
+                                Tags
+                              </DropdownMenuSubTrigger>
+
+                              <DropdownMenuSubContent
+                                className="min-w-[210px]"
+                              >
+                                {allTags.map(
+                                  (tag) => {
+                                    const tagId =
+                                      String(
+                                        tag.id,
+                                      );
+
+                                    const allHaveTag =
+                                      selectedRows.length >
+                                      0 &&
+                                      selectedRows.every(
+                                        (row) =>
+                                          getAssignedTagIds(
+                                            row,
+                                          ).includes(
+                                            tagId,
+                                          ),
+                                      );
+
+                                    return (
+                                      <DropdownMenuCheckboxItem
+                                        key={
+                                          tagId
+                                        }
+                                        checked={
+                                          allHaveTag
+                                        }
+                                        onSelect={(
+                                          event,
+                                        ) =>
+                                          event
+                                            .preventDefault()
+                                        }
+                                        onCheckedChange={(
+                                          checked,
+                                        ) => {
+                                          void onToggleTag(
+                                            selectedIds,
+                                            tagId,
+                                            checked ===
+                                            true,
+                                          );
+                                        }}
+                                      >
+                                        {String(
+                                          tag.title ??
+                                          tag.id,
+                                        )}
+                                      </DropdownMenuCheckboxItem>
+                                    );
+                                  },
+                                )}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          )}
+
+                        {selectedLiveIds.length >
+                          0 && (
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                onStop(
+                                  selectedLiveIds,
+                                )
+                              }
+                            >
+                              <Square />
+                              Stop
+                            </DropdownMenuItem>
+                          )}
+
+                        <DropdownMenuSeparator />
+
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() =>
+                            onDelete(
+                              selectedIds,
+                            )
+                          }
+                        >
+                          <Trash2 />
+                          Delete
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            onSelectionChange(
+                              [],
+                            )
+                          }
+                        >
+                          <X />
+                          Clear selection
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
               <span className="ppt-rowCounter">
                 {sortedRows.length} of{" "}
                 {rows.length} protocols
@@ -3858,180 +4091,6 @@ const ProjectProtocolTable =
               </button>
             </div>
           </div>
-
-          {selectedIds.length >
-            0 && (
-              <div className="ppt-bulkToolbar">
-                <div className="ppt-bulkSelection">
-                  <CheckSquare2 />
-
-                  <strong>
-                    {
-                      selectedIds.length
-                    }
-                  </strong>
-
-                  selected
-                </div>
-
-                <div className="ppt-bulkActions">
-                  <button
-                    type="button"
-                    className="ppt-bulkButton"
-                    onClick={() =>
-                      onDuplicate(
-                        selectedIds,
-                      )
-                    }
-                  >
-                    <CopyPlus />
-                    Duplicate
-                  </button>
-
-                  <button
-                    type="button"
-                    className="ppt-bulkButton"
-                    onClick={() =>
-                      onCopyWorkflow(
-                        selectedIds,
-                      )
-                    }
-                  >
-                    <Copy />
-                    Copy
-                  </button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      asChild
-                    >
-                      <button
-                        type="button"
-                        className="ppt-bulkButton"
-                      >
-                        <Tags />
-                        Tags
-                      </button>
-                    </DropdownMenuTrigger>
-
-                    <DropdownMenuContent
-                      align="start"
-                      className="min-w-[210px]"
-                    >
-                      <DropdownMenuLabel>
-                        Toggle tag for selection
-                      </DropdownMenuLabel>
-
-                      {allTags.map(
-                        (tag) => {
-                          const tagId =
-                            String(
-                              tag.id,
-                            );
-
-                          const allHaveTag =
-                            selectedRows.length >
-                            0 &&
-                            selectedRows.every(
-                              (row) =>
-                                getAssignedTagIds(
-                                  row,
-                                ).includes(
-                                  tagId,
-                                ),
-                            );
-
-                          return (
-                            <DropdownMenuCheckboxItem
-                              key={
-                                tagId
-                              }
-                              checked={
-                                allHaveTag
-                              }
-                              onSelect={(
-                                event,
-                              ) =>
-                                event
-                                  .preventDefault()
-                              }
-                              onCheckedChange={(
-                                checked,
-                              ) => {
-                                void onToggleTag(
-                                  selectedIds,
-                                  tagId,
-                                  checked ===
-                                  true,
-                                );
-                              }}
-                            >
-                              {String(
-                                tag.title ??
-                                tag.id,
-                              )}
-                            </DropdownMenuCheckboxItem>
-                          );
-                        },
-                      )}
-
-                      <DropdownMenuSeparator />
-
-                      <DropdownMenuItem
-                        onSelect={
-                          onManageTags
-                        }
-                      >
-                        Manage tag definitions
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  {selectedLiveIds.length >
-                    0 && (
-                      <button
-                        type="button"
-                        className="ppt-bulkButton"
-                        onClick={() =>
-                          onStop(
-                            selectedLiveIds,
-                          )
-                        }
-                      >
-                        <Square />
-                        Stop
-                      </button>
-                    )}
-
-                  <button
-                    type="button"
-                    className="ppt-bulkButton ppt-bulkButtonDanger"
-                    onClick={() =>
-                      onDelete(
-                        selectedIds,
-                      )
-                    }
-                  >
-                    <Trash2 />
-                    Delete
-                  </button>
-
-                  <button
-                    type="button"
-                    className="ppt-clearSelection"
-                    title="Clear selection"
-                    onClick={() =>
-                      onSelectionChange(
-                        [],
-                      )
-                    }
-                  >
-                    <X />
-                  </button>
-                </div>
-              </div>
-            )}
-
           <div
             ref={containerRef}
             className="ppt-tableCard"
@@ -4057,49 +4116,15 @@ const ProjectProtocolTable =
             >
               <thead className="ppt-head">
                 <tr>
-                  <th
-                    className="ppt-headCell ppt-selectCell ppt-stickyLeft"
-                    style={{
-                      width:
-                        SELECT_COLUMN_WIDTH,
-
-                      minWidth:
-                        SELECT_COLUMN_WIDTH,
-
-                      maxWidth:
-                        SELECT_COLUMN_WIDTH,
-
-                      left: 0,
-                    }}
-                  >
-                    <SelectionCheckbox
-                      checked={
-                        allVisibleSelected
-                      }
-                      indeterminate={
-                        someVisibleSelected
-                      }
-                      ariaLabel="Select visible protocols"
-                      onClick={(
-                        event,
-                      ) => {
-                        event
-                          .stopPropagation();
-
-                        toggleAllVisible();
-                      }}
-                    />
-                  </th>
-
                   {visibleColumns.map(
                     (column) => {
                       const sticky =
                         column.id ===
-                          "id" ||
+                        "id" ||
                         column.id ===
-                          "protocol" ||
+                        "protocol" ||
                         column.id ===
-                          "actions";
+                        "actions";
 
                       return (
                         <th
@@ -4308,6 +4333,36 @@ const ProjectProtocolTable =
               </tbody>
             </table>
           </div>
+          {projectId != null &&
+            analyzeTarget && (
+              <AnalyzeOutputDialog
+                open
+                onClose={() =>
+                  setAnalyzeTarget(
+                    null,
+                  )
+                }
+                projectId={
+                  projectId
+                }
+                protocolId={
+                  analyzeTarget
+                    .protocolId
+                }
+                protocolLabel={
+                  analyzeTarget
+                    .protocolLabel
+                }
+                outputName={
+                  analyzeTarget
+                    .outputName
+                }
+                outputRaw={
+                  analyzeTarget
+                    .outputRaw
+                }
+              />
+            )}
         </div>
       );
     },
@@ -4332,7 +4387,7 @@ function FragmentGroup({
   colSpan: number;
   onToggle: () => void;
   children:
-    React.ReactNode;
+  React.ReactNode;
 }) {
   return (
     <>

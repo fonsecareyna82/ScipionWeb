@@ -1,347 +1,385 @@
 import {
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi,
 } from "vitest";
 
 import {
-  fireEvent,
-  render,
-  screen,
-  within,
+    fireEvent,
+    render,
+    screen,
+    within,
 } from "@testing-library/react";
 
 import ProjectProtocolTable from "@/components/projects/ProjectProtocolTable";
 
 const rows = [
-  {
-    id: "10",
-    runName: "Import movies",
-    label: "ProtImportMovies",
-    status: "finished",
-    stepsDone: 4,
-    numberOfSteps: 4,
-    tick: 20,
-    children: ["20"],
-    inputs: [],
-    outputs: [
-      {
-        name: "outputMovies",
-        pointerClass: "SetOfMovies",
-      },
-    ],
-    tags: ["import"],
-  },
-  {
-    id: "20",
-    runName: "Motion correction",
-    label: "ProtMotionCorr",
-    status: "running",
-    stepsDone: 7,
-    numberOfSteps: 10,
-    tick: 75,
-    children: [],
-    inputs: [
-      {
-        name: "inputMovies",
-        pointerClass: "SetOfMovies",
-      },
-    ],
-    outputs: [
-      {
-        name: "outputMicrographs",
-        pointerClass: "SetOfMicrographs",
-      },
-      {
-        name: "outputMovies",
-        pointerClass: "SetOfMovies",
-      },
-    ],
-    tags: ["motion"],
-  },
+    {
+        id: "10",
+        runName: "Import movies",
+        label: "ProtImportMovies",
+        status: "finished",
+        stepsDone: 4,
+        numberOfSteps: 4,
+        tick: 20,
+        children: ["20"],
+        inputs: [],
+        outputs: [
+            {
+                name: "outputMovies",
+                pointerClass: "SetOfMovies",
+            },
+        ],
+        tags: ["import"],
+    },
+    {
+        id: "20",
+        runName: "Motion correction",
+        label: "ProtMotionCorr",
+        status: "running",
+        stepsDone: 7,
+        numberOfSteps: 10,
+        tick: 75,
+        children: [],
+        inputs: [
+            {
+                name: "inputMovies",
+                pointerClass: "SetOfMovies",
+            },
+        ],
+        outputs: [
+            {
+                name: "outputMicrographs",
+                pointerClass: "SetOfMicrographs",
+            },
+            {
+                name: "outputMovies",
+                pointerClass: "SetOfMovies",
+            },
+        ],
+        tags: ["motion"],
+    },
 ];
 
 function renderTable(
-  overrides: Record<string, unknown> = {},
+    overrides: Record<string, unknown> = {},
 ) {
-  const props = {
-    projectStorageKey:
-      "test-project",
+    const props = {
+        projectStorageKey:
+            "test-project",
 
-    rows,
+        rows,
 
-    allTags: [
-      {
-        id: "import",
-        title: "Import",
-        color: "#4f46e5",
-      },
-      {
-        id: "motion",
-        title: "Motion",
-        color: "#0f766e",
-      },
-    ],
+        allTags: [
+            {
+                id: "import",
+                title: "Import",
+                color: "#4f46e5",
+            },
+            {
+                id: "motion",
+                title: "Motion",
+                color: "#0f766e",
+            },
+        ],
 
-    tagAssignments: {
-      "10": ["import"],
-      "20": ["motion"],
-    },
+        tagAssignments: {
+            "10": ["import"],
+            "20": ["motion"],
+        },
 
-    externalTagFilterIds: [],
+        externalTagFilterIds: [],
 
-    searchQuery: "",
+        searchQuery: "",
 
-    highlightedId: null,
+        highlightedId: null,
 
-    selectedIds: [],
+        selectedIds: [],
 
-    isRefreshing: false,
+        isRefreshing: false,
 
-    onRefresh: vi.fn(),
+        onRefresh: vi.fn(),
 
-    onActivate: vi.fn(),
+        onActivate: vi.fn(),
 
-    onOpen: vi.fn(),
+        onOpen: vi.fn(),
 
-    onBrowse: vi.fn(),
+        onBrowse: vi.fn(),
 
-    onAnnotate: vi.fn(),
+        onAnnotate: vi.fn(),
 
-    onDuplicate: vi.fn(),
+        onDuplicate: vi.fn(),
 
-    onCopyWorkflow: vi.fn(),
+        onCopyWorkflow: vi.fn(),
 
-    onDelete: vi.fn(),
+        onDelete: vi.fn(),
 
-    onRestartAll: vi.fn(),
+        onRestartAll: vi.fn(),
 
-    onContinueAll: vi.fn(),
+        onContinueAll: vi.fn(),
 
-    onResetFrom: vi.fn(),
+        onResetFrom: vi.fn(),
 
-    onStop: vi.fn(),
+        onStop: vi.fn(),
 
-    onSelectFrom: vi.fn(),
+        onSelectFrom: vi.fn(),
 
-    onSelectTo: vi.fn(),
+        onSelectTo: vi.fn(),
 
-    onSelectionChange: vi.fn(),
+        onSelectionChange: vi.fn(),
 
-    onToggleTag: vi.fn(),
+        onToggleTag: vi.fn(),
 
-    onManageTags: vi.fn(),
+        onManageTags: vi.fn(),
 
-    ...overrides,
-  };
+        ...overrides,
+    };
 
-  return {
-    ...render(
-      <ProjectProtocolTable
-        {...props}
-      />,
-    ),
+    return {
+        ...render(
+            <ProjectProtocolTable
+                {...props}
+            />,
+        ),
 
-    props,
-  };
+        props,
+    };
 }
 
 describe(
-  "ProjectProtocolTable",
-  () => {
-    beforeEach(() => {
-      window.localStorage.clear();
-    });
-
-    it(
-      "renders protocol state progress below the state",
-      () => {
-        renderTable();
-
-        expect(
-          screen.getByText(
-            "Running",
-          ),
-        ).toBeInTheDocument();
-
-        expect(
-          screen.getByText(
-            "7 / 10 steps",
-          ),
-        ).toBeInTheDocument();
-      },
-    );
-
-    it(
-      "filters rows using the project search query",
-      () => {
-        renderTable({
-          searchQuery:
-            "motion",
+    "ProjectProtocolTable",
+    () => {
+        beforeEach(() => {
+            window.localStorage.clear();
         });
 
-        expect(
-          screen.getByText(
-            "Motion correction",
-          ),
-        ).toBeInTheDocument();
+        it(
+            "renders protocol state progress below the state",
+            () => {
+                renderTable();
 
-        expect(
-          screen.queryByText(
-            "Import movies",
-          ),
-        ).not.toBeInTheDocument();
-      },
-    );
+                const motionRow =
+                    screen
+                        .getByText(
+                            "Motion correction",
+                        )
+                        .closest("tr");
 
-    it(
-      "renders input and output summaries",
-      () => {
-        renderTable();
+                expect(
+                    motionRow,
+                ).not.toBeNull();
 
-        const motionRow =
-          screen
-            .getByText(
-              "Motion correction",
-            )
-            .closest("tr");
+                expect(
+                    within(
+                        motionRow!,
+                    ).getByText(
+                        "Running",
+                    ),
+                ).toBeInTheDocument();
 
-        expect(
-          motionRow,
-        ).not.toBeNull();
-
-        expect(
-          within(
-            motionRow!,
-          ).getByText(
-            "inputMovies",
-          ),
-        ).toBeInTheDocument();
-
-        expect(
-          within(
-            motionRow!,
-          ).getByText(
-            "outputMicrographs",
-          ),
-        ).toBeInTheDocument();
-      },
-    );
-
-    it(
-      "sorts by protocol name",
-      () => {
-        renderTable();
-
-        fireEvent.click(
-          screen.getByRole(
-            "button",
-            {
-              name:
-                /Protocol/,
+                expect(
+                    screen.getByText(
+                        "7 / 10 steps",
+                    ),
+                ).toBeInTheDocument();
             },
-          ),
         );
 
-        const renderedRows =
-          Array.from(
-            document
-              .querySelectorAll(
-                "tr[data-protocol-id]",
-              ),
-          );
+        it(
+            "filters rows using the project search query",
+            () => {
+                renderTable({
+                    searchQuery:
+                        "motion",
+                });
 
-        expect(
-          renderedRows.map(
-            (row) =>
-              row.getAttribute(
-                "data-protocol-id",
-              ),
-          ),
-        ).toEqual([
-          "10",
-          "20",
-        ]);
-      },
-    );
+                expect(
+                    screen.getByText(
+                        "Motion correction",
+                    ),
+                ).toBeInTheDocument();
 
-    it(
-      "opens a protocol on double click",
-      () => {
-        const {
-          props,
-        } =
-          renderTable();
-
-        fireEvent.doubleClick(
-          screen.getByText(
-            "Motion correction",
-          ),
-        );
-
-        expect(
-          props.onOpen,
-        ).toHaveBeenCalledWith(
-          "20",
-        );
-      },
-    );
-
-    it(
-      "supports checkbox multi-selection",
-      () => {
-        const {
-          props,
-        } =
-          renderTable();
-
-        fireEvent.click(
-          screen.getByRole(
-            "checkbox",
-            {
-              name:
-                "Select protocol 20",
+                expect(
+                    screen.queryByText(
+                        "Import movies",
+                    ),
+                ).not.toBeInTheDocument();
             },
-          ),
         );
 
-        expect(
-          props.onSelectionChange,
-        ).toHaveBeenCalledWith([
-          "20",
-        ]);
-      },
-    );
+        it(
+            "renders protocol outputs using node-like output pills",
+            () => {
+                renderTable({
+                    projectId: 1,
+                });
 
-    it(
-      "filters by protocol state",
-      () => {
-        renderTable();
+                const motionRow =
+                    screen
+                        .getByText(
+                            "Motion correction",
+                        )
+                        .closest("tr");
 
-        fireEvent.click(
-          screen.getByRole(
-            "button",
-            {
-              name:
-                /Running/,
+                expect(
+                    motionRow,
+                ).not.toBeNull();
+
+                expect(
+                    within(
+                        motionRow!,
+                    ).getByText(
+                        "outputMicrographs",
+                    ),
+                ).toBeInTheDocument();
+
+                expect(
+                    within(
+                        motionRow!,
+                    ).getByText(
+                        "outputMovies",
+                    ),
+                ).toBeInTheDocument();
+
+                expect(
+                    within(
+                        motionRow!,
+                    ).getByRole(
+                        "button",
+                        {
+                            name:
+                                "View output outputMicrographs",
+                        },
+                    ),
+                ).toBeInTheDocument();
+
+                expect(
+                    screen.queryByText(
+                        "Inputs",
+                    ),
+                ).not.toBeInTheDocument();
             },
-          ),
         );
 
-        expect(
-          screen.getByText(
-            "Motion correction",
-          ),
-        ).toBeInTheDocument();
+        it(
+            "sorts by protocol name",
+            () => {
+                renderTable();
 
-        expect(
-          screen.queryByText(
-            "Import movies",
-          ),
-        ).not.toBeInTheDocument();
-      },
-    );
-  },
+                fireEvent.click(
+                    screen.getByRole(
+                        "button",
+                        {
+                            name:
+                                /Protocol/,
+                        },
+                    ),
+                );
+
+                const renderedRows =
+                    Array.from(
+                        document
+                            .querySelectorAll(
+                                "tr[data-protocol-id]",
+                            ),
+                    );
+
+                expect(
+                    renderedRows.map(
+                        (row) =>
+                            row.getAttribute(
+                                "data-protocol-id",
+                            ),
+                    ),
+                ).toEqual([
+                    "10",
+                    "20",
+                ]);
+            },
+        );
+
+        it(
+            "opens a protocol on double click",
+            () => {
+                const {
+                    props,
+                } =
+                    renderTable();
+
+                fireEvent.doubleClick(
+                    screen.getByText(
+                        "Motion correction",
+                    ),
+                );
+
+                expect(
+                    props.onOpen,
+                ).toHaveBeenCalledWith(
+                    "20",
+                );
+            },
+        );
+
+        it(
+            "supports ctrl-click multi-selection without checkbox controls",
+            () => {
+                const {
+                    props,
+                } =
+                    renderTable();
+
+                expect(
+                    screen.queryByRole(
+                        "checkbox",
+                    ),
+                ).not.toBeInTheDocument();
+
+                fireEvent.click(
+                    screen.getByText(
+                        "Motion correction",
+                    ),
+                    {
+                        ctrlKey: true,
+                    },
+                );
+
+                expect(
+                    props.onSelectionChange,
+                ).toHaveBeenCalledWith([
+                    "20",
+                ]);
+            },
+        );
+
+        it(
+            "filters by protocol state",
+            () => {
+                renderTable();
+
+                fireEvent.click(
+                    screen.getByRole(
+                        "button",
+                        {
+                            name:
+                                /Running/,
+                        },
+                    ),
+                );
+
+                expect(
+                    screen.getByText(
+                        "Motion correction",
+                    ),
+                ).toBeInTheDocument();
+
+                expect(
+                    screen.queryByText(
+                        "Import movies",
+                    ),
+                ).not.toBeInTheDocument();
+            },
+        );
+    },
 );
