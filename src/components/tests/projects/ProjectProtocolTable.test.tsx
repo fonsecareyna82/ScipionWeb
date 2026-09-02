@@ -112,8 +112,6 @@ function renderTable(
 
         onDuplicate: vi.fn(),
 
-        onCopyWorkflow: vi.fn(),
-
         onDelete: vi.fn(),
 
         onRestartAll: vi.fn(),
@@ -124,15 +122,9 @@ function renderTable(
 
         onStop: vi.fn(),
 
-        onSelectFrom: vi.fn(),
-
-        onSelectTo: vi.fn(),
-
         onSelectionChange: vi.fn(),
 
         onToggleTag: vi.fn(),
-
-        onManageTags: vi.fn(),
 
         ...overrides,
     };

@@ -13,9 +13,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  CheckSquare2,
   Columns3,
-  Copy,
   CopyPlus,
   FolderOpen,
   Layers3,
@@ -213,10 +211,6 @@ type Props = {
     protocolIds: string[],
   ) => void;
 
-  onCopyWorkflow: (
-    protocolIds: string[],
-  ) => void;
-
   onDelete: (
     protocolIds: string[],
   ) => void;
@@ -237,14 +231,6 @@ type Props = {
     protocolIds: string[],
   ) => void;
 
-  onSelectFrom: (
-    protocolId: string,
-  ) => void;
-
-  onSelectTo: (
-    protocolId: string,
-  ) => void;
-
   onSelectionChange: (
     protocolIds: string[],
   ) => void;
@@ -254,8 +240,6 @@ type Props = {
     tagId: string,
     enabled: boolean,
   ) => void | Promise<void>;
-
-  onManageTags: () => void;
 
   projectId?:
   | string
@@ -1151,17 +1135,13 @@ const ProjectProtocolTable =
         onBrowse,
         onAnnotate,
         onDuplicate,
-        onCopyWorkflow,
         onDelete,
         onRestartAll,
         onContinueAll,
         onResetFrom,
         onStop,
-        onSelectFrom,
-        onSelectTo,
         onSelectionChange,
         onToggleTag,
-        onManageTags,
         projectId,
         resolveAnalyzeViewer,
       },
@@ -3124,51 +3104,6 @@ const ProjectProtocolTable =
                   )}
 
                 {isMenuVisible(
-                  "copyWorkflow",
-                ) && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        onCopyWorkflow([
-                          row.id,
-                        ])
-                      }
-                    >
-                      <Copy />
-                      Copy workflow
-                    </DropdownMenuItem>
-                  )}
-
-                <DropdownMenuSeparator />
-
-                {isMenuVisible(
-                  "selectFrom",
-                ) && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        onSelectFrom(
-                          row.id,
-                        )
-                      }
-                    >
-                      Select from
-                    </DropdownMenuItem>
-                  )}
-
-                {isMenuVisible(
-                  "selectTo",
-                ) && (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        onSelectTo(
-                          row.id,
-                        )
-                      }
-                    >
-                      Select to
-                    </DropdownMenuItem>
-                  )}
-
-                {isMenuVisible(
                   "stop",
                 ) &&
                   LIVE_STATUSES.has(
@@ -3229,23 +3164,6 @@ const ProjectProtocolTable =
                       <RotateCcw />
                       Reset from
                     </DropdownMenuItem>
-                  )}
-
-                {isMenuVisible(
-                  "manageTags",
-                ) && (
-                    <>
-                      <DropdownMenuSeparator />
-
-                      <DropdownMenuItem
-                        onSelect={
-                          onManageTags
-                        }
-                      >
-                        <Tags />
-                        Manage tags
-                      </DropdownMenuItem>
-                    </>
                   )}
 
                 {isMenuVisible(
@@ -3764,17 +3682,6 @@ const ProjectProtocolTable =
                         >
                           <CopyPlus />
                           Duplicate
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            onCopyWorkflow(
-                              selectedIds,
-                            )
-                          }
-                        >
-                          <Copy />
-                          Copy workflow
                         </DropdownMenuItem>
 
                         {allTags.length >

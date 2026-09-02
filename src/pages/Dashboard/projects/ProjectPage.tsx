@@ -3074,224 +3074,6 @@ export default function ProjectPage() {
       ],
     );
 
-  const collectTableDescendants =
-    useCallback(
-      (
-        startId: string,
-      ): Set<string> => {
-        const rowsById =
-          new Map(
-            tableData.map(
-              (row) => [
-                String(
-                  row?.id,
-                ),
-                row,
-              ],
-            ),
-          );
-
-        const visited =
-          new Set<string>();
-
-        const queue =
-          [
-            String(
-              startId,
-            ),
-          ];
-
-        while (
-          queue.length
-        ) {
-          const current =
-            String(
-              queue.shift() ??
-              "",
-            );
-
-          if (
-            !current ||
-            visited.has(
-              current,
-            )
-          ) {
-            continue;
-          }
-
-          visited.add(
-            current,
-          );
-
-          const row =
-            rowsById.get(
-              current,
-            );
-
-          const children =
-            Array.isArray(
-              row?.children,
-            )
-              ? row.children
-              : [];
-
-          for (
-            const child
-            of children
-          ) {
-            const childId =
-              String(child);
-
-            if (
-              !visited.has(
-                childId,
-              )
-            ) {
-              queue.push(
-                childId,
-              );
-            }
-          }
-        }
-
-        return visited;
-      },
-      [
-        tableData,
-      ],
-    );
-
-  const collectTableAncestors =
-    useCallback(
-      (
-        startId: string,
-      ): Set<string> => {
-        const rowsById =
-          new Map(
-            tableData.map(
-              (row) => [
-                String(
-                  row?.id,
-                ),
-                row,
-              ],
-            ),
-          );
-
-        const visited =
-          new Set<string>();
-
-        const queue =
-          [
-            String(
-              startId,
-            ),
-          ];
-
-        while (
-          queue.length
-        ) {
-          const current =
-            String(
-              queue.shift() ??
-              "",
-            );
-
-          if (
-            !current ||
-            visited.has(
-              current,
-            )
-          ) {
-            continue;
-          }
-
-          visited.add(
-            current,
-          );
-
-          const row =
-            rowsById.get(
-              current,
-            );
-
-          const parents =
-            Array.isArray(
-              row?.parents,
-            )
-              ? row.parents
-              : [];
-
-          for (
-            const parent
-            of parents
-          ) {
-            const parentId =
-              String(parent);
-
-            if (
-              parentId !==
-              "PROJECT" &&
-              !visited.has(
-                parentId,
-              )
-            ) {
-              queue.push(
-                parentId,
-              );
-            }
-          }
-        }
-
-        visited.delete(
-          "PROJECT",
-        );
-
-        return visited;
-      },
-      [
-        tableData,
-      ],
-    );
-
-  const handleTableSelectFrom =
-    useCallback(
-      (
-        protocolId: string,
-      ) => {
-        handleTableSelectionChange(
-          Array.from(
-            collectTableDescendants(
-              protocolId,
-            ),
-          ),
-        );
-      },
-      [
-        collectTableDescendants,
-        handleTableSelectionChange,
-      ],
-    );
-
-  const handleTableSelectTo =
-    useCallback(
-      (
-        protocolId: string,
-      ) => {
-        handleTableSelectionChange(
-          Array.from(
-            collectTableAncestors(
-              protocolId,
-            ),
-          ),
-        );
-      },
-      [
-        collectTableAncestors,
-        handleTableSelectionChange,
-      ],
-    );
-
   const getAllWorkflowProtocolIds = useCallback((): Set<string> => {
     // getAllWorkflowProtocolIds
     const ids = new Set<string>();
@@ -8541,15 +8323,6 @@ export default function ProjectPage() {
       }
     };
 
-  const handleTableCopyWorkflow =
-    async (
-      protocolIds: string[],
-    ) => {
-      await copyWorkflowProtocols(
-        protocolIds,
-      );
-    };
-
   const submitRename = async () => {
     if (!projectName || !dlgRename.id) return;
 
@@ -9307,13 +9080,6 @@ export default function ProjectPage() {
                   protocolIds,
                 );
               }}
-              onCopyWorkflow={(
-                protocolIds,
-              ) => {
-                void handleTableCopyWorkflow(
-                  protocolIds,
-                );
-              }}
               onDelete={(
                 protocolIds,
               ) => {
@@ -9339,13 +9105,6 @@ export default function ProjectPage() {
                   ids: protocolIds,
                 });
               }}
-              onSelectFrom={
-                handleTableSelectFrom
-              }
-
-              onSelectTo={
-                handleTableSelectTo
-              }
               onSelectionChange={
                 handleTableSelectionChange
               }
@@ -9358,11 +9117,6 @@ export default function ProjectPage() {
                   protocolIds,
                   tagId,
                   enabled,
-                )
-              }
-              onManageTags={() =>
-                setTagManagerOpen(
-                  true,
                 )
               }
               projectId={
