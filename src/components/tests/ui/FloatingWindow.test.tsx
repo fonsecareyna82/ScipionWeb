@@ -321,5 +321,124 @@ describe(
                 ).toBeInTheDocument();
             },
         );
+
+        it(
+            "resizes from the bottom-right corner",
+            () => {
+                render(
+                    <FloatingWindow
+                        open
+                        onClose={
+                            vi.fn()
+                        }
+                        title="Viewer"
+                        ariaLabel="Resizable viewer"
+                        initialWidth="700px"
+                        initialHeight="500px"
+                    >
+                        content
+                    </FloatingWindow>,
+                );
+
+                const dialog =
+                    screen.getByRole(
+                        "dialog",
+                        {
+                            name:
+                                "Resizable viewer",
+                        },
+                    );
+
+                vi.spyOn(
+                    dialog,
+                    "getBoundingClientRect",
+                ).mockReturnValue(
+                    {
+                        x:
+                            100,
+
+                        y:
+                            100,
+
+                        left:
+                            100,
+
+                        top:
+                            100,
+
+                        right:
+                            800,
+
+                        bottom:
+                            600,
+
+                        width:
+                            700,
+
+                        height:
+                            500,
+
+                        toJSON:
+                            () => ({}),
+                    } as DOMRect,
+                );
+
+                const handle =
+                    screen.getByTestId(
+                        "floating-window-resize-se",
+                    );
+
+                fireEvent.pointerDown(
+                    handle,
+                    {
+                        pointerId:
+                            2,
+
+                        button:
+                            0,
+
+                        clientX:
+                            800,
+
+                        clientY:
+                            600,
+                    },
+                );
+
+                fireEvent.pointerMove(
+                    handle,
+                    {
+                        pointerId:
+                            2,
+
+                        clientX:
+                            880,
+
+                        clientY:
+                            660,
+                    },
+                );
+
+                fireEvent.pointerUp(
+                    handle,
+                    {
+                        pointerId:
+                            2,
+                    },
+                );
+
+                expect(
+                    dialog.style.width,
+                ).toBe(
+                    "780px",
+                );
+
+                expect(
+                    dialog.style.height,
+                ).toBe(
+                    "560px",
+                );
+            },
+        );
     },
 );

@@ -33,6 +33,39 @@ type FloatingWindowDragState = {
     startY: number;
 };
 
+type FloatingWindowSize = {
+    width: number;
+    height: number;
+};
+
+
+type FloatingWindowResizeDirection =
+    | "n"
+    | "ne"
+    | "e"
+    | "se"
+    | "s"
+    | "sw"
+    | "w"
+    | "nw";
+
+
+type FloatingWindowResizeState = {
+    pointerId: number;
+
+    direction:
+    FloatingWindowResizeDirection;
+
+    startClientX: number;
+    startClientY: number;
+
+    startX: number;
+    startY: number;
+
+    startWidth: number;
+    startHeight: number;
+};
+
 
 type FloatingWindowProps = {
     open: boolean;
@@ -56,6 +89,8 @@ type FloatingWindowProps = {
     minWidth?: number;
 
     minHeight?: number;
+
+    resizable?: boolean;
 };
 
 
@@ -159,6 +194,7 @@ function FloatingWindow({
     initialHeight = "78vh",
     minWidth = 640,
     minHeight = 420,
+    resizable = true,
 }: FloatingWindowProps) {
     const windowRef =
         useRef<HTMLDivElement | null>(
@@ -173,12 +209,31 @@ function FloatingWindow({
             null,
         );
 
+    const resizeStateRef =
+        useRef<
+            FloatingWindowResizeState |
+            null
+        >(
+            null,
+        );
+
     const [
         position,
         setPosition,
     ] =
         useState<
             FloatingWindowPosition |
+            null
+        >(
+            null,
+        );
+
+    const [
+        size,
+        setSize,
+    ] =
+        useState<
+            FloatingWindowSize |
             null
         >(
             null,
@@ -331,6 +386,17 @@ function FloatingWindow({
 
             dragStateRef.current =
                 null;
+
+            setIsResizing(
+                false,
+            );
+
+            resizeStateRef.current =
+                null;
+
+            setSize(
+                null,
+            );
 
             setZIndex(
                 nextFloatingWindowZIndex(),
@@ -579,6 +645,304 @@ function FloatingWindow({
         };
 
 
+    const handleResizeStart =
+        (
+            direction:
+                FloatingWindowResizeDirection,
+        ) =>
+            (
+                event:
+                    ReactPointerEvent<HTMLDivElement>,
+            ) => {
+                if (
+                    event.button !== 0 ||
+                    isMaximized
+                ) {
+                    return;
+                }
+
+                const element =
+                    windowRef.current;
+
+                if (!element) {
+                    return;
+                }
+
+                bringToFront();
+
+                const rect =
+                    element
+                        .getBoundingClientRect();
+
+                resizeStateRef.current = {
+                    pointerId:
+                        event.pointerId,
+
+                    direction,
+
+                    startClientX:
+                        event.clientX,
+
+                    startClientY:
+                        event.clientY,
+
+                    startX:
+                        rect.left,
+
+                    startY:
+                        rect.top,
+
+                    startWidth:
+                        rect.width,
+
+                    startHeight:
+                        rect.height,
+                };
+
+                setIsResizing(
+                    true,
+                );
+
+                event.currentTarget
+                    .setPointerCapture?.(
+                        event.pointerId,
+                    );
+
+                event.preventDefault();
+
+                event.stopPropagation();
+            };
+
+
+    const handleResizeMove =
+        (
+            event:
+                ReactPointerEvent<HTMLDivElement>,
+        ) => {
+            const state =
+                resizeStateRef.current;
+
+            if (
+                !state ||
+                state.pointerId !==
+                event.pointerId ||
+                typeof window ===
+                "undefined"
+            ) {
+                return;
+            }
+
+            const deltaX =
+                event.clientX -
+                state.startClientX;
+
+            const deltaY =
+                event.clientY -
+                state.startClientY;
+
+            const effectiveMinWidth =
+                Math.min(
+                    minWidth,
+                    Math.max(
+                        0,
+                        window.innerWidth -
+                        VIEWPORT_MARGIN *
+                        2,
+                    ),
+                );
+
+            const effectiveMinHeight =
+                Math.min(
+                    minHeight,
+                    Math.max(
+                        0,
+                        window.innerHeight -
+                        VIEWPORT_MARGIN *
+                        2,
+                    ),
+                );
+
+            let nextX =
+                state.startX;
+
+            let nextY =
+                state.startY;
+
+            let nextWidth =
+                state.startWidth;
+
+            let nextHeight =
+                state.startHeight;
+
+
+            const resizeRight =
+                state.direction.includes(
+                    "e",
+                );
+
+            const resizeLeft =
+                state.direction.includes(
+                    "w",
+                );
+
+            const resizeBottom =
+                state.direction.includes(
+                    "s",
+                );
+
+            const resizeTop =
+                state.direction.includes(
+                    "n",
+                );
+
+
+            if (resizeRight) {
+                const maxWidth =
+                    Math.max(
+                        effectiveMinWidth,
+
+                        window.innerWidth -
+                        state.startX -
+                        VIEWPORT_MARGIN,
+                    );
+
+                nextWidth =
+                    Math.min(
+                        Math.max(
+                            effectiveMinWidth,
+                            state.startWidth +
+                            deltaX,
+                        ),
+                        maxWidth,
+                    );
+            }
+
+
+            if (resizeLeft) {
+                const rightEdge =
+                    state.startX +
+                    state.startWidth;
+
+                const maxX =
+                    rightEdge -
+                    effectiveMinWidth;
+
+                nextX =
+                    Math.min(
+                        Math.max(
+                            VIEWPORT_MARGIN,
+                            state.startX +
+                            deltaX,
+                        ),
+                        maxX,
+                    );
+
+                nextWidth =
+                    rightEdge -
+                    nextX;
+            }
+
+
+            if (resizeBottom) {
+                const maxHeight =
+                    Math.max(
+                        effectiveMinHeight,
+
+                        window.innerHeight -
+                        state.startY -
+                        VIEWPORT_MARGIN,
+                    );
+
+                nextHeight =
+                    Math.min(
+                        Math.max(
+                            effectiveMinHeight,
+                            state.startHeight +
+                            deltaY,
+                        ),
+                        maxHeight,
+                    );
+            }
+
+
+            if (resizeTop) {
+                const bottomEdge =
+                    state.startY +
+                    state.startHeight;
+
+                const maxY =
+                    bottomEdge -
+                    effectiveMinHeight;
+
+                nextY =
+                    Math.min(
+                        Math.max(
+                            VIEWPORT_MARGIN,
+                            state.startY +
+                            deltaY,
+                        ),
+                        maxY,
+                    );
+
+                nextHeight =
+                    bottomEdge -
+                    nextY;
+            }
+
+
+            setPosition({
+                x:
+                    nextX,
+
+                y:
+                    nextY,
+            });
+
+            setSize({
+                width:
+                    nextWidth,
+
+                height:
+                    nextHeight,
+            });
+
+            event.preventDefault();
+
+            event.stopPropagation();
+        };
+
+
+    const finishResizing =
+        (
+            event:
+                ReactPointerEvent<HTMLDivElement>,
+        ) => {
+            const state =
+                resizeStateRef.current;
+
+            if (
+                !state ||
+                state.pointerId !==
+                event.pointerId
+            ) {
+                return;
+            }
+
+            resizeStateRef.current =
+                null;
+
+            setIsResizing(
+                false,
+            );
+
+            event.currentTarget
+                .releasePointerCapture?.(
+                    event.pointerId,
+                );
+
+            event.stopPropagation();
+        };
+
     const handleToggleMaximize =
         () => {
             bringToFront();
@@ -636,9 +1000,11 @@ function FloatingWindow({
             ? {}
             : {
                 width:
+                    size?.width ??
                     initialWidth,
 
                 height:
+                    size?.height ??
                     initialHeight,
 
                 minWidth:
@@ -682,6 +1048,11 @@ function FloatingWindow({
             }
             data-dragging={
                 isDragging
+                    ? "true"
+                    : "false"
+            }
+            data-resizing={
+                isResizing
                     ? "true"
                     : "false"
             }
@@ -797,6 +1168,58 @@ function FloatingWindow({
             <div className="sfw-content">
                 {children}
             </div>
+            {resizable &&
+                !isMaximized && (
+                    <>
+                        {(
+                            [
+                                "n",
+                                "ne",
+                                "e",
+                                "se",
+                                "s",
+                                "sw",
+                                "w",
+                                "nw",
+                            ] as FloatingWindowResizeDirection[]
+                        ).map(
+                            (
+                                direction,
+                            ) => (
+                                <div
+                                    key={
+                                        direction
+                                    }
+                                    className={[
+                                        "sfw-resizeHandle",
+
+                                        `sfw-resizeHandle--${direction}`,
+                                    ].join(
+                                        " ",
+                                    )}
+                                    data-testid={
+                                        `floating-window-resize-${direction}`
+                                    }
+                                    data-floating-window-no-drag
+                                    onPointerDown={
+                                        handleResizeStart(
+                                            direction,
+                                        )
+                                    }
+                                    onPointerMove={
+                                        handleResizeMove
+                                    }
+                                    onPointerUp={
+                                        finishResizing
+                                    }
+                                    onPointerCancel={
+                                        finishResizing
+                                    }
+                                />
+                            ),
+                        )}
+                    </>
+                )}
         </div>,
         portalContainer,
     );
