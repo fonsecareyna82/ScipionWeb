@@ -1324,7 +1324,7 @@ export default function ProtocolForm({
         return;
       }
 
-      if (cls === "EnumParam" && def.choices) {
+      if ((cls === "EnumParam" || cls === "KeyedEnumParam") && def.choices) {
         const selected = normalizeEnumSelection(rawFromApi, def.choices, def.default);
         params[key] = {
           ...defResolved,
@@ -1939,7 +1939,7 @@ export default function ProtocolForm({
             nextParam.editableValue = token;
           } else if (cls === "MultiPointerParam") {
             nextParam.editableValue = normalizeMultiPointerValue(rawValue);
-          } else if (cls === "EnumParam" && current?.choices) {
+          } else if ((cls === "EnumParam" || cls === "KeyedEnumParam") && current?.choices) {
             nextParam.editableValue = normalizeEnumSelection(
               rawValue,
               current.choices,
@@ -2617,8 +2617,13 @@ export default function ProtocolForm({
         });
       }
 
-      // EnumParam (requires stateKey)
-      if (defClass === "EnumParam" && def.choices) {
+      // EnumParam / KeyedEnumParam (requires stateKey) -- KeyedEnumParam is
+      // EnumParam's string-keyed sibling (pyworkflow.protocol.params), used
+      // by Domain.findCapabilityProviders-driven choice lists (e.g. pwem's
+      // ProtImportParticles.importFrom) where the choice set can change
+      // between runs. Same widget, same choices shape (normalizeEnumOptions
+      // handles both), only the stored/submitted value type differs.
+      if ((defClass === "EnumParam" || defClass === "KeyedEnumParam") && def.choices) {
         if (!stateKey) return null;
 
         return renderEnumParamRow({

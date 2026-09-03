@@ -179,6 +179,15 @@ export function normalizePointerToken(raw: any): string {
 export function normalizeEnumOptions(choicesRaw: any): EnumOption[] {
   if (Array.isArray(choicesRaw)) {
     return choicesRaw.map((c) => {
+      // KeyedEnumParam (pyworkflow.protocol.params) serializes choices as
+      // [key, label] pairs, unlike plain EnumParam's flat list of labels
+      // (where value === label, since the backend converts by position).
+      // KeyedEnumParam's value is the key string itself, not a position,
+      // so value and label must stay distinct here.
+      if (Array.isArray(c) && c.length === 2) {
+        return { value: String(c[0] ?? ""), label: String(c[1] ?? "") };
+      }
+
       const s = String(c ?? "");
       return { value: s, label: s };
     });
