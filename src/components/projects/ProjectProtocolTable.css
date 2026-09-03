@@ -682,6 +682,14 @@
   white-space: nowrap;
 }
 
+.projectpage-widget-root .ppt-extraValue {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .projectpage-widget-root .ppt-emptyValue {
   opacity: 0.55;
 }

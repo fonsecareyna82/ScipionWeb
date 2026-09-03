@@ -1058,9 +1058,8 @@ export function buildGraphElements(
       elapsedTime: prot.elapsedTime,
       tick: Number(prot.elapsedTime) || 0,
 
-      tags: Array.isArray(prot.tags)
-        ? prot.tags
-        : [],
+      tags: Array.isArray(prot.tags) ? prot.tags : [],
+      extraTableColumns: prot.extraTableColumns,
     }));
 
     return { nodes: [], edges: [], table: tableData };

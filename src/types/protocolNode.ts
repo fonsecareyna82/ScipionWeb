@@ -1,3 +1,5 @@
+import type { ExtraTableColumns } from "./extraTableColumns";
+
 export interface ProtocolNode {
   id: string;
   parents: string[];
@@ -5,7 +7,7 @@ export interface ProtocolNode {
   label: string;
   title: string;
   runName: string;
-  comment: string; 
+  comment: string;
   status: string;
   parameters: Record<string, any>;
   cpuTime: string;
@@ -15,4 +17,5 @@ export interface ProtocolNode {
   outputs: any;
   inputs: any;
   tags: string[];
+  extraTableColumns?: ExtraTableColumns;
 }

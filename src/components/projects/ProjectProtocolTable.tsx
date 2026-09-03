@@ -62,41 +62,34 @@ import type { ProtocolTag } from "@/components/tags/tagTypes";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 import "./ProjectProtocolTable.css";
+import type { ExtraTableColumns, ExtraTableColumnType, ExtraTableColumnValue } from "@/types/extraTableColumns";
 
 export type ProjectProtocolTableRow = {
   id: string;
-
   label?: string;
   title?: string;
   runName?: string;
   comment?: string;
   status?: string;
-
   parents?: string[];
   children?: string[];
-
   outputs?: unknown[];
-
   tagIds?: unknown;
   tags?: unknown;
-
   cpuTime?: string;
   elapsedTime?: string | number;
   tick?: number;
-
   stepsDone?: number;
   numberOfSteps?: number;
+  extraTableColumns?: ExtraTableColumns;
 };
 
 export type ProjectProtocolTableHandle = {
-  scrollToProtocol: (
-    protocolId: string,
-  ) => boolean;
-
+  scrollToProtocol: (protocolId: string) => boolean;
   scrollToFirstVisible: () => boolean;
 };
 
-type ColumnId =
+type StandardColumnId =
   | "id"
   | "protocol"
   | "state"
@@ -106,49 +99,26 @@ type ColumnId =
   | "dependent"
   | "actions";
 
-type SortableColumnId =
-  Exclude<
-    ColumnId,
-    "actions"
-  >;
-
-type SortDirection =
-  | "asc"
-  | "desc";
+type ExtraColumnId = `extra:${string}`;
+type ColumnId = StandardColumnId | ExtraColumnId;
+type SortableColumnId = Exclude<ColumnId, "actions">;
+type SortDirection = "asc" | "desc";
 
 type SortRule = {
   key: SortableColumnId;
   direction: SortDirection;
 };
 
-type TableDensity =
-  | "comfortable"
-  | "compact";
-
-type TableGroupBy =
-  | "none"
-  | "state"
-  | "tag";
+type TableDensity = "comfortable" | "compact";
+type TableGroupBy = "none" | "state" | "tag";
 
 type TableSettings = {
   version: 4;
-
-  visible: Record<
-    ColumnId,
-    boolean
-  >;
-
-  widths: Record<
-    ColumnId,
-    number
-  >;
-
+  visible: Partial<Record<ColumnId, boolean>>;
+  widths: Partial<Record<ColumnId, number>>;
   sorts: SortRule[];
-
   density: TableDensity;
-
   groupBy: TableGroupBy;
-
   stateFilter: string;
 };
 
@@ -160,6 +130,15 @@ type ColumnDefinition = {
   defaultVisible: boolean;
   defaultWidth: number;
   minWidth: number;
+  extraKey?: string;
+  extraType?: ExtraTableColumnType;
+};
+
+type NormalizedExtraTableColumn = {
+  label: string;
+  value: unknown;
+  type: ExtraTableColumnType;
+  defaultVisible: boolean;
 };
 
 type Props = {
@@ -345,18 +324,165 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
 ];
 
-function createDefaultSettings(): TableSettings {
-  const visible =
-    {} as Record<
-      ColumnId,
-      boolean
-    >;
+const EXTRA_COLUMN_PREFIX = "extra:";
+const EXTRA_COLUMN_TYPES = new Set<ExtraTableColumnType>(["text", "number", "datetime", "duration", "bytes", "boolean"]);
 
-  const widths =
-    {} as Record<
-      ColumnId,
-      number
-    >;
+function toExtraColumnId(key: string): ExtraColumnId {
+  return `${EXTRA_COLUMN_PREFIX}${key}` as ExtraColumnId;
+}
+
+function isExtraColumnId(columnId: ColumnId): columnId is ExtraColumnId {
+  return columnId.startsWith(EXTRA_COLUMN_PREFIX);
+}
+
+function humanizeExtraColumnKey(key: string): string {
+  const text = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim();
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : key;
+}
+
+function inferExtraColumnType(value: unknown): ExtraTableColumnType {
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "text";
+}
+
+function normalizeExtraTableColumn(key: string, raw: ExtraTableColumnValue | undefined): NormalizedExtraTableColumn | null {
+  if (raw === undefined) return null;
+
+  const isDescriptor = raw !== null && typeof raw === "object" && !Array.isArray(raw);
+  const descriptor = isDescriptor ? raw as Record<string, unknown> : null;
+  const value = descriptor ? descriptor.value : raw;
+  const rawType = descriptor ? String(descriptor.type ?? "").trim().toLowerCase() : "";
+  const type = EXTRA_COLUMN_TYPES.has(rawType as ExtraTableColumnType) ? rawType as ExtraTableColumnType : inferExtraColumnType(value);
+  const label = descriptor ? String(descriptor.label ?? "").trim() : "";
+  const defaultVisible = descriptor?.defaultVisible !== false;
+
+  return {
+    label: label || humanizeExtraColumnKey(key),
+    value,
+    type,
+    defaultVisible,
+  };
+}
+
+function getExtraTableColumn(row: ProjectProtocolTableRow, key: string): NormalizedExtraTableColumn | null {
+  return normalizeExtraTableColumn(key, row.extraTableColumns?.[key]);
+}
+
+function getExtraColumnSizes(type: ExtraTableColumnType): { defaultWidth: number; minWidth: number } {
+  if (type === "datetime") return { defaultWidth: 190, minWidth: 150 };
+  if (type === "bytes" || type === "number") return { defaultWidth: 130, minWidth: 105 };
+  if (type === "duration") return { defaultWidth: 140, minWidth: 105 };
+  if (type === "boolean") return { defaultWidth: 110, minWidth: 90 };
+  return { defaultWidth: 180, minWidth: 120 };
+}
+
+function buildExtraColumnDefinitions(rows: ProjectProtocolTableRow[]): ColumnDefinition[] {
+  const definitions = new Map<string, ColumnDefinition>();
+
+  for (const row of rows) {
+    for (const [rawKey, rawValue] of Object.entries(row.extraTableColumns ?? {})) {
+      const key = String(rawKey).trim();
+      if (!key || definitions.has(key)) continue;
+
+      const normalized = normalizeExtraTableColumn(key, rawValue as ExtraTableColumnValue);
+      if (!normalized) continue;
+
+      const sizes = getExtraColumnSizes(normalized.type);
+
+      definitions.set(key, {
+        id: toExtraColumnId(key),
+        label: normalized.label,
+        sortable: true,
+        defaultVisible: normalized.defaultVisible,
+        defaultWidth: sizes.defaultWidth,
+        minWidth: sizes.minWidth,
+        extraKey: key,
+        extraType: normalized.type,
+      });
+    }
+  }
+
+  return Array.from(definitions.values());
+}
+
+function getBooleanValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function formatBytes(value: unknown): string {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) return String(value ?? "");
+  if (bytes === 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const absoluteBytes = Math.abs(bytes);
+  const unitIndex = Math.min(Math.floor(Math.log(absoluteBytes) / Math.log(1024)), units.length - 1);
+  const normalizedValue = bytes / Math.pow(1024, unitIndex);
+
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(normalizedValue)} ${units[unitIndex]}`;
+}
+
+function formatDateTime(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatExtraTableValue(extra: NormalizedExtraTableColumn): string {
+  if (extra.value === null || extra.value === undefined || extra.value === "") return "—";
+
+  if (extra.type === "datetime") return formatDateTime(extra.value);
+  if (extra.type === "duration") return formatElapsed(extra.value);
+  if (extra.type === "bytes") return formatBytes(extra.value);
+  if (extra.type === "boolean") return getBooleanValue(extra.value) ? "Yes" : "No";
+
+  if (extra.type === "number") {
+    const numberValue = Number(extra.value);
+    return Number.isFinite(numberValue) ? new Intl.NumberFormat().format(numberValue) : String(extra.value);
+  }
+
+  return String(extra.value);
+}
+
+function compareExtraTableValues(left: unknown, right: unknown, type: ExtraTableColumnType): number {
+  if (type === "number" || type === "bytes" || type === "duration") {
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    return (Number.isFinite(leftNumber) ? leftNumber : 0) - (Number.isFinite(rightNumber) ? rightNumber : 0);
+  }
+
+  if (type === "datetime") {
+    const leftTime = new Date(String(left ?? "")).getTime();
+    const rightTime = new Date(String(right ?? "")).getTime();
+    return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+  }
+
+  if (type === "boolean") return Number(getBooleanValue(left)) - Number(getBooleanValue(right));
+
+  return compareText(left, right);
+}
+
+function getExtraTableSearchText(row: ProjectProtocolTableRow): string {
+  return Object.entries(row.extraTableColumns ?? {}).map(([key, value]) => {
+    const extra = normalizeExtraTableColumn(key, value as ExtraTableColumnValue);
+    return extra ? `${extra.label} ${formatExtraTableValue(extra)}` : "";
+  }).filter(Boolean).join(" ");
+}
+
+function createDefaultSettings(): TableSettings {
+  const visible: Partial<Record<ColumnId, boolean>> = {};
+  const widths: Partial<Record<ColumnId, number>> = {};
 
   for (
     const column
@@ -418,48 +544,13 @@ function readSettings(
       return defaults;
     }
 
-    const validSortableIds =
-      new Set(
-        COLUMN_DEFINITIONS
-          .filter(
-            (column) =>
-              column.sortable,
-          )
-          .map(
-            (column) =>
-              column.id,
-          ),
-      );
+    const validStandardSortableIds = new Set(COLUMN_DEFINITIONS.filter((column) => column.sortable).map((column) => column.id));
 
-    const sorts =
-      Array.isArray(
-        parsed.sorts,
-      )
-        ? parsed.sorts
-          .filter(
-            (rule: any) =>
-              validSortableIds.has(
-                rule?.key,
-              ) &&
-              (
-                rule?.direction ===
-                "asc" ||
-                rule?.direction ===
-                "desc"
-              ),
-          )
-          .map(
-            (rule: any) => ({
-              key:
-                rule.key as
-                SortableColumnId,
-
-              direction:
-                rule.direction as
-                SortDirection,
-            }),
-          )
-        : defaults.sorts;
+    const sorts = Array.isArray(parsed.sorts)
+      ? parsed.sorts
+        .filter((rule: any) => typeof rule?.key === "string" && (validStandardSortableIds.has(rule.key as ColumnId) || rule.key.startsWith(EXTRA_COLUMN_PREFIX)) && (rule?.direction === "asc" || rule?.direction === "desc"))
+        .map((rule: any) => ({ key: rule.key as SortableColumnId, direction: rule.direction as SortDirection }))
+      : defaults.sorts;
 
     return {
       ...defaults,
@@ -1303,6 +1394,17 @@ const ProjectProtocolTable =
           ],
         );
 
+      const extraColumnDefinitions = useMemo(() => buildExtraColumnDefinitions(rows), [rows]);
+
+      const columnDefinitions = useMemo(() => {
+        const actionsColumn = COLUMN_DEFINITIONS.find((column) => column.id === "actions");
+        const standardColumns = COLUMN_DEFINITIONS.filter((column) => column.id !== "actions");
+
+        return actionsColumn
+          ? [...standardColumns, ...extraColumnDefinitions, actionsColumn]
+          : [...standardColumns, ...extraColumnDefinitions];
+      }, [extraColumnDefinitions]);
+
       const getAssignedTagIds =
         useCallback(
           (
@@ -1426,6 +1528,7 @@ const ProjectProtocolTable =
                       ? row.outputs
                       : [],
                   ),
+                  getExtraTableSearchText(row),
                 ]
                   .filter(Boolean)
                   .join(" ")
@@ -1639,8 +1742,16 @@ const ProjectProtocolTable =
                   )
                 );
 
-              default:
-                return 0;
+              default: {
+                if (!isExtraColumnId(key)) return 0;
+
+                const extraKey = key.slice(EXTRA_COLUMN_PREFIX.length);
+                const leftExtra = getExtraTableColumn(left, extraKey);
+                const rightExtra = getExtraTableColumn(right, extraKey);
+                const type = leftExtra?.type ?? rightExtra?.type ?? "text";
+
+                return compareExtraTableValues(leftExtra?.value, rightExtra?.value, type);
+              }
             }
           },
           [
@@ -1814,20 +1925,7 @@ const ProjectProtocolTable =
           ],
         );
 
-      const visibleColumns =
-        useMemo(
-          () =>
-            COLUMN_DEFINITIONS
-              .filter(
-                (column) =>
-                  settings.visible[
-                  column.id
-                  ],
-              ),
-          [
-            settings.visible,
-          ],
-        );
+      const visibleColumns = useMemo(() => columnDefinitions.filter((column) => settings.visible[column.id] ?? column.defaultVisible), [columnDefinitions, settings.visible]);
 
       const totalColSpan =
         visibleColumns.length;
@@ -2099,12 +2197,7 @@ const ProjectProtocolTable =
           columnId: ColumnId,
           visible: boolean,
         ) => {
-          const definition =
-            COLUMN_DEFINITIONS.find(
-              (column) =>
-                column.id ===
-                columnId,
-            );
+          const definition = columnDefinitions.find((column) => column.id === columnId);
 
           if (
             definition?.mandatory
@@ -3265,8 +3358,23 @@ const ProjectProtocolTable =
                 row,
               );
 
-            default:
-              return null;
+            default: {
+              if (!column.extraKey) return null;
+
+              const extra = getExtraTableColumn(row, column.extraKey);
+
+              if (!extra) {
+                return <span className="ppt-emptyValue">—</span>;
+              }
+
+              const formattedValue = formatExtraTableValue(extra);
+
+              return (
+                <span className="ppt-extraValue" title={formattedValue}>
+                  {formattedValue}
+                </span>
+              );
+            }
           }
         };
 
@@ -3825,17 +3933,13 @@ const ProjectProtocolTable =
                     Visible columns
                   </DropdownMenuLabel>
 
-                  {COLUMN_DEFINITIONS.map(
+                  {columnDefinitions.map(
                     (column) => (
                       <DropdownMenuCheckboxItem
                         key={
                           column.id
                         }
-                        checked={
-                          settings.visible[
-                          column.id
-                          ]
-                        }
+                        checked={settings.visible[column.id] ?? column.defaultVisible}
                         disabled={
                           column.mandatory
                         }

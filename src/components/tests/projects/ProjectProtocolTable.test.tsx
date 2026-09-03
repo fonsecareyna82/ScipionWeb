@@ -408,5 +408,64 @@ describe(
                 ).not.toBeInTheDocument();
             },
         );
+
+        it("keeps the legacy table unchanged when no extra columns are provided", () => {
+            renderTable();
+
+            expect(screen.queryByRole("button", { name: /Updated/i })).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", { name: /Priority/i })).not.toBeInTheDocument();
+        });
+
+        it("discovers, renders and sorts extra table columns", () => {
+            const extraRows = [
+                {
+                    ...rows[0],
+                    extraTableColumns: {
+                        priority: {
+                            label: "Priority",
+                            value: 1,
+                            type: "number",
+                            defaultVisible: true,
+                        },
+                        owner: {
+                            label: "Owner",
+                            value: "Alice",
+                            type: "text",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+                {
+                    ...rows[1],
+                    extraTableColumns: {
+                        priority: {
+                            label: "Priority",
+                            value: 2,
+                            type: "number",
+                            defaultVisible: true,
+                        },
+                        owner: {
+                            label: "Owner",
+                            value: "Bob",
+                            type: "text",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+            ];
+
+            renderTable({ rows: extraRows });
+
+            expect(screen.getByRole("button", { name: /Priority/i })).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: /Owner/i })).toBeInTheDocument();
+            expect(screen.getByText("Alice")).toBeInTheDocument();
+            expect(screen.getByText("Bob")).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("button", { name: /Priority/i }));
+
+            const renderedRows = Array.from(document.querySelectorAll("tr[data-protocol-id]"));
+
+            expect(renderedRows.map((row) => row.getAttribute("data-protocol-id"))).toEqual(["10", "20"]);
+        });
     },
 );
