@@ -898,6 +898,10 @@ export type ProjectEffectiveSettings = {
   };
 };
 
+export type ProjectFetchOptions = {
+  includeTableMetrics?: boolean;
+};
+
 export type ProjectServiceCapabilities = {
   projectEffectiveSettings?: boolean;
 };
@@ -1570,7 +1574,7 @@ export interface ProjectService<
   fetchList(): Promise<TProjectList>;
 
   /** Get project by id or name. */
-  fetchProject(projectId: Id): Promise<TProject>;
+  fetchProject(projectId: Id, opts?: ProjectFetchOptions): Promise<TProject>;
 
   /** Get protocol details by project/protocol ids. */
   fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<TProtocol>;

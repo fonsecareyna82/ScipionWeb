@@ -4157,9 +4157,7 @@ export default function ProjectPage() {
         data,
         effectiveSettings,
       ] = await Promise.all([
-        svc.fetchProject(
-          projectName,
-        ),
+        svc.fetchProject(projectName, { includeTableMetrics: viewModeRef.current === "table" }),
         loadProjectEffectiveSettings(
           projectName,
         ),
@@ -4309,7 +4307,7 @@ export default function ProjectPage() {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      const data = await svc.fetchProject(projectName);
+      const data = await svc.fetchProject(projectName, { includeTableMetrics: viewMode === "table" });
       setProject(data);
       setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
@@ -5340,10 +5338,9 @@ export default function ProjectPage() {
         );
       }
 
-      prevLayout.current = {
-        viewMode,
-        graphDirection,
-      };
+      prevLayout.current = { viewMode, graphDirection };
+
+      void handleRefresh();
 
       return;
     }
@@ -5476,6 +5473,7 @@ export default function ProjectPage() {
     seedNodesWithSelectionAndThumbnails,
     protocolOutputThumbnailsEnabled,
     loadProtocolOutputThumbnailsForNodes,
+    handleRefresh,
   ]);
   /* ------------------------ First-center ONLY once after initial load ------------------------ */
   useEffect(() => {

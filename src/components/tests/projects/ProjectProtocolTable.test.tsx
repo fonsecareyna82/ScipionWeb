@@ -467,5 +467,26 @@ describe(
 
             expect(renderedRows.map((row) => row.getAttribute("data-protocol-id"))).toEqual(["10", "20"]);
         });
+
+        it("formats byte extra columns as human readable sizes", () => {
+            renderTable({
+                rows: [
+                    {
+                        ...rows[0],
+                        extraTableColumns: {
+                            workingDirSize: {
+                                label: "Working dir",
+                                value: 2147483648,
+                                type: "bytes",
+                                defaultVisible: true,
+                            },
+                        },
+                    },
+                ],
+            });
+
+            expect(screen.getByRole("button", { name: /Working dir/i })).toBeInTheDocument();
+            expect(screen.getByText("2 GB")).toBeInTheDocument();
+        });
     },
 );

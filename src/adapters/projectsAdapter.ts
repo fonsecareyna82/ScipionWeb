@@ -65,6 +65,7 @@ import type {
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
   InstanceResources,
+  ProjectFetchOptions,
 
 } from "@/services/ProjectService";
 
@@ -127,7 +128,7 @@ const defaultService: ProjectService = {
   // --- Reads ---
   fetchList: () => api.fetchProjects(),
 
-  fetchProject: (id: Id) => api.fetchProject(toId(id)),
+  fetchProject: (id: Id, opts?: ProjectFetchOptions) => api.fetchProject(toId(id), opts),
 
   // ──────────────────────────── Optional runtime capabilities ────────────────────────────
 

@@ -61,6 +61,7 @@ import {
   ProtocolWorkflowExecutionScope,
   ProtocolRuntimeSummary,
   VolumeData3d,
+  ProjectFetchOptions,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -307,9 +308,16 @@ export async function fetchProjects(): Promise<Project[]> {
   return safeJson<Project[]>(response);
 }
 
-export async function fetchProject(projectId: Id): Promise<Project> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}`);
+export async function fetchProject(projectId: Id, opts: ProjectFetchOptions = {}): Promise<Project> {
+  const params = new URLSearchParams();
+
+  if (opts.includeTableMetrics === true) params.set("includeTableMetrics", "true");
+
+  const query = params.toString();
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}${query ? `?${query}` : ""}`);
+
   if (!response.ok) throw await toApiError(response, "Failed to fetch project");
+
   return safeJson<Project>(response);
 }
 
