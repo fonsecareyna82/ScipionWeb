@@ -30,6 +30,7 @@ import {
   X,
   ArrowUpRight,
   Eye,
+  Filter,
 } from "lucide-react";
 
 import {
@@ -63,6 +64,15 @@ import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 import "./ProjectProtocolTable.css";
 import type { ExtraTableColumns, ExtraTableColumnType, ExtraTableColumnValue } from "@/types/extraTableColumns";
+
+import ProtocolTableColumnFilterMenu from "@/components/projects/ProtocolTableColumnFilterMenu";
+import {
+  describeProtocolTableFilter,
+  matchesProtocolTableFilter,
+  normalizeStoredProtocolTableFilters,
+  type ProtocolTableColumnFilter,
+  type ProtocolTableColumnFilters,
+} from "@/components/projects/protocol-table-filters";
 
 export type ProjectProtocolTableRow = {
   id: string;
@@ -120,6 +130,7 @@ type TableSettings = {
   density: TableDensity;
   groupBy: TableGroupBy;
   stateFilter: string;
+  columnFilters: ProtocolTableColumnFilters;
 };
 
 type ColumnDefinition = {
@@ -130,6 +141,7 @@ type ColumnDefinition = {
   defaultVisible: boolean;
   defaultWidth: number;
   minWidth: number;
+  filterType?: ExtraTableColumnType;
   extraKey?: string;
   extraType?: ExtraTableColumnType;
 };
@@ -264,6 +276,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     defaultWidth: 86,
     minWidth: 70,
+    filterType: "text",
   },
   {
     id: "protocol",
@@ -273,6 +286,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     defaultWidth: 300,
     minWidth: 180,
+    filterType: "text",
   },
   {
     id: "state",
@@ -289,6 +303,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     defaultWidth: 220,
     minWidth: 130,
+    filterType: "text",
   },
   {
     id: "elapsed",
@@ -297,6 +312,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     defaultWidth: 140,
     minWidth: 105,
+    filterType: "duration",
   },
   {
     id: "outputs",
@@ -305,6 +321,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: false,
     defaultWidth: 480,
     minWidth: 260,
+    filterType: "number",
   },
   {
     id: "dependent",
@@ -313,6 +330,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
     defaultWidth: 170,
     minWidth: 110,
+    filterType: "number",
   },
   {
     id: "actions",
@@ -397,6 +415,7 @@ function buildExtraColumnDefinitions(rows: ProjectProtocolTableRow[]): ColumnDef
         defaultVisible: normalized.defaultVisible,
         defaultWidth: sizes.defaultWidth,
         minWidth: sizes.minWidth,
+        filterType: normalized.type,
         extraKey: key,
         extraType: normalized.type,
       });
@@ -508,6 +527,7 @@ function createDefaultSettings(): TableSettings {
     density: "comfortable",
     groupBy: "none",
     stateFilter: "all",
+    columnFilters: {},
   };
 }
 
@@ -584,11 +604,8 @@ function readSettings(
           ? parsed.groupBy
           : "none",
 
-      stateFilter:
-        typeof parsed.stateFilter ===
-          "string"
-          ? parsed.stateFilter
-          : "all",
+      stateFilter: typeof parsed.stateFilter === "string" ? parsed.stateFilter : "all",
+      columnFilters: normalizeStoredProtocolTableFilters(parsed.columnFilters),
     };
   } catch {
     return defaults;
@@ -1465,6 +1482,20 @@ const ProjectProtocolTable =
           ],
         );
 
+      const getColumnFilterValue = useCallback((row: ProjectProtocolTableRow, column: ColumnDefinition): unknown => {
+        if (column.id === "id") return row.id;
+        if (column.id === "protocol") return getProtocolDisplayName(row);
+        if (column.id === "state") return normalizeStatus(row.status);
+        if (column.id === "tags") return getTagsText(row);
+        if (column.id === "elapsed") return getRowElapsed(row);
+        if (column.id === "outputs") return row.outputs?.length ?? 0;
+        if (column.id === "dependent") return row.children?.length ?? 0;
+
+        if (column.extraKey) return getExtraTableColumn(row, column.extraKey)?.value;
+
+        return null;
+      }, [getTagsText]);
+
       const baseFilteredRows =
         useMemo(() => {
           const externalTagSet =
@@ -1548,39 +1579,43 @@ const ProjectProtocolTable =
           getTagsText,
         ]);
 
-      const stateCounts =
-        useMemo(() => {
-          const counts =
-            new Map<
-              string,
-              number
-            >();
+      const activeColumnFilters = useMemo(() => {
+        const result: Array<{ column: ColumnDefinition; filter: ProtocolTableColumnFilter }> = [];
 
-          for (
-            const row
-            of baseFilteredRows
-          ) {
-            const status =
-              normalizeStatus(
-                row.status,
-              ) ||
-              "unknown";
+        for (const [columnId, filter] of Object.entries(settings.columnFilters)) {
+          const column = columnDefinitions.find((candidate) => candidate.id === columnId);
 
-            counts.set(
-              status,
-              (
-                counts.get(
-                  status,
-                ) ??
-                0
-              ) + 1,
-            );
-          }
+          if (!column?.filterType) continue;
 
-          return counts;
-        }, [
-          baseFilteredRows,
-        ]);
+          result.push({ column, filter });
+        }
+
+        return result;
+      }, [settings.columnFilters, columnDefinitions]);
+
+      const columnFilteredRows = useMemo(() => {
+        if (!activeColumnFilters.length) return baseFilteredRows;
+
+        return baseFilteredRows.filter((row) => {
+          return activeColumnFilters.every(({ column, filter }) => {
+            if (!column.filterType) return true;
+
+            const value = getColumnFilterValue(row, column);
+            return matchesProtocolTableFilter(value, column.filterType, filter);
+          });
+        });
+      }, [baseFilteredRows, activeColumnFilters, getColumnFilterValue]);
+
+      const stateCounts = useMemo(() => {
+        const counts = new Map<string, number>();
+
+        for (const row of columnFilteredRows) {
+          const status = normalizeStatus(row.status) || "unknown";
+          counts.set(status, (counts.get(status) ?? 0) + 1);
+        }
+
+        return counts;
+      }, [columnFilteredRows]);
 
       const availableStatuses =
         useMemo(() => {
@@ -1636,30 +1671,11 @@ const ProjectProtocolTable =
           stateCounts,
         ]);
 
-      const stateFilteredRows =
-        useMemo(() => {
-          if (
-            settings.stateFilter ===
-            "all"
-          ) {
-            return baseFilteredRows;
-          }
+      const stateFilteredRows = useMemo(() => {
+        if (settings.stateFilter === "all") return columnFilteredRows;
 
-          return baseFilteredRows
-            .filter(
-              (row) =>
-                (
-                  normalizeStatus(
-                    row.status,
-                  ) ||
-                  "unknown"
-                ) ===
-                settings.stateFilter,
-            );
-        }, [
-          baseFilteredRows,
-          settings.stateFilter,
-        ]);
+        return columnFilteredRows.filter((row) => (normalizeStatus(row.status) || "unknown") === settings.stateFilter);
+      }, [columnFilteredRows, settings.stateFilter]);
 
       const compareRowsByKey =
         useCallback(
@@ -2191,6 +2207,36 @@ const ProjectProtocolTable =
           scrollToProtocolInternal,
         ],
       );
+
+      const setColumnFilter = (columnId: ColumnId, filter: ProtocolTableColumnFilter) => {
+        setSettings((current) => ({
+          ...current,
+          columnFilters: {
+            ...current.columnFilters,
+            [columnId]: filter,
+          },
+        }));
+      };
+
+      const clearColumnFilter = (columnId: ColumnId) => {
+        setSettings((current) => {
+          const columnFilters = { ...current.columnFilters };
+          delete columnFilters[columnId];
+
+          return {
+            ...current,
+            columnFilters,
+          };
+        });
+      };
+
+      const clearAllTableFilters = () => {
+        setSettings((current) => ({
+          ...current,
+          stateFilter: "all",
+          columnFilters: {},
+        }));
+      };
 
       const setColumnVisible =
         (
@@ -3710,12 +3756,7 @@ const ProjectProtocolTable =
                 }
               >
                 All
-                <span>
-                  {
-                    baseFilteredRows
-                      .length
-                  }
-                </span>
+                <span>{columnFilteredRows.length}</span>
               </button>
 
               {availableStatuses.map(
@@ -4109,6 +4150,47 @@ const ProjectProtocolTable =
               </button>
             </div>
           </div>
+
+          {(settings.stateFilter !== "all" || activeColumnFilters.length > 0) && (
+            <div className="ppt-activeFilters">
+              <span className="ppt-activeFiltersLabel">
+                <Filter />
+                Filters
+              </span>
+
+              {settings.stateFilter !== "all" && (
+                <button
+                  type="button"
+                  className="ppt-activeFilterChip"
+                  aria-label="Remove State filter"
+                  title="Remove State filter"
+                  onClick={() => setSettings((current) => ({ ...current, stateFilter: "all" }))}
+                >
+                  <span>State: {getStatusLabel(settings.stateFilter)}</span>
+                  <X />
+                </button>
+              )}
+
+              {activeColumnFilters.map(({ column, filter }) => (
+                <button
+                  key={column.id}
+                  type="button"
+                  className="ppt-activeFilterChip"
+                  aria-label={`Remove ${column.label} filter`}
+                  title={`Remove ${column.label} filter`}
+                  onClick={() => clearColumnFilter(column.id)}
+                >
+                  <span>{describeProtocolTableFilter(column.label, column.filterType!, filter)}</span>
+                  <X />
+                </button>
+              ))}
+
+              <button type="button" className="ppt-clearFiltersButton" aria-label="Clear all filters" onClick={clearAllTableFilters}>
+                Clear all
+              </button>
+            </div>
+          )}
+
           <div
             ref={containerRef}
             className="ppt-tableCard"
@@ -4186,45 +4268,33 @@ const ProjectProtocolTable =
                               : undefined
                           }
                         >
-                          {column.sortable ? (
-                            <button
-                              type="button"
-                              className="ppt-sortButton"
-                              data-active={
-                                getSortRuleIndex(
-                                  column.id,
-                                ) >=
-                                0
-                              }
-                              title="Click to sort. Shift+click for multi-sort."
-                              onClick={(
-                                event,
-                              ) =>
-                                handleSort(
-                                  column.id as
-                                  SortableColumnId,
+                          <div className="ppt-headContent">
+                            {column.sortable ? (
+                              <button
+                                type="button"
+                                className="ppt-sortButton"
+                                data-active={getSortRuleIndex(column.id) >= 0}
+                                title="Click to sort. Shift+click for multi-sort."
+                                onClick={(event) => handleSort(column.id as SortableColumnId, event.shiftKey)}
+                              >
+                                <span>{column.label}</span>
+                                {renderSortIndicator(column.id)}
+                              </button>
+                            ) : (
+                              <span>{column.label}</span>
+                            )}
 
-                                  event.shiftKey,
-                                )
-                              }
-                            >
-                              <span>
-                                {
-                                  column.label
-                                }
-                              </span>
-
-                              {renderSortIndicator(
-                                column.id,
-                              )}
-                            </button>
-                          ) : (
-                            <span>
-                              {
-                                column.label
-                              }
-                            </span>
-                          )}
+                            {column.filterType && (
+                              <ProtocolTableColumnFilterMenu
+                                columnId={column.id}
+                                label={column.label}
+                                type={column.filterType}
+                                filter={settings.columnFilters[column.id]}
+                                onApply={(filter) => setColumnFilter(column.id, filter)}
+                                onClear={() => clearColumnFilter(column.id)}
+                              />
+                            )}
+                          </div>
 
                           {column.id !==
                             "actions" && (

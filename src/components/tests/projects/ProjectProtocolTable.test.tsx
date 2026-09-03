@@ -295,15 +295,7 @@ describe(
             () => {
                 renderTable();
 
-                fireEvent.click(
-                    screen.getByRole(
-                        "button",
-                        {
-                            name:
-                                /Protocol/,
-                        },
-                    ),
-                );
+                fireEvent.click(screen.getByRole("button", { name: /^Protocol$/i }));
 
                 const renderedRows =
                     Array.from(
@@ -456,12 +448,12 @@ describe(
 
             renderTable({ rows: extraRows });
 
-            expect(screen.getByRole("button", { name: /Priority/i })).toBeInTheDocument();
-            expect(screen.getByRole("button", { name: /Owner/i })).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: /^Priority$/i })).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: /^Owner$/i })).toBeInTheDocument();
             expect(screen.getByText("Alice")).toBeInTheDocument();
             expect(screen.getByText("Bob")).toBeInTheDocument();
 
-            fireEvent.click(screen.getByRole("button", { name: /Priority/i }));
+            fireEvent.click(screen.getByRole("button", { name: /^Priority$/i }));
 
             const renderedRows = Array.from(document.querySelectorAll("tr[data-protocol-id]"));
 
@@ -485,8 +477,143 @@ describe(
                 ],
             });
 
-            expect(screen.getByRole("button", { name: /Working dir/i })).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: /^Working dir$/i })).toBeInTheDocument();
             expect(screen.getByText("2 GB")).toBeInTheDocument();
         });
+
+        it("filters dynamic byte columns using human-readable units", async () => {
+            const extraRows = [
+                {
+                    ...rows[0],
+                    extraTableColumns: {
+                        workingDirSize: {
+                            label: "Working dir",
+                            value: 500 * 1024 * 1024,
+                            type: "bytes",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+                {
+                    ...rows[1],
+                    extraTableColumns: {
+                        workingDirSize: {
+                            label: "Working dir",
+                            value: 2 * 1024 * 1024 * 1024,
+                            type: "bytes",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+            ];
+
+            renderTable({ rows: extraRows });
+
+            const filterButton = screen.getByRole("button", { name: "Filter Working dir" });
+            fireEvent.keyDown(filterButton, { key: "ArrowDown" });
+
+            const operator = await screen.findByLabelText("Filter operator Working dir");
+            const value = await screen.findByLabelText("Filter value Working dir");
+
+            fireEvent.change(operator, { target: { value: "greaterThan" } });
+            fireEvent.change(value, { target: { value: "1 GB" } });
+            fireEvent.click(screen.getByRole("button", { name: "Apply Working dir filter" }));
+
+            expect(screen.getByText("Motion correction")).toBeInTheDocument();
+            expect(screen.queryByText("Import movies")).not.toBeInTheDocument();
+            expect(screen.getByText("Working dir > 1 GB")).toBeInTheDocument();
+        });
+
+        it("filters custom text columns without knowing their backend semantics", async () => {
+            const extraRows = [
+                {
+                    ...rows[0],
+                    extraTableColumns: {
+                        owner: {
+                            label: "Owner",
+                            value: "Alice",
+                            type: "text",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+                {
+                    ...rows[1],
+                    extraTableColumns: {
+                        owner: {
+                            label: "Owner",
+                            value: "Bob",
+                            type: "text",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+            ];
+
+            renderTable({ rows: extraRows });
+
+            const filterButton = screen.getByRole("button", { name: "Filter Owner" });
+            fireEvent.keyDown(filterButton, { key: "ArrowDown" });
+
+            const value = await screen.findByLabelText("Filter value Owner");
+
+            fireEvent.change(value, { target: { value: "ali" } });
+            fireEvent.click(screen.getByRole("button", { name: "Apply Owner filter" }));
+
+            expect(screen.getByText("Import movies")).toBeInTheDocument();
+            expect(screen.queryByText("Motion correction")).not.toBeInTheDocument();
+            expect(screen.getByText('Owner contains "ali"')).toBeInTheDocument();
+        });
+
+        it("restores persisted dynamic filters and clears them from the active filter bar", () => {
+            window.localStorage.setItem(
+                "scipion-project-table:test-project",
+                JSON.stringify({
+                    version: 4,
+                    columnFilters: {
+                        "extra:workingDirSize": {
+                            operator: "greaterThan",
+                            value: "1 GB",
+                        },
+                    },
+                }),
+            );
+
+            const extraRows = [
+                {
+                    ...rows[0],
+                    extraTableColumns: {
+                        workingDirSize: {
+                            label: "Working dir",
+                            value: 500 * 1024 * 1024,
+                            type: "bytes",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+                {
+                    ...rows[1],
+                    extraTableColumns: {
+                        workingDirSize: {
+                            label: "Working dir",
+                            value: 2 * 1024 * 1024 * 1024,
+                            type: "bytes",
+                            defaultVisible: true,
+                        },
+                    },
+                },
+            ];
+
+            renderTable({ rows: extraRows });
+
+            expect(screen.getByText("Motion correction")).toBeInTheDocument();
+            expect(screen.queryByText("Import movies")).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+
+            expect(screen.getByText("Motion correction")).toBeInTheDocument();
+            expect(screen.getByText("Import movies")).toBeInTheDocument();
+        });
+
     },
 );
