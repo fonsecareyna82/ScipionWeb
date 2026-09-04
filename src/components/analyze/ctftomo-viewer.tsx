@@ -378,7 +378,17 @@ export default function CTFTomoViewer({
         }
 
         setFramesData(payload);
-        setSelectedRowIndex(null);
+
+        if (payload.frames.length > 0) {
+          const firstFrame = payload.frames[0];
+          setSelectedRowIndex(0);
+
+          if (firstFrame.psdFile) {
+            loadPsdForRow(firstFrame);
+          }
+        } else {
+          setSelectedRowIndex(null);
+        }
       } catch (e: any) {
         if (!cancelled) {
           setFramesError(e?.message || "Failed to load CTF tomo views");
@@ -432,7 +442,7 @@ export default function CTFTomoViewer({
     return framesData.frames[selectedRowIndex] ?? null;
   }, [framesData, selectedRowIndex]);
 
-  const loadPsdForRow = async (row: CTFViewRow) => {
+  async function loadPsdForRow(row: CTFViewRow) {
     if (mainMode === "metadata") return;
 
     if (!row.psdFile) {
@@ -498,7 +508,7 @@ export default function CTFTomoViewer({
         setPsdLoading(false);
       }
     }
-  };
+  }
 
   const handleRowClick = (row: CTFViewRow) => {
     if (!framesData?.frames) return;
@@ -1232,7 +1242,7 @@ export default function CTFTomoViewer({
                   Loading CTF tomo series…
                 </Typography>
               </Box>
-            ): framesError && !framesData ? (
+            ) : framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}
