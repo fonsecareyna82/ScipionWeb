@@ -1780,8 +1780,12 @@ export default function TiltSeriesViewer({
                           </TableCell>
 
                           <TableCell sx={seriesColumnWidths.dimensions}>
-                            {s.dims?.length >= 2
-                              ? [s.dims[0], s.dims[1], s.nViews ?? s.dims[2]]
+                            {s.dims
+                              ? [
+                                s.dims[0],
+                                s.dims[1],
+                                s.nViews ?? (s.dims.length > 2 ? s.dims[2] : undefined),
+                              ]
                                 .filter((value) => value != null && value > 0)
                                 .join(" × ")
                               : ""}
@@ -1814,16 +1818,19 @@ export default function TiltSeriesViewer({
                               <Box
                                 sx={{
                                   position: "relative",
-                                  ml: 3,
+                                  ml: 4,
                                   pl: 2,
-                                  borderLeft: "2px solid #d1d5db",
+                                  pt: 0.5,
                                   "&::before": {
                                     content: '""',
                                     position: "absolute",
                                     left: 0,
-                                    top: 18,
-                                    width: 14,
-                                    borderTop: "2px solid #d1d5db",
+                                    top: -2,
+                                    width: 18,
+                                    height: 24,
+                                    borderLeft: "2px solid #d1d5db",
+                                    borderBottom: "2px solid #d1d5db",
+                                    borderBottomLeftRadius: "6px",
                                   },
                                 }}
                               >
