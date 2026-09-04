@@ -526,14 +526,24 @@ export default function CTFTomoViewer({
   };
 
   const handleSeriesRowClick = (seriesId: Id) => {
+    const isSameSeries = selectedSeriesId != null && String(selectedSeriesId) === String(seriesId);
+
     setExpandedSeriesId(seriesId);
-    setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
 
     const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(seriesId));
     if (selectedSeries) {
       onCtfSeriesSelect?.(selectedSeries);
     }
 
+    if (isSameSeries) {
+      const firstFrame = framesData?.frames?.[0];
+      if (firstFrame) {
+        handleRowClick(firstFrame);
+      }
+      return;
+    }
+
+    setSelectedSeriesId(seriesId);
     setPsdError(null);
     abortPsdLoad();
     disposePsdImageUrl();
