@@ -43,6 +43,7 @@ import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
 import IntegratedTomographyViewer from "./integrated-tomography-viewer";
 import FscViewer from "./fsc-viewer";
+import CtfViewer from "./ctf-viewer";
 
 type AnalyzeOutputRef = { paramClass: string; value: string; info: string };
 
@@ -83,6 +84,9 @@ function isCTFTomoSeriesKind(k?: string) {
   return normalizedKind(k).includes("setofctftomoseries");
 }
 
+function isSetOfCTFKind(k?: string) {
+  return normalizedKind(k) === "setofctf";
+}
 
 function isTomographyIntegratedKind(k?: string) {
   return isCoords3dKind(k) || isTiltSeriesKind(k) || isCTFTomoSeriesKind(k) || normalizedKind(k) === "setoftomograms";
@@ -102,6 +106,7 @@ function isSetOfMetadataKind(k?: string) {
     !isCoords3dKind(k) &&
     !isTiltSeriesKind(k) &&
     !isCTFTomoSeriesKind(k) &&
+    !isSetOfCTFKind(k) &&
     !isSetOfFSCsKind(k)
   );
 }
@@ -472,6 +477,16 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         protocolLabel={protocolLabel}
         outputName={outputName}
         pointerClass={pointerClass} />;
+    }
+
+    if (isSetOfCTFKind(pointerClass)) {
+      return (
+        <CtfViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+        />
+      );
     }
 
     if (isCoords2dKind(pointerClass)) {

@@ -62,6 +62,8 @@ import {
   ProtocolRuntimeSummary,
   VolumeData3d,
   ProjectFetchOptions,
+  CtfImagePreviewOptions,
+  CtfModelListResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -3692,6 +3694,117 @@ export async function createNewSetOfTiltSeries(
   return safeJson<any>(res);
 }
 
+
+/* ======================= Analyze Results: CTF (SetOfCTF) ======================= */
+
+export async function listOutputCTFs(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<CtfModelListResult> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctf`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list output CTFs");
+  }
+
+  const raw = await safeJson<any>(res);
+  const ctfs = Array.isArray(raw?.ctfs) ? raw.ctfs : [];
+
+  return {
+    ctfs,
+    total: Number.isFinite(Number(raw?.total))
+      ? Number(raw.total)
+      : ctfs.length,
+  };
+}
+
+async function fetchCTFImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  ctfId: Id,
+  imageKind: "psd" | "micrograph",
+  opts: CtfImagePreviewOptions = {},
+): Promise<ObjectUrlResult> {
+  const enc = encodeURIComponent;
+  const params = new URLSearchParams();
+
+  params.set("size", String(opts.size ?? 1024));
+  params.set("format", opts.format ?? "png");
+  params.set("quality", String(opts.quality ?? 80));
+  params.set("inline", "true");
+
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
+    `/ctf/${enc(String(ctfId))}/${imageKind}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      imageKind === "psd"
+        ? "Failed to render CTF PSD"
+        : "Failed to render CTF micrograph",
+    );
+  }
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  return {
+    url: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+export function fetchCTFPsdImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  ctfId: Id,
+  opts: CtfImagePreviewOptions = {},
+): Promise<ObjectUrlResult> {
+  return fetchCTFImageObjectUrl(
+    projectId,
+    protocolId,
+    outputName,
+    ctfId,
+    "psd",
+    opts,
+  );
+}
+
+export function fetchCTFMicrographImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  ctfId: Id,
+  opts: CtfImagePreviewOptions = {},
+): Promise<ObjectUrlResult> {
+  return fetchCTFImageObjectUrl(
+    projectId,
+    protocolId,
+    outputName,
+    ctfId,
+    "micrograph",
+    opts,
+  );
+}
 
 /* ======================= Analyze Results: CTF tomography (SetOfCTFTomoSeries) ======================= */
 

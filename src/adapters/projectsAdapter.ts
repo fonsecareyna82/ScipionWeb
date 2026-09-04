@@ -723,7 +723,7 @@ const defaultService: ProjectService = {
       opts ?? {},
     ),
 
-    runMetadataTableAction: async (
+  runMetadataTableAction: async (
     projectId: Id,
     protocolId: Id,
     outputName: string,
@@ -816,6 +816,57 @@ const defaultService: ProjectService = {
       outputName,
       exclusions,
       restack,
+    ),
+
+  // ──────────────────────────── Analyze Results: CTF ────────────────────────────
+
+  listOutputCTFs: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listOutputCTFs(
+      projectId,
+      protocolId,
+      outputName,
+    ),
+
+  fetchCTFPsdImageObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfId: Id,
+    opts?: AuthenticatedRequestOptions & {
+      size?: number;
+      format?: "png" | "webp" | "jpeg";
+      quality?: number;
+    },
+  ) =>
+    api.fetchCTFPsdImageObjectUrl(
+      projectId,
+      protocolId,
+      outputName,
+      ctfId,
+      opts,
+    ),
+
+  fetchCTFMicrographImageObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfId: Id,
+    opts?: AuthenticatedRequestOptions & {
+      size?: number;
+      format?: "png" | "webp" | "jpeg";
+      quality?: number;
+    },
+  ) =>
+    api.fetchCTFMicrographImageObjectUrl(
+      projectId,
+      protocolId,
+      outputName,
+      ctfId,
+      opts,
     ),
 
   // ──────────────────────────── Analyze Results: CTF tomography ────────────────────────────

@@ -500,6 +500,35 @@ export type TiltExclusionsPayload = Record<
 
 export type CTFTomoExclusionsPayload = TiltExclusionsPayload;
 
+export type CtfModelListItem = {
+  ctfId: Id;
+  position: number;
+  micrographId: Id;
+  micrographName: string;
+  excluded: boolean;
+  failed: boolean;
+  defocusU?: number | null;
+  defocusV?: number | null;
+  astigmatism?: number | null;
+  defocusAngle?: number | null;
+  defocusRatio?: number | null;
+  phaseShift?: number | null;
+  resolution?: number | null;
+  fitQuality?: number | null;
+  psdFile?: string | null;
+};
+
+export type CtfModelListResult = {
+  ctfs: CtfModelListItem[];
+  total: number;
+};
+
+export type CtfImagePreviewOptions = AuthenticatedRequestOptions & {
+  size?: number;
+  format?: "png" | "webp" | "jpeg";
+  quality?: number;
+};
+
 // Shared object-url result type used by image viewers
 export type ObjectUrlResult = {
   url: string;
@@ -1987,6 +2016,32 @@ export interface ProjectService<
     exclusions: TiltExclusionsPayload,
     restack: boolean,
   ): Promise<void>;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (SetOfCTF)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  listOutputCTFs(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<CtfModelListResult>;
+
+  fetchCTFPsdImageObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfId: Id,
+    opts?: CtfImagePreviewOptions,
+  ): Promise<ObjectUrlResult>;
+
+  fetchCTFMicrographImageObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfId: Id,
+    opts?: CtfImagePreviewOptions,
+  ): Promise<ObjectUrlResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (CTF tomography / CTF tilt series)

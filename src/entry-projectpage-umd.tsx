@@ -256,7 +256,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("loadWorkflow", "applyWorkflow", "applyTemplateToProject", "runWorkflowOnProject");
 
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
-  mapFn("fetchProtocolRuntimeSummaries","fetchProtocolRuntimeSummaries","getProtocolRuntimeSummaries",);
+  mapFn("fetchProtocolRuntimeSummaries", "fetchProtocolRuntimeSummaries", "getProtocolRuntimeSummaries",);
   mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
   mapFn("executeProtocol", "runProtocol", "launchProtocol", "execute");
@@ -330,6 +330,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
   mapFn("fetchTiltSeriesViewImageObjectUrl", "fetchTiltSeriesViewImageObjectUrl");
   mapFn("createNewSetOfTiltSeries", "createNewSetOfTiltSeries");
+
+  mapFn("listOutputCTFs", "listOutputCTFs");
+  mapFn("fetchCTFPsdImageObjectUrl", "fetchCTFPsdImageObjectUrl");
+  mapFn("fetchCTFMicrographImageObjectUrl", "fetchCTFMicrographImageObjectUrl");
 
   mapFn("listOutputCTFTomoSeries", "listOutputCTFTomoSeries");
   mapFn("fetchCTFTomoSeriesViews", "fetchCTFTomoSeriesViews");

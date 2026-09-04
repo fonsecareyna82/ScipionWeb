@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     ctfTomoViewerSpy: vi.fn(),
     metadataViewerSpy: vi.fn(),
     fscViewerSpy: vi.fn(),
+    ctfViewerSpy: vi.fn(),
     fetchIntegratedAnalyzeContext: vi.fn().mockResolvedValue({
         root: {},
         links: {},
@@ -67,6 +68,13 @@ vi.mock("../../analyze/ctftomo-viewer", () => ({
     default: (props: Record<string, unknown>) => {
         mocks.ctfTomoViewerSpy(props);
         return <div>Mock CTFTomoViewer</div>;
+    },
+}));
+
+vi.mock("../../analyze/ctf-viewer", () => ({
+    default: (props: Record<string, unknown>) => {
+        mocks.ctfViewerSpy(props);
+        return <div>Mock CtfViewer</div>;
     },
 }));
 
@@ -202,6 +210,32 @@ describe("AnalyzeOutputDialog", () => {
 
         expect(await screen.findByText("Mock CTFTomoViewer")).toBeInTheDocument();
         expect(mocks.ctfTomoViewerSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 12,
+                protocolId: 34,
+                outputName: "outputA",
+            }),
+        );
+    });
+
+    it("renders the CTF viewer for SetOfCTF outputs", async () => {
+        render(
+            <AnalyzeOutputDialog
+                {...makeProps({
+                    outputRaw: {
+                        _class: "SetOfCTF",
+                    },
+                })}
+            />,
+        );
+
+        expect(
+            await screen.findByText("Mock CtfViewer"),
+        ).toBeInTheDocument();
+
+        expect(
+            mocks.ctfViewerSpy,
+        ).toHaveBeenCalledWith(
             expect.objectContaining({
                 projectId: 12,
                 protocolId: 34,

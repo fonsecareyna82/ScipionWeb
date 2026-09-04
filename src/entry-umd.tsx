@@ -493,6 +493,27 @@ const defaultMockService: Partial<ProjectService> = {
     return;
   },
 
+  async listOutputCTFs() {
+    return {
+      ctfs: [],
+      total: 0,
+    };
+  },
+
+  async fetchCTFPsdImageObjectUrl(): Promise<ObjectUrlResult> {
+    return {
+      url: mockSliceDataUrl(0),
+      revoke: () => { },
+    };
+  },
+
+  async fetchCTFMicrographImageObjectUrl(): Promise<ObjectUrlResult> {
+    return {
+      url: mockSliceDataUrl(0),
+      revoke: () => { },
+    };
+  },
+
   async listOutputCTFTomoSeries(): Promise<any[]> {
     return [];
   },
@@ -821,6 +842,11 @@ function normalizeServiceAPI(
   mapFn("fetchTiltSeriesViewImageObjectUrl", "fetchTiltSeriesViewImageObjectUrl");
   mapFn("createNewSetOfTiltSeries", "createNewSetOfTiltSeries");
 
+  // analyzeCtfApiAliases
+  mapFn("listOutputCTFs", "listOutputCTFs");
+  mapFn("fetchCTFPsdImageObjectUrl", "fetchCTFPsdImageObjectUrl");
+  mapFn("fetchCTFMicrographImageObjectUrl", "fetchCTFMicrographImageObjectUrl");
+
   // analyzeCtfTomoApiAliases
   mapFn("listOutputCTFTomoSeries", "listOutputCTFTomoSeries");
   mapFn("fetchCTFTomoSeriesViews", "fetchCTFTomoSeriesViews");
@@ -906,10 +932,10 @@ function normalizeServiceAPI(
   mapFn("putInstanceSettings", "putInstanceSettings", "updateInstanceSettings");
   mapFn("patchInstanceSettings", "patchInstanceSettings");
   mapFn(
-  "fetchInstanceResources",
-  "fetchInstanceResources",
-  "getInstanceResources",
-);
+    "fetchInstanceResources",
+    "fetchInstanceResources",
+    "getInstanceResources",
+  );
 
   // settings: environment
   mapFn(
