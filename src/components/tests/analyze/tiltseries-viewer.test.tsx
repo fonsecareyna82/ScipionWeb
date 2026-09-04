@@ -637,7 +637,7 @@ describe("TiltSeriesViewer", () => {
 
         expect(
             await screen.findByText(
-                `View 1 of ${frameCount}`,
+                `View 25 of ${frameCount}`,
             ),
         ).toBeInTheDocument();
 

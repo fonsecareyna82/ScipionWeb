@@ -229,12 +229,12 @@ export default function TiltSeriesViewer({
 
   // columnWidthsAsPercentagesToAvoidHorizontalScroll
   const columnWidths = {
-    series: { width: "16%" },
+    series: { width: "26%" },
     order: { width: "7%" },
     angle: { width: "9%" },
     excluded: { width: "6%" },
     dose: { width: "7%" },
-    path: { width: "27%" },
+    path: { width: "20%" },
     rot: { width: "7%" },
     shiftX: { width: "7%" },
     shiftY: { width: "7%" },
@@ -471,8 +471,17 @@ export default function TiltSeriesViewer({
         setFramesData(payload);
 
         if (payload.frames.length > 0) {
-          const firstIncluded = payload.frames.findIndex((f) => !f.excluded);
-          setSelectedRowIndex(firstIncluded >= 0 ? firstIncluded : 0);
+          const centerIndex = Math.floor((payload.frames.length - 1) / 2);
+          const closestIncludedIndex = payload.frames.reduce((closestIndex, frame, index) => {
+            if (frame.excluded) return closestIndex;
+            if (closestIndex < 0) return index;
+
+            return Math.abs(index - centerIndex) < Math.abs(closestIndex - centerIndex)
+              ? index
+              : closestIndex;
+          }, -1);
+
+          setSelectedRowIndex(closestIncludedIndex >= 0 ? closestIncludedIndex : centerIndex);
         }
       } catch (e: any) {
         if (!cancelled) {
