@@ -129,6 +129,9 @@ function makeSeriesList() {
             label: "CTF Series 1",
             nViews: 2,
             excluded: false,
+            tiltAxisAngle: 23.5,
+            pixelSize: 1.5,
+            dims: [100, 80, 1],
         },
         {
             id: "CTF2",
@@ -306,13 +309,81 @@ describe("CTFTomoViewer", () => {
         });
     });
 
-    it("auto-selects the first series and loads its views", async () => {
+    it("auto-selects the first series and its first CTF view", async () => {
         renderViewer();
 
         await expandFirstSeries();
 
         expect(screen.getByText("22000.00")).toBeInTheDocument();
         expect(screen.getByText("18000.00")).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCTFPsdImage).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                "/psd/ctf1-a.png",
+                expect.objectContaining({
+                    signal: expect.any(AbortSignal),
+                }),
+            );
+        });
+
+        expect(await screen.findByAltText("PSD view")).toBeInTheDocument();
+    });
+
+    it("shows separate headers for CTF tomo series and CTF measurements", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("CTF tomo series")).toBeInTheDocument();
+        expect(screen.getByText("Views")).toBeInTheDocument();
+        expect(screen.getByText("Tilt axis")).toBeInTheDocument();
+        expect(screen.getByText("Pixel size")).toBeInTheDocument();
+        expect(screen.getByText("Dimensions")).toBeInTheDocument();
+
+        expect(screen.getByText("100 × 80 × 2")).toBeInTheDocument();
+
+        await expandFirstSeries();
+
+        expect(screen.getByText("Acq. order")).toBeInTheDocument();
+        expect(screen.getByText("Tilt angle")).toBeInTheDocument();
+        expect(screen.getByText("DefocusU (Å)")).toBeInTheDocument();
+        expect(screen.getByText("DefocusV (Å)")).toBeInTheDocument();
+        expect(screen.getByText("Astigmatism (Å)")).toBeInTheDocument();
+        expect(screen.getByText("Resolution (Å)")).toBeInTheDocument();
+        expect(screen.getByText("CC value")).toBeInTheDocument();
+    });
+
+    it("selects the first CTF view when switching series", async () => {
+        renderViewer();
+
+        await waitForViewerReady();
+
+        const secondSeriesRow = screen.getByText("CTF2").closest("tr");
+        expect(secondSeriesRow).not.toBeNull();
+
+        fireEvent.click(secondSeriesRow as HTMLElement);
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCTFTomoSeriesViews).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                "CTF2",
+            );
+        });
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCTFPsdImage).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                "/psd/ctf2.png",
+                expect.objectContaining({
+                    signal: expect.any(AbortSignal),
+                }),
+            );
+        });
     });
 
     it("filters CTF views in the selected series", async () => {

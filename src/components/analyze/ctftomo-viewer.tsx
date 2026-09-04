@@ -43,6 +43,9 @@ type CTFTomoSeriesSummary = {
   nViews?: number;
   excluded?: boolean;
   tiltSeriesId?: Id | null;
+  tiltAxisAngle?: number | null;
+  pixelSize?: number | null;
+  dims?: [number, number] | [number, number, number];
 };
 
 type CTFViewRow = {
@@ -126,16 +129,24 @@ export default function CTFTomoViewer({
   const [chartMenuPos, setChartMenuPos] = useState<{ mouseX: number; mouseY: number } | null>(null);
   const [chartMenuTargetViewId, setChartMenuTargetViewId] = useState<Id | null>(null);
 
+  const seriesColumnWidths = {
+    series: { width: "30%" },
+    views: { width: "12%" },
+    tiltAxis: { width: "16%" },
+    pixelSize: { width: "16%" },
+    dimensions: { width: "18%" },
+    excluded: { width: "8%" },
+  } as const;
+
   const columnWidths = {
-    series: { width: "16%" },
-    order: { width: "8%" },
-    angle: { width: "9%" },
-    excluded: { width: "6%" },
-    defocusU: { width: "11%" },
-    defocusV: { width: "11%" },
-    astigmatism: { width: "11%" },
-    resolution: { width: "11%" },
-    ccValue: { width: "11%" },
+    order: { width: "11%" },
+    angle: { width: "12%" },
+    excluded: { width: "8%" },
+    defocusU: { width: "14%" },
+    defocusV: { width: "14%" },
+    astigmatism: { width: "15%" },
+    resolution: { width: "14%" },
+    ccValue: { width: "12%" },
   } as const;
 
   const getErrorMsg = (e: any): string => {
@@ -254,6 +265,7 @@ export default function CTFTomoViewer({
           const idRaw = s.ctfSeriesId ?? s.tiltSeriesId ?? s.tsId ?? s.id ?? s.name ?? s.label ?? "CTFSeries";
           const id = String(idRaw);
           const label = s.label ?? s.name ?? s.tsLabel ?? `CTFSeries ${id}`;
+          const dims: any = s.dims ?? s.shape ?? s.size;
 
           return {
             ctfSeriesId: id,
@@ -266,6 +278,22 @@ export default function CTFTomoViewer({
                   ? s.isExcluded
                   : false,
             tiltSeriesId: s.tiltSeriesId ?? s.tsId ?? null,
+            tiltAxisAngle:
+              typeof s.tiltAxisAngle === "number"
+                ? s.tiltAxisAngle
+                : typeof s.tilt_axis_angle === "number"
+                  ? s.tilt_axis_angle
+                  : s.axisAngle,
+            pixelSize:
+              typeof s.pixelSize === "number"
+                ? s.pixelSize
+                : typeof s.samplingRate === "number"
+                  ? s.samplingRate
+                  : undefined,
+            dims:
+              Array.isArray(dims) && dims.length >= 2
+                ? [Number(dims[0]), Number(dims[1]), Number(dims[2] ?? 0)]
+                : undefined,
           };
         });
 
@@ -378,7 +406,17 @@ export default function CTFTomoViewer({
         }
 
         setFramesData(payload);
-        setSelectedRowIndex(null);
+
+        if (payload.frames.length > 0) {
+          const firstFrame = payload.frames[0];
+          setSelectedRowIndex(0);
+
+          if (firstFrame.psdFile) {
+            loadPsdForRow(firstFrame);
+          }
+        } else {
+          setSelectedRowIndex(null);
+        }
       } catch (e: any) {
         if (!cancelled) {
           setFramesError(e?.message || "Failed to load CTF tomo views");
@@ -432,7 +470,7 @@ export default function CTFTomoViewer({
     return framesData.frames[selectedRowIndex] ?? null;
   }, [framesData, selectedRowIndex]);
 
-  const loadPsdForRow = async (row: CTFViewRow) => {
+  async function loadPsdForRow(row: CTFViewRow) {
     if (mainMode === "metadata") return;
 
     if (!row.psdFile) {
@@ -498,7 +536,7 @@ export default function CTFTomoViewer({
         setPsdLoading(false);
       }
     }
-  };
+  }
 
   const handleRowClick = (row: CTFViewRow) => {
     if (!framesData?.frames) return;
@@ -516,14 +554,24 @@ export default function CTFTomoViewer({
   };
 
   const handleSeriesRowClick = (seriesId: Id) => {
+    const isSameSeries = selectedSeriesId != null && String(selectedSeriesId) === String(seriesId);
+
     setExpandedSeriesId(seriesId);
-    setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
 
     const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(seriesId));
     if (selectedSeries) {
       onCtfSeriesSelect?.(selectedSeries);
     }
 
+    if (isSameSeries) {
+      const firstFrame = framesData?.frames?.[0];
+      if (firstFrame) {
+        handleRowClick(firstFrame);
+      }
+      return;
+    }
+
+    setSelectedSeriesId(seriesId);
     setPsdError(null);
     abortPsdLoad();
     disposePsdImageUrl();
@@ -1232,7 +1280,7 @@ export default function CTFTomoViewer({
                   Loading CTF tomo series…
                 </Typography>
               </Box>
-            ): framesError && !framesData ? (
+            ) : framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}
@@ -1251,35 +1299,50 @@ export default function CTFTomoViewer({
                 sx={{
                   tableLayout: "fixed",
                   width: "100%",
-                  "& th": { whiteSpace: "nowrap", fontSize: "0.75rem", paddingTop: 0.5, paddingBottom: 0.5 },
-                  "& td": { fontSize: "0.75rem", paddingTop: 0.25, paddingBottom: 0.25 },
+                  "& th": {
+                    whiteSpace: "nowrap",
+                    fontSize: "0.75rem",
+                    paddingTop: 0.5,
+                    paddingBottom: 0.5,
+                  },
+                  "& td": {
+                    fontSize: "0.75rem",
+                    paddingTop: 0.25,
+                    paddingBottom: 0.25,
+                  },
                 }}
               >
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={columnWidths.series}>Tilt series</TableCell>
-                    <TableCell sx={columnWidths.order}>Acq. order</TableCell>
-                    <TableCell sx={columnWidths.angle}>Tilt angle</TableCell>
-                    <TableCell sx={columnWidths.excluded}>Excl.</TableCell>
-                    <TableCell sx={columnWidths.defocusU}>DefocusU (Å)</TableCell>
-                    <TableCell sx={columnWidths.defocusV}>DefocusV (Å)</TableCell>
-                    <TableCell sx={columnWidths.astigmatism}>Astigmatism (Å)</TableCell>
-                    <TableCell sx={columnWidths.resolution}>Resolution (Å)</TableCell>
-                    <TableCell sx={columnWidths.ccValue}>CC value</TableCell>
+                    <TableCell sx={seriesColumnWidths.series}>CTF tomo series</TableCell>
+                    <TableCell sx={seriesColumnWidths.views}>Views</TableCell>
+                    <TableCell sx={seriesColumnWidths.tiltAxis}>Tilt axis</TableCell>
+                    <TableCell sx={seriesColumnWidths.pixelSize}>Pixel size</TableCell>
+                    <TableCell sx={seriesColumnWidths.dimensions}>Dimensions</TableCell>
+                    <TableCell sx={seriesColumnWidths.excluded}>Excl.</TableCell>
                   </TableRow>
                 </TableHead>
+
                 <TableBody>
                   {series.map((s) => {
-                    const isExpanded = expandedSeriesId != null && String(expandedSeriesId) === String(s.ctfSeriesId);
-                    const isSelectedSeries = selectedSeriesId != null && String(selectedSeriesId) === String(s.ctfSeriesId);
+                    const isExpanded =
+                      expandedSeriesId != null &&
+                      String(expandedSeriesId) === String(s.ctfSeriesId);
+
+                    const isSelectedSeries =
+                      selectedSeriesId != null &&
+                      String(selectedSeriesId) === String(s.ctfSeriesId);
 
                     const showFramesForThisSeries =
-                      isExpanded && framesData && String(framesData.ctfSeriesId) === String(s.ctfSeriesId);
+                      isExpanded &&
+                      framesData &&
+                      String(framesData.ctfSeriesId) === String(s.ctfSeriesId);
 
                     const seriesFrames = showFramesForThisSeries ? filteredFrames : [];
 
                     return (
                       <Fragment key={String(s.ctfSeriesId)}>
+                        {/* ctfTomoSeriesRow */}
                         <TableRow
                           hover
                           selected={isSelectedSeries}
@@ -1288,24 +1351,39 @@ export default function CTFTomoViewer({
                             cursor: "pointer",
                             ...(s.excluded && {
                               backgroundColor: "rgba(248,113,113,0.16)",
-                              "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                              "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                              "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
+                              "&:hover": {
+                                backgroundColor: "rgba(248,113,113,0.24)",
+                              },
+                              "&.Mui-selected": {
+                                backgroundColor: "rgba(248,113,113,0.30)",
+                              },
+                              "&.Mui-selected:hover": {
+                                backgroundColor: "rgba(248,113,113,0.36)",
+                              },
                             }),
                           }}
                         >
-                          <TableCell sx={columnWidths.series}>
+                          <TableCell sx={seriesColumnWidths.series}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
                               <IconButton
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const nextExpanded = isExpanded ? null : s.ctfSeriesId;
+
+                                  const nextExpanded = isExpanded
+                                    ? null
+                                    : s.ctfSeriesId;
+
                                   setExpandedSeriesId(nextExpanded);
+
                                   if (nextExpanded) {
                                     setSelectedSeriesId((prev) =>
-                                      prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
+                                      prev != null &&
+                                        String(prev) === String(s.ctfSeriesId)
+                                        ? prev
+                                        : s.ctfSeriesId,
                                     );
+
                                     onCtfSeriesSelect?.(s);
                                     setPsdError(null);
                                     disposePsdImageUrl();
@@ -1313,77 +1391,231 @@ export default function CTFTomoViewer({
                                 }}
                                 sx={{ mr: 0.25 }}
                               >
-                                {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
+                                {isExpanded ? (
+                                  <ExpandMore fontSize="small" />
+                                ) : (
+                                  <ChevronRight fontSize="small" />
+                                )}
                               </IconButton>
-                              <Checkbox
-                                size="small"
-                                checked={Boolean(s.excluded)}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={() => handleToggleExcludeSeries(s.ctfSeriesId)}
-                                sx={{ padding: 0.25 }}
-                              />
-                              <Typography variant="body2" noWrap title={s.label} sx={{ fontSize: "0.75rem" }}>
+
+                              <Typography
+                                variant="body2"
+                                noWrap
+                                title={s.label}
+                                sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                              >
                                 {String(s.ctfSeriesId)}
                               </Typography>
                             </Box>
                           </TableCell>
-                          <TableCell sx={columnWidths.order} />
-                          <TableCell sx={columnWidths.angle} />
-                          <TableCell sx={columnWidths.excluded} />
-                          <TableCell sx={columnWidths.defocusU} />
-                          <TableCell sx={columnWidths.defocusV} />
-                          <TableCell sx={columnWidths.astigmatism} />
-                          <TableCell sx={columnWidths.resolution} />
-                          <TableCell sx={columnWidths.ccValue} />
+
+                          <TableCell sx={seriesColumnWidths.views}>
+                            {s.nViews ?? ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.tiltAxis}>
+                            {s.tiltAxisAngle != null
+                              ? `${s.tiltAxisAngle.toFixed(2)}°`
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.pixelSize}>
+                            {s.pixelSize != null
+                              ? `${s.pixelSize.toFixed(2)} Å/px`
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.dimensions}>
+                            {s.dims
+                              ? [
+                                s.dims[0],
+                                s.dims[1],
+                                s.nViews ??
+                                (s.dims.length > 2
+                                  ? s.dims[2]
+                                  : undefined),
+                              ]
+                                .filter((value) => value != null && value > 0)
+                                .join(" × ")
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.excluded}>
+                            <Checkbox
+                              size="small"
+                              checked={Boolean(s.excluded)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() =>
+                                handleToggleExcludeSeries(s.ctfSeriesId)
+                              }
+                              sx={{ padding: 0.25 }}
+                            />
+                          </TableCell>
                         </TableRow>
 
-                        {showFramesForThisSeries &&
-                          seriesFrames.map((row, idx) => {
-                            const isSelectedRow = idx === selectedFilteredIndex && isSelectedSeries;
-                            return (
-                              <TableRow
-                                key={`${String(s.ctfSeriesId)}-${String(row.viewId)}`}
-                                hover
-                                selected={isSelectedRow}
-                                onClick={() => handleRowClick(row)}
+                        {/* ctfMeasurementsTable */}
+                        {showFramesForThisSeries && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={6}
+                              sx={{
+                                p: 0,
+                                borderBottom: "1px solid #dbe3ea",
+                                backgroundColor: "#fafafa",
+                              }}
+                            >
+                              <Box
                                 sx={{
-                                  cursor: "pointer",
-                                  ...(row.excluded && {
-                                    backgroundColor: "rgba(248,113,113,0.16)",
-                                    "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                                    "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                                    "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
-                                  }),
+                                  position: "relative",
+                                  ml: 4,
+                                  pl: 2,
+                                  pt: 0.5,
+                                  "&::before": {
+                                    content: '""',
+                                    position: "absolute",
+                                    left: 0,
+                                    top: -2,
+                                    width: 18,
+                                    height: 24,
+                                    borderLeft: "2px solid #d1d5db",
+                                    borderBottom: "2px solid #d1d5db",
+                                    borderBottomLeftRadius: "6px",
+                                  },
                                 }}
                               >
-                                <TableCell sx={columnWidths.series}>
-                                  <Box sx={{ pl: 6, display: "flex", alignItems: "center" }}>
-                                    <Typography variant="body2" sx={{ fontSize: "0.75rem" }}>
-                                      {row.index != null ? row.index : ""}
-                                    </Typography>
-                                  </Box>
-                                </TableCell>
-                                <TableCell sx={columnWidths.order}>{row.order != null ? row.order : ""}</TableCell>
-                                <TableCell sx={columnWidths.angle}>
-                                  {row.tiltAngle != null ? row.tiltAngle.toFixed(2) : ""}
-                                </TableCell>
-                                <TableCell sx={columnWidths.excluded}>
-                                  <Checkbox
-                                    size="small"
-                                    checked={Boolean(row.excluded)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={() => handleToggleExcludeRow(row)}
-                                    sx={{ padding: 0.25 }}
-                                  />
-                                </TableCell>
-                                <TableCell sx={columnWidths.defocusU}>{formatNumber(row.defocusU)}</TableCell>
-                                <TableCell sx={columnWidths.defocusV}>{formatNumber(row.defocusV)}</TableCell>
-                                <TableCell sx={columnWidths.astigmatism}>{formatNumber(row.astigmatism)}</TableCell>
-                                <TableCell sx={columnWidths.resolution}>{formatNumber(row.resolution)}</TableCell>
-                                <TableCell sx={columnWidths.ccValue}>{formatNumber(row.ccValue, 3)}</TableCell>
-                              </TableRow>
-                            );
-                          })}
+                                <Table
+                                  size="small"
+                                  sx={{
+                                    tableLayout: "fixed",
+                                    width: "100%",
+                                    "& th": {
+                                      whiteSpace: "nowrap",
+                                      fontSize: "0.72rem",
+                                      fontWeight: 600,
+                                      py: 0.5,
+                                      backgroundColor: "#f3f4f6",
+                                    },
+                                    "& td": {
+                                      fontSize: "0.75rem",
+                                      py: 0.25,
+                                    },
+                                  }}
+                                >
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell sx={columnWidths.order}>
+                                        Acq. order
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.angle}>
+                                        Tilt angle
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.excluded}>
+                                        Excl.
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.defocusU}>
+                                        DefocusU (Å)
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.defocusV}>
+                                        DefocusV (Å)
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.astigmatism}>
+                                        Astigmatism (Å)
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.resolution}>
+                                        Resolution (Å)
+                                      </TableCell>
+                                      <TableCell sx={columnWidths.ccValue}>
+                                        CC value
+                                      </TableCell>
+                                    </TableRow>
+                                  </TableHead>
+
+                                  <TableBody>
+                                    {seriesFrames.map((row, idx) => {
+                                      const isSelectedRow =
+                                        idx === selectedFilteredIndex &&
+                                        isSelectedSeries;
+
+                                      return (
+                                        <TableRow
+                                          key={`${String(s.ctfSeriesId)}-${String(row.viewId)}`}
+                                          hover
+                                          selected={isSelectedRow}
+                                          onClick={() => handleRowClick(row)}
+                                          sx={{
+                                            cursor: "pointer",
+                                            ...(row.excluded && {
+                                              backgroundColor:
+                                                "rgba(248,113,113,0.16)",
+                                              "&:hover": {
+                                                backgroundColor:
+                                                  "rgba(248,113,113,0.24)",
+                                              },
+                                              "&.Mui-selected": {
+                                                backgroundColor:
+                                                  "rgba(248,113,113,0.30)",
+                                              },
+                                              "&.Mui-selected:hover": {
+                                                backgroundColor:
+                                                  "rgba(248,113,113,0.36)",
+                                              },
+                                            }),
+                                          }}
+                                        >
+                                          <TableCell sx={columnWidths.order}>
+                                            {row.order != null
+                                              ? row.order
+                                              : ""}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.angle}>
+                                            {row.tiltAngle != null
+                                              ? row.tiltAngle.toFixed(2)
+                                              : ""}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.excluded}>
+                                            <Checkbox
+                                              size="small"
+                                              checked={Boolean(row.excluded)}
+                                              onClick={(e) =>
+                                                e.stopPropagation()
+                                              }
+                                              onChange={() =>
+                                                handleToggleExcludeRow(row)
+                                              }
+                                              sx={{ padding: 0.25 }}
+                                            />
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.defocusU}>
+                                            {formatNumber(row.defocusU)}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.defocusV}>
+                                            {formatNumber(row.defocusV)}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.astigmatism}>
+                                            {formatNumber(row.astigmatism)}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.resolution}>
+                                            {formatNumber(row.resolution)}
+                                          </TableCell>
+
+                                          <TableCell sx={columnWidths.ccValue}>
+                                            {formatNumber(row.ccValue, 3)}
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </Fragment>
                     );
                   })}
