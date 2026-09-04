@@ -537,6 +537,7 @@ export default function PluginPage() {
     const isMountedRef = useRef(true);
     const taskLogOffsetRef = useRef(0);
     const logContainerRef = useRef<HTMLDivElement | null>(null);
+    const terminalPluginTaskIdsRef = useRef<Set<string> | null>(null);
 
     const [skipBinaries, setSkipBinaries] = useState(false);
 
@@ -610,6 +611,38 @@ export default function PluginPage() {
                 setLoading(false);
             });
     }, [pipName, state?.plugin]);
+
+    useEffect(() => {
+        terminalPluginTaskIdsRef.current = null;
+    }, [pipName]);
+
+    useEffect(() => {
+        if (!pipName) return;
+
+        const terminalTaskIds = new Set(tasks.filter((task) => {
+            if (task.pipName !== pipName) return false;
+
+            const status = String(task.status ?? "").trim().toUpperCase();
+            return ["SUCCESS", "FAILURE", "CANCELLED"].includes(status);
+        }).map((task) => task.taskId));
+
+        const previousTerminalTaskIds = terminalPluginTaskIdsRef.current;
+        terminalPluginTaskIdsRef.current = terminalTaskIds;
+
+        if (previousTerminalTaskIds === null) return;
+
+        const hasNewTerminalTask = Array.from(terminalTaskIds).some((taskId) => !previousTerminalTaskIds.has(taskId));
+        if (!hasNewTerminalTask) return;
+
+        void fetchPlugin(pipName)
+            .then((updated) => {
+                if (!isMountedRef.current) return;
+                setPlugin(updated);
+            })
+            .catch((err) => {
+                console.error("Error refreshing plugin after task completion", err);
+            });
+    }, [tasks, pipName]);
 
     useEffect(() => {
         if (!currentTask) return;
