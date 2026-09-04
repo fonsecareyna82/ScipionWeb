@@ -228,6 +228,15 @@ export default function TiltSeriesViewer({
   const seriesExcludedRef = useRef<Record<string, boolean>>({});
 
   // columnWidthsAsPercentagesToAvoidHorizontalScroll
+  const seriesColumnWidths = {
+    series: { width: "30%" },
+    views: { width: "12%" },
+    tiltAxis: { width: "16%" },
+    pixelSize: { width: "16%" },
+    dimensions: { width: "18%" },
+    excluded: { width: "8%" },
+  } as const;
+
   const columnWidths = {
     series: { width: "26%" },
     order: { width: "7%" },
@@ -1662,32 +1671,35 @@ export default function TiltSeriesViewer({
               >
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={columnWidths.series}>Tilt series</TableCell>
-                    <TableCell sx={columnWidths.order}>Order</TableCell>
-                    <TableCell sx={columnWidths.angle}>Tilt angle</TableCell>
-                    <TableCell sx={columnWidths.excluded}>Excl.</TableCell>
-                    <TableCell sx={columnWidths.dose}>Dose</TableCell>
-                    <TableCell sx={columnWidths.path}>Path</TableCell>
-                    <TableCell sx={columnWidths.rot}>Rot</TableCell>
-                    <TableCell sx={columnWidths.shiftX}>ShiftX</TableCell>
-                    <TableCell sx={columnWidths.shiftY}>ShiftY</TableCell>
+                    <TableCell sx={seriesColumnWidths.series}>Tilt series</TableCell>
+                    <TableCell sx={seriesColumnWidths.views}>Views</TableCell>
+                    <TableCell sx={seriesColumnWidths.tiltAxis}>Tilt axis</TableCell>
+                    <TableCell sx={seriesColumnWidths.pixelSize}>Pixel size</TableCell>
+                    <TableCell sx={seriesColumnWidths.dimensions}>Dimensions</TableCell>
+                    <TableCell sx={seriesColumnWidths.excluded}>Excl.</TableCell>
                   </TableRow>
                 </TableHead>
+
                 <TableBody>
                   {series.map((s) => {
                     const isExpanded =
-                      expandedSeriesId != null && String(expandedSeriesId) === String(s.tiltSeriesId);
+                      expandedSeriesId != null &&
+                      String(expandedSeriesId) === String(s.tiltSeriesId);
+
                     const isSelectedSeries =
-                      selectedSeriesId != null && String(selectedSeriesId) === String(s.tiltSeriesId);
+                      selectedSeriesId != null &&
+                      String(selectedSeriesId) === String(s.tiltSeriesId);
 
                     const showFramesForThisSeries =
-                      isExpanded && framesData && String(framesData.tiltSeriesId) === String(s.tiltSeriesId);
+                      isExpanded &&
+                      framesData &&
+                      String(framesData.tiltSeriesId) === String(s.tiltSeriesId);
 
                     const seriesFrames = showFramesForThisSeries ? filteredFrames : [];
 
                     return (
                       <Fragment key={String(s.tiltSeriesId)}>
-                        {/* seriesRow */}
+                        {/* tiltSeriesRow */}
                         <TableRow
                           hover
                           selected={isSelectedSeries}
@@ -1696,120 +1708,282 @@ export default function TiltSeriesViewer({
                             cursor: "pointer",
                             ...(s.excluded && {
                               backgroundColor: "rgba(248,113,113,0.16)",
-                              "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                              "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                              "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
+                              "&:hover": {
+                                backgroundColor: "rgba(248,113,113,0.24)",
+                              },
+                              "&.Mui-selected": {
+                                backgroundColor: "rgba(248,113,113,0.30)",
+                              },
+                              "&.Mui-selected:hover": {
+                                backgroundColor: "rgba(248,113,113,0.36)",
+                              },
                             }),
                           }}
                         >
-                          <TableCell sx={columnWidths.series}>
+                          <TableCell sx={seriesColumnWidths.series}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
                               <IconButton
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const nextExpanded = isExpanded ? null : s.tiltSeriesId;
+
+                                  const nextExpanded = isExpanded
+                                    ? null
+                                    : s.tiltSeriesId;
+
                                   setExpandedSeriesId(nextExpanded);
+
                                   if (nextExpanded) {
                                     setSelectedSeriesId((prev) =>
-                                      prev != null && String(prev) === String(s.tiltSeriesId) ? prev : s.tiltSeriesId,
+                                      prev != null &&
+                                        String(prev) === String(s.tiltSeriesId)
+                                        ? prev
+                                        : s.tiltSeriesId,
                                     );
+
                                     onTiltSeriesSelect?.(s);
                                   }
                                 }}
                                 sx={{ mr: 0.25 }}
                               >
-                                {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
+                                {isExpanded ? (
+                                  <ExpandMore fontSize="small" />
+                                ) : (
+                                  <ChevronRight fontSize="small" />
+                                )}
                               </IconButton>
-                              <Checkbox
-                                size="small"
-                                checked={Boolean(s.excluded)}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={() => handleToggleExcludeSeries(s.tiltSeriesId)}
-                                sx={{ padding: 0.25 }}
-                              />
+
                               <Typography
                                 variant="body2"
                                 noWrap
                                 title={s.label}
-                                sx={{ fontSize: "0.75rem" }}
+                                sx={{ fontSize: "0.75rem", fontWeight: 500 }}
                               >
                                 {String(s.tiltSeriesId)}
                               </Typography>
                             </Box>
                           </TableCell>
-                          <TableCell sx={columnWidths.order} />
-                          <TableCell sx={columnWidths.angle} />
-                          <TableCell sx={columnWidths.excluded} />
-                          <TableCell sx={columnWidths.dose} />
-                          <TableCell sx={columnWidths.path} />
-                          <TableCell sx={columnWidths.rot} />
-                          <TableCell sx={columnWidths.shiftX} />
-                          <TableCell sx={columnWidths.shiftY} />
+
+                          <TableCell sx={seriesColumnWidths.views}>
+                            {s.nViews ?? ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.tiltAxis}>
+                            {s.tiltAxisAngle != null
+                              ? `${s.tiltAxisAngle.toFixed(2)}°`
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.pixelSize}>
+                            {s.pixelSize != null
+                              ? `${s.pixelSize.toFixed(2)} Å/px`
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.dimensions}>
+                            {s.dims
+                              ? s.dims
+                                .filter((value) => value > 0)
+                                .join(" × ")
+                              : ""}
+                          </TableCell>
+
+                          <TableCell sx={seriesColumnWidths.excluded}>
+                            <Checkbox
+                              size="small"
+                              checked={Boolean(s.excluded)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() =>
+                                handleToggleExcludeSeries(s.tiltSeriesId)
+                              }
+                              sx={{ padding: 0.25 }}
+                            />
+                          </TableCell>
                         </TableRow>
 
-                        {/* frameRowsForThisSeries */}
-                        {showFramesForThisSeries &&
-                          seriesFrames.map((row, idx) => {
-                            const isSelectedRow = idx === selectedFilteredIndex && isSelectedSeries;
-                            return (
-                              <TableRow
-                                key={`${String(s.tiltSeriesId)}-${String(row.viewId)}`}
-                                hover
-                                selected={isSelectedRow}
-                                data-selected-tilt-row={isSelectedRow ? "true" : undefined}
-                                onClick={() => handleRowClick(row)}
+                        {/* tiltImagesTable */}
+                        {showFramesForThisSeries && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={6}
+                              sx={{
+                                p: 0,
+                                borderBottom: "1px solid #dbe3ea",
+                                backgroundColor: "#fafafa",
+                              }}
+                            >
+                              <Table
+                                size="small"
                                 sx={{
-                                  cursor: "pointer",
-                                  ...(row.excluded && {
-                                    backgroundColor: "rgba(248,113,113,0.16)",
-                                    "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                                    "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                                    "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
-                                  }),
+                                  tableLayout: "fixed",
+                                  width: "100%",
+                                  "& th": {
+                                    whiteSpace: "nowrap",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 600,
+                                    py: 0.5,
+                                    backgroundColor: "#f3f4f6",
+                                  },
+                                  "& td": {
+                                    fontSize: "0.75rem",
+                                    py: 0.25,
+                                  },
                                 }}
                               >
-                                <TableCell sx={columnWidths.series}>
-                                  <Box sx={{ pl: 6, display: "flex", alignItems: "center" }}>
-                                    <Typography variant="body2" sx={{ fontSize: "0.75rem" }}>
-                                      {row.index != null ? row.index : ""}
-                                    </Typography>
-                                  </Box>
-                                </TableCell>
-                                <TableCell sx={columnWidths.order}>{row.order != null ? row.order : ""}</TableCell>
-                                <TableCell sx={columnWidths.angle}>
-                                  {row.tiltAngle != null ? row.tiltAngle.toFixed(2) : ""}
-                                </TableCell>
-                                <TableCell sx={columnWidths.excluded}>
-                                  <Checkbox
-                                    size="small"
-                                    checked={Boolean(row.excluded)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={() => handleToggleExcludeRow(row)}
-                                    sx={{ padding: 0.25 }}
-                                  />
-                                </TableCell>
-                                <TableCell sx={columnWidths.dose}>{row.dose != null ? row.dose.toFixed(2) : ""}</TableCell>
-                                <TableCell
-                                  sx={{
-                                    ...columnWidths.path,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                  }}
-                                  title={row.path ?? undefined}
-                                >
-                                  {row.path ? truncatePathMiddle(row.path) : ""}
-                                </TableCell>
-                                <TableCell sx={columnWidths.rot}>{row.rot != null ? row.rot.toFixed(2) : ""}</TableCell>
-                                <TableCell sx={columnWidths.shiftX}>
-                                  {row.shiftX != null ? row.shiftX.toFixed(2) : ""}
-                                </TableCell>
-                                <TableCell sx={columnWidths.shiftY}>
-                                  {row.shiftY != null ? row.shiftY.toFixed(2) : ""}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell sx={columnWidths.series}>
+                                      Tilt image
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.order}>
+                                      Order
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.angle}>
+                                      Tilt angle
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.excluded}>
+                                      Excl.
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.dose}>
+                                      Dose
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.path}>
+                                      Path
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.rot}>
+                                      Rot
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.shiftX}>
+                                      ShiftX
+                                    </TableCell>
+                                    <TableCell sx={columnWidths.shiftY}>
+                                      ShiftY
+                                    </TableCell>
+                                  </TableRow>
+                                </TableHead>
+
+                                <TableBody>
+                                  {seriesFrames.map((row, idx) => {
+                                    const isSelectedRow =
+                                      idx === selectedFilteredIndex &&
+                                      isSelectedSeries;
+
+                                    return (
+                                      <TableRow
+                                        key={`${String(s.tiltSeriesId)}-${String(row.viewId)}`}
+                                        hover
+                                        selected={isSelectedRow}
+                                        data-selected-tilt-row={
+                                          isSelectedRow ? "true" : undefined
+                                        }
+                                        onClick={() => handleRowClick(row)}
+                                        sx={{
+                                          cursor: "pointer",
+                                          ...(row.excluded && {
+                                            backgroundColor:
+                                              "rgba(248,113,113,0.16)",
+                                            "&:hover": {
+                                              backgroundColor:
+                                                "rgba(248,113,113,0.24)",
+                                            },
+                                            "&.Mui-selected": {
+                                              backgroundColor:
+                                                "rgba(248,113,113,0.30)",
+                                            },
+                                            "&.Mui-selected:hover": {
+                                              backgroundColor:
+                                                "rgba(248,113,113,0.36)",
+                                            },
+                                          }),
+                                        }}
+                                      >
+                                        <TableCell sx={columnWidths.series}>
+                                          <Box
+                                            sx={{
+                                              pl: 2,
+                                              display: "flex",
+                                              alignItems: "center",
+                                            }}
+                                          >
+                                            <Typography
+                                              variant="body2"
+                                              sx={{ fontSize: "0.75rem" }}
+                                            >
+                                              {row.index != null
+                                                ? row.index
+                                                : ""}
+                                            </Typography>
+                                          </Box>
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.order}>
+                                          {row.order != null
+                                            ? row.order
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.angle}>
+                                          {row.tiltAngle != null
+                                            ? row.tiltAngle.toFixed(2)
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.excluded}>
+                                          <Checkbox
+                                            size="small"
+                                            checked={Boolean(row.excluded)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={() =>
+                                              handleToggleExcludeRow(row)
+                                            }
+                                            sx={{ padding: 0.25 }}
+                                          />
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.dose}>
+                                          {row.dose != null
+                                            ? row.dose.toFixed(2)
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell
+                                          sx={{
+                                            ...columnWidths.path,
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                          }}
+                                          title={row.path ?? undefined}
+                                        >
+                                          {row.path
+                                            ? truncatePathMiddle(row.path)
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.rot}>
+                                          {row.rot != null
+                                            ? row.rot.toFixed(2)
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.shiftX}>
+                                          {row.shiftX != null
+                                            ? row.shiftX.toFixed(2)
+                                            : ""}
+                                        </TableCell>
+
+                                        <TableCell sx={columnWidths.shiftY}>
+                                          {row.shiftY != null
+                                            ? row.shiftY.toFixed(2)
+                                            : ""}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                </TableBody>
+                              </Table>
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </Fragment>
                     );
                   })}

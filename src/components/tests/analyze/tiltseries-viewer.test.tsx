@@ -294,6 +294,26 @@ describe("TiltSeriesViewer", () => {
         });
     });
 
+    it("shows separate headers for tilt series and tilt images", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Tilt series")).toBeInTheDocument();
+        expect(screen.getByText("Views")).toBeInTheDocument();
+        expect(screen.getByText("Tilt axis")).toBeInTheDocument();
+        expect(screen.getByText("Pixel size")).toBeInTheDocument();
+        expect(screen.getByText("Dimensions")).toBeInTheDocument();
+
+        expect(screen.queryByText("Tilt image")).not.toBeInTheDocument();
+
+        await expandFirstTiltSeries();
+
+        expect(await screen.findByText("Tilt image")).toBeInTheDocument();
+        expect(screen.getByText("Order")).toBeInTheDocument();
+        expect(screen.getByText("Tilt angle")).toBeInTheDocument();
+        expect(screen.getByText("Dose")).toBeInTheDocument();
+        expect(screen.getByText("Path")).toBeInTheDocument();
+    });
+
     it("filters frames within the selected series", async () => {
         renderViewer();
 
