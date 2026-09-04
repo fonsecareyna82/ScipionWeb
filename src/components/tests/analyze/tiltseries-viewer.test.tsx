@@ -93,7 +93,7 @@ function makeSeriesList() {
             nViews: 2,
             tiltAxisAngle: 23.5,
             pixelSize: 1.5,
-            dims: [100, 80, 2],
+            dims: [100, 80, 1],
         },
         {
             id: "TS2",
@@ -294,7 +294,7 @@ describe("TiltSeriesViewer", () => {
         });
     });
 
-    it("shows separate headers for tilt series and tilt images", async () => {
+    it("shows separate tilt series and tilt image metadata", async () => {
         renderViewer();
 
         expect(await screen.findByText("Tilt series")).toBeInTheDocument();
@@ -303,11 +303,11 @@ describe("TiltSeriesViewer", () => {
         expect(screen.getByText("Pixel size")).toBeInTheDocument();
         expect(screen.getByText("Dimensions")).toBeInTheDocument();
 
-        expect(screen.queryByText("Tilt image")).not.toBeInTheDocument();
+        expect(screen.getByText("100 × 80 × 2")).toBeInTheDocument();
 
         await expandFirstTiltSeries();
 
-        expect(await screen.findByText("Tilt image")).toBeInTheDocument();
+        expect(screen.queryByText("Tilt image")).not.toBeInTheDocument();
         expect(screen.getByText("Order")).toBeInTheDocument();
         expect(screen.getByText("Tilt angle")).toBeInTheDocument();
         expect(screen.getByText("Dose")).toBeInTheDocument();
