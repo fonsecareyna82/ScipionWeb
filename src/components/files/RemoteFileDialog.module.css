@@ -20,8 +20,8 @@
 
 /* layoutSizingPreviouslyInline */
 .dialogWidth {
-  width: 1300px;
-  max-width: 1300px;
+  width: min(1300px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
 }
 
 .dialogHeight {
@@ -115,6 +115,12 @@
   gap: 1rem;
   margin-top: 1rem;
   flex: none;
+}
+
+@media (max-width: 760px) {
+  .bodyGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* panelsPreviouslyInline */
