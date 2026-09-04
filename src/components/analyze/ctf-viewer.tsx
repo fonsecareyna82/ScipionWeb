@@ -2052,128 +2052,143 @@ export default function CtfViewer({
                                 ),
                             )}
                         </Box>
-                        <Box
-                            sx={{
-                                px: 1,
-                                py: 0.6,
-                                display: "grid",
-                                gridTemplateColumns:
-                                    "repeat(5, minmax(0, 1fr))",
-                                gap: 0.75,
-                                borderBottom: "1px solid #e5e7eb",
-                                bgcolor: "#fafafa",
-                            }}
-                        >
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", fontSize: "0.64rem" }}
-                                >
-                                    CTFs
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{ fontWeight: 700, fontSize: "0.72rem" }}
-                                >
-                                    {statistics.total}
-                                </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", fontSize: "0.64rem" }}
-                                >
-                                    Failed
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{
-                                        fontWeight: 700,
-                                        fontSize: "0.72rem",
-                                        color:
-                                            statistics.failed > 0
-                                                ? "error.main"
-                                                : "text.primary",
-                                    }}
-                                >
-                                    {statistics.failed}
-                                </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", fontSize: "0.64rem" }}
-                                >
-                                    Median defocus
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{ fontWeight: 700, fontSize: "0.72rem" }}
-                                    noWrap
-                                >
-                                    {statistics.medianMeanDefocus != null
-                                        ? `${(statistics.medianMeanDefocus / 10000).toFixed(3)} µm`
-                                        : "-"}
-                                </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", fontSize: "0.64rem" }}
-                                >
-                                    Median resolution
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{ fontWeight: 700, fontSize: "0.72rem" }}
-                                    noWrap
-                                >
-                                    {statistics.medianResolution != null
-                                        ? `${statistics.medianResolution.toFixed(2)} Å`
-                                        : "-"}
-                                </Typography>
-                            </Box>
-
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", fontSize: "0.64rem" }}
-                                >
-                                    Median astigmatism
-                                </Typography>
-                                <Typography
-                                    variant="caption"
-                                    sx={{ fontWeight: 700, fontSize: "0.72rem" }}
-                                    noWrap
-                                >
-                                    {statistics.medianAstigmatism != null
-                                        ? `${statistics.medianAstigmatism.toFixed(2)} Å`
-                                        : "-"}
-                                </Typography>
-                            </Box>
-                        </Box>
 
                     </Box>
 
                     <Box
                         sx={{
-                            flex: 1,
-                            minHeight: 0,
-                            p: 0.5,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            px: 1.25,
+                            py: 0.65,
+                            display: "grid",
+                            gridTemplateColumns:
+                                "0.65fr 0.65fr 1.15fr 1.2fr 1.3fr",
+                            gap: 1.25,
+                            borderBottom: "1px solid #e5e7eb",
+                            bgcolor: "#fafafa",
+                            flexShrink: 0,
                         }}
                     >
-                        {plotMode === "distribution" ? (
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", fontSize: "0.64rem" }}
+                            >
+                                CTFs
+                            </Typography>
+                            <Typography
+                                variant="caption"
+                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                            >
+                                {statistics.total}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", fontSize: "0.64rem" }}
+                            >
+                                Failed
+                            </Typography>
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    fontWeight: 700,
+                                    fontSize: "0.72rem",
+                                    color:
+                                        statistics.failed > 0
+                                            ? "error.main"
+                                            : "text.primary",
+                                }}
+                            >
+                                {statistics.failed}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", fontSize: "0.64rem" }}
+                            >
+                                Median defocus
+                            </Typography>
+                            <Typography
+                                variant="caption"
+                                noWrap
+                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                            >
+                                {statistics.medianMeanDefocus != null
+                                    ? `${(statistics.medianMeanDefocus / 10000).toFixed(3)} µm`
+                                    : "-"}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", fontSize: "0.64rem" }}
+                            >
+                                Median resolution
+                            </Typography>
+                            <Typography
+                                variant="caption"
+                                noWrap
+                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                            >
+                                {statistics.medianResolution != null
+                                    ? `${statistics.medianResolution.toFixed(2)} Å`
+                                    : "-"}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block", fontSize: "0.64rem" }}
+                            >
+                                Median astigmatism
+                            </Typography>
+                            <Typography
+                                variant="caption"
+                                noWrap
+                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                            >
+                                {statistics.medianAstigmatism != null
+                                    ? `${statistics.medianAstigmatism.toFixed(2)} Å`
+                                    : "-"}
+                            </Typography>
+                        </Box>
+                    </Box>
+
+                    {plotMode === "distribution" ? (
+                        <Box
+                            sx={{
+                                px: 1.25,
+                                py: 0.55,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1,
+                                borderBottom: "1px solid #e5e7eb",
+                                bgcolor: "background.paper",
+                                flexShrink: 0,
+                            }}
+                        >
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                    fontSize: "0.68rem",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                Distribution
+                            </Typography>
+
                             <TextField
                                 select
                                 size="small"
@@ -2184,12 +2199,7 @@ export default function CtfViewer({
                                     )
                                 }
                                 sx={{
-                                    position: "absolute",
-                                    top: 8,
-                                    left: 10,
-                                    zIndex: 2,
-                                    width: 170,
-                                    bgcolor: "background.paper",
+                                    width: 190,
                                     "& .MuiInputBase-input": {
                                         py: 0.45,
                                         fontSize: "0.7rem",
@@ -2206,7 +2216,20 @@ export default function CtfViewer({
                                     </MenuItem>
                                 ))}
                             </TextField>
-                        ) : null}
+                        </Box>
+                    ) : null}
+
+                    <Box
+                        sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            p: 0.5,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                        }}
+                    >
+
 
                         {!activePlotData.length ? (
                             <Typography
@@ -2246,7 +2269,6 @@ export default function CtfViewer({
                         gridTemplateColumns:
                             "minmax(0, 1fr) minmax(0, 1fr)",
                         gap: 1,
-                        position: "relative",
                     }}
                 >
                     <PreviewPanel
