@@ -81,6 +81,7 @@ type InstanceSettings = {
 type EnvironmentRow = {
   name: string;
   value: string;
+  isOverride: boolean;
 };
 
 type InstanceSettingsPatch =
@@ -220,21 +221,43 @@ function normalizeEnvironmentRows(raw: any): EnvironmentRow[] {
   if (Array.isArray(raw)) {
     return raw
       .map((item: any) => ({
-        name: String(item?.name ?? item?.key ?? item?.variable ?? "").trim(),
+        name: String(
+          item?.name
+          ?? item?.key
+          ?? item?.variable
+          ?? ""
+        ).trim(),
         value: String(item?.value ?? ""),
+        isOverride: Boolean(item?.isOverride),
       }))
-      .filter((item: EnvironmentRow) => item.name.length > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter(
+        (item: EnvironmentRow) =>
+          item.name.length > 0
+      )
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name)
+      );
   }
 
   if (raw && typeof raw === "object") {
     return Object.entries(raw)
       .map(([name, value]) => ({
         name: String(name).trim(),
-        value: value == null ? "" : String(value),
+        value:
+          value == null
+            ? ""
+            : String(value),
+        isOverride: false,
       }))
-      .filter((item: EnvironmentRow) => item.name.length > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter(
+        (item: EnvironmentRow) =>
+          item.name.length > 0
+      )
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name)
+      );
   }
 
   return [];
@@ -901,7 +924,7 @@ export default function SettingsPage() {
     }
 
     setEnvironmentDraft((prev) => {
-      return [...prev, { name, value: newEnvironmentValue }].sort((a, b) =>
+      return [...prev, { name, value: newEnvironmentValue, isOverride: false, }].sort((a, b) =>
         a.name.localeCompare(b.name),
       );
     });
@@ -1212,6 +1235,76 @@ export default function SettingsPage() {
       setEnvironmentLoading(false);
     }
   }, [svc, environmentAvailable, environmentBase, environmentDraft]);
+
+  const handleResetEnvironmentVariable = useCallback(
+    async (
+      variableName: string
+    ) => {
+      // handleResetEnvironmentVariable
+      if (
+        !environmentAvailable
+        || environmentLoading
+      ) {
+        return;
+      }
+
+      const pendingPatch =
+        buildEnvironmentPatch(
+          environmentBase,
+          environmentDraft,
+        );
+
+      if (
+        Object.keys(
+          pendingPatch
+        ).length
+      ) {
+        toast.error(
+          "Save or discard pending changes before resetting an override."
+        );
+        return;
+      }
+
+      setEnvironmentLoading(true);
+      setEnvironmentError(null);
+
+      try {
+        const savedRaw =
+          await svc.resetEnvironmentVariable(
+            variableName
+          );
+
+        const saved =
+          normalizeEnvironmentRows(
+            savedRaw
+          );
+
+        setEnvironmentBase(saved);
+        setEnvironmentDraft(saved);
+
+        toast.success(
+          `${variableName} override reset.`
+        );
+      } catch (e: any) {
+        if (isForbidden(e)) {
+          setEnvironmentAvailable(false);
+        }
+
+        const message = getErrorMsg(e);
+        setEnvironmentError(message);
+        toast.error(message);
+      } finally {
+        setEnvironmentLoading(false);
+      }
+    },
+    [
+      svc,
+      environmentAvailable,
+      environmentLoading,
+      environmentBase,
+      environmentDraft,
+    ],
+  );
 
   const handleResetUser = useCallback(() => {
     // handleResetUser
@@ -2323,6 +2416,14 @@ export default function SettingsPage() {
                           >
                             Value
                           </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              width: 150,
+                            }}
+                          >
+                            Override
+                          </TableCell>
                         </TableRow>
                       </TableHead>
 
@@ -2367,6 +2468,40 @@ export default function SettingsPage() {
                                   }}
                                   placeholder="Variable value"
                                 />
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {row.isOverride ? (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    startIcon={
+                                      <RotateCcw
+                                        size={15}
+                                      />
+                                    }
+                                    disabled={
+                                      environmentLoading
+                                    }
+                                    onClick={() =>
+                                      void handleResetEnvironmentVariable(
+                                        row.name
+                                      )
+                                    }
+                                  >
+                                    Reset
+                                  </Button>
+                                ) : (
+                                  <Chip
+                                    size="small"
+                                    label="Base"
+                                    variant="outlined"
+                                  />
+                                )}
                               </TableCell>
                             </TableRow>
                           );

@@ -278,6 +278,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("patchUserSettings", "patchUserSettings");
   mapFn("fetchEnvironmentVariables", "fetchEnvironmentVariables", "getEnvironmentVariables");
   mapFn("patchEnvironmentVariables", "patchEnvironmentVariables", "updateEnvironmentVariables");
+  mapFn(
+  "resetEnvironmentVariable",
+  "resetEnvironmentVariable",
+);
   mapFn("fetchHostSettings", "fetchHostSettings", "getHostSettings");
   mapFn("putHostSettings", "putHostSettings", "updateHostSettings");
   mapFn("patchHostSettings", "patchHostSettings");

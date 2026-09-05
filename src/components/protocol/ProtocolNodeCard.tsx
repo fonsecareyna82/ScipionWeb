@@ -2188,7 +2188,7 @@ export default function ProtocolNodeCard({
                         {(isMenuItemVisible("selectFrom") || isMenuItemVisible("selectTo")) && (
                           <DropdownMenuSeparator />)}
 
-                        {isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                        {isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled" || data.status === "interactive") && (
                           <DropdownMenuItem onSelect={() => handleStop()}>
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
@@ -2238,7 +2238,7 @@ export default function ProtocolNodeCard({
                       </>
                     )}
 
-                    {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                    {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled" || data.status === "interactive") && (
                       <DropdownMenuItem onSelect={() => handleStop()}>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
@@ -2961,7 +2961,7 @@ export default function ProtocolNodeCard({
             {(isMenuItemVisible("selectTo") || isMenuItemVisible("selectFrom")) && (
               <ContextMenuSeparator />)}
 
-            {isMenuItemVisible("selectTo") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+            {isMenuItemVisible("selectTo") && (data.status === "running" || data.status === "launched" || data.status === "scheduled" || data.status === "interactive") && (
               <ContextMenuItem onClick={handleStop}>
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>
@@ -3011,7 +3011,7 @@ export default function ProtocolNodeCard({
           </>
         )}
 
-        {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+        {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled" || data.status === "interactive") && (
           <ContextMenuItem onClick={handleStop}>
             <div className={styles.menuRow}>
               <span className={styles.menuLeft}>

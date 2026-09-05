@@ -49,6 +49,7 @@ export type EnvironmentVariable = {
   description?: string;
   source?: string;
   isDefault?: boolean;
+  isOverride?: boolean;
   type?: string;
 };
 
@@ -261,6 +262,27 @@ export async function patchEnvironmentVariables(
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw await toApiError(res, "Failed to patch environment variables");
+  return safeJson<EnvironmentVariable[]>(res);
+}
+
+export async function resetEnvironmentVariable(
+  variableName: string,
+): Promise<EnvironmentVariable[]> {
+  // resetEnvironmentVariable
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/environment/${encodeURIComponent(variableName)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to reset environment variable",
+    );
+  }
+
   return safeJson<EnvironmentVariable[]>(res);
 }
 

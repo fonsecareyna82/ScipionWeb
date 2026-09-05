@@ -853,6 +853,7 @@ export type EnvironmentVariable = {
   source?: string;
   isDefault?: boolean;
   type?: string;
+  isOverride?: boolean;
 };
 
 export type EnvironmentVariablesPatch = Record<string, string>;
@@ -2152,6 +2153,7 @@ export interface ProjectService<
 
   fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
   patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;
+  resetEnvironmentVariable: (variableName: string) => Promise<EnvironmentVariable[]>;
 
   fetchHostSettings(): Promise<HostSettings>;
   putHostSettings(payload: HostSettings): Promise<HostSettings | null>;

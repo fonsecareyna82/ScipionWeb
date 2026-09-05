@@ -954,6 +954,8 @@ const defaultService: ProjectService = {
   fetchInstanceResources: (): Promise<InstanceResources> => settingsApi.fetchInstanceResources(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+  resetEnvironmentVariable: (variableName: string) =>
+  settingsApi.resetEnvironmentVariable(variableName),
 
   fetchJobsOverview: (
     recentLimit: number = 25,
