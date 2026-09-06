@@ -30,12 +30,14 @@ function buildExternalViewersCacheKey(params: {
   projectId: Id;
   protocolId: Id;
   outputName: string;
+  objectId?: Id;
   objectKind?: string;
 }) {
   return [
     String(params.projectId),
     String(params.protocolId),
     params.outputName,
+    String(params.objectId ?? ""),
     params.objectKind ?? "",
   ].join("::");
 }
@@ -78,8 +80,8 @@ export default function ExternalViewersBar({
   const [launchingViewerId, setLaunchingViewerId] = useState<string | null>(null);
 
   const cacheKey = useMemo(
-    () => buildExternalViewersCacheKey({ projectId, protocolId, outputName, objectKind }),
-    [projectId, protocolId, outputName, objectKind],
+    () => buildExternalViewersCacheKey({ projectId, protocolId, outputName, objectId, objectKind }),
+    [projectId, protocolId, outputName, objectId, objectKind],
   );
 
   const hasRequiredContext = useMemo(() => {
