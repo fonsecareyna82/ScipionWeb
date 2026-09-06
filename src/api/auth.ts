@@ -226,6 +226,30 @@ export async function updateUserProfile(data: Partial<UserProfile>) {
 
 
 /**
+ * Change current user's password
+ */
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const res = await fetchWithAuth(`${BASE_URL}/auth/me/password`, {
+    method: "PUT",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  let data: any = {};
+  try {
+    data = await res.json();
+  } catch {
+    // Keep default error message below.
+  }
+
+  if (!res.ok) {
+    throw new Error(typeof data?.detail === "string" ? data.detail : "Failed to change password");
+  }
+
+  return data;
+}
+
+
+/**
  * Wrapper for fetch that automatically refreshes tokens on 401
  */
 export async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}): Promise<Response> {
