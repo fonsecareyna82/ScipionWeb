@@ -64,12 +64,17 @@ import type {
   UserSettingsPatch,
 } from "@/services/ProjectService";
 
+import { getCurrentUser } from "@/api/auth";
+import type { UserProfile } from "@/types/user";
+import UserManagementPanel from "@/pages/Settings/UserManagementPanel";
+
 
 type TabKey =
   | "user"
   | "instance"
   | "jobs"
   | "host"
+  | "users"
   | "tags"
   | "environment";
 
@@ -467,6 +472,26 @@ function getViewModeMeta(
 export default function SettingsPage() {
   const svc = useProjectService() as any;
   const muiTheme = useTheme();
+
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCurrentUser()
+      .then((user) => {
+        if (!cancelled) setCurrentUser(user as UserProfile);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUser(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isAdmin = String(currentUser?.role ?? "").trim().toLowerCase() === "admin";
 
   const [darkClassEnabled, setDarkClassEnabled] = useState(false);
 
@@ -1352,7 +1377,7 @@ export default function SettingsPage() {
   ]);
 
   const headerRight = useMemo(() => {
-    if (tab === "tags" || tab === "jobs") return null;
+    if (tab === "tags" || tab === "jobs" || tab === "users") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
@@ -2604,6 +2629,7 @@ export default function SettingsPage() {
               <Tab value="instance" label="Instance" />
               <Tab value="jobs" label="Jobs" />
               <Tab value="host" label="Host" />
+              {isAdmin && <Tab value="users" label="Users" />}
               <Tab value="tags" label="Tags" />
               <Tab value="environment" label="Environment" />
             </Tabs>
@@ -2627,11 +2653,23 @@ export default function SettingsPage() {
                     ? <JobsSettingsPanel />
                     : tab === "host"
                       ? renderHostContent()
-                      : tab === "tags"
-                        ? renderTagsContent()
-                        : renderEnvironmentContent()}
+                      : tab === "users"
+                        ? (
+                          <UserManagementPanel
+                            currentUserId={currentUser?.id ?? null}
+                            fieldSx={fieldSx}
+                            cardSx={cardSx}
+                            cardHeaderSx={cardHeaderSx}
+                            selectSx={selectSx}
+                            menuPaperSx={menuPaperSx}
+                            colors={colors}
+                          />
+                        )
+                        : tab === "tags"
+                          ? renderTagsContent()
+                          : renderEnvironmentContent()}
 
-              {tab !== "jobs" ? (
+              {tab !== "jobs" && tab !== "users" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />
 
