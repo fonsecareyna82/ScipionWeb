@@ -161,6 +161,21 @@ export default function CTFTomoViewer({
     return "Operation failed";
   };
 
+  const isPsdUnavailableError = (e: any): boolean => {
+    if (Number(e?.status) !== 404) return false;
+
+    const text = JSON.stringify({
+      message: e?.message,
+      detail: e?.detail,
+      data: e?.data,
+    }).toLowerCase();
+
+    return (
+      text.includes("psd_file_not_available") ||
+      text.includes("psd output is not available")
+    );
+  };
+
   const abortPsdLoad = () => {
     psdAbortRef.current?.abort();
     psdAbortRef.current = null;
@@ -520,8 +535,18 @@ export default function CTFTomoViewer({
         return;
       }
 
+      if (isPsdUnavailableError(e)) {
+        setPsdError(null);
+        disposePsdImageUrl();
+        return;
+      }
+
       console.error("Failed to load PSD image", e);
-      setPsdError(getErrorMsg(e) || "Failed to load PSD image for the selected view.");
+
+      setPsdError(
+        "Unable to load the PSD image for the selected CTF."
+      );
+
       disposePsdImageUrl();
     } finally {
       if (psdAbortRef.current === controller) {
@@ -1768,7 +1793,7 @@ export default function CTFTomoViewer({
                 />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
-                  Select a CTF view with PSD data to preview it here.
+                  No PSD data available for the selected CTF.
                 </Typography>
               )}
             </Box>
