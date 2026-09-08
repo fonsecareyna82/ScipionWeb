@@ -100,7 +100,21 @@ vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
     renderPointerParamRow: ({ label }: any) => <div>{label}</div>,
     renderPathParamRow: ({ label }: any) => <div>{label}</div>,
     renderEnumParamRow: ({ label }: any) => <div>{label}</div>,
-    renderBooleanParamRow: ({ label }: any) => <div>{label}</div>,
+    renderBooleanParamRow: ({ label, wizardUi }: any) => (
+        <div>
+            <span>{label}</span>
+
+            {wizardUi?.hasWizard && (
+                <button
+                    aria-label={`${label} wizard`}
+                    onClick={wizardUi.onOpenWizard}
+                    disabled={!wizardUi.onOpenWizard}
+                >
+                    Wizard
+                </button>
+            )}
+        </div>
+    ),
     renderDefaultParamRow: ({ label, value }: any) => (
         <div>
             <span>{label}</span>
@@ -1151,6 +1165,70 @@ describe("ProtocolForm", () => {
             iframe.remove();
         },
     );
+
+    it("stores protocol-local queue settings from the use queue wizard", async () => {
+        const data: any = createQueueData();
+
+        data.values._queueName = "gpu";
+        data.values._queueParams = {
+            threads: "12",
+        };
+
+        renderQueueComponent({ data });
+
+        fireEvent.click(
+            screen.getByRole("button", {
+                name: "Use queue wizard",
+            }),
+        );
+
+        const dialog = await screen.findByRole("dialog");
+
+        expect(
+            within(dialog).getByDisplayValue("12"),
+        ).toBeInTheDocument();
+
+        fireEvent.change(
+            within(dialog).getByDisplayValue("12"),
+            {
+                target: {
+                    value: "16",
+                },
+            },
+        );
+
+        fireEvent.click(
+            within(dialog).getByRole("button", {
+                name: "Save",
+            }),
+        );
+
+        await waitFor(() => {
+            expect(
+                screen.queryByRole("dialog")
+            ).not.toBeInTheDocument();
+        });
+
+        fireEvent.click(
+            screen.getByRole("button", {
+                name: "Save",
+            }),
+        );
+
+        await waitFor(() => {
+            expect(mockSaveProtocol).toHaveBeenCalledWith(
+                1,
+                "7",
+                "ProtImportMovies",
+                expect.objectContaining({
+                    _queueName: "gpu",
+                    _queueParams: {
+                        threads: "16",
+                    },
+                }),
+            );
+        });
+    });
 
 
 });

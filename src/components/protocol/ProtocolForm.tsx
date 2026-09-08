@@ -181,6 +181,11 @@ type QueueLaunchDraft = {
   params: QueueLaunchDraftParam[];
 };
 
+type ProtocolQueueConfig = {
+  queueName: string;
+  params: Record<string, string>;
+};
+
 type PendingWorkflowExecution = {
   modeKey: "continue" | "restart";
   queueOverride: QueueLaunchDraft | null;
@@ -232,6 +237,27 @@ function isEmptyProtocolValue(raw: unknown): boolean {
   }
 
   return false;
+}
+
+function normalizeProtocolQueueConfig(values: any): ProtocolQueueConfig | null {
+  if (!values || typeof values !== "object") return null;
+
+  const queueName = String(values._queueName ?? "").trim();
+  const rawParams = values._queueParams;
+
+  if (!rawParams || typeof rawParams !== "object" || Array.isArray(rawParams)) {
+    return queueName ? { queueName, params: {} } : null;
+  }
+
+  const params: Record<string, string> = {};
+
+  Object.entries(rawParams).forEach(([key, value]) => {
+    params[key] = String(value ?? "");
+  });
+
+  if (!queueName && Object.keys(params).length === 0) return null;
+
+  return { queueName, params };
 }
 
 export default function ProtocolForm({
@@ -590,6 +616,7 @@ export default function ProtocolForm({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [pendingExecuteMode, setPendingExecuteMode] = useState<string | null>(null);
   const [queueDraft, setQueueDraft] = useState<QueueLaunchDraft | null>(null);
+  const [queueDialogPurpose, setQueueDialogPurpose] = useState<"execute" | "configure">("execute");
   const [pendingWorkflowExecution, setPendingWorkflowExecution] = useState<PendingWorkflowExecution | null>(null);
 
   // Global Output Selector
@@ -1364,6 +1391,7 @@ export default function ProtocolForm({
       id: protocolId ?? "",
       color: info?.color ?? (form as any)?.color ?? "",
       params: finalParams,
+      queueConfig: normalizeProtocolQueueConfig(valuesMap),
     });
   }, [form, info, values, sections, protocolId, protocolClassName]);
 
@@ -1446,8 +1474,15 @@ export default function ProtocolForm({
     (queueNameRaw?: string): QueueLaunchDraft | null => {
       if (!effectiveHostQueues.length) return null;
 
+      const localQueueConfig =
+        (protocolDetails?.queueConfig as ProtocolQueueConfig | null) ?? null;
+
       const requestedQueueName = String(
-        queueNameRaw ?? activeQueueName ?? effectiveDefaultQueueName ?? ""
+        queueNameRaw ??
+        localQueueConfig?.queueName ??
+        activeQueueName ??
+        effectiveDefaultQueueName ??
+        ""
       ).trim();
 
       const selectedQueue =
@@ -1463,10 +1498,30 @@ export default function ProtocolForm({
             queueParam.variableName,
           ]);
 
+          const current = stateKey
+            ? protocolDetails.params?.[stateKey]
+            : null;
+
+          const currentValue =
+            current?.editableValue ??
+            current?.value;
+
+          const localValue =
+            localQueueConfig?.queueName === selectedQueue.name
+              ? localQueueConfig.params?.[queueParam.variableName]
+              : undefined;
+
+          const value =
+            localValue !== undefined
+              ? String(localValue)
+              : !isEmptyProtocolValue(currentValue)
+                ? String(currentValue)
+                : String(queueParam.value ?? "");
+
           return {
             stateKey,
             variableName: queueParam.variableName,
-            value: String(queueParam.value ?? ""),
+            value,
             label: String(queueParam.label ?? ""),
             help: String(queueParam.help ?? ""),
           };
@@ -1480,6 +1535,56 @@ export default function ProtocolForm({
       protocolDetails.params,
       findStateKeyByParamNames,
     ]
+  );
+
+  const openQueueConfigWizard = useCallback(() => {
+    if (!effectiveHostQueues.length) {
+      toast.error("No queues are configured for this host.");
+      return;
+    }
+
+    const localQueueName = String(
+      protocolDetails?.queueConfig?.queueName ?? ""
+    ).trim();
+
+    const draft = buildQueueDraft(
+      localQueueName || activeQueueName || effectiveDefaultQueueName
+    );
+
+    if (!draft) {
+      toast.error("Unable to prepare queue settings.");
+      return;
+    }
+
+    setPendingExecuteMode(null);
+    setQueueDialogPurpose("configure");
+    setQueueDraft(draft);
+    setQueueDialogOpen(true);
+  }, [
+    effectiveHostQueues,
+    protocolDetails.queueConfig,
+    activeQueueName,
+    effectiveDefaultQueueName,
+    buildQueueDraft,
+  ]);
+
+  const saveQueueDraftToProtocolConfig = useCallback(
+    (draft: QueueLaunchDraft) => {
+      const params: Record<string, string> = {};
+
+      draft.params.forEach((param) => {
+        params[param.variableName] = param.value;
+      });
+
+      setProtocolDetails((prev: any) => ({
+        ...prev,
+        queueConfig: {
+          queueName: draft.queueName,
+          params,
+        },
+      }));
+    },
+    []
   );
 
   const handleQueueDraftQueueChange = useCallback(
@@ -1900,8 +2005,15 @@ export default function ProtocolForm({
       out[newKey] = p.editableValue;
     });
 
+    const queueConfig = protocolDetails?.queueConfig as ProtocolQueueConfig | null;
+
+    if (queueConfig?.queueName) {
+      out._queueName = queueConfig.queueName;
+      out._queueParams = { ...queueConfig.params };
+    }
+
     return out;
-  }, [protocolDetails.params]);
+  }, [protocolDetails.params, protocolDetails.queueConfig]);
 
 
 
@@ -2227,7 +2339,16 @@ export default function ProtocolForm({
       return;
     }
 
-    const draft = buildQueueDraft(effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName);
+    const localQueueName = String(
+      protocolDetails?.queueConfig?.queueName ?? ""
+    ).trim();
+
+    const draft = buildQueueDraft(
+      localQueueName ||
+      (effectiveQueueMandatory
+        ? effectiveDefaultQueueName
+        : activeQueueName)
+    );
 
     if (!draft) {
       toast.error("Unable to prepare queue settings.");
@@ -2239,24 +2360,46 @@ export default function ProtocolForm({
       return;
     }
 
+    setQueueDialogPurpose("execute");
     setPendingExecuteMode(modeKey);
     setQueueDraft(draft);
     setQueueDialogOpen(true);
   };
 
-  const confirmQueueAndExecute = async () => {
-    if (!pendingExecuteMode || !queueDraft) {
+  const confirmQueueDialog = async () => {
+    if (!queueDraft) {
       setQueueDialogOpen(false);
       setPendingExecuteMode(null);
+      setQueueDialogPurpose("execute");
+      return;
+    }
+
+    const draft = queueDraft;
+
+    if (queueDialogPurpose === "configure") {
+      saveQueueDraftToProtocolConfig(draft);
+
+      setQueueDialogOpen(false);
+      setPendingExecuteMode(null);
+      setQueueDialogPurpose("execute");
+
+      toast.success("Queue settings updated.");
+      return;
+    }
+
+    if (!pendingExecuteMode) {
+      setQueueDialogOpen(false);
+      setQueueDialogPurpose("execute");
       return;
     }
 
     const modeKey = pendingExecuteMode;
-    const draft = queueDraft;
 
     applyQueueDraftToProtocolState(draft);
+
     setQueueDialogOpen(false);
     setPendingExecuteMode(null);
+    setQueueDialogPurpose("execute");
 
     await beginExecute(modeKey, draft);
   };
@@ -2329,12 +2472,32 @@ export default function ProtocolForm({
         ...(isNonEmptyString((liveState as any)?.help) ? { help: (liveState as any).help } : {}),
       };
 
-      const wizardUi = buildWizardUiProps({
+      const defaultWizardUi = buildWizardUiProps({
         stateKey,
         paramDef: rawDef,
         paramsByStateKey: protocolDetails.params,
         onOpenWizardForParam: openWizardForParam,
       });
+
+      const isUseQueueParam = [
+        "_useQueue",
+        "useQueue",
+        "use_queue",
+      ].includes(String(name ?? ""));
+
+      const wizardUi = isUseQueueParam
+        ? {
+          hasWizard: true,
+          onOpenWizard:
+            effectiveHostQueues.length > 0
+              ? openQueueConfigWizard
+              : undefined,
+          wizardTooltip:
+            effectiveHostQueues.length > 0
+              ? "Configure queue"
+              : "No queues configured",
+        }
+        : defaultWizardUi;
 
       const defResolved = withResolvedParamClass(rawDef);
       const defClass = resolveParamClass(defResolved);
@@ -3809,6 +3972,7 @@ export default function ProtocolForm({
           if (isBusy) return;
           setQueueDialogOpen(false);
           setPendingExecuteMode(null);
+          setQueueDialogPurpose("execute");
         }}
         maxWidth="md"
         fullWidth
@@ -4142,7 +4306,7 @@ export default function ProtocolForm({
             <Button
               variant="contained"
               color="success"
-              onClick={confirmQueueAndExecute}
+              onClick={confirmQueueDialog}
               disabled={isBusy}
               sx={{
                 textTransform: "none",
@@ -4152,7 +4316,9 @@ export default function ProtocolForm({
                 boxShadow: "0 10px 24px rgba(22,163,74,0.24)",
               }}
             >
-              Launch
+              {queueDialogPurpose === "configure"
+                ? "Save"
+                : "Launch"}
             </Button>
           </Box>
         </DialogActions>
