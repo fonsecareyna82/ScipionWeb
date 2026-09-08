@@ -1534,6 +1534,7 @@ export default function ProtocolForm({
       effectiveDefaultQueueName,
       protocolDetails.params,
       findStateKeyByParamNames,
+      protocolDetails.queueConfig,
     ]
   );
 

@@ -1230,5 +1230,57 @@ describe("ProtocolForm", () => {
         });
     });
 
+    it("reopens the queue wizard with unsaved local queue settings", async () => {
+        const data: any = createQueueData();
+
+        data.values._queueName = "gpu";
+        data.values._queueParams = {
+            threads: "12",
+        };
+
+        renderQueueComponent({ data });
+
+        fireEvent.click(
+            screen.getByRole("button", {
+                name: "Use queue wizard",
+            }),
+        );
+
+        let dialog = await screen.findByRole("dialog");
+
+        fireEvent.change(
+            within(dialog).getByDisplayValue("12"),
+            {
+                target: {
+                    value: "16",
+                },
+            },
+        );
+
+        fireEvent.click(
+            within(dialog).getByRole("button", {
+                name: "Save",
+            }),
+        );
+
+        await waitFor(() => {
+            expect(
+                screen.queryByRole("dialog"),
+            ).not.toBeInTheDocument();
+        });
+
+        fireEvent.click(
+            screen.getByRole("button", {
+                name: "Use queue wizard",
+            }),
+        );
+
+        dialog = await screen.findByRole("dialog");
+
+        expect(
+            within(dialog).getByDisplayValue("16"),
+        ).toBeInTheDocument();
+    });
+
 
 });
