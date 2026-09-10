@@ -93,7 +93,7 @@
     "@types/react-dom": "^19.0.4",
     "@types/react-plotly.js": "^2.6.3",
     "@vitejs/plugin-react": "^4.3.4",
-    "baseline-browser-mapping": "^2.9.17",
+    "baseline-browser-mapping": "^2.11.21",
     "cross-env": "^7.0.3",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.0.0",
