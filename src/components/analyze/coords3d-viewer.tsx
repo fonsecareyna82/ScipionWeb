@@ -82,7 +82,29 @@ type SliceCircle = {
   dz: number;
 };
 
+type SelectionSnapshot = {
+  pointIds: string[];
+  primaryPointId: string | null;
+};
+
+type PointHistoryChange = {
+  pointId: string;
+  before: Coords3dPointExt | null;
+  after: Coords3dPointExt | null;
+  beforeIndex: number | null;
+  afterIndex: number | null;
+};
+
+type EditHistoryEntry = {
+  changes: PointHistoryChange[];
+  selectionBefore: SelectionSnapshot;
+  selectionAfter: SelectionSnapshot;
+  dirtyBefore: boolean;
+  dirtyAfter: boolean;
+};
+
 const MAX_POINTS_DEFAULT = 50000;
+const EDIT_HISTORY_LIMIT = 100;
 const NEARBY_SLICE_RANGE = 10;
 const MIN_NEARBY_SLICE_FACTOR = 0.25;
 const DEBUG_SYNTHETIC_GRID = false;
@@ -159,6 +181,106 @@ const HELP_TEXT: Record<string, string> = {
 function cloneCoordsPoints(points: Coords3dPointExt[]): Coords3dPointExt[] {
   // Ensure we never mutate the original points array
   return points.map((p) => ({ ...(p as any) }));
+}
+
+function getCoords3dPointId(point: Coords3dPointExt): string {
+  return String((point as any).id);
+}
+
+function pointsMatch(a: Coords3dPointExt | null, b: Coords3dPointExt | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+
+  return (
+    getCoords3dPointId(a) === getCoords3dPointId(b) &&
+    Number((a as any).x) === Number((b as any).x) &&
+    Number((a as any).y) === Number((b as any).y) &&
+    Number((a as any).z) === Number((b as any).z) &&
+    (a as any).score === (b as any).score &&
+    (a as any).radius === (b as any).radius &&
+    (a as any).classId === (b as any).classId &&
+    JSON.stringify((a as any).matrix ?? []) === JSON.stringify((b as any).matrix ?? [])
+  );
+}
+
+function buildPointHistoryChanges(before: Coords3dPointExt[], after: Coords3dPointExt[]): PointHistoryChange[] {
+  const beforeById = new Map(before.map((point, index) => [getCoords3dPointId(point), { point, index }]));
+  const afterById = new Map(after.map((point, index) => [getCoords3dPointId(point), { point, index }]));
+  const pointIds = new Set([...beforeById.keys(), ...afterById.keys()]);
+  const changes: PointHistoryChange[] = [];
+
+  for (const pointId of pointIds) {
+    const beforeEntry = beforeById.get(pointId);
+    const afterEntry = afterById.get(pointId);
+    const beforePoint = beforeEntry ? { ...(beforeEntry.point as any) } as Coords3dPointExt : null;
+    const afterPoint = afterEntry ? { ...(afterEntry.point as any) } as Coords3dPointExt : null;
+
+    if (pointsMatch(beforePoint, afterPoint)) continue;
+
+    changes.push({
+      pointId,
+      before: beforePoint,
+      after: afterPoint,
+      beforeIndex: beforeEntry?.index ?? null,
+      afterIndex: afterEntry?.index ?? null,
+    });
+  }
+
+  return changes;
+}
+
+function applyPointHistoryEntry(points: Coords3dPointExt[], historyEntry: EditHistoryEntry, direction: "undo" | "redo"): Coords3dPointExt[] {
+  const useBefore = direction === "undo";
+  const changesById = new Map(historyEntry.changes.map((change) => [change.pointId, change]));
+  const next: Coords3dPointExt[] = [];
+  const presentIds = new Set<string>();
+
+  for (const point of points) {
+    const pointId = getCoords3dPointId(point);
+    const change = changesById.get(pointId);
+    const target = change ? (useBefore ? change.before : change.after) : point;
+
+    if (!target) continue;
+
+    next.push(change ? { ...(target as any) } as Coords3dPointExt : point);
+    presentIds.add(pointId);
+  }
+
+  const insertions = historyEntry.changes
+    .map((change) => ({
+      point: useBefore ? change.before : change.after,
+      index: useBefore ? change.beforeIndex : change.afterIndex,
+    }))
+    .filter((item): item is { point: Coords3dPointExt; index: number | null } => {
+      return item.point != null && !presentIds.has(getCoords3dPointId(item.point));
+    })
+    .sort((a, b) => (a.index ?? Number.MAX_SAFE_INTEGER) - (b.index ?? Number.MAX_SAFE_INTEGER));
+
+  if (!insertions.length) return next;
+
+  const finalLength = next.length + insertions.length;
+  const slots: Array<Coords3dPointExt | undefined> = new Array(finalLength);
+  const overflow: Coords3dPointExt[] = [];
+
+  for (const insertion of insertions) {
+    const targetIndex = Math.max(0, Math.min(insertion.index ?? finalLength, finalLength - 1));
+
+    if (slots[targetIndex]) {
+      overflow.push({ ...(insertion.point as any) } as Coords3dPointExt);
+    } else {
+      slots[targetIndex] = { ...(insertion.point as any) } as Coords3dPointExt;
+    }
+  }
+
+  let nextIndex = 0;
+  for (let index = 0; index < slots.length; index += 1) {
+    if (!slots[index]) {
+      slots[index] = next[nextIndex];
+      nextIndex += 1;
+    }
+  }
+
+  return [...slots.filter((point): point is Coords3dPointExt => point != null), ...next.slice(nextIndex), ...overflow];
 }
 
 function clampCoord(v: number, dim: number) {
@@ -322,6 +444,8 @@ export default function Coords3dViewer({
     draft: Coords3dPointExt[];
     dirty: boolean;
     scoreRange: [number, number] | null;
+    undoStack: EditHistoryEntry[];
+    redoStack: EditHistoryEntry[];
   };
 
   const coordsByTomoRef = useRef<Map<string, TomoDraftEntry>>(new Map());
@@ -334,9 +458,15 @@ export default function Coords3dViewer({
   const [editMode, setEditMode] = useState<boolean>(false);
 
   const newPointSeqRef = useRef(0);
-  const dragRef = useRef<{ pointId: string; axis: "x" | "y" | "z"; pointerId: number } | null>(
-    null,
-  );
+  const dragRef = useRef<{
+    pointId: string;
+    axis: "x" | "y" | "z";
+    pointerId: number;
+    before: Coords3dPointExt;
+    beforeIndex: number;
+    selectionBefore: SelectionSnapshot;
+    dirtyBefore: boolean;
+  } | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
   const [sliceLayoutMode, setSliceLayoutMode] = useState<SliceLayoutMode>("single");
@@ -363,7 +493,15 @@ export default function Coords3dViewer({
   const [syncPick3dToSlices, setSyncPick3dToSlices] = useState<boolean>(true);
   const [reset3dCameraNonce, setReset3dCameraNonce] = useState<number>(0);
   const [pickedPoint3d, setPickedPoint3d] = useState<Coords3dPointExt | null>(null);
+  const [selectedPointIds, setSelectedPointIds] = useState<Set<string>>(() => new Set());
   const [particlesOpen, setParticlesOpen] = useState(false);
+  const [, setHistoryVersion] = useState(0);
+
+  const coordsDraftRef = useRef<Coords3dPointExt[]>([]);
+  const coordsDirtyRef = useRef(false);
+  const pickedPoint3dRef = useRef<Coords3dPointExt | null>(null);
+  const selectedPointIdsRef = useRef<Set<string>>(new Set());
+  const selectionAnchorIdRef = useRef<string | null>(null);
 
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("filters");
 
@@ -421,6 +559,22 @@ export default function Coords3dViewer({
 
   const effectiveSliceIndexY =
     draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+
+  useEffect(() => {
+    coordsDraftRef.current = coordsDraft;
+  }, [coordsDraft]);
+
+  useEffect(() => {
+    coordsDirtyRef.current = coordsDirty;
+  }, [coordsDirty]);
+
+  useEffect(() => {
+    pickedPoint3dRef.current = pickedPoint3d;
+  }, [pickedPoint3d]);
+
+  useEffect(() => {
+    selectedPointIdsRef.current = selectedPointIds;
+  }, [selectedPointIds]);
 
 
   const openHelp = (key: string) => {
@@ -496,6 +650,10 @@ export default function Coords3dViewer({
     setBrightness(1.0);
     setContrast(1.0);
     setPickedPoint3d(null);
+    setSelectedPointIds(new Set());
+    pickedPoint3dRef.current = null;
+    selectedPointIdsRef.current = new Set();
+    selectionAnchorIdRef.current = null;
   }, [selectedTomoId, viewMode]);
 
   useEffect(() => {
@@ -579,6 +737,12 @@ export default function Coords3dViewer({
       setPointsData(null);
       setCoordsDraft([]);
       setCoordsDirty(false);
+      setSelectedPointIds(new Set());
+      coordsDraftRef.current = [];
+      coordsDirtyRef.current = false;
+      selectedPointIdsRef.current = new Set();
+      pickedPoint3dRef.current = null;
+      selectionAnchorIdRef.current = null;
       setPointsError(null);
       return;
     }
@@ -592,6 +756,13 @@ export default function Coords3dViewer({
       setScoreRange(cached.scoreRange);
       setSelectedClass("all");
       setPickedPoint3d(null);
+      setSelectedPointIds(new Set());
+      coordsDraftRef.current = cached.draft;
+      coordsDirtyRef.current = cached.dirty;
+      pickedPoint3dRef.current = null;
+      selectedPointIdsRef.current = new Set();
+      selectionAnchorIdRef.current = null;
+      setHistoryVersion((current) => current + 1);
       setHasAnyDirty(computeHasAnyDirty());
       return;
     }
@@ -602,6 +773,10 @@ export default function Coords3dViewer({
         setPointsLoading(true);
         setPointsError(null);
         setPickedPoint3d(null);
+        setSelectedPointIds(new Set());
+        pickedPoint3dRef.current = null;
+        selectedPointIdsRef.current = new Set();
+        selectionAnchorIdRef.current = null;
 
         const data = await (svc as any).fetchCoords3dForTomogram(
           projectId,
@@ -689,12 +864,17 @@ export default function Coords3dViewer({
           draft: cloneCoordsPoints(coordsNorm),
           dirty: false,
           scoreRange: nextScoreRange,
+          undoStack: [],
+          redoStack: [],
         };
 
         coordsByTomoRef.current.set(cacheKey, entry);
 
         setCoordsDraft(entry.draft);
         setCoordsDirty(false);
+        coordsDraftRef.current = entry.draft;
+        coordsDirtyRef.current = false;
+        setHistoryVersion((current) => current + 1);
         setScoreRange(nextScoreRange);
         setHasAnyDirty(computeHasAnyDirty());
 
@@ -1246,12 +1426,30 @@ export default function Coords3dViewer({
     }
   }, []);
 
-  const handlePickPoint3d = useCallback(
-    (
-      p: Coords3dPointExt | null,
-      mappedSliceIndices?: { x: number; y: number; z: number },
-    ) => {
+  const captureSelection = useCallback((): SelectionSnapshot => {
+    const primaryPointId = pickedPoint3dRef.current ? getCoords3dPointId(pickedPoint3dRef.current) : null;
+    return { pointIds: Array.from(selectedPointIdsRef.current), primaryPointId };
+  }, []);
+
+  const applySelection = useCallback((selection: SelectionSnapshot, points = coordsDraftRef.current) => {
+    const pointsById = new Map(points.map((point) => [getCoords3dPointId(point), point]));
+    const pointIds = selection.pointIds.filter((pointId) => pointsById.has(pointId));
+    const nextSelectedPointIds = new Set(pointIds);
+    const primaryPointId = selection.primaryPointId && nextSelectedPointIds.has(selection.primaryPointId)
+      ? selection.primaryPointId
+      : pointIds[0] ?? null;
+    const primaryPoint = primaryPointId ? pointsById.get(primaryPointId) ?? null : null;
+
+    selectedPointIdsRef.current = nextSelectedPointIds;
+    pickedPoint3dRef.current = primaryPoint;
+    setSelectedPointIds(nextSelectedPointIds);
+    setPickedPoint3d(primaryPoint);
+  }, []);
+
+  const focusPoint3d = useCallback(
+    (p: Coords3dPointExt | null, mappedSliceIndices?: { x: number; y: number; z: number }) => {
       markViewerActive();
+      pickedPoint3dRef.current = p;
       setPickedPoint3d(p);
       if (!p || !syncPick3dToSlices) return;
 
@@ -1259,17 +1457,60 @@ export default function Coords3dViewer({
       const targetX = mappedSliceIndices?.x ?? Math.round(Number((p as any).x));
       const targetY = mappedSliceIndices?.y ?? Math.round(Number((p as any).y));
 
-      if (maxSliceZ != null) {
-        setSliceIndex(clampInt(targetZ, 0, maxSliceZ));
-      }
-      if (maxSliceX != null) {
-        setSliceIndexX(clampInt(targetX, 0, maxSliceX));
-      }
-      if (maxSliceY != null) {
-        setSliceIndexY(clampInt(targetY, 0, maxSliceY));
-      }
+      if (maxSliceZ != null) setSliceIndex(clampInt(targetZ, 0, maxSliceZ));
+      if (maxSliceX != null) setSliceIndexX(clampInt(targetX, 0, maxSliceX));
+      if (maxSliceY != null) setSliceIndexY(clampInt(targetY, 0, maxSliceY));
     },
     [markViewerActive, syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
+  );
+
+  const handlePickPoint3d = useCallback(
+    (p: Coords3dPointExt | null, mappedSliceIndices?: { x: number; y: number; z: number }) => {
+      const pointId = p ? getCoords3dPointId(p) : null;
+      const nextSelection = { pointIds: pointId ? [pointId] : [], primaryPointId: pointId };
+
+      applySelection(nextSelection);
+      selectionAnchorIdRef.current = pointId;
+      focusPoint3d(p, mappedSliceIndices);
+    },
+    [applySelection, focusPoint3d],
+  );
+
+  const handleGalleryPointSelect = useCallback(
+    (point: Coords3dPointExt, options: { additive: boolean; range: boolean }) => {
+      const pointId = getCoords3dPointId(point);
+      const nextPointIds = options.additive ? new Set(selectedPointIdsRef.current) : new Set<string>();
+
+      if (options.range && selectionAnchorIdRef.current) {
+        const orderedPointIds = filteredPoints.map((item) => getCoords3dPointId(item));
+        const anchorIndex = orderedPointIds.indexOf(selectionAnchorIdRef.current);
+        const pointIndex = orderedPointIds.indexOf(pointId);
+
+        if (anchorIndex >= 0 && pointIndex >= 0) {
+          const start = Math.min(anchorIndex, pointIndex);
+          const end = Math.max(anchorIndex, pointIndex);
+          for (let index = start; index <= end; index += 1) nextPointIds.add(orderedPointIds[index]);
+        } else {
+          nextPointIds.add(pointId);
+        }
+      } else if (options.additive) {
+        if (nextPointIds.has(pointId)) nextPointIds.delete(pointId);
+        else nextPointIds.add(pointId);
+        selectionAnchorIdRef.current = pointId;
+      } else {
+        nextPointIds.add(pointId);
+        selectionAnchorIdRef.current = pointId;
+      }
+
+      const primaryPointId = nextPointIds.has(pointId) ? pointId : Array.from(nextPointIds)[0] ?? null;
+      applySelection({ pointIds: Array.from(nextPointIds), primaryPointId });
+
+      const primaryPoint = primaryPointId
+        ? coordsDraftRef.current.find((item) => getCoords3dPointId(item) === primaryPointId) ?? null
+        : null;
+      focusPoint3d(primaryPoint);
+    },
+    [applySelection, filteredPoints, focusPoint3d],
   );
 
   const showXAxisSlider =
@@ -1316,6 +1557,57 @@ export default function Coords3dViewer({
     const id = (pickedPoint3d as any)?.id;
     return id == null ? null : String(id);
   }, [pickedPoint3d]);
+
+  const activeHistoryEntry = selectedTomoId == null ? null : coordsByTomoRef.current.get(String(selectedTomoId)) ?? null;
+  const canUndo = Boolean(activeHistoryEntry?.undoStack.length);
+  const canRedo = Boolean(activeHistoryEntry?.redoStack.length);
+
+  const pushEditHistory = useCallback((historyEntry: EditHistoryEntry) => {
+    if (selectedTomoId == null || historyEntry.changes.length === 0) return;
+
+    const entry = coordsByTomoRef.current.get(String(selectedTomoId));
+    if (!entry) return;
+
+    entry.undoStack.push(historyEntry);
+    if (entry.undoStack.length > EDIT_HISTORY_LIMIT) entry.undoStack.shift();
+    entry.redoStack = [];
+    setHistoryVersion((current) => current + 1);
+  }, [selectedTomoId]);
+
+  const applyEditHistory = useCallback((direction: "undo" | "redo") => {
+    if (selectedTomoId == null) return;
+
+    const entry = coordsByTomoRef.current.get(String(selectedTomoId));
+    if (!entry) return;
+
+    const sourceStack = direction === "undo" ? entry.undoStack : entry.redoStack;
+    const targetStack = direction === "undo" ? entry.redoStack : entry.undoStack;
+    const historyEntry = sourceStack.pop();
+    if (!historyEntry) return;
+
+    const nextDraft = applyPointHistoryEntry(coordsDraftRef.current, historyEntry, direction);
+    const nextDirty = direction === "undo" ? historyEntry.dirtyBefore : historyEntry.dirtyAfter;
+    const nextSelection = direction === "undo" ? historyEntry.selectionBefore : historyEntry.selectionAfter;
+
+    targetStack.push(historyEntry);
+    entry.draft = nextDraft;
+    entry.dirty = nextDirty;
+    coordsDraftRef.current = nextDraft;
+    coordsDirtyRef.current = nextDirty;
+    setCoordsDraft(nextDraft);
+    setCoordsDirty(nextDirty);
+    applySelection(nextSelection, nextDraft);
+    selectionAnchorIdRef.current = nextSelection.primaryPointId;
+    const primaryPoint = nextSelection.primaryPointId
+      ? nextDraft.find((point) => getCoords3dPointId(point) === nextSelection.primaryPointId) ?? null
+      : null;
+    focusPoint3d(primaryPoint);
+    setHasAnyDirty(computeHasAnyDirty());
+    setHistoryVersion((current) => current + 1);
+  }, [applySelection, computeHasAnyDirty, focusPoint3d, selectedTomoId]);
+
+  const undoEdit = useCallback(() => applyEditHistory("undo"), [applyEditHistory]);
+  const redoEdit = useCallback(() => applyEditHistory("redo"), [applyEditHistory]);
 
   const createNewPointId = () => {
     newPointSeqRef.current += 1;
@@ -1364,15 +1656,29 @@ export default function Coords3dViewer({
     const entry = coordsByTomoRef.current.get(key);
     if (!entry) return;
 
+    const currentDraft = coordsDraftRef.current;
     const snap = cloneCoordsPoints(entry.base);
-    coordsByTomoRef.current.set(key, { ...entry, draft: snap, dirty: false });
+    const changes = buildPointHistoryChanges(currentDraft, snap);
+    const selectionBefore = captureSelection();
+    const selectionAfter = { pointIds: [], primaryPointId: null };
 
+    pushEditHistory({
+      changes,
+      selectionBefore,
+      selectionAfter,
+      dirtyBefore: coordsDirtyRef.current,
+      dirtyAfter: false,
+    });
+
+    coordsByTomoRef.current.set(key, { ...entry, draft: snap, dirty: false });
+    coordsDraftRef.current = snap;
+    coordsDirtyRef.current = false;
     setCoordsDraft(snap);
     setCoordsDirty(false);
-    setPickedPoint3d(null);
-
+    applySelection(selectionAfter, snap);
+    selectionAnchorIdRef.current = null;
     setHasAnyDirty(computeHasAnyDirty());
-  }, [computeHasAnyDirty, selectedTomoId]);
+  }, [applySelection, captureSelection, computeHasAnyDirty, pushEditHistory, selectedTomoId]);
 
   const saveChanges = useCallback(async () => {
     const payload = buildSavePayload();
@@ -1392,10 +1698,14 @@ export default function Coords3dViewer({
         if (!entry.dirty) continue;
         entry.base = cloneCoordsPoints(entry.draft);
         entry.dirty = false;
+        entry.undoStack = [];
+        entry.redoStack = [];
       }
 
+      coordsDirtyRef.current = false;
       setCoordsDirty(false);
       setHasAnyDirty(false);
+      setHistoryVersion((current) => current + 1);
       setSaveDialogOpen(false);
       toast.success("The new output has been created successfully.");
     } catch (e: any) {
@@ -1405,14 +1715,62 @@ export default function Coords3dViewer({
     }
   }, [buildSavePayload, outputName, projectId, protocolId, svc]);
 
-  const removePointById = useCallback((pointId: string) => {
-    setCoordsDraft((prev) => prev.filter((p: any) => String(p?.id) !== String(pointId)));
-    setCoordsDirty(true);
-    setPickedPoint3d((prev) => {
-      if (!prev) return prev;
-      return String((prev as any).id) === String(pointId) ? null : prev;
+  const removePointsById = useCallback((pointIds: Iterable<string>) => {
+    const idsToRemove = new Set(Array.from(pointIds, String));
+    if (!idsToRemove.size) return;
+
+    const currentDraft = coordsDraftRef.current;
+    const changes: PointHistoryChange[] = [];
+    const nextDraft = currentDraft.filter((point, index) => {
+      const pointId = getCoords3dPointId(point);
+      if (!idsToRemove.has(pointId)) return true;
+
+      changes.push({
+        pointId,
+        before: { ...(point as any) } as Coords3dPointExt,
+        after: null,
+        beforeIndex: index,
+        afterIndex: null,
+      });
+      return false;
     });
-  }, []);
+
+    if (!changes.length) return;
+
+    const selectionBefore = captureSelection();
+    const remainingSelectedIds = selectionBefore.pointIds.filter((pointId) => !idsToRemove.has(pointId));
+    const primaryPointId = selectionBefore.primaryPointId && !idsToRemove.has(selectionBefore.primaryPointId)
+      ? selectionBefore.primaryPointId
+      : remainingSelectedIds[0] ?? null;
+    const selectionAfter = { pointIds: remainingSelectedIds, primaryPointId };
+
+    pushEditHistory({
+      changes,
+      selectionBefore,
+      selectionAfter,
+      dirtyBefore: coordsDirtyRef.current,
+      dirtyAfter: true,
+    });
+
+    coordsDraftRef.current = nextDraft;
+    coordsDirtyRef.current = true;
+    setCoordsDraft(nextDraft);
+    setCoordsDirty(true);
+    applySelection(selectionAfter, nextDraft);
+    selectionAnchorIdRef.current = primaryPointId;
+    const primaryPoint = primaryPointId ? nextDraft.find((point) => getCoords3dPointId(point) === primaryPointId) ?? null : null;
+    focusPoint3d(primaryPoint);
+  }, [applySelection, captureSelection, focusPoint3d, pushEditHistory]);
+
+  const removePointById = useCallback((pointId: string) => {
+    removePointsById([pointId]);
+  }, [removePointsById]);
+
+  const removeSelectedPoints = useCallback(() => {
+    const selectedIds = Array.from(selectedPointIdsRef.current);
+    const fallbackId = pickedPoint3dRef.current ? getCoords3dPointId(pickedPoint3dRef.current) : null;
+    removePointsById(selectedIds.length ? selectedIds : fallbackId ? [fallbackId] : []);
+  }, [removePointsById]);
 
   useEffect(() => {
     const isEditableTarget = (el: HTMLElement | null) => {
@@ -1420,16 +1778,6 @@ export default function Coords3dViewer({
       const tag = el.tagName?.toUpperCase?.() ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
       return Boolean((el as any).isContentEditable);
-    };
-
-    const isActionKey = (key: string) => {
-      return (
-        key === "Delete" ||
-        key === "Backspace" ||
-        key === " " ||
-        key === "Space" ||
-        key === "Spacebar"
-      );
     };
 
     const swallowEvent = (ev: KeyboardEvent) => {
@@ -1441,37 +1789,31 @@ export default function Coords3dViewer({
 
     const onKeyDownCapture = (ev: KeyboardEvent) => {
       if (!isHotkeyWindowActive(hotkeyScopeRef.current, lastViewerInteractAtRef.current, document.activeElement as HTMLElement | null)) return;
-      if (!isActionKey(ev.key)) return;
 
       const active = document.activeElement as HTMLElement | null;
       if (isEditableTarget(active)) return;
 
-      swallowEvent(ev);
+      const key = ev.key.toLowerCase();
+      const modifierPressed = ev.ctrlKey || ev.metaKey;
+      const undoRequested = modifierPressed && key === "z" && !ev.shiftKey;
+      const redoRequested = modifierPressed && (key === "y" || (key === "z" && ev.shiftKey));
+      const removeRequested = ev.key === "Delete" || ev.key === "Backspace";
 
-      if (!pickedPoint3d) return;
-      removePointById(String((pickedPoint3d as any).id));
-      markViewerActive();
-    };
-
-    const onKeyUpCapture = (ev: KeyboardEvent) => {
-      if (!isHotkeyWindowActive(hotkeyScopeRef.current, lastViewerInteractAtRef.current, document.activeElement as HTMLElement | null)) return;
-      if (!isActionKey(ev.key)) return;
-
-      const active = document.activeElement as HTMLElement | null;
-      if (isEditableTarget(active)) return;
+      if (!undoRequested && !redoRequested && !removeRequested) return;
 
       swallowEvent(ev);
-      markViewerActive();
+
+      if (undoRequested) undoEdit();
+      else if (redoRequested) redoEdit();
+      else removeSelectedPoints();
     };
 
     window.addEventListener("keydown", onKeyDownCapture, true);
-    window.addEventListener("keyup", onKeyUpCapture, true);
 
     return () => {
       window.removeEventListener("keydown", onKeyDownCapture, true);
-      window.removeEventListener("keyup", onKeyUpCapture, true);
     };
-  }, [pickedPoint3d, removePointById, markViewerActive]);
+  }, [redoEdit, removeSelectedPoints, undoEdit]);
 
   const addPointFromSlice = useCallback(
     (axis: "x" | "y" | "z", localX: number, localY: number) => {
@@ -1514,11 +1856,32 @@ export default function Coords3dViewer({
         classId: nextClassId,
       } as any;
 
-      setCoordsDraft((prev) => [...prev, newPoint]);
+      const currentDraft = coordsDraftRef.current;
+      const selectionBefore = captureSelection();
+      const selectionAfter = { pointIds: [id], primaryPointId: id };
+
+      pushEditHistory({
+        changes: [{
+          pointId: id,
+          before: null,
+          after: { ...(newPoint as any) } as Coords3dPointExt,
+          beforeIndex: null,
+          afterIndex: currentDraft.length,
+        }],
+        selectionBefore,
+        selectionAfter,
+        dirtyBefore: coordsDirtyRef.current,
+        dirtyAfter: true,
+      });
+
+      const nextDraft = [...currentDraft, newPoint];
+      coordsDraftRef.current = nextDraft;
+      coordsDirtyRef.current = true;
+      setCoordsDraft(nextDraft);
       setCoordsDirty(true);
       handlePickPoint3d(newPoint, { x: Math.round(x), y: Math.round(y), z: Math.round(z) });
     },
-    [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY, selectedClass, handlePickPoint3d],
+    [captureSelection, editMode, handlePickPoint3d, pushEditHistory, selectedClass, sliceIndex, sliceIndexX, sliceIndexY, tomoDims],
   );
 
   const updatePointFromSlice = useCallback(
@@ -1555,25 +1918,35 @@ export default function Coords3dViewer({
 
       if (!patch) return;
 
-      setCoordsDraft((prev) =>
-        prev.map((p: any) => (String(p?.id) === String(pointId) ? { ...p, ...patch } : p)),
-      );
+      setCoordsDraft((prev) => {
+        const next = prev.map((p: any) => (String(p?.id) === String(pointId) ? { ...p, ...patch } : p));
+        coordsDraftRef.current = next;
+        return next;
+      });
+      coordsDirtyRef.current = true;
       setCoordsDirty(true);
 
       setPickedPoint3d((prev) => {
         if (!prev) return prev;
         if (String((prev as any).id) !== String(pointId)) return prev;
-        return { ...(prev as any), ...patch } as any;
+        const next = { ...(prev as any), ...patch } as any;
+        pickedPoint3dRef.current = next;
+        return next;
       });
     },
     [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY],
   );
 
   const handleSliceCirclePick = useCallback(
-    (circle: SliceCircle) => {
+    (circle: SliceCircle, options = { additive: false, range: false }) => {
       markViewerActive();
       const hit = filteredPoints.find((pt: any) => String(pt?.id) === String(circle.pointId));
       if (!hit) return;
+
+      if (options.additive || options.range) {
+        handleGalleryPointSelect(hit, options);
+        return;
+      }
 
       handlePickPoint3d(hit, {
         x: Math.round(Number((hit as any).x)),
@@ -1581,7 +1954,7 @@ export default function Coords3dViewer({
         z: Math.round(Number((hit as any).z)),
       });
     },
-    [filteredPoints, handlePickPoint3d, markViewerActive],
+    [filteredPoints, handleGalleryPointSelect, handlePickPoint3d, markViewerActive],
   );
 
   const clampSingleViewBox = useCallback(
@@ -1756,6 +2129,18 @@ export default function Coords3dViewer({
         e.stopPropagation();
         if (!editMode) return;
 
+        const beforeIndex = coordsDraftRef.current.findIndex((point) => getCoords3dPointId(point) === circle.pointId);
+        const before = coordsDraftRef.current[beforeIndex];
+        if (beforeIndex < 0 || !before) return;
+        const selectionBefore = captureSelection();
+
+        if (selectedPointIdsRef.current.has(circle.pointId)) {
+          applySelection({ pointIds: Array.from(selectedPointIdsRef.current), primaryPointId: circle.pointId });
+          focusPoint3d(before);
+        } else {
+          handlePickPoint3d(before);
+        }
+
         try {
           (e.currentTarget as any).setPointerCapture?.(e.pointerId);
         } catch {
@@ -1766,9 +2151,13 @@ export default function Coords3dViewer({
           pointId: circle.pointId,
           axis,
           pointerId: e.pointerId,
+          before: { ...(before as any) } as Coords3dPointExt,
+          beforeIndex,
+          selectionBefore,
+          dirtyBefore: coordsDirtyRef.current,
         };
       },
-    [editMode],
+    [applySelection, captureSelection, editMode, focusPoint3d, handlePickPoint3d],
   );
 
   const onPointPointerMove = useCallback(
@@ -1792,12 +2181,34 @@ export default function Coords3dViewer({
 
     dragRef.current = null;
 
+    const afterIndex = coordsDraftRef.current.findIndex((point) => getCoords3dPointId(point) === drag.pointId);
+    const after = coordsDraftRef.current[afterIndex];
+
+    if (after && !pointsMatch(drag.before, after)) {
+      pushEditHistory({
+        changes: [{
+          pointId: drag.pointId,
+          before: drag.before,
+          after: { ...(after as any) } as Coords3dPointExt,
+          beforeIndex: drag.beforeIndex,
+          afterIndex,
+        }],
+        selectionBefore: drag.selectionBefore,
+        selectionAfter: captureSelection(),
+        dirtyBefore: drag.dirtyBefore,
+        dirtyAfter: true,
+      });
+    } else if (!drag.dirtyBefore) {
+      coordsDirtyRef.current = false;
+      setCoordsDirty(false);
+    }
+
     try {
       (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
     } catch {
       // ignore
     }
-  }, []);
+  }, [captureSelection, pushEditHistory]);
 
   return (
     <>
@@ -2028,6 +2439,14 @@ export default function Coords3dViewer({
                   Save
                 </Button>
 
+                <Button size="small" variant="outlined" disabled={!canUndo} onClick={undoEdit} sx={{ textTransform: "none" }}>
+                  Undo
+                </Button>
+
+                <Button size="small" variant="outlined" disabled={!canRedo} onClick={redoEdit} sx={{ textTransform: "none" }}>
+                  Redo
+                </Button>
+
                 <Button
                   size="small"
                   variant="outlined"
@@ -2038,15 +2457,15 @@ export default function Coords3dViewer({
                   Restore
                 </Button>
 
-                {pickedPoint3d && (
+                {selectedPointIds.size > 0 && (
                   <Button
                     size="small"
                     variant="outlined"
                     color="error"
-                    onClick={() => removePointById(String((pickedPoint3d as any).id))}
+                    onClick={removeSelectedPoints}
                     sx={{ textTransform: "none" }}
                   >
-                    Remove picked
+                    Remove selected ({selectedPointIds.size})
                   </Button>
                 )}
               </Box>
@@ -2255,6 +2674,7 @@ export default function Coords3dViewer({
                                 const isPicked =
                                   pickedPointKey != null &&
                                   String(p.pointId) === String(pickedPointKey);
+                                const isSelected = selectedPointIds.has(String(p.pointId));
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -2270,7 +2690,7 @@ export default function Coords3dViewer({
                                       style={{ cursor: editMode ? "move" : "pointer" }}
                                       onClick={(ev) => {
                                         ev.stopPropagation();
-                                        handleSliceCirclePick(p);
+                                        handleSliceCirclePick(p, { additive: ev.ctrlKey || ev.metaKey, range: ev.shiftKey });
                                       }}
                                       onPointerDown={onPointPointerDown(p, "y")}
                                       onPointerMove={onPointPointerMove}
@@ -2283,11 +2703,11 @@ export default function Coords3dViewer({
                                       cy={p.y}
                                       r={p.radius * 2.2 * pointSizeFactor}
                                       fill="none"
-                                      stroke={isPicked ? "#f59e0b" : pointColor}
+                                      stroke={isPicked ? "#ef4444" : isSelected ? "#f59e0b" : pointColor}
                                       strokeWidth={
-                                        isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                        isPicked || isSelected ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
                                       }
-                                      opacity={isPicked ? 1 : p.opacity}
+                                      opacity={isPicked || isSelected ? 1 : p.opacity}
                                       pointerEvents="none"
                                     />
 
@@ -2296,7 +2716,7 @@ export default function Coords3dViewer({
                                         cx={p.x}
                                         cy={p.y}
                                         r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
-                                        fill="#f59e0b"
+                                        fill="#ef4444"
                                         opacity={0.95}
                                         pointerEvents="none"
                                       />
@@ -2393,6 +2813,7 @@ export default function Coords3dViewer({
                                 const isPicked =
                                   pickedPointKey != null &&
                                   String(p.pointId) === String(pickedPointKey);
+                                const isSelected = selectedPointIds.has(String(p.pointId));
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -2408,7 +2829,7 @@ export default function Coords3dViewer({
                                       style={{ cursor: editMode ? "move" : "pointer" }}
                                       onClick={(ev) => {
                                         ev.stopPropagation();
-                                        handleSliceCirclePick(p);
+                                        handleSliceCirclePick(p, { additive: ev.ctrlKey || ev.metaKey, range: ev.shiftKey });
                                       }}
                                       onPointerDown={onPointPointerDown(p, "z")}
                                       onPointerMove={onPointPointerMove}
@@ -2421,11 +2842,11 @@ export default function Coords3dViewer({
                                       cy={p.y}
                                       r={p.radius * 2.2 * pointSizeFactor}
                                       fill="none"
-                                      stroke={isPicked ? "#f59e0b" : pointColor}
+                                      stroke={isPicked ? "#ef4444" : isSelected ? "#f59e0b" : pointColor}
                                       strokeWidth={
-                                        isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                        isPicked || isSelected ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
                                       }
-                                      opacity={isPicked ? 1 : p.opacity}
+                                      opacity={isPicked || isSelected ? 1 : p.opacity}
                                       pointerEvents="none"
                                     />
 
@@ -2434,7 +2855,7 @@ export default function Coords3dViewer({
                                         cx={p.x}
                                         cy={p.y}
                                         r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
-                                        fill="#f59e0b"
+                                        fill="#ef4444"
                                         opacity={0.95}
                                         pointerEvents="none"
                                       />
@@ -2518,6 +2939,7 @@ export default function Coords3dViewer({
                                   const isPicked =
                                     pickedPointKey != null &&
                                     String(p.pointId) === String(pickedPointKey);
+                                  const isSelected = selectedPointIds.has(String(p.pointId));
                                   const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                   return (
@@ -2533,7 +2955,7 @@ export default function Coords3dViewer({
                                         style={{ cursor: editMode ? "move" : "pointer" }}
                                         onClick={(ev) => {
                                           ev.stopPropagation();
-                                          handleSliceCirclePick(p);
+                                          handleSliceCirclePick(p, { additive: ev.ctrlKey || ev.metaKey, range: ev.shiftKey });
                                         }}
                                         onPointerDown={onPointPointerDown(p, "x")}
                                         onPointerMove={onPointPointerMove}
@@ -2546,13 +2968,13 @@ export default function Coords3dViewer({
                                         cy={p.y}
                                         r={p.radius * 2.2 * pointSizeFactor}
                                         fill="none"
-                                        stroke={isPicked ? "#f59e0b" : pointColor}
+                                        stroke={isPicked ? "#ef4444" : isSelected ? "#f59e0b" : pointColor}
                                         strokeWidth={
-                                          isPicked
+                                          isPicked || isSelected
                                             ? Math.max(2, p.strokeWidth * 2.2)
                                             : p.strokeWidth
                                         }
-                                        opacity={isPicked ? 1 : p.opacity}
+                                        opacity={isPicked || isSelected ? 1 : p.opacity}
                                         pointerEvents="none"
                                       />
 
@@ -2561,7 +2983,7 @@ export default function Coords3dViewer({
                                           cx={p.x}
                                           cy={p.y}
                                           r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
-                                          fill="#f59e0b"
+                                          fill="#ef4444"
                                           opacity={0.95}
                                           pointerEvents="none"
                                         />
@@ -2622,7 +3044,7 @@ export default function Coords3dViewer({
                             markViewerActive();
                             if (singleSuppressClickRef.current) return;
                             if (!editMode) {
-                              setPickedPoint3d(null);
+                              handlePickPoint3d(null);
                               return;
                             }
                             const local = getSvgLocalPoint(
@@ -2653,6 +3075,7 @@ export default function Coords3dViewer({
                             const isPicked =
                               pickedPointKey != null &&
                               String(p.pointId) === String(pickedPointKey);
+                            const isSelected = selectedPointIds.has(String(p.pointId));
                             const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                             return (
@@ -2668,7 +3091,7 @@ export default function Coords3dViewer({
                                   style={{ cursor: editMode ? "move" : "pointer" }}
                                   onClick={(ev) => {
                                     ev.stopPropagation();
-                                    handleSliceCirclePick(p);
+                                    handleSliceCirclePick(p, { additive: ev.ctrlKey || ev.metaKey, range: ev.shiftKey });
                                   }}
                                   onPointerDown={onPointPointerDown(p, "z")}
                                   onPointerMove={onPointPointerMove}
@@ -2681,11 +3104,11 @@ export default function Coords3dViewer({
                                   cy={p.y}
                                   r={p.radius * 2.2 * pointSizeFactor}
                                   fill="none"
-                                  stroke={isPicked ? "#f59e0b" : pointColor}
+                                  stroke={isPicked ? "#ef4444" : isSelected ? "#f59e0b" : pointColor}
                                   strokeWidth={
-                                    isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                    isPicked || isSelected ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
                                   }
-                                  opacity={isPicked ? 1 : p.opacity}
+                                  opacity={isPicked || isSelected ? 1 : p.opacity}
                                   pointerEvents="none"
                                 />
 
@@ -2694,7 +3117,7 @@ export default function Coords3dViewer({
                                     cx={p.x}
                                     cy={p.y}
                                     r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
-                                    fill="#f59e0b"
+                                    fill="#ef4444"
                                     opacity={0.95}
                                     pointerEvents="none"
                                   />
@@ -3295,12 +3718,14 @@ export default function Coords3dViewer({
         tomogramId={effectiveTomoId}
         points={filteredPoints}
         selectedPointId={pickedPointKey}
+        selectedPointIds={selectedPointIds}
         boxSize={galleryBoxSize}
         brightness={brightness}
         contrast={contrast}
         onClose={() => setParticlesOpen(false)}
-        onSelect={(point) => handlePickPoint3d(point as Coords3dPointExt)}
+        onSelect={(point, options) => handleGalleryPointSelect(point as Coords3dPointExt, options)}
         onRemove={removePointById}
+        onRemoveSelected={removeSelectedPoints}
         onInteract={markViewerActive}
       />
 

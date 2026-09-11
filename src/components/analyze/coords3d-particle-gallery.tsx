@@ -26,12 +26,14 @@ type Coords3dParticleGalleryProps = {
     tomogramId: Id;
     points: GalleryPoint[];
     selectedPointId: string | null;
+    selectedPointIds: ReadonlySet<string>;
     boxSize: number;
     brightness: number;
     contrast: number;
     onClose: () => void;
-    onSelect: (point: GalleryPoint) => void;
+    onSelect: (point: GalleryPoint, options: { additive: boolean; range: boolean }) => void;
     onRemove: (pointId: string) => void;
+    onRemoveSelected: () => void;
     onInteract?: () => void;
 };
 
@@ -96,12 +98,14 @@ export default function Coords3dParticleGallery({
     tomogramId,
     points,
     selectedPointId,
+    selectedPointIds,
     boxSize,
     brightness,
     contrast,
     onClose,
     onSelect,
     onRemove,
+    onRemoveSelected,
     onInteract,
 }: Coords3dParticleGalleryProps) {
     const service = useProjectService();
@@ -494,8 +498,23 @@ export default function Coords3dParticleGallery({
 
                     <Typography variant="caption" color="text.secondary">
                         {points.length.toLocaleString("en-US")} coordinate(s)
+                        {selectedPointIds.size > 1 ? ` · ${selectedPointIds.size.toLocaleString("en-US")} selected` : ""}
                     </Typography>
                 </Box>
+
+                {selectedPointIds.size > 0 && (
+                    <Tooltip title={`Remove ${selectedPointIds.size} selected coordinate(s)`}>
+                        <IconButton
+                            size="small"
+                            aria-label="Remove selected particles"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={onRemoveSelected}
+                            sx={{ color: "error.main" }}
+                        >
+                            <Trash2 size={16} />
+                        </IconButton>
+                    </Tooltip>
+                )}
 
                 <IconButton size="small" onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>
                     <X size={16} />
@@ -542,7 +561,8 @@ export default function Coords3dParticleGallery({
                         }}
                     >
                         {visibleTiles.map((tile) => {
-                            const selected = tile.pointId === selectedPointId;
+                            const primary = tile.pointId === selectedPointId;
+                            const selected = selectedPointIds.has(tile.pointId);
                             const imageUrl = cacheRef.current.get(tile.signature);
 
                             return (
@@ -550,12 +570,19 @@ export default function Coords3dParticleGallery({
                                     key={tile.pointId}
                                     role="button"
                                     tabIndex={0}
+                                    aria-pressed={selected}
                                     aria-label={`Particle ${tile.index + 1}`}
-                                    onClick={() => onSelect(tile.point)}
+                                    onClick={(event) => onSelect(tile.point, {
+                                        additive: event.ctrlKey || event.metaKey,
+                                        range: event.shiftKey,
+                                    })}
                                     onKeyDown={(event) => {
                                         if (event.key === "Enter" || event.key === " ") {
                                             event.preventDefault();
-                                            onSelect(tile.point);
+                                            onSelect(tile.point, {
+                                                additive: event.ctrlKey || event.metaKey,
+                                                range: event.shiftKey,
+                                            });
                                         }
                                     }}
                                     sx={{
@@ -567,9 +594,11 @@ export default function Coords3dParticleGallery({
                                         overflow: "hidden",
                                         cursor: "pointer",
                                         bgcolor: "#111827",
-                                        border: selected
+                                        border: primary
                                             ? "3px solid #ef4444"
-                                            : "2px solid #4f46e5",
+                                            : selected
+                                                ? "3px solid #f59e0b"
+                                                : "2px solid #4f46e5",
                                         outline: "none",
                                         boxSizing: "border-box",
                                     }}

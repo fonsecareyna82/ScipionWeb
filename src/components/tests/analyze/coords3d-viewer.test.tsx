@@ -625,6 +625,61 @@ describe("Coords3dViewer", () => {
         });
     });
 
+    it("selects a gallery range, removes it in one action, and supports undo and redo", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Particles" }));
+
+        const firstParticle = await screen.findByRole("button", { name: "Particle 1" });
+        const thirdParticle = await screen.findByRole("button", { name: "Particle 3" });
+
+        fireEvent.click(firstParticle);
+        fireEvent.click(thirdParticle, { shiftKey: true });
+
+        expect(screen.getByText(/3 selected/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Remove selected particles" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Total 0")).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Total 3")).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Total 0")).toBeInTheDocument();
+        });
+    });
+
+    it("toggles gallery selection and applies delete, undo, and redo hotkeys", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Particles" }));
+
+        const firstParticle = await screen.findByRole("button", { name: "Particle 1" });
+        const secondParticle = await screen.findByRole("button", { name: "Particle 2" });
+
+        fireEvent.click(firstParticle);
+        fireEvent.click(secondParticle, { ctrlKey: true });
+        expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+
+        fireEvent.keyDown(window, { key: "Delete" });
+        await waitFor(() => expect(screen.getByText("Total 1")).toBeInTheDocument());
+
+        fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+        await waitFor(() => expect(screen.getByText("Total 3")).toBeInTheDocument());
+
+        fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+        await waitFor(() => expect(screen.getByText("Total 1")).toBeInTheDocument());
+    });
+
     it("switches to metadata mode", async () => {
         renderViewer();
 
