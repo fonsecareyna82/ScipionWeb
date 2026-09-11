@@ -304,6 +304,37 @@ export type Coordinates3dTomogramPoints = {
   coords: Coordinates3dPoint[];
 };
 
+export type Coordinates3dGalleryPoint = {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type Coordinates3dGalleryRequest = {
+  points: Coordinates3dGalleryPoint[];
+  boxSize: number;
+  size?: number;
+  format?: "png" | "webp" | "jpeg";
+  quality?: number;
+};
+
+export type Coordinates3dGalleryItem = {
+  id: string;
+  dataUrl: string;
+};
+
+export type Coordinates3dGalleryResult = {
+  items: Coordinates3dGalleryItem[];
+  errors?: Array<{
+    id: string;
+    detail: string;
+  }>;
+  boxSize: number;
+  size: number;
+  format: string;
+};
+
 /**
  * Payload to create a new SetOfCoordinates3D output from an edited list of points.
  * The backend should interpret `coords` as a full replacement for the selected tomogram.
@@ -1857,6 +1888,15 @@ export interface ProjectService<
     }
   ): Promise<VolumeSliceObjectUrl>;
 
+  fetchCoords3dTomogramGallery(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    payload: Coordinates3dGalleryRequest,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<Coordinates3dGalleryResult>;
+
   /**
  * Create a new SetOfCoordinates3D output from an edited point list for a given tomogram.
  * `coordsOutputName` is the source output currently being edited/viewed.
@@ -2018,7 +2058,7 @@ export interface ProjectService<
     restack: boolean,
   ): Promise<void>;
 
-    // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (SetOfCTF)
   // ─────────────────────────────────────────────────────────────────────────────
 

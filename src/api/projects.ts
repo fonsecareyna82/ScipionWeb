@@ -64,6 +64,8 @@ import {
   ProjectFetchOptions,
   CtfImagePreviewOptions,
   CtfModelListResult,
+  Coordinates3dGalleryRequest,
+  Coordinates3dGalleryResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -3052,6 +3054,34 @@ export async function fetchCoords3dTomogramSliceObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
 
   return { url: objUrl, meta, revoke };
+}
+
+export async function fetchCoords3dTomogramGallery(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tomoId: Id,
+  payload: Coordinates3dGalleryRequest,
+  opts: AuthenticatedRequestOptions = {},
+): Promise<Coordinates3dGalleryResult> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/coords3d/tomograms/${enc(String(tomoId))}/gallery`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to render Coordinates3D particle gallery");
+  }
+
+  return await safeJson<Coordinates3dGalleryResult>(res);
 }
 
 export async function createCoords3dOutputFromPoints(

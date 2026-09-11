@@ -5,8 +5,10 @@ const serviceMocks = vi.hoisted(() => ({
     listCoords3dTomograms: vi.fn(),
     fetchCoords3dForTomogram: vi.fn(),
     fetchCoords3dTomogramSliceObjectUrl: vi.fn(),
+    fetchCoords3dTomogramGallery: vi.fn(),
     createCoords3dOutputFromPoints: vi.fn(),
 }));
+
 
 const toastMock = vi.hoisted(() => ({
     success: vi.fn(),
@@ -522,6 +524,14 @@ describe("Coords3dViewer", () => {
         );
 
         serviceMocks.createCoords3dOutputFromPoints.mockResolvedValue({ success: true });
+
+        serviceMocks.fetchCoords3dTomogramGallery.mockResolvedValue({
+            items: [],
+            errors: [],
+            boxSize: 64,
+            size: 74,
+            format: "webp",
+        });
     });
 
     it("shows a loading state while tomograms are pending", async () => {

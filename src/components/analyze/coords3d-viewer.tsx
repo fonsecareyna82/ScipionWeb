@@ -29,13 +29,14 @@ import {
   Chip,
   Alert,
 } from "@mui/material";
-import { HelpCircle, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
+import { HelpCircle, ImageMinus, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id, Coordinates3dTomogramPoints } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
+import Coords3dParticleGallery from "./coords3d-particle-gallery";
 
 type Coords3dViewerProps = {
   projectId: Id;
@@ -362,6 +363,7 @@ export default function Coords3dViewer({
   const [syncPick3dToSlices, setSyncPick3dToSlices] = useState<boolean>(true);
   const [reset3dCameraNonce, setReset3dCameraNonce] = useState<number>(0);
   const [pickedPoint3d, setPickedPoint3d] = useState<Coords3dPointExt | null>(null);
+  const [particlesOpen, setParticlesOpen] = useState(false);
 
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("filters");
 
@@ -915,6 +917,14 @@ export default function Coords3dViewer({
   const totalCoords = coordsDraft.length;
 
 
+  const galleryBoxSize = useMemo(() => {
+    const pointWithRadius = coordsDraft.find((point) => {
+      const radius = Number(point.radius);
+      return Number.isFinite(radius) && radius > 0;
+    });
+
+    return clampInt(Number(pointWithRadius?.radius ?? 64), 16, 256);
+  }, [coordsDraft.length, selectedTomoId]);
 
   const effectiveTomoId: Id | null = useMemo(() => {
     if (
@@ -1933,6 +1943,19 @@ export default function Coords3dViewer({
                     sx={{ textTransform: "none" }}
                   >
                     Reset 3D camera
+                  </Button>
+                )}
+
+                {viewMode !== "metadata" && (
+                  <Button
+                    size="small"
+                    variant={particlesOpen ? "contained" : "outlined"}
+                    startIcon={<ImageMinus size={14} />}
+                    disabled={effectiveTomoId == null || totalCoords === 0}
+                    onClick={() => setParticlesOpen((current) => !current)}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Particles
                   </Button>
                 )}
               </Box>
@@ -3263,6 +3286,23 @@ export default function Coords3dViewer({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Coords3dParticleGallery
+        open={particlesOpen}
+        projectId={projectId}
+        protocolId={protocolId}
+        outputName={outputName}
+        tomogramId={effectiveTomoId}
+        points={filteredPoints}
+        selectedPointId={pickedPointKey}
+        boxSize={galleryBoxSize}
+        brightness={brightness}
+        contrast={contrast}
+        onClose={() => setParticlesOpen(false)}
+        onSelect={(point) => handlePickPoint3d(point as Coords3dPointExt)}
+        onRemove={removePointById}
+        onInteract={markViewerActive}
+      />
 
       <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>

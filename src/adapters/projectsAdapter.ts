@@ -66,6 +66,8 @@ import type {
   IntegratedAnalyzeContext,
   InstanceResources,
   ProjectFetchOptions,
+  Coordinates3dGalleryRequest,
+  Coordinates3dGalleryResult,
 
 } from "@/services/ProjectService";
 
@@ -557,6 +559,23 @@ const defaultService: ProjectService = {
       opts,
     ),
 
+  fetchCoords3dTomogramGallery: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    payload: Coordinates3dGalleryRequest,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<Coordinates3dGalleryResult> =>
+    api.fetchCoords3dTomogramGallery(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+      toId(tomoId),
+      payload,
+      opts,
+    ),
+
   createCoords3dOutputFromPoints: (
     projectId: Id,
     protocolId: Id,
@@ -955,7 +974,7 @@ const defaultService: ProjectService = {
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
   resetEnvironmentVariable: (variableName: string) =>
-  settingsApi.resetEnvironmentVariable(variableName),
+    settingsApi.resetEnvironmentVariable(variableName),
 
   fetchJobsOverview: (
     recentLimit: number = 25,
