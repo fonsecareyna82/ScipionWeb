@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
     Box,
     CircularProgress,
@@ -42,6 +42,19 @@ type GalleryTile = {
     signature: string;
     row: number;
     column: number;
+};
+
+type GalleryPosition = {
+    x: number;
+    y: number;
+};
+
+type GalleryDrag = {
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
 };
 
 const TILE_SIZE = 74;
@@ -96,6 +109,14 @@ export default function Coords3dParticleGallery({
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const cacheRef = useRef<Map<string, string>>(new Map());
     const requestAbortRef = useRef<AbortController | null>(null);
+
+    const paperRef = useRef<HTMLDivElement | null>(null);
+    const dragRef = useRef<GalleryDrag | null>(null);
+    const pendingPositionRef = useRef<GalleryPosition | null>(null);
+    const dragFrameRef = useRef<number | null>(null);
+
+    const [position, setPosition] = useState<GalleryPosition | null>(null);
+    const [dragging, setDragging] = useState(false);
 
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
@@ -296,16 +317,147 @@ export default function Coords3dParticleGallery({
         setScrollTop(nextScrollTop);
     }, [open, points, selectedPointId]);
 
+    useEffect(() => {
+        if (!open) return;
+
+        const clampCurrentPosition = () => {
+            setPosition((current) => {
+                if (!current || !paperRef.current) return current;
+
+                const rect = paperRef.current.getBoundingClientRect();
+                const maxX = Math.max(8, window.innerWidth - rect.width - 8);
+                const maxY = Math.max(8, window.innerHeight - rect.height - 8);
+
+                const next = {
+                    x: Math.max(8, Math.min(current.x, maxX)),
+                    y: Math.max(8, Math.min(current.y, maxY)),
+                };
+
+                if (next.x === current.x && next.y === current.y) {
+                    return current;
+                }
+
+                return next;
+            });
+        };
+
+        const frame = window.requestAnimationFrame(clampCurrentPosition);
+        window.addEventListener("resize", clampCurrentPosition);
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+            window.removeEventListener("resize", clampCurrentPosition);
+        };
+    }, [open]);
+
+    useEffect(() => {
+        return () => {
+            if (dragFrameRef.current !== null) {
+                window.cancelAnimationFrame(dragFrameRef.current);
+            }
+        };
+    }, []);
+
+    const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+
+        const target = event.target as HTMLElement;
+
+        if (target.closest("button")) return;
+
+        const paper = paperRef.current;
+
+        if (!paper) return;
+
+        const rect = paper.getBoundingClientRect();
+
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+
+        const initialPosition = {
+            x: rect.left,
+            y: rect.top,
+        };
+
+        pendingPositionRef.current = initialPosition;
+        setPosition(initialPosition);
+
+        dragRef.current = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - rect.left,
+            offsetY: event.clientY - rect.top,
+            width: rect.width,
+            height: rect.height,
+        };
+
+        setDragging(true);
+        onInteract?.();
+    };
+
+    const handleHeaderPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current;
+
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        event.preventDefault();
+
+        const maxX = Math.max(8, window.innerWidth - drag.width - 8);
+        const maxY = Math.max(8, window.innerHeight - drag.height - 8);
+
+        pendingPositionRef.current = {
+            x: Math.max(8, Math.min(event.clientX - drag.offsetX, maxX)),
+            y: Math.max(8, Math.min(event.clientY - drag.offsetY, maxY)),
+        };
+
+        if (dragFrameRef.current !== null) return;
+
+        dragFrameRef.current = window.requestAnimationFrame(() => {
+            dragFrameRef.current = null;
+
+            if (pendingPositionRef.current) {
+                setPosition(pendingPositionRef.current);
+            }
+        });
+    };
+
+    const finishGalleryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const drag = dragRef.current;
+
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        if (dragFrameRef.current !== null) {
+            window.cancelAnimationFrame(dragFrameRef.current);
+            dragFrameRef.current = null;
+        }
+
+        if (pendingPositionRef.current) {
+            setPosition(pendingPositionRef.current);
+        }
+
+        dragRef.current = null;
+        pendingPositionRef.current = null;
+        setDragging(false);
+
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+            // Pointer capture may already have been released.
+        }
+    };
+
+
     if (!open) return null;
 
     return (
         <Paper
+            ref={paperRef}
             elevation={10}
             onPointerDownCapture={onInteract}
             sx={{
                 position: "fixed",
-                top: 24,
-                right: 24,
+                top: position?.y ?? 24,
+                left: position?.x ?? "auto",
+                right: position ? "auto" : 24,
                 width: 250,
                 maxHeight: "calc(100vh - 48px)",
                 zIndex: 1500,
@@ -318,6 +470,10 @@ export default function Coords3dParticleGallery({
             }}
         >
             <Box
+                onPointerDown={handleHeaderPointerDown}
+                onPointerMove={handleHeaderPointerMove}
+                onPointerUp={finishGalleryDrag}
+                onPointerCancel={finishGalleryDrag}
                 sx={{
                     px: 1,
                     py: 0.75,
@@ -326,6 +482,9 @@ export default function Coords3dParticleGallery({
                     borderBottom: "1px solid",
                     borderColor: "divider",
                     bgcolor: "background.default",
+                    cursor: dragging ? "grabbing" : "grab",
+                    userSelect: "none",
+                    touchAction: "none",
                 }}
             >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -338,7 +497,7 @@ export default function Coords3dParticleGallery({
                     </Typography>
                 </Box>
 
-                <IconButton size="small" onClick={onClose}>
+                <IconButton size="small" onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>
                     <X size={16} />
                 </IconButton>
             </Box>
