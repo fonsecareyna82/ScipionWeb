@@ -2339,9 +2339,7 @@ export default function VolumeViewer({
                   sx={{ flexShrink: 0 }}
                 >
                   <ToggleButton value="ctrl">Controls</ToggleButton>
-                  {viewMode === "map3d" && (
-                    <ToggleButton value="appearance">Appearance</ToggleButton>
-                  )}
+                  <ToggleButton value="appearance">Appearance</ToggleButton>
                   <ToggleButton value="hist">Histogram</ToggleButton>
                 </ToggleButtonGroup>
 
@@ -2356,8 +2354,10 @@ export default function VolumeViewer({
                     mt: 1,
                   }}
                 >
-                  {rightTab === "ctrl" && viewMode === "slices" && (
+                  {(rightTab === "ctrl" || rightTab === "appearance") && viewMode === "slices" && (
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, ml: 1 }}>
+                      {rightTab === "ctrl" && (
+                        <>
                       <SectionTitle title="Slices" />
 
                       <ParamRow
@@ -2473,6 +2473,12 @@ export default function VolumeViewer({
                           />
                         </>
                       )}
+                        </>
+                      )}
+
+                      {rightTab === "appearance" && (
+                        <>
+                          <SectionTitle title="Image" />
 
                       <ParamRow
                         label="Colormap"
@@ -2734,7 +2740,11 @@ export default function VolumeViewer({
                           }
                         />
                       </Box>
+                        </>
+                      )}
 
+                      {rightTab === "ctrl" && (
+                        <>
                       <Divider />
 
                       <Button
@@ -2752,6 +2762,8 @@ export default function VolumeViewer({
                           ? "Pan: Ctrl+drag or middle mouse"
                           : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
                       </Typography>
+                        </>
+                      )}
                     </Box>
                   )}
 

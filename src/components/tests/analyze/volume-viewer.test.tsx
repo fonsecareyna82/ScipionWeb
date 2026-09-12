@@ -865,6 +865,8 @@ describe("VolumeViewer", () => {
 
         const beforeChange = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
 
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+
         const colormapSelect = screen.getAllByRole("combobox")[0];
         fireEvent.mouseDown(colormapSelect);
 
@@ -898,6 +900,7 @@ describe("VolumeViewer", () => {
 
         const callCount = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
 
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
         fireEvent.click(screen.getByRole("button", { name: "on" }));
 
         await waitFor(() => {
@@ -917,10 +920,12 @@ describe("VolumeViewer", () => {
         });
 
         const callCount = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length;
-        const sliders = screen.getAllByRole("slider");
 
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+
+        const sliders = screen.getAllByRole("slider");
+        fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
         fireEvent.keyDown(sliders[1], { key: "ArrowRight" });
-        fireEvent.keyDown(sliders[2], { key: "ArrowRight" });
 
         await waitFor(() => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.length).toBe(callCount);
