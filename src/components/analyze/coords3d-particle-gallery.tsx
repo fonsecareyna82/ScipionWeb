@@ -9,7 +9,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
     Coordinates3dPoint,
@@ -35,6 +35,7 @@ type Coords3dParticleGalleryProps = {
     contrast: number;
     onClose: () => void;
     onSelect: (point: GalleryPoint, options: { additive: boolean; range: boolean }) => void;
+    onNavigate: (direction: -1 | 1) => void;
     onRemove: (pointId: string) => void;
     onRemoveSelected: () => void;
     onInteract?: () => void;
@@ -114,6 +115,7 @@ export default function Coords3dParticleGallery({
     contrast,
     onClose,
     onSelect,
+    onNavigate,
     onRemove,
     onRemoveSelected,
     onInteract,
@@ -186,6 +188,10 @@ export default function Coords3dParticleGallery({
     );
 
     const scopeKey = `${projectId}:${protocolId}:${outputName}:${String(tomogramId)}`;
+    const selectedPointIndex = useMemo(
+        () => points.findIndex((point, index) => getPointId(point, index) === selectedPointId),
+        [points, selectedPointId],
+    );
 
     useEffect(() => {
         requestAbortRef.current?.abort();
@@ -306,16 +312,12 @@ export default function Coords3dParticleGallery({
     useEffect(() => {
         if (!open || selectedPointId == null) return;
 
-        const selectedIndex = points.findIndex(
-            (point, index) => getPointId(point, index) === selectedPointId,
-        );
-
-        if (selectedIndex < 0) return;
+        if (selectedPointIndex < 0) return;
 
         const container = scrollRef.current;
         if (!container) return;
 
-        const selectedRow = Math.floor(selectedIndex / COLUMNS);
+        const selectedRow = Math.floor(selectedPointIndex / COLUMNS);
         const selectedTop = selectedRow * ROW_HEIGHT;
         const selectedBottom = selectedTop + ROW_HEIGHT;
 
@@ -333,7 +335,7 @@ export default function Coords3dParticleGallery({
 
         container.scrollTop = nextScrollTop;
         setScrollTop(nextScrollTop);
-    }, [open, points, selectedPointId]);
+    }, [open, selectedPointId, selectedPointIndex]);
 
     useEffect(() => {
         if (!open) return;
@@ -498,19 +500,20 @@ export default function Coords3dParticleGallery({
                     display: "flex",
                     alignItems: "center",
                     borderBottom: "1px solid",
-                    borderColor: "divider",
-                    bgcolor: "background.default",
+                    borderColor: "rgba(255, 255, 255, 0.18)",
+                    background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%)",
+                    color: "common.white",
                     cursor: dragging ? "grabbing" : "grab",
                     userSelect: "none",
                     touchAction: "none",
                 }}
             >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <Typography variant="subtitle2" sx={{ color: "inherit", fontWeight: 700 }}>
                         Particles
                     </Typography>
 
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: "rgba(255, 255, 255, 0.78)" }}>
                         {points.length.toLocaleString("en-US")} coordinate(s)
                         {selectedPointIds.size > 1 ? ` · ${selectedPointIds.size.toLocaleString("en-US")} selected` : ""}
                     </Typography>
@@ -523,16 +526,66 @@ export default function Coords3dParticleGallery({
                             aria-label="Remove selected particles"
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={onRemoveSelected}
-                            sx={{ color: "error.main" }}
+                            sx={{
+                                color: "#fecaca",
+                                "&:hover": { bgcolor: "rgba(239, 68, 68, 0.3)" },
+                            }}
                         >
                             <Trash2 size={16} />
                         </IconButton>
                     </Tooltip>
                 )}
 
-                <IconButton size="small" onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>
+                <IconButton
+                    size="small"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={onClose}
+                    sx={{ color: "white", "&:hover": { bgcolor: "rgba(255, 255, 255, 0.16)" } }}
+                >
                     <X size={16} />
                 </IconButton>
+            </Box>
+
+            <Box
+                sx={{
+                    px: 0.5,
+                    py: 0.25,
+                    display: "flex",
+                    alignItems: "center",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                }}
+            >
+                <Tooltip title="Previous particle (Left arrow)">
+                    <span>
+                        <IconButton
+                            size="small"
+                            aria-label="Previous particle"
+                            disabled={!points.length || selectedPointIndex === 0}
+                            onClick={() => onNavigate(-1)}
+                        >
+                            <ChevronLeft size={16} />
+                        </IconButton>
+                    </span>
+                </Tooltip>
+
+                <Typography variant="caption" role="status" sx={{ flex: 1, textAlign: "center", fontWeight: 700 }}>
+                    Review · {selectedPointIndex >= 0 ? selectedPointIndex + 1 : "–"} / {points.length}
+                </Typography>
+
+                <Tooltip title="Next particle (Right arrow)">
+                    <span>
+                        <IconButton
+                            size="small"
+                            aria-label="Next particle"
+                            disabled={!points.length || selectedPointIndex === points.length - 1}
+                            onClick={() => onNavigate(1)}
+                        >
+                            <ChevronRight size={16} />
+                        </IconButton>
+                    </span>
+                </Tooltip>
             </Box>
 
             <Box sx={{ px: 1, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
@@ -584,7 +637,7 @@ export default function Coords3dParticleGallery({
                 }}
                 sx={{
                     position: "relative",
-                    height: "min(580px, calc(100vh - 158px))",
+                    height: "min(548px, calc(100vh - 190px))",
                     overflowY: "auto",
                     overflowX: "hidden",
                     p: `${TILE_GAP}px`,

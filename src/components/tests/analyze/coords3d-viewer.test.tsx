@@ -716,6 +716,40 @@ describe("Coords3dViewer", () => {
         await expectGalleryView("triple");
     });
 
+    it("reviews particles with buttons and keyboard while centering all three slice axes", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3 Views" }));
+        fireEvent.click(screen.getByRole("button", { name: "Particles" }));
+
+        fireEvent.click(await screen.findByRole("button", { name: "Particle 1" }));
+        expect(screen.getByRole("status")).toHaveTextContent("Review · 1 / 3");
+
+        serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockClear();
+        fireEvent.click(screen.getByRole("button", { name: "Next particle" }));
+
+        await waitFor(() => {
+            expect(screen.getByRole("status")).toHaveTextContent("Review · 2 / 3");
+        });
+
+        await waitFor(() => {
+            const calls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls;
+            expect(calls.some((call) => call[4] === 34 && call[5]?.axis === "z")).toBe(true);
+            expect(calls.some((call) => call[4] === 14 && call[5]?.axis === "x")).toBe(true);
+            expect(calls.some((call) => call[4] === 24 && call[5]?.axis === "y")).toBe(true);
+        });
+
+        fireEvent.keyDown(window, { key: "End" });
+        await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Review · 3 / 3"));
+
+        fireEvent.keyDown(window, { key: "ArrowLeft" });
+        await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Review · 2 / 3"));
+
+        fireEvent.keyDown(window, { key: "Home" });
+        await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Review · 1 / 3"));
+    });
+
     it("switches to metadata mode", async () => {
         renderViewer();
 

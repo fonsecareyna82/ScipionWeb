@@ -1412,7 +1412,7 @@ export default function Coords3dViewer({
   const lastViewerInteractAtRef = useRef<number>(0);
 
   const markViewerActive = useCallback(() => {
-    lastViewerInteractAtRef.current = Date.now();
+    lastViewerInteractAtRef.current = performance.now();
     const el = hotkeyScopeRef.current;
     if (!el) return;
     try {
@@ -1447,11 +1447,11 @@ export default function Coords3dViewer({
   }, []);
 
   const focusPoint3d = useCallback(
-    (p: Coords3dPointExt | null, mappedSliceIndices?: { x: number; y: number; z: number }) => {
+    (p: Coords3dPointExt | null, mappedSliceIndices?: { x: number; y: number; z: number }, forceSliceSync = false) => {
       markViewerActive();
       pickedPoint3dRef.current = p;
       setPickedPoint3d(p);
-      if (!p || !syncPick3dToSlices) return;
+      if (!p || (!syncPick3dToSlices && !forceSliceSync)) return;
 
       const targetZ = mappedSliceIndices?.z ?? Math.round(Number((p as any).z));
       const targetX = mappedSliceIndices?.x ?? Math.round(Number((p as any).x));
@@ -1512,6 +1512,29 @@ export default function Coords3dViewer({
     },
     [applySelection, filteredPoints, focusPoint3d],
   );
+
+  const navigateReviewPoint = useCallback((command: "previous" | "next" | "first" | "last") => {
+    if (!filteredPoints.length) return;
+
+    const currentPointId = pickedPoint3dRef.current ? getCoords3dPointId(pickedPoint3dRef.current) : null;
+    const currentIndex = currentPointId
+      ? filteredPoints.findIndex((point) => getCoords3dPointId(point) === currentPointId)
+      : -1;
+
+    let nextIndex = currentIndex;
+    if (command === "first") nextIndex = 0;
+    else if (command === "last") nextIndex = filteredPoints.length - 1;
+    else if (currentIndex < 0) nextIndex = 0;
+    else if (command === "previous") nextIndex = Math.max(0, currentIndex - 1);
+    else nextIndex = Math.min(filteredPoints.length - 1, currentIndex + 1);
+
+    const point = filteredPoints[nextIndex];
+    const pointId = getCoords3dPointId(point);
+
+    applySelection({ pointIds: [pointId], primaryPointId: pointId });
+    selectionAnchorIdRef.current = pointId;
+    focusPoint3d(point, undefined, true);
+  }, [applySelection, filteredPoints, focusPoint3d]);
 
   const showXAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
@@ -1798,14 +1821,27 @@ export default function Coords3dViewer({
       const undoRequested = modifierPressed && key === "z" && !ev.shiftKey;
       const redoRequested = modifierPressed && (key === "y" || (key === "z" && ev.shiftKey));
       const removeRequested = ev.key === "Delete" || ev.key === "Backspace";
+      const reviewCommand = !modifierPressed && !ev.altKey && particlesOpen
+        ? ev.key === "ArrowLeft"
+          ? "previous"
+          : ev.key === "ArrowRight"
+            ? "next"
+            : ev.key === "Home"
+              ? "first"
+              : ev.key === "End"
+                ? "last"
+                : null
+        : null;
 
-      if (!undoRequested && !redoRequested && !removeRequested) return;
+      if (!undoRequested && !redoRequested && !removeRequested && !reviewCommand) return;
+      if (reviewCommand && active?.closest('[aria-label="Particle preview orientation"], [role="slider"]')) return;
 
       swallowEvent(ev);
 
       if (undoRequested) undoEdit();
       else if (redoRequested) redoEdit();
-      else removeSelectedPoints();
+      else if (removeRequested) removeSelectedPoints();
+      else navigateReviewPoint(reviewCommand as "previous" | "next" | "first" | "last");
     };
 
     window.addEventListener("keydown", onKeyDownCapture, true);
@@ -1813,7 +1849,7 @@ export default function Coords3dViewer({
     return () => {
       window.removeEventListener("keydown", onKeyDownCapture, true);
     };
-  }, [redoEdit, removeSelectedPoints, undoEdit]);
+  }, [navigateReviewPoint, particlesOpen, redoEdit, removeSelectedPoints, undoEdit]);
 
   const addPointFromSlice = useCallback(
     (axis: "x" | "y" | "z", localX: number, localY: number) => {
@@ -3724,6 +3760,7 @@ export default function Coords3dViewer({
         contrast={contrast}
         onClose={() => setParticlesOpen(false)}
         onSelect={(point, options) => handleGalleryPointSelect(point as Coords3dPointExt, options)}
+        onNavigate={(direction) => navigateReviewPoint(direction < 0 ? "previous" : "next")}
         onRemove={removePointById}
         onRemoveSelected={removeSelectedPoints}
         onInteract={markViewerActive}
