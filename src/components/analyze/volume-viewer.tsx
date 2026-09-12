@@ -1721,6 +1721,7 @@ export default function VolumeViewer({
 
     const x: number[] = [];
     const y: number[] = [];
+    const width: number[] = [];
     const [displayMin, displayMax] = histogramLevelRange ?? [-Infinity, Infinity];
     const binCount = Math.min(histogram.counts.length, histogram.binEdges.length - 1);
 
@@ -1736,9 +1737,10 @@ export default function VolumeViewer({
 
       x.push(center);
       y.push(Number.isFinite(count) && count > 0 ? count : 0);
+      width.push(right - left);
     }
 
-    return x.length > 0 ? { x, y } : null;
+    return x.length > 0 ? { x, y, width } : null;
   }, [histogram, histogramLevelRange]);
 
 
@@ -2639,7 +2641,12 @@ export default function VolumeViewer({
                             value={interp2d}
                             disabled={sliceLayoutMode === "triple"}
                             onChange={(e) => setInterp2d(e.target.value as Interp2d)}
-                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                            SelectProps={{
+                              MenuProps: { disablePortal: true },
+                              inputProps: {
+                                "aria-label": "Slice interpolation",
+                              },
+                            }}
                           >
                             <MenuItem value="nearest">nearest</MenuItem>
                             <MenuItem value="linear">linear</MenuItem>
@@ -3214,6 +3221,7 @@ export default function VolumeViewer({
                                 type: "bar",
                                 x: histogramPlotData.x,
                                 y: histogramPlotData.y,
+                                width: histogramPlotData.width,
                                 hovertemplate: "Intensity %{x:.4g}<br>Count %{y:,}<extra></extra>",
                               },
                             ]}

@@ -27,10 +27,11 @@ vi.mock("@/ProjectServiceContext", () => ({
 }));
 
 vi.mock("react-plotly.js", () => ({
-    default: ({ data, layout }: { data?: Array<{ type?: string; x?: number[] }>; layout?: any }) => (
+    default: ({ data, layout }: { data?: Array<{ type?: string; x?: number[]; width?: number[] }>; layout?: any }) => (
         <div
             data-testid="mock-plotly"
             data-x-values={JSON.stringify(data?.[0]?.x ?? [])}
+            data-width-values={JSON.stringify(data?.[0]?.width ?? [])}
             data-x-range={JSON.stringify(layout?.xaxis?.range ?? null)}
         >
             {data?.[0]?.type ?? "plot"}
@@ -554,6 +555,7 @@ describe("VolumeViewer", () => {
         const plot = await screen.findByTestId("mock-plotly");
         expect(screen.getByText("bar")).toBeInTheDocument();
         expect(JSON.parse(plot.getAttribute("data-x-values") || "[]")).toEqual([0.5, 1.5]);
+        expect(JSON.parse(plot.getAttribute("data-width-values") || "[]")).toEqual([1, 1]);
 
         const range = JSON.parse(plot.getAttribute("data-x-range") || "null");
         expect(range[0]).toBeLessThan(0.5);
@@ -974,8 +976,11 @@ describe("VolumeViewer", () => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled();
         });
 
-        const interpSelect = screen.getAllByRole("combobox")[2];
-        fireEvent.mouseDown(interpSelect);
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+
+        fireEvent.mouseDown(
+            screen.getByRole("combobox", { name: "Slice interpolation" }),
+        );
 
         fireEvent.click(
             await screen.findByText("nearest", {
