@@ -6,6 +6,15 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
+import {
+    clampNormalized,
+    normalizeVolumeClipBounds,
+    type VolumeAxis,
+    type VolumeCameraCommand,
+    type VolumeClipBounds,
+    type VolumeSlicePosition,
+    type VolumeSliceVisibility,
+} from  "./volume-3d-types";
 
 export type MeshColorMode = "solid" | "density" | "components";
 
@@ -18,6 +27,13 @@ export type MeshVolumeViewProps = {
     displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
     resetViewKey?: number;
+    cameraCommand?: VolumeCameraCommand | null;
+    clipBounds?: VolumeClipBounds;
+    slicePosition?: VolumeSlicePosition;
+    sliceVisibility?: VolumeSliceVisibility;
+    slicePlaneOpacity?: number;
+    onSlicePositionChange?: (axis: VolumeAxis, position: number) => void;
+    onSlicePositionChangeEnd?: () => void;
     cameraStateKey?: string | number | null;
     cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
@@ -33,10 +49,25 @@ export type MeshCameraState = {
 };
 
 type DragState = {
+    kind: "rotate";
     pointerId: number;
     lastX: number;
     lastY: number;
 };
+
+type SlicePlaneDragState = {
+    kind: "slice";
+    pointerId: number;
+    axis: VolumeAxis;
+    startPosition: number;
+    startX: number;
+    startY: number;
+    screenAxisX: number;
+    screenAxisY: number;
+    normalizedStep: number;
+};
+
+type ViewerDragState = DragState | SlicePlaneDragState;
 
 const GTAO_BLEND_INTENSITY = 0.88;
 const GTAO_RESOLUTION_SCALE = 1.0;
@@ -344,6 +375,126 @@ function rotateObjectInScreenSpace(
     object.quaternion.premultiply(dragRotation);
 }
 
+function getMeshVolumeLocalBounds(mesh: VolumeSurfaceMesh, fallback: THREE.Box3 | null): THREE.Box3 {
+    const dims = mesh.dims;
+    const center = mesh.center;
+    const scale = Number(mesh.scale);
+
+    if (Array.isArray(dims) && dims.length >= 3 && Array.isArray(center) && center.length >= 3 && Number.isFinite(scale) && scale > 0) {
+        const dimsXyz = mesh.order === "xyz" ? dims : [dims[2], dims[1], dims[0]];
+        return new THREE.Box3(
+            new THREE.Vector3((0 - center[0]) / scale, (0 - center[1]) / scale, (0 - center[2]) / scale),
+            new THREE.Vector3((Math.max(1, dimsXyz[0]) - 1 - center[0]) / scale, (Math.max(1, dimsXyz[1]) - 1 - center[1]) / scale, (Math.max(1, dimsXyz[2]) - 1 - center[2]) / scale),
+        );
+    }
+
+    return fallback?.clone() ?? new THREE.Box3(new THREE.Vector3(-0.5, -0.5, -0.5), new THREE.Vector3(0.5, 0.5, 0.5));
+}
+
+function normalizedBoundsToBox3(volumeBounds: THREE.Box3, bounds: VolumeClipBounds): THREE.Box3 {
+    return new THREE.Box3(
+        new THREE.Vector3(
+            THREE.MathUtils.lerp(volumeBounds.min.x, volumeBounds.max.x, bounds.x[0]),
+            THREE.MathUtils.lerp(volumeBounds.min.y, volumeBounds.max.y, bounds.y[0]),
+            THREE.MathUtils.lerp(volumeBounds.min.z, volumeBounds.max.z, bounds.z[0]),
+        ),
+        new THREE.Vector3(
+            THREE.MathUtils.lerp(volumeBounds.min.x, volumeBounds.max.x, bounds.x[1]),
+            THREE.MathUtils.lerp(volumeBounds.min.y, volumeBounds.max.y, bounds.y[1]),
+            THREE.MathUtils.lerp(volumeBounds.min.z, volumeBounds.max.z, bounds.z[1]),
+        ),
+    );
+}
+
+function configureLocalClippingPlanes(planes: THREE.Plane[], volumeBounds: THREE.Box3, bounds: VolumeClipBounds): void {
+    const clipped = normalizedBoundsToBox3(volumeBounds, bounds);
+    planes[0].set(new THREE.Vector3(1, 0, 0), -clipped.min.x);
+    planes[1].set(new THREE.Vector3(-1, 0, 0), clipped.max.x);
+    planes[2].set(new THREE.Vector3(0, 1, 0), -clipped.min.y);
+    planes[3].set(new THREE.Vector3(0, -1, 0), clipped.max.y);
+    planes[4].set(new THREE.Vector3(0, 0, 1), -clipped.min.z);
+    planes[5].set(new THREE.Vector3(0, 0, -1), clipped.max.z);
+}
+
+function isClippingActive(bounds: VolumeClipBounds): boolean {
+    return (["x", "y", "z"] as VolumeAxis[]).some((axis) => bounds[axis][0] > 0.0001 || bounds[axis][1] < 0.9999);
+}
+
+function createMeshSlicePlane(axis: VolumeAxis, clippingPlanes: THREE.Plane[]): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
+    const colors: Record<VolumeAxis, number> = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
+    const material = new THREE.MeshBasicMaterial({
+        color: colors[axis],
+        transparent: true,
+        opacity: 0.32,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        clippingPlanes,
+    });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+    plane.userData.volumeAxis = axis;
+    plane.renderOrder = 4;
+
+    if (axis === "x") plane.rotation.y = Math.PI / 2;
+    if (axis === "y") plane.rotation.x = -Math.PI / 2;
+    return plane;
+}
+
+function updateMeshSlicePlane(
+    plane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>,
+    axis: VolumeAxis,
+    volumeBounds: THREE.Box3,
+    normalizedPosition: number,
+    visible: boolean,
+    opacity: number,
+): void {
+    const size = volumeBounds.getSize(new THREE.Vector3());
+    const center = volumeBounds.getCenter(new THREE.Vector3());
+    const position = clampNormalized(normalizedPosition);
+
+    if (axis === "x") {
+        plane.scale.set(size.z, size.y, 1);
+        center.x = THREE.MathUtils.lerp(volumeBounds.min.x, volumeBounds.max.x, position);
+    } else if (axis === "y") {
+        plane.scale.set(size.x, size.z, 1);
+        center.y = THREE.MathUtils.lerp(volumeBounds.min.y, volumeBounds.max.y, position);
+    } else {
+        plane.scale.set(size.x, size.y, 1);
+        center.z = THREE.MathUtils.lerp(volumeBounds.min.z, volumeBounds.max.z, position);
+    }
+
+    plane.position.copy(center);
+    plane.visible = visible && opacity > 0.001;
+    plane.material.opacity = opacity;
+    plane.material.needsUpdate = true;
+}
+
+function getVectorAxis(vector: THREE.Vector3, axis: VolumeAxis): number {
+    if (axis === "x") return vector.x;
+    if (axis === "y") return vector.y;
+    return vector.z;
+}
+
+function setVectorAxis(vector: THREE.Vector3, axis: VolumeAxis, value: number): void {
+    if (axis === "x") vector.x = value;
+    else if (axis === "y") vector.y = value;
+    else vector.z = value;
+}
+
+function cameraPresetDirection(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
+    if (preset === "front") return new THREE.Vector3(0, 0, 1);
+    if (preset === "back") return new THREE.Vector3(0, 0, -1);
+    if (preset === "left") return new THREE.Vector3(-1, 0, 0);
+    if (preset === "right") return new THREE.Vector3(1, 0, 0);
+    if (preset === "top") return new THREE.Vector3(0, 1, 0);
+    return new THREE.Vector3(0, -1, 0);
+}
+
+function cameraPresetUp(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
+    if (preset === "top") return new THREE.Vector3(0, 0, -1);
+    if (preset === "bottom") return new THREE.Vector3(0, 0, 1);
+    return new THREE.Vector3(0, 1, 0);
+}
+
 export default function MeshVolumeView({
     mesh,
     opacity = 1,
@@ -353,6 +504,13 @@ export default function MeshVolumeView({
     autoRotate = false,
     autoRotateSpeed = 3.8,
     resetViewKey = 0,
+    cameraCommand = null,
+    clipBounds,
+    slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
+    sliceVisibility = { x: false, y: false, z: false },
+    slicePlaneOpacity = 0.32,
+    onSlicePositionChange,
+    onSlicePositionChangeEnd,
     cameraStateKey = "default",
     cameraStateRef: externalCameraStateRef,
     onError,
@@ -372,10 +530,37 @@ export default function MeshVolumeView({
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
     const requestRenderRef = useRef<() => void>(() => undefined);
     const resetViewRef = useRef<() => void>(() => undefined);
+    const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => undefined);
+    const applyClipBoundsRef = useRef<() => void>(() => undefined);
+    const applySlicePlanesRef = useRef<() => void>(() => undefined);
+    const onSlicePositionChangeRef = useRef(onSlicePositionChange);
+    const onSlicePositionChangeEndRef = useRef(onSlicePositionChangeEnd);
+    const normalizedClipBounds = useMemo(() => normalizeVolumeClipBounds(clipBounds), [clipBounds]);
+    const clipBoundsRef = useRef(normalizedClipBounds);
+    const slicePositionRef = useRef(slicePosition);
+    const sliceVisibilityRef = useRef(sliceVisibility);
+    const slicePlaneOpacityRef = useRef(slicePlaneOpacity);
 
     useEffect(() => {
         onErrorRef.current = onError;
     }, [onError]);
+
+    useEffect(() => {
+        onSlicePositionChangeRef.current = onSlicePositionChange;
+        onSlicePositionChangeEndRef.current = onSlicePositionChangeEnd;
+    }, [onSlicePositionChange, onSlicePositionChangeEnd]);
+
+    useEffect(() => {
+        clipBoundsRef.current = normalizedClipBounds;
+        applyClipBoundsRef.current();
+    }, [normalizedClipBounds]);
+
+    useEffect(() => {
+        slicePositionRef.current = slicePosition;
+        sliceVisibilityRef.current = sliceVisibility;
+        slicePlaneOpacityRef.current = slicePlaneOpacity;
+        applySlicePlanesRef.current();
+    }, [slicePosition, sliceVisibility, slicePlaneOpacity]);
 
     useEffect(() => {
         const geometry = geometryRef.current;
@@ -441,7 +626,7 @@ export default function MeshVolumeView({
         let gtaoPass: GTAOPass | null = null;
         let outputPass: OutputPass | null = null;
         let frameId: number | null = null;
-        let dragState: DragState | null = null;
+        let dragState: ViewerDragState | null = null;
 
         try {
             const scene = new THREE.Scene();
@@ -512,6 +697,7 @@ export default function MeshVolumeView({
             geometry.computeVertexNormals();
             geometry.normalizeNormals();
             geometry.computeBoundingSphere();
+            geometry.computeBoundingBox();
 
             const usesVertexColors = applyMeshVertexColors(
                 geometry,
@@ -540,6 +726,56 @@ export default function MeshVolumeView({
             const surfacePivot = new THREE.Group();
             surfacePivot.add(surface);
             scene.add(surfacePivot);
+
+            const volumeBounds = getMeshVolumeLocalBounds(mesh, geometry.boundingBox);
+            const localClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
+            const worldClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
+            material.clippingPlanes = worldClipPlanes;
+            renderer.localClippingEnabled = true;
+
+            const clipBox = new THREE.Box3Helper(volumeBounds.clone(), 0x64748b);
+            const clipBoxMaterial = clipBox.material as THREE.LineBasicMaterial;
+            clipBoxMaterial.transparent = true;
+            clipBoxMaterial.opacity = 0.72;
+            clipBox.renderOrder = 5;
+            surfacePivot.add(clipBox);
+
+            const slicePlanes = {
+                x: createMeshSlicePlane("x", worldClipPlanes),
+                y: createMeshSlicePlane("y", worldClipPlanes),
+                z: createMeshSlicePlane("z", worldClipPlanes),
+            };
+            surfacePivot.add(slicePlanes.x, slicePlanes.y, slicePlanes.z);
+
+            const updateClipBounds = () => {
+                const bounds = clipBoundsRef.current;
+                configureLocalClippingPlanes(localClipPlanes, volumeBounds, bounds);
+                surfacePivot.updateMatrixWorld(true);
+                localClipPlanes.forEach((plane, index) => {
+                    worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
+                });
+
+                const clippedBox = normalizedBoundsToBox3(volumeBounds, bounds);
+                clipBox.box.copy(clippedBox);
+                clipBox.visible = isClippingActive(bounds);
+                clipBox.updateMatrixWorld(true);
+                requestRenderRef.current();
+            };
+
+            const updateSlicePlanes = () => {
+                const position = slicePositionRef.current;
+                const visibility = sliceVisibilityRef.current;
+                const planeOpacity = Math.max(0, Math.min(1, slicePlaneOpacityRef.current));
+                updateMeshSlicePlane(slicePlanes.x, "x", volumeBounds, position.x, visibility.x, planeOpacity);
+                updateMeshSlicePlane(slicePlanes.y, "y", volumeBounds, position.y, visibility.y, planeOpacity);
+                updateMeshSlicePlane(slicePlanes.z, "z", volumeBounds, position.z, visibility.z, planeOpacity);
+                requestRenderRef.current();
+            };
+
+            applyClipBoundsRef.current = updateClipBounds;
+            applySlicePlanesRef.current = updateSlicePlanes;
+            updateClipBounds();
+            updateSlicePlanes();
 
             const saveCameraState = () => {
                 cameraStateRef.current = {
@@ -622,6 +858,10 @@ export default function MeshVolumeView({
                 }
 
                 const controlsChanged = controls.update();
+                surfacePivot.updateMatrixWorld(true);
+                localClipPlanes.forEach((plane, index) => {
+                    worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
+                });
                 composer?.render(dt);
 
                 if (autoRotateRef.current || controlsChanged) requestRender();
@@ -674,6 +914,7 @@ export default function MeshVolumeView({
 
             const resetView = () => {
                 camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
+                camera.up.set(0, 1, 0);
                 camera.zoom = 1;
                 controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
                 surfacePivot.quaternion.identity();
@@ -685,6 +926,24 @@ export default function MeshVolumeView({
 
             resetViewRef.current = resetView;
 
+            const applyCameraCommand = (command: VolumeCameraCommand) => {
+                const target = sphere?.center ?? new THREE.Vector3(0, 0, 0);
+                const currentDistance = camera.position.distanceTo(controls.target);
+                const distance = Number.isFinite(currentDistance) && currentDistance > 0.1 ? currentDistance : radius * 2.5;
+
+                surfacePivot.quaternion.identity();
+                controls.target.copy(target);
+                camera.up.copy(cameraPresetUp(command.preset));
+                camera.position.copy(target).addScaledVector(cameraPresetDirection(command.preset), distance);
+                camera.updateProjectionMatrix();
+                controls.update();
+                updateClipBounds();
+                saveCameraState();
+                requestRender();
+            };
+
+            applyCameraCommandRef.current = applyCameraCommand;
+
             const savedCameraState = cameraStateRef.current;
             if (savedCameraState?.key === currentCameraStateKey) {
                 camera.position.fromArray(savedCameraState.position);
@@ -693,6 +952,7 @@ export default function MeshVolumeView({
                 surfacePivot.quaternion.fromArray(savedCameraState.objectQuaternion);
             } else {
                 camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
+                camera.up.set(0, 1, 0);
                 controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
                 surfacePivot.quaternion.identity();
             }
@@ -710,13 +970,76 @@ export default function MeshVolumeView({
                 }
             };
 
+            const pickSlicePlane = (event: PointerEvent): VolumeAxis | null => {
+                const rect = host.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return null;
+
+                const pointer = new THREE.Vector2(
+                    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+                    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+                );
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(pointer, camera);
+                const intersections = raycaster.intersectObjects([slicePlanes.x, slicePlanes.y, slicePlanes.z], false);
+                return (intersections[0]?.object.userData.volumeAxis as VolumeAxis | undefined) ?? null;
+            };
+
+            const createSlicePlaneDrag = (event: PointerEvent, sliceAxis: VolumeAxis): SlicePlaneDragState => {
+                const rect = host.getBoundingClientRect();
+                const center = volumeBounds.getCenter(new THREE.Vector3());
+                const axisMin = getVectorAxis(volumeBounds.min, sliceAxis);
+                const axisMax = getVectorAxis(volumeBounds.max, sliceAxis);
+                const startPosition = clampNormalized(slicePositionRef.current[sliceAxis]);
+                setVectorAxis(center, sliceAxis, THREE.MathUtils.lerp(axisMin, axisMax, startPosition));
+
+                const normalizedStep = 0.2;
+                const shifted = center.clone();
+                setVectorAxis(shifted, sliceAxis, getVectorAxis(shifted, sliceAxis) + (axisMax - axisMin) * normalizedStep);
+                surfacePivot.updateMatrixWorld(true);
+
+                const projectedStart = surfacePivot.localToWorld(center.clone()).project(camera);
+                const projectedEnd = surfacePivot.localToWorld(shifted).project(camera);
+                let screenAxisX = (projectedEnd.x - projectedStart.x) * rect.width * 0.5;
+                let screenAxisY = -(projectedEnd.y - projectedStart.y) * rect.height * 0.5;
+
+                if (screenAxisX * screenAxisX + screenAxisY * screenAxisY < 64) {
+                    screenAxisX = 0;
+                    screenAxisY = -Math.max(100, Math.min(rect.width, rect.height) * 0.35);
+                }
+
+                return {
+                    kind: "slice",
+                    pointerId: event.pointerId,
+                    axis: sliceAxis,
+                    startPosition,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    screenAxisX,
+                    screenAxisY,
+                    normalizedStep,
+                };
+            };
+
             const handlePointerDown = (event: PointerEvent) => {
                 stopViewerEvent(event);
 
                 if (event.button !== 0) return;
 
                 event.preventDefault();
+
+                if (event.shiftKey && onSlicePositionChangeRef.current) {
+                    const selectedAxis = pickSlicePlane(event);
+                    if (selectedAxis) {
+                        dragState = createSlicePlaneDrag(event, selectedAxis);
+                        host.style.cursor = "ns-resize";
+                        host.setPointerCapture?.(event.pointerId);
+                        requestRender();
+                        return;
+                    }
+                }
+
                 dragState = {
+                    kind: "rotate",
                     pointerId: event.pointerId,
                     lastX: event.clientX,
                     lastY: event.clientY,
@@ -732,6 +1055,20 @@ export default function MeshVolumeView({
                 if (!dragState || dragState.pointerId !== event.pointerId) return;
 
                 event.preventDefault();
+
+                if (dragState.kind === "slice") {
+                    const denominator = dragState.screenAxisX ** 2 + dragState.screenAxisY ** 2;
+                    if (denominator <= 1e-6) return;
+
+                    const deltaX = event.clientX - dragState.startX;
+                    const deltaY = event.clientY - dragState.startY;
+                    const projectedDelta = (deltaX * dragState.screenAxisX + deltaY * dragState.screenAxisY) / denominator;
+                    const nextPosition = clampNormalized(dragState.startPosition + projectedDelta * dragState.normalizedStep);
+                    onSlicePositionChangeRef.current?.(dragState.axis, nextPosition);
+                    requestRender();
+                    return;
+                }
+
                 const dx = event.clientX - dragState.lastX;
                 const dy = event.clientY - dragState.lastY;
                 dragState.lastX = event.clientX;
@@ -748,9 +1085,11 @@ export default function MeshVolumeView({
                 if (!dragState || dragState.pointerId !== event.pointerId) return;
 
                 event.preventDefault();
+                const completedSliceDrag = dragState.kind === "slice";
                 dragState = null;
                 host.style.cursor = "grab";
                 host.releasePointerCapture?.(event.pointerId);
+                if (completedSliceDrag) onSlicePositionChangeEndRef.current?.();
                 saveCameraState();
                 requestRender();
             };
@@ -810,6 +1149,9 @@ export default function MeshVolumeView({
                 geometryRef.current = null;
                 requestRenderRef.current = () => undefined;
                 resetViewRef.current = () => undefined;
+                applyCameraCommandRef.current = () => undefined;
+                applyClipBoundsRef.current = () => undefined;
+                applySlicePlanesRef.current = () => undefined;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
@@ -817,6 +1159,9 @@ export default function MeshVolumeView({
             composer?.dispose();
             renderer?.dispose();
             requestRenderRef.current = () => undefined;
+            applyCameraCommandRef.current = () => undefined;
+            applyClipBoundsRef.current = () => undefined;
+            applySlicePlanesRef.current = () => undefined;
 
             onErrorRef.current?.(
                 error?.message || "Failed to render surface mesh.",
@@ -828,6 +1173,10 @@ export default function MeshVolumeView({
     useEffect(() => {
         if (resetViewKey > 0) resetViewRef.current();
     }, [resetViewKey]);
+
+    useEffect(() => {
+        if (cameraCommand) applyCameraCommandRef.current(cameraCommand);
+    }, [cameraCommand]);
 
     return (
         <div

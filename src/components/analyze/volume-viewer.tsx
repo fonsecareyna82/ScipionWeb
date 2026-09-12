@@ -32,6 +32,16 @@ import {
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
+import {
+  clampNormalized,
+  createFullVolumeClipBounds,
+  type VolumeAxis,
+  type VolumeCameraCommand,
+  type VolumeCameraPreset,
+  type VolumeClipBounds,
+  type VolumeSlicePosition,
+  type VolumeSliceVisibility,
+} from "./volume-3d-types";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -65,7 +75,7 @@ type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
 type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
-type OrthoAxis = "x" | "y" | "z";
+type OrthoAxis = VolumeAxis;
 type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
 
 type SliceImageState = {
@@ -112,6 +122,15 @@ const ORTHO_AXIS_COLORS = {
   y: "#22c55e",
   z: "#3b82f6",
 } as const;
+
+const CAMERA_PRESET_LABELS: Array<{ value: VolumeCameraPreset; label: string }> = [
+  { value: "front", label: "Front (+Z)" },
+  { value: "back", label: "Back (−Z)" },
+  { value: "left", label: "Left (−X)" },
+  { value: "right", label: "Right (+X)" },
+  { value: "top", label: "Top (+Y)" },
+  { value: "bottom", label: "Bottom (−Y)" },
+];
 
 const HELP_TEXT: Record<string, string> = {
   maxDim3d:
@@ -165,6 +184,14 @@ const HELP_TEXT: Record<string, string> = {
     "Removes small disconnected surface fragments. Standard is a good default for cryo-EM maps; turn it off when small isolated densities are scientifically relevant.",
   surfaceSmoothing3d:
     "Smooths the displayed surface while preserving its overall volume. It does not modify the original cryo-EM map.",
+  cameraPreset3d:
+    "Snap the camera to a principal volume axis without reloading or modifying the data.",
+  clipping3d:
+    "Restrict rendering to an X/Y/Z subvolume. GPU raycasting skips the excluded space, which can improve interaction speed.",
+  slicePlanes3d:
+    "Show the current X/Y/Z slice positions inside the 3D view. Drag a visible plane to update the synchronized orthogonal views.",
+  slicePlaneOpacity3d:
+    "Opacity of the synchronized slice planes drawn inside the 3D view.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -397,6 +424,10 @@ export default function VolumeViewer({
   const [autoRotate3d, setAutoRotate3d] = useState(false);
   const [expanded3d, setExpanded3d] = useState(false);
   const [reset3dViewKey, setReset3dViewKey] = useState(0);
+  const [clipBounds3d, setClipBounds3d] = useState<VolumeClipBounds>(() => createFullVolumeClipBounds());
+  const [slicePlanes3d, setSlicePlanes3d] = useState<VolumeSliceVisibility>({ x: true, y: true, z: true });
+  const [slicePlaneOpacity3d, setSlicePlaneOpacity3d] = useState(0.32);
+  const [cameraCommand3d, setCameraCommand3d] = useState<VolumeCameraCommand | null>(null);
 
   useEffect(() => {
     if (active) return;
@@ -550,6 +581,8 @@ export default function VolumeViewer({
     setSurfaceLevel3d(null);
     setSurfaceLevelRange(null);
     setGpuError(null);
+    setClipBounds3d(createFullVolumeClipBounds());
+    setCameraCommand3d(null);
 
     lastLoadedRef.current = {
       ...lastLoadedRef.current,
@@ -738,6 +771,53 @@ export default function VolumeViewer({
   const maxSliceZ = Math.max(0, dims.z - 1);
   const maxSliceY = Math.max(0, dims.y - 1);
   const maxSliceX = Math.max(0, dims.x - 1);
+
+  const slicePosition3d = useMemo<VolumeSlicePosition>(() => ({
+    x: maxSliceX > 0 ? sliceIndexX / maxSliceX : 0.5,
+    y: maxSliceY > 0 ? sliceIndexY / maxSliceY : 0.5,
+    z: maxSliceZ > 0 ? sliceIndexZ / maxSliceZ : 0.5,
+  }), [sliceIndexX, sliceIndexY, sliceIndexZ, maxSliceX, maxSliceY, maxSliceZ]);
+
+  const clippingActive3d = useMemo(() => {
+    return (["x", "y", "z"] as VolumeAxis[]).some((clipAxis) => {
+      const [min, max] = clipBounds3d[clipAxis];
+      return min > 0.0001 || max < 0.9999;
+    });
+  }, [clipBounds3d]);
+
+  const clippedVolumePercent3d = useMemo(() => {
+    const xSpan = Math.max(0, clipBounds3d.x[1] - clipBounds3d.x[0]);
+    const ySpan = Math.max(0, clipBounds3d.y[1] - clipBounds3d.y[0]);
+    const zSpan = Math.max(0, clipBounds3d.z[1] - clipBounds3d.z[0]);
+    return Math.round(xSpan * ySpan * zSpan * 100);
+  }, [clipBounds3d]);
+
+  const updateClipBounds3d = useCallback((clipAxis: VolumeAxis, range: [number, number]) => {
+    const first = clampNormalized(range[0]);
+    const second = clampNormalized(range[1]);
+    setClipBounds3d((current) => ({
+      ...current,
+      [clipAxis]: first <= second ? [first, second] : [second, first],
+    }));
+  }, []);
+
+  const updateSlicePlane3d = useCallback((sliceAxis: VolumeAxis, normalized: number) => {
+    const value = clampNormalized(normalized);
+    setAutoRotate3d(false);
+    setDraggingSlice("crosshair");
+    if (sliceAxis === "x") setSliceIndexX(Math.round(value * maxSliceX));
+    if (sliceAxis === "y") setSliceIndexY(Math.round(value * maxSliceY));
+    if (sliceAxis === "z") setSliceIndexZ(Math.round(value * maxSliceZ));
+  }, [maxSliceX, maxSliceY, maxSliceZ]);
+
+  const finishSlicePlane3d = useCallback(() => {
+    setDraggingSlice((current) => current === "crosshair" ? null : current);
+  }, []);
+
+  const applyCameraPreset3d = useCallback((preset: VolumeCameraPreset) => {
+    setAutoRotate3d(false);
+    setCameraCommand3d((current) => ({ preset, key: (current?.key ?? 0) + 1 }));
+  }, []);
 
   const updateOrthoPosition = useCallback((position: OrthoPosition) => {
     setDraggingSlice("crosshair");
@@ -2106,6 +2186,13 @@ export default function VolumeViewer({
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={0.8}
                   resetViewKey={reset3dViewKey}
+                  cameraCommand={cameraCommand3d}
+                  clipBounds={clipBounds3d}
+                  slicePosition={slicePosition3d}
+                  sliceVisibility={slicePlanes3d}
+                  slicePlaneOpacity={slicePlaneOpacity3d}
+                  onSlicePositionChange={updateSlicePlane3d}
+                  onSlicePositionChangeEnd={finishSlicePlane3d}
                   onError={handleMeshError}
                 />
               ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
@@ -2118,6 +2205,13 @@ export default function VolumeViewer({
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   resetViewKey={reset3dViewKey}
+                  cameraCommand={cameraCommand3d}
+                  clipBounds={clipBounds3d}
+                  slicePosition={slicePosition3d}
+                  sliceVisibility={slicePlanes3d}
+                  slicePlaneOpacity={slicePlaneOpacity3d}
+                  onSlicePositionChange={updateSlicePlane3d}
+                  onSlicePositionChangeEnd={finishSlicePlane3d}
                   cameraStateKey={meshCameraStateKey}
                   cameraStateRef={meshCameraStateRef}
                   onError={handleMeshError}
@@ -2152,6 +2246,9 @@ export default function VolumeViewer({
                       label="Downsampled"
                       value={`${mapData.dims.x} × ${mapData.dims.y} × ${mapData.dims.z}`}
                     />
+                  )}
+                  {viewMode === "map3d" && clippingActive3d && (
+                    <MetaItem label="Visible region" value={`${clippedVolumePercent3d}%`} />
                   )}
                   {viewMode === "map3d" && renderMode3d === "surface" && surfaceMesh && (
                     <>
@@ -2668,6 +2765,26 @@ export default function VolumeViewer({
 
                       <SectionTitle title="Appearance" />
                       <ParamRow
+                        label="Camera"
+                        helpKey="cameraPreset3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value=""
+                            aria-label="3D camera preset"
+                            onChange={(event) => applyCameraPreset3d(event.target.value as VolumeCameraPreset)}
+                            SelectProps={{ displayEmpty: true, MenuProps: { disablePortal: true } }}
+                          >
+                            <MenuItem value="" disabled>Choose view</MenuItem>
+                            {CAMERA_PRESET_LABELS.map((item) => (
+                              <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                            ))}
+                          </TextField>
+                        }
+                      />
+                      <ParamRow
                         label="Color"
                         helpKey="colorMode3d"
                         onHelp={openHelp}
@@ -2742,6 +2859,27 @@ export default function VolumeViewer({
                             <ToggleButton value="mesh">mesh</ToggleButton>
                           </ToggleButtonGroup>
                         }
+                      />
+
+                      <Divider />
+
+                      <VolumeClippingControls
+                        bounds={clipBounds3d}
+                        dims={dims}
+                        sliceIndices={{ x: sliceIndexX, y: sliceIndexY, z: sliceIndexZ }}
+                        sliceVisibility={slicePlanes3d}
+                        slicePlaneOpacity={slicePlaneOpacity3d}
+                        retainedPercent={clippedVolumePercent3d}
+                        onBoundsChange={updateClipBounds3d}
+                        onResetBounds={() => setClipBounds3d(createFullVolumeClipBounds())}
+                        onSliceVisibilityChange={setSlicePlanes3d}
+                        onSliceIndexChange={(sliceAxis, index) => {
+                          const maxIndex = Math.max(0, dims[sliceAxis] - 1);
+                          updateSlicePlane3d(sliceAxis, maxIndex > 0 ? index / maxIndex : 0.5);
+                        }}
+                        onSliceIndexChangeEnd={finishSlicePlane3d}
+                        onSlicePlaneOpacityChange={setSlicePlaneOpacity3d}
+                        onHelp={openHelp}
                       />
 
                       {usesSurfaceMesh3d && (
@@ -3053,6 +3191,207 @@ export default function VolumeViewer({
           {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
         </Typography>
       </Popover>
+    </Box>
+  );
+}
+
+function VolumeClippingControls({
+  bounds,
+  dims,
+  sliceIndices,
+  sliceVisibility,
+  slicePlaneOpacity,
+  retainedPercent,
+  onBoundsChange,
+  onResetBounds,
+  onSliceVisibilityChange,
+  onSliceIndexChange,
+  onSliceIndexChangeEnd,
+  onSlicePlaneOpacityChange,
+  onHelp,
+}: {
+  bounds: VolumeClipBounds;
+  dims: Record<VolumeAxis, number>;
+  sliceIndices: Record<VolumeAxis, number>;
+  sliceVisibility: VolumeSliceVisibility;
+  slicePlaneOpacity: number;
+  retainedPercent: number;
+  onBoundsChange: (axis: VolumeAxis, range: [number, number]) => void;
+  onResetBounds: () => void;
+  onSliceVisibilityChange: (visibility: VolumeSliceVisibility) => void;
+  onSliceIndexChange: (axis: VolumeAxis, index: number) => void;
+  onSliceIndexChangeEnd: () => void;
+  onSlicePlaneOpacityChange: (opacity: number) => void;
+  onHelp: (key: string) => (event: React.MouseEvent<HTMLElement>) => void;
+}) {
+  const axes: VolumeAxis[] = ["x", "y", "z"];
+  const visibleAxes = axes.filter((axis) => sliceVisibility[axis]);
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+          <SectionTitle title="Clipping & slices" />
+          <IconButton size="small" onClick={onHelp("clipping3d")}>
+            <HelpCircle size={14} />
+          </IconButton>
+        </Box>
+        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+          <Typography variant="caption" color="text.secondary">{retainedPercent}% visible</Typography>
+          <Button size="small" onClick={onResetBounds} sx={{ minWidth: 0, textTransform: "none" }}>Reset</Button>
+        </Box>
+      </Box>
+
+      {axes.map((axis) => (
+        <ClipAxisRangeControl
+          key={axis}
+          axis={axis}
+          maxIndex={Math.max(0, dims[axis] - 1)}
+          range={bounds[axis]}
+          onChange={(range) => onBoundsChange(axis, range)}
+        />
+      ))}
+
+      <Divider sx={{ my: 0.25 }} />
+
+      <ParamRow
+        label="Slice planes"
+        helpKey="slicePlanes3d"
+        onHelp={onHelp}
+        control={
+          <ToggleButtonGroup
+            size="small"
+            value={visibleAxes}
+            aria-label="Visible 3D slice planes"
+            onChange={(_, values: VolumeAxis[]) => {
+              const selected = new Set(values);
+              onSliceVisibilityChange({ x: selected.has("x"), y: selected.has("y"), z: selected.has("z") });
+            }}
+          >
+            {axes.map((axis) => (
+              <ToggleButton key={axis} value={axis} aria-label={`${axis.toUpperCase()} slice plane`} sx={{ color: ORTHO_AXIS_COLORS[axis] }}>
+                {axis.toUpperCase()}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        }
+      />
+
+      {axes.map((axis) => (
+        <SlicePlanePositionControl
+          key={axis}
+          axis={axis}
+          value={sliceIndices[axis]}
+          maxIndex={Math.max(0, dims[axis] - 1)}
+          visible={sliceVisibility[axis]}
+          onChange={(index) => onSliceIndexChange(axis, index)}
+          onChangeEnd={onSliceIndexChangeEnd}
+        />
+      ))}
+
+      <Box>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Plane opacity</Typography>
+            <IconButton size="small" onClick={onHelp("slicePlaneOpacity3d")}>
+              <HelpCircle size={14} />
+            </IconButton>
+          </Box>
+          <Typography variant="caption" color="text.secondary">{Math.round(slicePlaneOpacity * 100)}%</Typography>
+        </Box>
+        <Slider
+          size="small"
+          value={slicePlaneOpacity}
+          min={0.05}
+          max={0.8}
+          step={0.01}
+          disabled={visibleAxes.length === 0}
+          aria-label="3D slice plane opacity"
+          onChange={(_, value) => onSlicePlaneOpacityChange(value as number)}
+        />
+      </Box>
+
+      <Typography variant="caption" color="text.secondary">
+        Shift+drag a visible plane in 3D to move its synchronized X/Y/Z slice.
+      </Typography>
+    </Box>
+  );
+}
+
+function ClipAxisRangeControl({
+  axis,
+  maxIndex,
+  range,
+  onChange,
+}: {
+  axis: VolumeAxis;
+  maxIndex: number;
+  range: [number, number];
+  onChange: (range: [number, number]) => void;
+}) {
+  const sliderMax = Math.max(1, maxIndex);
+  const value: [number, number] = [Math.round(range[0] * sliderMax), Math.round(range[1] * sliderMax)];
+
+  return (
+    <Box>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Typography variant="caption" sx={{ color: ORTHO_AXIS_COLORS[axis], fontWeight: 700 }}>{axis.toUpperCase()} clip</Typography>
+        <Typography variant="caption" color="text.secondary">{value[0] + 1}–{value[1] + 1}</Typography>
+      </Box>
+      <Slider
+        size="small"
+        value={value}
+        min={0}
+        max={sliderMax}
+        step={1}
+        disableSwap
+        disabled={maxIndex <= 0}
+        getAriaLabel={(thumbIndex) => `${axis.toUpperCase()} clipping ${thumbIndex === 0 ? "minimum" : "maximum"}`}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(index) => `${(index as number) + 1}`}
+        onChange={(_, rawValue) => {
+          const values = rawValue as number[];
+          onChange([values[0] / sliderMax, values[1] / sliderMax]);
+        }}
+        sx={{ color: ORTHO_AXIS_COLORS[axis], py: 0.5 }}
+      />
+    </Box>
+  );
+}
+
+function SlicePlanePositionControl({
+  axis,
+  value,
+  maxIndex,
+  visible,
+  onChange,
+  onChangeEnd,
+}: {
+  axis: VolumeAxis;
+  value: number;
+  maxIndex: number;
+  visible: boolean;
+  onChange: (index: number) => void;
+  onChangeEnd: () => void;
+}) {
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: "48px 1fr 48px", gap: 1, alignItems: "center" }}>
+      <Typography variant="caption" sx={{ color: ORTHO_AXIS_COLORS[axis], fontWeight: 700 }}>{axis.toUpperCase()} slice</Typography>
+      <Slider
+        size="small"
+        value={Math.max(0, Math.min(value, maxIndex))}
+        min={0}
+        max={Math.max(1, maxIndex)}
+        step={1}
+        disabled={!visible || maxIndex <= 0}
+        aria-label={`${axis.toUpperCase()} 3D slice position`}
+        onChange={(_, rawValue) => onChange(rawValue as number)}
+        onChangeCommitted={onChangeEnd}
+        sx={{ color: ORTHO_AXIS_COLORS[axis], py: 0.5 }}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+        {Math.min(value, maxIndex) + 1}/{maxIndex + 1}
+      </Typography>
     </Box>
   );
 }

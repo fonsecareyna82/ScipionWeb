@@ -6,6 +6,15 @@ import type {
   VolumeColorMode,
   VolumeRegionLabels,
 } from "./volume-color-utils";
+import {
+  clampNormalized,
+  normalizeVolumeClipBounds,
+  type VolumeAxis,
+  type VolumeCameraCommand,
+  type VolumeClipBounds,
+  type VolumeSlicePosition,
+  type VolumeSliceVisibility,
+} from "./volume-3d-types";
 
 export type GpuVolumeViewProps = {
   values: number[] | Float32Array;
@@ -25,7 +34,25 @@ export type GpuVolumeViewProps = {
   autoRotate?: boolean;
   autoRotateSpeed?: number;
   resetViewKey?: number;
+  cameraCommand?: VolumeCameraCommand | null;
+  clipBounds?: VolumeClipBounds;
+  slicePosition?: VolumeSlicePosition;
+  sliceVisibility?: VolumeSliceVisibility;
+  slicePlaneOpacity?: number;
+  onSlicePositionChange?: (axis: VolumeAxis, position: number) => void;
+  onSlicePositionChangeEnd?: () => void;
   onError?: (msg: string) => void;
+};
+
+type SlicePlaneDragState = {
+  pointerId: number;
+  axis: VolumeAxis;
+  startPosition: number;
+  startX: number;
+  startY: number;
+  screenAxisX: number;
+  screenAxisY: number;
+  normalizedStep: number;
 };
 
 const VERT = `
@@ -65,6 +92,11 @@ const FRAG = `
   uniform int uSteps;
   uniform int uCmap;
   uniform vec3 uLightDir;
+  uniform vec3 uClipMin;
+  uniform vec3 uClipMax;
+  uniform vec3 uSlicePosition;
+  uniform vec3 uSliceVisible;
+  uniform float uSliceOpacity;
 
   float sampleD(vec3 uvw) {
   float raw = texture(uTex, uvw).r;
@@ -186,8 +218,8 @@ const FRAG = `
   }
 
   bool intersectBox(vec3 ro, vec3 rd, out float t0, out float t1) {
-    vec3 boxMin = vec3(-0.5);
-    vec3 boxMax = vec3(0.5);
+    vec3 boxMin = uClipMin - vec3(0.5);
+    vec3 boxMax = uClipMax - vec3(0.5);
     vec3 invRd = 1.0 / rd;
 
     vec3 tMin = (boxMin - ro) * invRd;
@@ -200,6 +232,12 @@ const FRAG = `
     return t1 >= max(t0, 0.0);
   }
 
+  bool crossesSlice(float currentValue, float nextValue, float sliceValue) {
+    return
+      (currentValue <= sliceValue && nextValue >= sliceValue) ||
+      (currentValue >= sliceValue && nextValue <= sliceValue);
+  }
+
   void main() {
     vec3 ro = vCamLocal;
     vec3 rd = normalize(vPos - vCamLocal);
@@ -207,7 +245,10 @@ const FRAG = `
     float t0, t1;
     if (!intersectBox(ro, rd, t0, t1)) discard;
 
-    float dt = (t1 - t0) / float(uSteps);
+    t0 = max(t0, 0.0);
+    float rayFraction = clamp((t1 - t0) / 1.7320508, 0.02, 1.0);
+    float raySteps = max(24.0, ceil(float(uSteps) * rayFraction));
+    float dt = (t1 - t0) / raySteps;
     vec4 acc = vec4(0.0);
 
     float denom = max(1e-5, (uIsoMax - uIsoMin));
@@ -218,16 +259,52 @@ const FRAG = `
     float tJit = (jitter - 0.5) * dt;
 
     for (int i = 0; i < 512; i++) {
-      if (i >= uSteps) break;
+      if (float(i) >= raySteps) break;
 
       float tRay = t0 + dt * (float(i) + 0.5) + tJit;
       vec3 p = ro + rd * tRay;
       vec3 uvw = p + 0.5;
+      vec3 nextUvw = uvw + rd * dt;
 
       float d = sampleD(uvw);
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
-            if (uIsoMode == 0) {
+      if (uSliceOpacity > 0.001) {
+        vec3 sliceAxisColor = vec3(0.0);
+        vec3 sliceUvw = uvw;
+        bool hitSlice = false;
+
+        if (uSliceVisible.x > 0.5 && abs(rd.x) > 1e-6 && crossesSlice(uvw.x, nextUvw.x, uSlicePosition.x)) {
+          sliceUvw = uvw + rd * ((uSlicePosition.x - uvw.x) / rd.x);
+          sliceAxisColor = vec3(0.937, 0.267, 0.267);
+          hitSlice = true;
+        } else if (uSliceVisible.y > 0.5 && abs(rd.y) > 1e-6 && crossesSlice(uvw.y, nextUvw.y, uSlicePosition.y)) {
+          sliceUvw = uvw + rd * ((uSlicePosition.y - uvw.y) / rd.y);
+          sliceAxisColor = vec3(0.133, 0.773, 0.369);
+          hitSlice = true;
+        } else if (uSliceVisible.z > 0.5 && abs(rd.z) > 1e-6 && crossesSlice(uvw.z, nextUvw.z, uSlicePosition.z)) {
+          sliceUvw = uvw + rd * ((uSlicePosition.z - uvw.z) / rd.z);
+          sliceAxisColor = vec3(0.231, 0.510, 0.965);
+          hitSlice = true;
+        }
+
+        if (
+          hitSlice &&
+          all(greaterThanEqual(sliceUvw, uClipMin - vec3(1e-5))) &&
+          all(lessThanEqual(sliceUvw, uClipMax + vec3(1e-5)))
+        ) {
+          float sliceDensity = sampleD(sliceUvw);
+          vec3 sliceColor = mix(cmap(sliceDensity), sliceAxisColor, 0.20);
+          float sliceAlpha = clamp(uSliceOpacity * (0.42 + 0.58 * sliceDensity), 0.0, 0.92);
+
+          acc.rgb += (1.0 - acc.a) * sliceColor * sliceAlpha;
+          acc.a += (1.0 - acc.a) * sliceAlpha;
+
+          if (acc.a > 0.94) break;
+        }
+      }
+
+      if (uIsoMode == 0) {
         if (uColorMode == 2 && uHasRegions == 1) {
           float regionId =
             floor(texture(uRegionTex, uvw).r * 255.0 + 0.5);
@@ -465,6 +542,13 @@ export default function GpuVolumeView({
   autoRotate = false,
   autoRotateSpeed = 0.8,
   resetViewKey = 0,
+  cameraCommand = null,
+  clipBounds,
+  slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
+  sliceVisibility = { x: false, y: false, z: false },
+  slicePlaneOpacity = 0.32,
+  onSlicePositionChange,
+  onSlicePositionChangeEnd,
   onError,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -475,17 +559,26 @@ export default function GpuVolumeView({
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const clipBoxRef = useRef<THREE.Box3Helper | null>(null);
   const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const requestRenderRef = useRef<() => void>(() => { });
   const resetViewRef = useRef<() => void>(() => { });
+  const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => { });
+  const onSlicePositionChangeRef = useRef(onSlicePositionChange);
+  const onSlicePositionChangeEndRef = useRef(onSlicePositionChangeEnd);
 
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    onSlicePositionChangeRef.current = onSlicePositionChange;
+    onSlicePositionChangeEndRef.current = onSlicePositionChangeEnd;
+  }, [onSlicePositionChange, onSlicePositionChangeEnd]);
 
   const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
 
@@ -529,6 +622,7 @@ export default function GpuVolumeView({
 
   const cmapId = useMemo(() => cmapToId(colormap), [colormap]);
   const shellClamped = useMemo(() => Math.max(0.02, Math.min(1, shell)), [shell]);
+  const normalizedClipBounds = useMemo(() => normalizeVolumeClipBounds(clipBounds), [clipBounds]);
 
   useEffect(() => {
     if (!tex || !mountRef.current || rendererRef.current) return;
@@ -627,6 +721,11 @@ export default function GpuVolumeView({
         uCmap: { value: cmapId },
         uInvModel: { value: uInvModel },
         uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
+        uClipMin: { value: new THREE.Vector3(normalizedClipBounds.x[0], normalizedClipBounds.y[0], normalizedClipBounds.z[0]) },
+        uClipMax: { value: new THREE.Vector3(normalizedClipBounds.x[1], normalizedClipBounds.y[1], normalizedClipBounds.z[1]) },
+        uSlicePosition: { value: new THREE.Vector3(slicePosition.x, slicePosition.y, slicePosition.z) },
+        uSliceVisible: { value: new THREE.Vector3(Number(sliceVisibility.x), Number(sliceVisibility.y), Number(sliceVisibility.z)) },
+        uSliceOpacity: { value: clampFloat(slicePlaneOpacity, 0, 1) },
       },
       side: THREE.BackSide,
       transparent: true,
@@ -638,6 +737,16 @@ export default function GpuVolumeView({
     mesh.scale.copy(scaleVec);
     meshRef.current = mesh;
     scene.add(mesh);
+
+    const clipBox = new THREE.Box3Helper(new THREE.Box3(), 0x94a3b8);
+    const clipBoxMaterial = clipBox.material as THREE.LineBasicMaterial;
+    clipBoxMaterial.transparent = true;
+    clipBoxMaterial.opacity = 0.72;
+    clipBoxMaterial.depthTest = false;
+    clipBox.renderOrder = 5;
+    clipBoxRef.current = clipBox;
+    updateGpuClipBox(clipBox, normalizedClipBounds, scaleVec);
+    scene.add(clipBox);
 
     const clock = new THREE.Clock();
 
@@ -651,6 +760,7 @@ export default function GpuVolumeView({
       lastWheelAt: 0,
       dprApplied: -1,
     };
+    let slicePlaneDrag: SlicePlaneDragState | null = null;
 
     const tmpDir = new THREE.Vector3();
     const tmpCamDir = new THREE.Vector3();
@@ -739,11 +849,132 @@ export default function GpuVolumeView({
       onControlsEnd,
     );
 
-    const onPointerDown = () => {
+    const pickSlicePlane = (event: PointerEvent): VolumeAxis | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+
+      const pointer = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pointer, camera);
+      mesh.updateMatrixWorld(true);
+
+      const localOrigin = mesh.worldToLocal(raycaster.ray.origin.clone());
+      const localPoint = mesh.worldToLocal(raycaster.ray.origin.clone().add(raycaster.ray.direction));
+      const localDirection = localPoint.sub(localOrigin).normalize();
+      const clipMin = material.uniforms.uClipMin.value as THREE.Vector3;
+      const clipMax = material.uniforms.uClipMax.value as THREE.Vector3;
+      const positions = material.uniforms.uSlicePosition.value as THREE.Vector3;
+      const visible = material.uniforms.uSliceVisible.value as THREE.Vector3;
+      const axes: VolumeAxis[] = ["x", "y", "z"];
+      let selectedAxis: VolumeAxis | null = null;
+      let selectedDistance = Infinity;
+
+      for (const sliceAxis of axes) {
+        if (getVectorAxis(visible, sliceAxis) < 0.5) continue;
+        const direction = getVectorAxis(localDirection, sliceAxis);
+        if (Math.abs(direction) < 1e-6) continue;
+
+        const planeCoordinate = getVectorAxis(positions, sliceAxis) - 0.5;
+        const distance = (planeCoordinate - getVectorAxis(localOrigin, sliceAxis)) / direction;
+        if (distance <= 0 || distance >= selectedDistance) continue;
+
+        const hit = localOrigin.clone().addScaledVector(localDirection, distance).addScalar(0.5);
+        if (!pointInsideBounds(hit, clipMin, clipMax)) continue;
+
+        selectedAxis = sliceAxis;
+        selectedDistance = distance;
+      }
+
+      return selectedAxis;
+    };
+
+    const createSlicePlaneDrag = (event: PointerEvent, sliceAxis: VolumeAxis): SlicePlaneDragState => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const positions = material.uniforms.uSlicePosition.value as THREE.Vector3;
+      const clipMin = material.uniforms.uClipMin.value as THREE.Vector3;
+      const clipMax = material.uniforms.uClipMax.value as THREE.Vector3;
+      const center = new THREE.Vector3(
+        (clipMin.x + clipMax.x) * 0.5 - 0.5,
+        (clipMin.y + clipMax.y) * 0.5 - 0.5,
+        (clipMin.z + clipMax.z) * 0.5 - 0.5,
+      );
+      setVectorAxis(center, sliceAxis, getVectorAxis(positions, sliceAxis) - 0.5);
+
+      const normalizedStep = 0.2;
+      const shifted = center.clone();
+      setVectorAxis(shifted, sliceAxis, getVectorAxis(shifted, sliceAxis) + normalizedStep);
+
+      const projectedStart = mesh.localToWorld(center.clone()).project(camera);
+      const projectedEnd = mesh.localToWorld(shifted).project(camera);
+      let screenAxisX = (projectedEnd.x - projectedStart.x) * rect.width * 0.5;
+      let screenAxisY = -(projectedEnd.y - projectedStart.y) * rect.height * 0.5;
+
+      if (screenAxisX * screenAxisX + screenAxisY * screenAxisY < 64) {
+        screenAxisX = 0;
+        screenAxisY = -Math.max(100, Math.min(rect.width, rect.height) * 0.35);
+      }
+
+      return {
+        pointerId: event.pointerId,
+        axis: sliceAxis,
+        startPosition: getVectorAxis(positions, sliceAxis),
+        startX: event.clientX,
+        startY: event.clientY,
+        screenAxisX,
+        screenAxisY,
+        normalizedStep,
+      };
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button === 0 && event.shiftKey && onSlicePositionChangeRef.current) {
+        const selectedAxis = pickSlicePlane(event);
+        if (selectedAxis) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          slicePlaneDrag = createSlicePlaneDrag(event, selectedAxis);
+          controls.enabled = false;
+          controls.autoRotate = false;
+          interactionState.isDragging = true;
+          renderer.domElement.style.cursor = "ns-resize";
+          renderer.domElement.setPointerCapture?.(event.pointerId);
+          requestRender();
+          return;
+        }
+      }
+
       interactionState.isDragging = true;
       requestRender();
     };
-    const onPointerUp = () => {
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!slicePlaneDrag || slicePlaneDrag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+
+      const denominator = slicePlaneDrag.screenAxisX ** 2 + slicePlaneDrag.screenAxisY ** 2;
+      if (denominator <= 1e-6) return;
+
+      const deltaX = event.clientX - slicePlaneDrag.startX;
+      const deltaY = event.clientY - slicePlaneDrag.startY;
+      const projectedDelta = (deltaX * slicePlaneDrag.screenAxisX + deltaY * slicePlaneDrag.screenAxisY) / denominator;
+      const nextPosition = clampNormalized(slicePlaneDrag.startPosition + projectedDelta * slicePlaneDrag.normalizedStep);
+      onSlicePositionChangeRef.current?.(slicePlaneDrag.axis, nextPosition);
+      requestRender();
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (slicePlaneDrag && slicePlaneDrag.pointerId === event.pointerId) {
+        renderer.domElement.releasePointerCapture?.(event.pointerId);
+        slicePlaneDrag = null;
+        controls.enabled = true;
+        renderer.domElement.style.cursor = "";
+        onSlicePositionChangeEndRef.current?.();
+      }
+
       interactionState.isDragging = false;
       requestRender();
     };
@@ -795,6 +1026,7 @@ export default function GpuVolumeView({
       if (!cam || !ctrls) return;
 
       ctrls.target.set(0, 0, 0);
+      cam.up.set(0, 1, 0);
       cam.position.set(1.8, 1.2, 1.8);
       cam.updateProjectionMatrix();
       zoomState.hasTarget = false;
@@ -804,9 +1036,32 @@ export default function GpuVolumeView({
 
     resetViewRef.current = resetView;
 
+    const applyCameraCommand = (command: VolumeCameraCommand) => {
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
+
+      const target = ctrls.target.clone();
+      const currentDistance = cam.position.distanceTo(target);
+      const distance = Number.isFinite(currentDistance) && currentDistance > 0.1 ? currentDistance : 2.8;
+      const direction = cameraPresetDirection(command.preset);
+
+      cam.up.copy(cameraPresetUp(command.preset));
+      cam.position.copy(target).addScaledVector(direction, distance);
+      cam.updateProjectionMatrix();
+      controls.autoRotate = false;
+      zoomState.hasTarget = false;
+      ctrls.update();
+      requestRender();
+    };
+
+    applyCameraCommandRef.current = applyCameraCommand;
+
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerdown", onPointerDown, { capture: true });
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     renderer.domElement.addEventListener("dblclick", resetView);
 
     const requestRender = () => {
@@ -931,8 +1186,10 @@ export default function GpuVolumeView({
       ro.disconnect();
 
       renderer.domElement.removeEventListener("wheel", onWheel);
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", resetView);
       document.removeEventListener("visibilitychange", onVisibilityChange);
 
@@ -953,10 +1210,13 @@ export default function GpuVolumeView({
 
       requestRenderRef.current = () => { };
       resetViewRef.current = () => { };
+      applyCameraCommandRef.current = () => { };
 
       controls.dispose();
       geometry.dispose();
       material.dispose();
+      clipBox.geometry.dispose();
+      clipBoxMaterial.dispose();
 
       if (prevTexRef.current) {
         try {
@@ -986,6 +1246,7 @@ export default function GpuVolumeView({
       controlsRef.current = null;
       meshRef.current = null;
       materialRef.current = null;
+      clipBoxRef.current = null;
       uInvModelRef.current = null;
       rafRef.current = null;
     };
@@ -998,6 +1259,10 @@ export default function GpuVolumeView({
   useEffect(() => {
     if (resetViewKey > 0) resetViewRef.current();
   }, [resetViewKey]);
+
+  useEffect(() => {
+    if (cameraCommand) applyCameraCommandRef.current(cameraCommand);
+  }, [cameraCommand]);
 
   // updateAutoRotateWhenPropsChange
   useEffect(() => {
@@ -1074,9 +1339,46 @@ export default function GpuVolumeView({
   ]);
 
   useEffect(() => {
-    meshRef.current?.scale.copy(scaleVec);
+    const mat = materialRef.current;
+    if (!mat) return;
+
+    mat.uniforms.uClipMin.value.set(normalizedClipBounds.x[0], normalizedClipBounds.y[0], normalizedClipBounds.z[0]);
+    mat.uniforms.uClipMax.value.set(normalizedClipBounds.x[1], normalizedClipBounds.y[1], normalizedClipBounds.z[1]);
+    if (clipBoxRef.current) updateGpuClipBox(clipBoxRef.current, normalizedClipBounds, scaleVec);
     requestRenderRef.current();
-  }, [scaleVec]);
+  }, [normalizedClipBounds, scaleVec]);
+
+  useEffect(() => {
+    const mat = materialRef.current;
+    if (!mat) return;
+
+    mat.uniforms.uSlicePosition.value.set(
+      clampNormalized(slicePosition.x),
+      clampNormalized(slicePosition.y),
+      clampNormalized(slicePosition.z),
+    );
+    mat.uniforms.uSliceVisible.value.set(
+      Number(sliceVisibility.x),
+      Number(sliceVisibility.y),
+      Number(sliceVisibility.z),
+    );
+    mat.uniforms.uSliceOpacity.value = clampFloat(slicePlaneOpacity, 0, 1);
+    requestRenderRef.current();
+  }, [
+    slicePosition.x,
+    slicePosition.y,
+    slicePosition.z,
+    sliceVisibility.x,
+    sliceVisibility.y,
+    sliceVisibility.z,
+    slicePlaneOpacity,
+  ]);
+
+  useEffect(() => {
+    meshRef.current?.scale.copy(scaleVec);
+    if (clipBoxRef.current) updateGpuClipBox(clipBoxRef.current, normalizedClipBounds, scaleVec);
+    requestRenderRef.current();
+  }, [scaleVec, normalizedClipBounds]);
 
   if (!tex) return <div style={{ width: "100%", height: "100%" }} />;
 
@@ -1106,4 +1408,51 @@ export default function GpuVolumeView({
 function clampFloat(v: number, lo: number, hi: number) {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
+}
+
+function getVectorAxis(vector: THREE.Vector3, axis: VolumeAxis): number {
+  if (axis === "x") return vector.x;
+  if (axis === "y") return vector.y;
+  return vector.z;
+}
+
+function setVectorAxis(vector: THREE.Vector3, axis: VolumeAxis, value: number): void {
+  if (axis === "x") vector.x = value;
+  else if (axis === "y") vector.y = value;
+  else vector.z = value;
+}
+
+function pointInsideBounds(point: THREE.Vector3, min: THREE.Vector3, max: THREE.Vector3): boolean {
+  const epsilon = 1e-5;
+  return point.x >= min.x - epsilon && point.x <= max.x + epsilon && point.y >= min.y - epsilon && point.y <= max.y + epsilon && point.z >= min.z - epsilon && point.z <= max.z + epsilon;
+}
+
+function updateGpuClipBox(helper: THREE.Box3Helper, bounds: VolumeClipBounds, scale: THREE.Vector3): void {
+  helper.box.min.set(
+    (bounds.x[0] - 0.5) * scale.x,
+    (bounds.y[0] - 0.5) * scale.y,
+    (bounds.z[0] - 0.5) * scale.z,
+  );
+  helper.box.max.set(
+    (bounds.x[1] - 0.5) * scale.x,
+    (bounds.y[1] - 0.5) * scale.y,
+    (bounds.z[1] - 0.5) * scale.z,
+  );
+  helper.visible = (["x", "y", "z"] as VolumeAxis[]).some((axis) => bounds[axis][0] > 0.0001 || bounds[axis][1] < 0.9999);
+  helper.updateMatrixWorld(true);
+}
+
+function cameraPresetDirection(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
+  if (preset === "front") return new THREE.Vector3(0, 0, 1);
+  if (preset === "back") return new THREE.Vector3(0, 0, -1);
+  if (preset === "left") return new THREE.Vector3(-1, 0, 0);
+  if (preset === "right") return new THREE.Vector3(1, 0, 0);
+  if (preset === "top") return new THREE.Vector3(0, 1, 0);
+  return new THREE.Vector3(0, -1, 0);
+}
+
+function cameraPresetUp(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
+  if (preset === "top") return new THREE.Vector3(0, 0, -1);
+  if (preset === "bottom") return new THREE.Vector3(0, 0, 1);
+  return new THREE.Vector3(0, 1, 0);
 }
