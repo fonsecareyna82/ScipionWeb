@@ -399,6 +399,85 @@ describe("VolumeViewer", () => {
         });
     });
 
+    it("steps each orthogonal plane with the wheel and keyboard", async () => {
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+
+        await waitFor(() => {
+            const readyCall = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.find((call) => call[4] === 2 && call[5]?.axis === "z" && Number.isFinite(call[5]?.windowMin));
+            expect(readyCall).toBeTruthy();
+        });
+
+        fireEvent.wheel(zView, { deltaY: 100 });
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                1,
+                3,
+                expect.objectContaining({ axis: "z" }),
+            );
+        });
+
+        expect(zView).toHaveAttribute("aria-valuetext", "4 of 5");
+
+        const zCenterCallsBeforeReturn = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.filter((call) => call[4] === 2 && call[5]?.axis === "z").length;
+
+        fireEvent.keyDown(zView, { key: "ArrowLeft" });
+
+        await waitFor(() => {
+            expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        });
+
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        const zCenterCallsAfterReturn = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.filter((call) => call[4] === 2 && call[5]?.axis === "z").length;
+        expect(zCenterCallsAfterReturn).toBe(zCenterCallsBeforeReturn);
+    });
+
+    it("moves the synchronized MPR crosshair by clicking an orthogonal view", async () => {
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        vi.spyOn(zView, "getBoundingClientRect").mockReturnValue({
+            x: 0,
+            y: 0,
+            left: 0,
+            top: 0,
+            right: 700,
+            bottom: 600,
+            width: 700,
+            height: 600,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.click(zView, { clientX: 600, clientY: 500 });
+
+        expect(await screen.findByLabelText("MPR navigator position X 6 Y 5 Z 3")).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                1,
+                5,
+                expect.objectContaining({ axis: "x" }),
+            );
+            expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                1,
+                4,
+                expect.objectContaining({ axis: "y" }),
+            );
+        });
+    });
+
     it("changes axis in single-slice mode and requests the correct slice axis", async () => {
         renderViewer();
 

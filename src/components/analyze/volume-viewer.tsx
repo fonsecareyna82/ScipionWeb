@@ -21,7 +21,7 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Crosshair } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
 import useVolumeRegions from "./use-volume-regions";
@@ -65,12 +65,20 @@ type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
 type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
+type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
 
 type SliceImageState = {
   url: string | null;
   loading: boolean;
   error: string | null;
 };
+
+type SliceImageCacheEntry = {
+  url: string;
+  revoke: () => void;
+};
+
+type SliceImageCache = Map<string, SliceImageCacheEntry>;
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
@@ -86,6 +94,7 @@ const CMAP_OPTIONS = [
 const SURFACE_MAX_TRIANGLES = 500000;
 const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
+const SLICE_IMAGE_CACHE_MAX_ITEMS = 48;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
@@ -226,7 +235,7 @@ export default function VolumeViewer({
   const [sliceIndexY, setSliceIndexY] = useState(0);
   const [sliceIndexX, setSliceIndexX] = useState(0);
 
-  const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x">(null);
+  const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x" | "crosshair">(null);
 
   const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
@@ -236,13 +245,13 @@ export default function VolumeViewer({
     draggingSlice === "single" ? throttledSliceIndex : sliceIndex;
 
   const effectiveSliceIndexZ =
-    draggingSlice === "z" ? throttledSliceIndexZ : sliceIndexZ;
+    draggingSlice === "z" || draggingSlice === "crosshair" ? throttledSliceIndexZ : sliceIndexZ;
 
   const effectiveSliceIndexY =
-    draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+    draggingSlice === "y" || draggingSlice === "crosshair" ? throttledSliceIndexY : sliceIndexY;
 
   const effectiveSliceIndexX =
-    draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
+    draggingSlice === "x" || draggingSlice === "crosshair" ? throttledSliceIndexX : sliceIndexX;
 
   const [colormap, setColormap] = useState<string>("gray");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
@@ -256,6 +265,7 @@ export default function VolumeViewer({
 
 
   const [sliceReloadNonce, setSliceReloadNonce] = useState(0);
+  const sliceImageCacheRef = useRef<SliceImageCache>(new Map());
   const bumpSliceReload = useCallback(() => {
     setSliceReloadNonce((n) => n + 1);
   }, []);
@@ -403,6 +413,8 @@ export default function VolumeViewer({
       volumeRequestSeqRef.current += 1;
       volumeAbortRef.current?.abort();
       volumeAbortRef.current = null;
+
+      clearSliceImageCache(sliceImageCacheRef.current);
     };
   }, []);
 
@@ -675,6 +687,23 @@ export default function VolumeViewer({
   const maxSliceY = Math.max(0, dims.y - 1);
   const maxSliceX = Math.max(0, dims.x - 1);
 
+  const updateOrthoPosition = useCallback((position: OrthoPosition) => {
+    setDraggingSlice("crosshair");
+    if (position.x != null) setSliceIndexX(clampInt(Math.round(position.x), 0, maxSliceX));
+    if (position.y != null) setSliceIndexY(clampInt(Math.round(position.y), 0, maxSliceY));
+    if (position.z != null) setSliceIndexZ(clampInt(Math.round(position.z), 0, maxSliceZ));
+  }, [maxSliceX, maxSliceY, maxSliceZ]);
+
+  const finishOrthoNavigation = useCallback(() => {
+    setDraggingSlice((current) => current === "crosshair" ? null : current);
+  }, []);
+
+  const stepOrthoSlice = useCallback((sliceAxis: "x" | "y" | "z", delta: number) => {
+    if (sliceAxis === "x") setSliceIndexX((current) => clampInt(current + delta, 0, maxSliceX));
+    if (sliceAxis === "y") setSliceIndexY((current) => clampInt(current + delta, 0, maxSliceY));
+    if (sliceAxis === "z") setSliceIndexZ((current) => clampInt(current + delta, 0, maxSliceZ));
+  }, [maxSliceX, maxSliceY, maxSliceZ]);
+
   useEffect(() => {
     if (!selectedMetaReady) return;
 
@@ -762,6 +791,7 @@ export default function VolumeViewer({
     colormap,
     sliceIndex: effectiveSliceIndex,
     requestOptions: singleSliceFetchOptions,
+    cacheRef: sliceImageCacheRef,
   });
 
   const frontUrl = singleSlice.url;
@@ -780,6 +810,7 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: zSliceFetchOptions,
+    cacheRef: sliceImageCacheRef,
   });
 
   const ySlice = useVolumeSliceImage({
@@ -795,6 +826,7 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: ySliceFetchOptions,
+    cacheRef: sliceImageCacheRef,
   });
 
   const xSlice = useVolumeSliceImage({
@@ -810,6 +842,7 @@ export default function VolumeViewer({
     colormap,
     reloadKey: sliceReloadNonce,
     requestOptions: xSliceFetchOptions,
+    cacheRef: sliceImageCacheRef,
   });
 
   const sliceImagesLoading =
@@ -1903,6 +1936,9 @@ export default function VolumeViewer({
                     zOverlayUrl={zOverlayUrl}
                     yOverlayUrl={yOverlayUrl}
                     xOverlayUrl={xOverlayUrl}
+                    onNavigate={updateOrthoPosition}
+                    onNavigateEnd={finishOrthoNavigation}
+                    onStepSlice={stepOrthoSlice}
                   />
                 ) : imgError ? (
                   <Typography variant="body2" color="error">
@@ -3197,6 +3233,9 @@ function OrthoSlicesGrid({
   zOverlayUrl,
   yOverlayUrl,
   xOverlayUrl,
+  onNavigate,
+  onNavigateEnd,
+  onStepSlice,
 }: {
   dims: Record<"x" | "y" | "z", number>;
   zSlice: SliceImageState;
@@ -3210,10 +3249,14 @@ function OrthoSlicesGrid({
   zOverlayUrl?: string | null;
   yOverlayUrl?: string | null;
   xOverlayUrl?: string | null;
+  onNavigate: (position: OrthoPosition) => void;
+  onNavigateEnd: () => void;
+  onStepSlice: (axis: "x" | "y" | "z", delta: number) => void;
 }) {
   const colX = ORTHO_AXIS_COLORS.x;
   const colY = ORTHO_AXIS_COLORS.y;
   const colZ = ORTHO_AXIS_COLORS.z;
+  const [activeAxis, setActiveAxis] = useState<"x" | "y" | "z" | null>(null);
 
   const gx = Math.max(1, dims.x || 1);
   const gy = Math.max(1, dims.y || 1);
@@ -3235,6 +3278,9 @@ function OrthoSlicesGrid({
       <OrthoSlicePanel
         label="Y (XZ)"
         labelDotColor={colY}
+        active={activeAxis === "y"}
+        currentSlice={sliceIndexY}
+        maxSlice={Math.max(0, dims.y - 1)}
         gridArea={{ col: "1 / 2", row: "1 / 2" }}
         imageUrl={ySlice.url}
         overlayUrl={yOverlayUrl}
@@ -3254,13 +3300,21 @@ function OrthoSlicesGrid({
           color: colZ,
           max: Math.max(1, dims.z),
         }}
+        onNavigate={(imageX, imageY) => onNavigate({ x: imageX, z: imageY })}
+        onNavigationStart={() => setActiveAxis("y")}
+        onNavigationEnd={onNavigateEnd}
+        onStepSlice={(delta) => {
+          setActiveAxis("y");
+          onStepSlice("y", delta);
+        }}
       />
-
-
 
       <OrthoSlicePanel
         label="Z (XY)"
         labelDotColor={colZ}
+        active={activeAxis === "z"}
+        currentSlice={sliceIndexZ}
+        maxSlice={Math.max(0, dims.z - 1)}
         gridArea={{ col: "1 / 2", row: "2 / 3" }}
         imageUrl={zSlice.url}
         overlayUrl={zOverlayUrl}
@@ -3280,11 +3334,21 @@ function OrthoSlicesGrid({
           color: colY,
           max: Math.max(1, dims.y),
         }}
+        onNavigate={(imageX, imageY) => onNavigate({ x: imageX, y: imageY })}
+        onNavigationStart={() => setActiveAxis("z")}
+        onNavigationEnd={onNavigateEnd}
+        onStepSlice={(delta) => {
+          setActiveAxis("z");
+          onStepSlice("z", delta);
+        }}
       />
 
       <OrthoSlicePanel
         label="X (YZ)"
         labelDotColor={colX}
+        active={activeAxis === "x"}
+        currentSlice={sliceIndexX}
+        maxSlice={Math.max(0, dims.x - 1)}
         gridArea={{ col: "2 / 3", row: "2 / 3" }}
         imageUrl={xSlice.url}
         overlayUrl={xOverlayUrl}
@@ -3305,7 +3369,60 @@ function OrthoSlicesGrid({
           color: colZ,
           max: Math.max(1, dims.z),
         }}
+        onNavigate={(imageX, imageY) => onNavigate({ y: imageX, z: imageY })}
+        onNavigationStart={() => setActiveAxis("x")}
+        onNavigationEnd={onNavigateEnd}
+        onStepSlice={(delta) => {
+          setActiveAxis("x");
+          onStepSlice("x", delta);
+        }}
       />
+
+      <Box
+        aria-label={`MPR navigator position X ${sliceIndexX + 1} Y ${sliceIndexY + 1} Z ${sliceIndexZ + 1}`}
+        sx={{
+          gridColumn: "2 / 3",
+          gridRow: "1 / 2",
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
+          border: "1px solid",
+          borderColor: "rgba(79,70,229,0.24)",
+          borderRadius: 1,
+          background: "linear-gradient(135deg, rgba(37,99,235,0.12), rgba(124,58,237,0.10))",
+          p: 1.25,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: 1,
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          <Crosshair size={17} color="#4f46e5" />
+          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+            Interactive MPR
+          </Typography>
+        </Box>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.6 }}>
+          {([
+            ["X", sliceIndexX, colX],
+            ["Y", sliceIndexY, colY],
+            ["Z", sliceIndexZ, colZ],
+          ] as const).map(([label, value, color]) => (
+            <Box key={label} sx={{ bgcolor: "background.paper", borderRadius: 1, px: 0.75, py: 0.5, borderTop: `3px solid ${color}`, minWidth: 0 }}>
+              <Typography variant="caption" color="text.secondary">
+                {label}
+              </Typography>
+              <Typography sx={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} noWrap>
+                {value + 1}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+          Drag a view to move the crosshair. Wheel changes its plane; Shift moves 10 slices.
+        </Typography>
+      </Box>
     </Box>
   );
 }
@@ -3325,6 +3442,13 @@ function OrthoSlicePanel({
   rotate90 = false,
   crossV,
   crossH,
+  active = false,
+  currentSlice,
+  maxSlice,
+  onNavigate,
+  onNavigationStart,
+  onNavigationEnd,
+  onStepSlice,
 }: {
   label: string;
   labelDotColor?: string;
@@ -3340,13 +3464,80 @@ function OrthoSlicePanel({
   rotate90?: boolean;
   crossV?: { pos: number; color: string; max: number };
   crossH?: { pos: number; color: string; max: number };
+  active?: boolean;
+  currentSlice: number;
+  maxSlice: number;
+  onNavigate?: (imageX: number, imageY: number) => void;
+  onNavigationStart?: () => void;
+  onNavigationEnd?: () => void;
+  onStepSlice?: (delta: number) => void;
 }) {
+  const pointerDragRef = useRef<number | null>(null);
   const viewBoxW = rotate90 ? imageHeight : imageWidth;
   const viewBoxH = rotate90 ? imageWidth : imageHeight;
-
   const filterCss = `brightness(${1 + brightness}) contrast(${contrast})`;
-
   const strokeW = Math.max(1, Math.min(viewBoxW, viewBoxH) * 0.0025);
+
+  const navigateFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement) => {
+    if (!imageUrl || !onNavigate) return;
+
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || viewBoxW <= 0 || viewBoxH <= 0) return;
+
+    const scale = Math.min(rect.width / viewBoxW, rect.height / viewBoxH);
+    const renderedW = viewBoxW * scale;
+    const renderedH = viewBoxH * scale;
+    const localX = clientX - rect.left - (rect.width - renderedW) / 2;
+    const localY = clientY - rect.top - (rect.height - renderedH) / 2;
+
+    if (localX < 0 || localY < 0 || localX > renderedW || localY > renderedH) return;
+
+    const u = renderedW > 0 ? localX / renderedW : 0;
+    const v = renderedH > 0 ? localY / renderedH : 0;
+    const imageX = rotate90 ? v * Math.max(0, imageWidth - 1) : u * Math.max(0, imageWidth - 1);
+    const imageY = rotate90 ? (1 - u) * Math.max(0, imageHeight - 1) : v * Math.max(0, imageHeight - 1);
+
+    onNavigate(imageX, imageY);
+  };
+
+  const renderCrosshair = () => (
+    <>
+      {crossV && (
+        <line
+          x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+          y1={0}
+          x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+          y2={imageHeight}
+          stroke={crossV.color}
+          strokeWidth={strokeW}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+      )}
+      {crossH && (
+        <line
+          x1={0}
+          y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+          x2={imageWidth}
+          y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+          stroke={crossH.color}
+          strokeWidth={strokeW}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+      )}
+      {crossV && crossH && (
+        <circle
+          cx={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+          cy={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+          r={Math.max(2.5, Math.min(imageWidth, imageHeight) * 0.009)}
+          fill="rgba(255,255,255,0.82)"
+          stroke="rgba(15,23,42,0.72)"
+          strokeWidth={strokeW}
+        />
+      )}
+    </>
+  );
 
   const renderContent = () => {
     if (loading && !imageUrl) {
@@ -3376,9 +3567,61 @@ function OrthoSlicePanel({
 
     return (
       <svg
+        role="application"
+        aria-label={`${label} slice view`}
+        aria-valuetext={`${currentSlice + 1} of ${maxSlice + 1}`}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+        tabIndex={0}
         viewBox={`0 0 ${viewBoxW} ${viewBoxH}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ width: "100%", height: "100%", display: "block" }}
+        style={{ width: "100%", height: "100%", display: "block", cursor: "crosshair", touchAction: "none", outline: "none" }}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          pointerDragRef.current = event.pointerId;
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          onNavigationStart?.();
+          navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+        }}
+        onPointerMove={(event) => {
+          if (pointerDragRef.current !== event.pointerId) return;
+          event.preventDefault();
+          navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+        }}
+        onPointerUp={(event) => {
+          if (pointerDragRef.current !== event.pointerId) return;
+          event.preventDefault();
+          navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+          pointerDragRef.current = null;
+          event.currentTarget.releasePointerCapture?.(event.pointerId);
+          onNavigationEnd?.();
+        }}
+        onPointerCancel={(event) => {
+          if (pointerDragRef.current !== event.pointerId) return;
+          pointerDragRef.current = null;
+          onNavigationEnd?.();
+        }}
+        onClick={(event) => {
+          onNavigationStart?.();
+          navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+          onNavigationEnd?.();
+        }}
+        onWheel={(event) => {
+          if (!imageUrl || !onStepSlice || event.deltaY === 0) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          onNavigationStart?.();
+          onStepSlice((event.deltaY > 0 ? 1 : -1) * (event.shiftKey ? 10 : 1));
+        }}
+        onKeyDown={(event) => {
+          if (!onStepSlice) return;
+          const direction = event.key === "ArrowUp" || event.key === "ArrowRight" ? 1 : event.key === "ArrowDown" || event.key === "ArrowLeft" ? -1 : 0;
+          if (!direction) return;
+          event.preventDefault();
+          onNavigationStart?.();
+          onStepSlice(direction * (event.shiftKey ? 10 : 1));
+        }}
       >
         {rotate90 ? (
           <g transform={`translate(${imageHeight}, 0) rotate(90)`}>
@@ -3401,28 +3644,7 @@ function OrthoSlicePanel({
                 preserveAspectRatio="none"
               />
             ) : null}
-            {crossV && (
-              <line
-                x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-                y1={0}
-                x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-                y2={imageHeight}
-                stroke={crossV.color}
-                strokeWidth={strokeW}
-                opacity={0.95}
-              />
-            )}
-            {crossH && (
-              <line
-                x1={0}
-                y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-                x2={imageWidth}
-                y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-                stroke={crossH.color}
-                strokeWidth={strokeW}
-                opacity={0.95}
-              />
-            )}
+            {renderCrosshair()}
           </g>
         ) : (
           <>
@@ -3445,28 +3667,7 @@ function OrthoSlicePanel({
                 preserveAspectRatio="none"
               />
             ) : null}
-            {crossV && (
-              <line
-                x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-                y1={0}
-                x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-                y2={imageHeight}
-                stroke={crossV.color}
-                strokeWidth={strokeW}
-                opacity={0.95}
-              />
-            )}
-            {crossH && (
-              <line
-                x1={0}
-                y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-                x2={imageWidth}
-                y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-                stroke={crossH.color}
-                strokeWidth={strokeW}
-                opacity={0.95}
-              />
-            )}
+            {renderCrosshair()}
           </>
         )}
       </svg>
@@ -3480,7 +3681,8 @@ function OrthoSlicePanel({
         gridRow: gridArea.row,
         borderRadius: 1,
         border: "1px solid",
-        borderColor: "divider",
+        borderColor: active ? labelDotColor : "divider",
+        boxShadow: active ? `0 0 0 2px ${labelDotColor}26, inset 0 0 0 1px ${labelDotColor}66` : "none",
         bgcolor: "background.paper",
         position: "relative",
         minWidth: 0,
@@ -3489,6 +3691,7 @@ function OrthoSlicePanel({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        transition: "border-color 120ms ease, box-shadow 120ms ease",
       }}
     >
       {renderContent()}
@@ -3523,6 +3726,9 @@ function OrthoSlicePanel({
         )}
         <Typography variant="caption" sx={{ color: "inherit", lineHeight: 1.2 }}>
           {label}
+        </Typography>
+        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.78)", lineHeight: 1.2, fontVariantNumeric: "tabular-nums" }}>
+          {currentSlice + 1}/{maxSlice + 1}
         </Typography>
       </Box>
 
@@ -3567,6 +3773,37 @@ async function decodeSliceObjectUrl(
   }
 }
 
+function getCachedSliceImage(cache: SliceImageCache, key: string): SliceImageCacheEntry | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+
+  cache.delete(key);
+  cache.set(key, entry);
+  return entry;
+}
+
+function storeCachedSliceImage(cache: SliceImageCache, key: string, entry: SliceImageCacheEntry) {
+  const previous = cache.get(key);
+  if (previous && previous !== entry) previous.revoke();
+
+  cache.delete(key);
+  cache.set(key, entry);
+
+  while (cache.size > SLICE_IMAGE_CACHE_MAX_ITEMS) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+
+    const oldest = cache.get(oldestKey);
+    cache.delete(oldestKey);
+    oldest?.revoke();
+  }
+}
+
+function clearSliceImageCache(cache: SliceImageCache) {
+  for (const entry of cache.values()) entry.revoke();
+  cache.clear();
+}
+
 function useVolumeSliceImage({
   enabled,
   svc,
@@ -3580,6 +3817,7 @@ function useVolumeSliceImage({
   colormap,
   reloadKey,
   requestOptions,
+  cacheRef,
 }: {
   enabled: boolean;
   svc: any;
@@ -3600,6 +3838,7 @@ function useVolumeSliceImage({
     windowMin?: number;
     windowMax?: number;
   };
+  cacheRef: React.MutableRefObject<SliceImageCache>;
 }): SliceImageState {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3609,11 +3848,11 @@ function useVolumeSliceImage({
   const inFlightRef = useRef(false);
   const pendingJobRef = useRef<{
     requestKey: string;
+    cacheKey: string;
     sliceIndex: number;
   } | null>(null);
 
   const requestKeyRef = useRef<string | null>(null);
-  const revokeRef = useRef<(() => void) | null>(null);
   const runNextRef = useRef<(() => void) | null>(null);
 
   runNextRef.current = () => {
@@ -3673,19 +3912,19 @@ function useVolumeSliceImage({
           return;
         }
 
-        const previousRevoke = revokeRef.current;
+        const cachedAfterFetch = getCachedSliceImage(cacheRef.current, job.cacheKey);
 
-        revokeRef.current = result?.revoke ?? null;
-        setUrl(result?.url ?? null);
-
-        if (previousRevoke) {
-          window.requestAnimationFrame(() => {
-            try {
-              previousRevoke();
-            } catch {
-              // Ignore revoke errors.
-            }
+        if (cachedAfterFetch) {
+          result?.revoke?.();
+          setUrl(cachedAfterFetch.url);
+        } else if (result?.url && result?.revoke) {
+          storeCachedSliceImage(cacheRef.current, job.cacheKey, {
+            url: result.url,
+            revoke: result.revoke,
           });
+          setUrl(result.url);
+        } else {
+          setUrl(result?.url ?? null);
         }
       } catch (e: any) {
         if (
@@ -3755,8 +3994,23 @@ function useVolumeSliceImage({
       requestKeyRef.current = requestKey;
     }
 
+    const cacheKey = `${requestKey}|${clampedIndex}`;
+    const cached = getCachedSliceImage(cacheRef.current, cacheKey);
+
+    if (cached) {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      setUrl(cached.url);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     pendingJobRef.current = {
       requestKey,
+      cacheKey,
       sliceIndex: clampedIndex,
     };
 
@@ -3779,6 +4033,7 @@ function useVolumeSliceImage({
     requestOptions?.quality,
     requestOptions?.windowMin,
     requestOptions?.windowMax,
+    cacheRef,
   ]);
 
   useEffect(() => {
@@ -3786,14 +4041,6 @@ function useVolumeSliceImage({
       controllerRef.current?.abort();
       controllerRef.current = null;
       pendingJobRef.current = null;
-
-      if (revokeRef.current) {
-        try {
-          revokeRef.current();
-        } catch {
-          // Ignore revoke errors.
-        }
-      }
     };
   }, []);
 

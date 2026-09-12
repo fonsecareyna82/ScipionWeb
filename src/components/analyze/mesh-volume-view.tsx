@@ -367,6 +367,7 @@ export default function MeshVolumeView({
     const onErrorRef = useRef(onError);
     const materialRef = useRef<THREE.MeshLambertMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+    const requestRenderRef = useRef<() => void>(() => undefined);
 
     useEffect(() => {
         onErrorRef.current = onError;
@@ -394,6 +395,7 @@ export default function MeshVolumeView({
         }
 
         material.needsUpdate = true;
+        requestRenderRef.current();
     }, [colorMode, colormap, mesh]);
 
     useEffect(() => {
@@ -404,10 +406,12 @@ export default function MeshVolumeView({
         material.transparent = opacity < 1;
         material.wireframe = displayMode === "mesh";
         material.needsUpdate = true;
+        requestRenderRef.current();
     }, [opacity, displayMode]);
 
     useEffect(() => {
         autoRotateRef.current = autoRotate;
+        requestRenderRef.current();
     }, [autoRotate]);
 
     useEffect(() => {
@@ -416,6 +420,7 @@ export default function MeshVolumeView({
 
     useEffect(() => {
         activeRef.current = active;
+        if (active) requestRenderRef.current();
     }, [active]);
 
     useEffect(() => {
@@ -431,7 +436,7 @@ export default function MeshVolumeView({
         let composer: EffectComposer | null = null;
         let gtaoPass: GTAOPass | null = null;
         let outputPass: OutputPass | null = null;
-        let frameId = 0;
+        let frameId: number | null = null;
         let dragState: DragState | null = null;
 
         try {
@@ -542,8 +547,6 @@ export default function MeshVolumeView({
                 };
             };
 
-            controls.addEventListener("change", saveCameraState);
-
             const ambient = new THREE.AmbientLight(0xffffff, 0.10);
             scene.add(ambient);
 
@@ -574,6 +577,44 @@ export default function MeshVolumeView({
             outputPass = new OutputPass();
             composer.addPass(outputPass);
 
+            const clock = new THREE.Clock();
+
+            const renderFrame = () => {
+                frameId = null;
+                if (!activeRef.current || document.visibilityState === "hidden") return;
+
+                const dt = Math.min(clock.getDelta(), 0.1);
+
+                if (autoRotateRef.current) {
+                    surfacePivot.rotation.z += dt * (autoRotateSpeedRef.current / 10);
+                    saveCameraState();
+                }
+
+                const controlsChanged = controls.update();
+                composer?.render(dt);
+
+                if (autoRotateRef.current || controlsChanged) requestRender();
+            };
+
+            const requestRender = () => {
+                if (frameId != null || !activeRef.current || document.visibilityState === "hidden") return;
+                frameId = window.requestAnimationFrame(renderFrame);
+            };
+
+            requestRenderRef.current = requestRender;
+
+            const handleControlsChange = () => {
+                saveCameraState();
+                requestRender();
+            };
+
+            const handleVisibilityChange = () => {
+                if (document.visibilityState !== "hidden") requestRender();
+            };
+
+            controls.addEventListener("change", handleControlsChange);
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+
             const resize = () => {
                 const width = Math.max(1, host.clientWidth);
                 const height = Math.max(1, host.clientHeight);
@@ -589,6 +630,8 @@ export default function MeshVolumeView({
                     Math.max(1, Math.floor(width * GTAO_RESOLUTION_SCALE)),
                     Math.max(1, Math.floor(height * GTAO_RESOLUTION_SCALE)),
                 );
+
+                requestRender();
             };
 
             const observer = new ResizeObserver(resize);
@@ -615,6 +658,7 @@ export default function MeshVolumeView({
             camera.updateProjectionMatrix();
             controls.update();
             saveCameraState();
+            requestRender();
 
             const stopViewerEvent = (event: Event) => {
                 event.stopPropagation();
@@ -637,6 +681,7 @@ export default function MeshVolumeView({
                 };
                 host.style.cursor = "grabbing";
                 host.setPointerCapture?.(event.pointerId);
+                requestRender();
             };
 
             const handlePointerMove = (event: PointerEvent) => {
@@ -652,6 +697,7 @@ export default function MeshVolumeView({
 
                 rotateObjectInScreenSpace(surfacePivot, camera, dx, dy);
                 saveCameraState();
+                requestRender();
             };
 
             const endDrag = (event: PointerEvent) => {
@@ -664,6 +710,7 @@ export default function MeshVolumeView({
                 host.style.cursor = "grab";
                 host.releasePointerCapture?.(event.pointerId);
                 saveCameraState();
+                requestRender();
             };
 
             const viewerEvents = ["wheel", "contextmenu"] as const;
@@ -676,30 +723,13 @@ export default function MeshVolumeView({
             host.addEventListener("pointerup", endDrag, { passive: false });
             host.addEventListener("pointercancel", endDrag, { passive: false });
 
-            const clock = new THREE.Clock();
-
-            const animate = () => {
-                frameId = window.requestAnimationFrame(animate);
-                const dt = clock.getDelta();
-
-                if (!activeRef.current) return;
-
-                if (autoRotateRef.current) {
-                    surfacePivot.rotation.z += dt * (autoRotateSpeedRef.current / 10);
-                }
-
-                controls.update();
-                composer?.render(dt);
-            };
-
-            animate();
-
             return () => {
                 saveCameraState();
-                window.cancelAnimationFrame(frameId);
+                if (frameId != null) window.cancelAnimationFrame(frameId);
                 observer.disconnect();
 
-                controls.removeEventListener("change", saveCameraState);
+                controls.removeEventListener("change", handleControlsChange);
+                document.removeEventListener("visibilitychange", handleVisibilityChange);
 
                 viewerEvents.forEach((eventName) => {
                     host.removeEventListener(eventName, stopViewerEvent);
@@ -726,12 +756,14 @@ export default function MeshVolumeView({
                 }
                 materialRef.current = null;
                 geometryRef.current = null;
+                requestRenderRef.current = () => undefined;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
             outputPass?.dispose();
             composer?.dispose();
             renderer?.dispose();
+            requestRenderRef.current = () => undefined;
 
             onErrorRef.current?.(
                 error?.message || "Failed to render surface mesh.",
