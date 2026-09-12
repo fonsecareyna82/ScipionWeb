@@ -814,7 +814,6 @@ export default function GpuVolumeView({
       setRendererQuality(true);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      updateOrientationAxes();
       requestRender();
     };
 

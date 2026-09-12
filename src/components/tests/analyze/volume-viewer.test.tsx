@@ -597,7 +597,9 @@ describe("VolumeViewer", () => {
         renderViewer();
 
         const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
-        expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        await waitFor(() => {
+            expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        });
 
         await waitFor(() => {
             const readyCall = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.find((call) => call[4] === 2 && call[5]?.axis === "z" && Number.isFinite(call[5]?.windowMin));
