@@ -21,7 +21,7 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2 } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
 import useVolumeRegions from "./use-volume-regions";
@@ -137,7 +137,7 @@ const HELP_TEXT: Record<string, string> = {
   volumeWindow3d:
     "Percentile window used by GPU volume rendering. Narrower high-percentile windows emphasize stronger densities.",
   isoRenderMode3d:
-    "Surface loads a real marching-cubes mesh, closer to Chimera/EMAN. Volume renders the density field by GPU raycasting.",
+    "Volume renders the density field by GPU raycasting. Surface shows a shaded marching-cubes contour, while Mesh shows the same geometry as a wireframe.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
   sliceLayout:
     "Single shows one slice view at a time. Triple shows synchronized orthogonal Z/Y/X views at once.",
@@ -281,6 +281,7 @@ export default function VolumeViewer({
   const mapDataKeyRef = useRef("");
 
   const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
+  const surfaceDataKeyRef = useRef("");
   const meshCameraStateRef = useRef<MeshCameraState | null>(null);
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
@@ -394,6 +395,8 @@ export default function VolumeViewer({
   };
 
   const [autoRotate3d, setAutoRotate3d] = useState(false);
+  const [expanded3d, setExpanded3d] = useState(false);
+  const [reset3dViewKey, setReset3dViewKey] = useState(0);
 
   useEffect(() => {
     if (active) return;
@@ -424,8 +427,22 @@ export default function VolumeViewer({
   useEffect(() => {
     if (viewMode !== "map3d") {
       setAutoRotate3d(false);
+      setExpanded3d(false);
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    if (!expanded3d) return;
+
+    const restore3dLayout = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setExpanded3d(false);
+    };
+
+    window.addEventListener("keydown", restore3dLayout);
+    return () => window.removeEventListener("keydown", restore3dLayout);
+  }, [expanded3d]);
 
   useEffect(() => {
     const needsVolumeData =
@@ -446,6 +463,17 @@ export default function VolumeViewer({
     renderMode3d,
     sliceOverlayEnabled,
   ]);
+
+  useEffect(() => {
+    const needsSurfaceData = active && viewMode === "map3d" && usesSurfaceMesh3d;
+    if (needsSurfaceData) return;
+
+    surfaceRequestSeqRef.current += 1;
+    surfaceAbortRef.current?.abort();
+    surfaceAbortRef.current = null;
+    setSurfaceRefreshing(false);
+    setMapLoading(false);
+  }, [active, viewMode, usesSurfaceMesh3d]);
 
   const plotlyAnimHandleRef = useRef<number | null>(null);
   const plotlyAnimAngleRef = useRef(0);
@@ -517,6 +545,7 @@ export default function VolumeViewer({
     setMapData(null);
     mapDataKeyRef.current = "";
     setSurfaceMesh(null);
+    surfaceDataKeyRef.current = "";
     setSurfaceResolvedLevel(null);
     setSurfaceLevel3d(null);
     setSurfaceLevelRange(null);
@@ -971,6 +1000,13 @@ export default function VolumeViewer({
     return [level - width, level + width];
   }, []);
 
+  const buildVolumeDataKey = useCallback(() => [String(selectedId), maxDim3d, method3d].join("|"), [selectedId, maxDim3d, method3d]);
+
+  const buildSurfaceDataKey = useCallback((level: number | null, dust: number, smoothing: number) => {
+    const normalizedLevel = level != null && Number.isFinite(level) ? level : "auto";
+    return [String(selectedId), maxDim3d, method3d, normalizedLevel, dust, smoothing].join("|");
+  }, [selectedId, maxDim3d, method3d]);
+
   const cancelSurfaceRefresh = useCallback(() => {
     surfaceRequestSeqRef.current += 1;
     surfaceAbortRef.current?.abort();
@@ -1069,6 +1105,7 @@ export default function VolumeViewer({
         const resolvedLevel = Number.isFinite(mesh?.level) ? Number(mesh.level) : null;
 
         setSurfaceMesh(mesh);
+        surfaceDataKeyRef.current = buildSurfaceDataKey(level, effectiveSurfaceDust, effectiveSurfaceSmoothing);
         setSurfaceResolvedLevel(resolvedLevel);
         setSurfaceRefreshError(null);
 
@@ -1137,6 +1174,7 @@ export default function VolumeViewer({
       renderMode3d,
       metadataSurfaceLevelRange,
       buildFallbackSurfaceLevelRange,
+      buildSurfaceDataKey,
       surfaceLevelRange,
       surfaceDust3d,
       surfaceSmoothing3d
@@ -1187,11 +1225,7 @@ export default function VolumeViewer({
 
       setMapData(parsed);
 
-      mapDataKeyRef.current = [
-        String(selectedId),
-        maxDim3d,
-        method3d,
-      ].join("|");
+      mapDataKeyRef.current = buildVolumeDataKey();
 
       return parsed;
     } finally {
@@ -1208,10 +1242,26 @@ export default function VolumeViewer({
     outputName,
     maxDim3d,
     method3d,
+    buildVolumeDataKey,
   ]);
 
-  const load3d = useCallback(async () => {
+  const load3d = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
     if (!active || selectedId == null) return;
+
+    if (usesSurfaceMesh3d) {
+      const expectedKey = buildSurfaceDataKey(surfaceLevel3d, surfaceDust3d, surfaceSmoothing3d);
+      if (!force && surfaceMesh && surfaceDataKeyRef.current === expectedKey) {
+        setMapError(null);
+        setGpuError(null);
+        lastLoadedRef.current = { volumeId: selectedId, maxDim: maxDim3d, method: method3d, renderMode: renderMode3d, surfaceLevel: surfaceLevel3d, surfaceDust: surfaceDust3d, surfaceSmoothing: surfaceSmoothing3d };
+        return;
+      }
+    } else if (!force && mapData && mapDataKeyRef.current === buildVolumeDataKey()) {
+      setMapError(null);
+      setGpuError(null);
+      lastLoadedRef.current = { volumeId: selectedId, maxDim: maxDim3d, method: method3d, renderMode: renderMode3d, surfaceLevel: surfaceLevel3d, surfaceDust: surfaceDust3d, surfaceSmoothing: surfaceSmoothing3d };
+      return;
+    }
 
     setMapLoading(true);
     setMapError(null);
@@ -1223,10 +1273,8 @@ export default function VolumeViewer({
         return;
       }
 
-      await fetchVolumeData();
-
-      setSurfaceMesh(null);
-      setSurfaceResolvedLevel(null);
+      const data = await fetchVolumeData();
+      if (!data) return;
 
       lastLoadedRef.current = {
         volumeId: selectedId,
@@ -1242,9 +1290,14 @@ export default function VolumeViewer({
         return;
       }
       setMapError(e?.message || "Failed to load 3D data");
-      setMapData(null);
-      setSurfaceMesh(null);
-      setSurfaceResolvedLevel(null);
+      if (usesSurfaceMesh3d) {
+        setSurfaceMesh(null);
+        surfaceDataKeyRef.current = "";
+        setSurfaceResolvedLevel(null);
+      } else {
+        setMapData(null);
+        mapDataKeyRef.current = "";
+      }
     } finally {
       setMapLoading(false);
     }
@@ -1260,6 +1313,10 @@ export default function VolumeViewer({
     renderMode3d,
     surfaceLevel3d,
     usesSurfaceMesh3d,
+    surfaceMesh,
+    mapData,
+    buildSurfaceDataKey,
+    buildVolumeDataKey,
     reloadSurfaceMesh,
     fetchVolumeData,
     surfaceDust3d,
@@ -1272,9 +1329,9 @@ export default function VolumeViewer({
     if (selectedId == null) return;
 
     const last = lastLoadedRef.current;
-    if (last.volumeId !== selectedId || last.renderMode !== renderMode3d) {
-      load3d();
-    }
+    const changedDataKind = (last.renderMode === "volume") !== (renderMode3d === "volume");
+    if (last.volumeId !== selectedId || changedDataKind) void load3d();
+    else lastLoadedRef.current = { ...last, renderMode: renderMode3d };
   }, [active, viewMode, selectedId, renderMode3d, load3d]);
 
   useEffect(() => {
@@ -1287,11 +1344,7 @@ export default function VolumeViewer({
       return;
     }
 
-    const expectedKey = [
-      String(selectedId),
-      maxDim3d,
-      method3d,
-    ].join("|");
+    const expectedKey = buildVolumeDataKey();
 
     if (
       mapData &&
@@ -1314,32 +1367,29 @@ export default function VolumeViewer({
     maxDim3d,
     method3d,
     mapData,
+    buildVolumeDataKey,
     fetchVolumeData,
   ]);
 
   const dataDirty = useMemo(() => {
-    const last = lastLoadedRef.current;
+    if (viewMode !== "map3d" || selectedId == null) return false;
 
-    return (
-      viewMode === "map3d" &&
-      selectedId != null &&
-      (last.volumeId !== selectedId ||
-        last.maxDim !== maxDim3d ||
-        last.method !== method3d ||
-        last.renderMode !== renderMode3d ||
-        last.surfaceLevel !== surfaceLevel3d ||
-        last.surfaceDust !== surfaceDust3d ||
-        last.surfaceSmoothing !== surfaceSmoothing3d)
-    );
+    if (usesSurfaceMesh3d) {
+      return !surfaceMesh || surfaceDataKeyRef.current !== buildSurfaceDataKey(surfaceLevel3d, surfaceDust3d, surfaceSmoothing3d);
+    }
+
+    return !mapData || mapDataKeyRef.current !== buildVolumeDataKey();
   }, [
     viewMode,
     selectedId,
-    maxDim3d,
-    method3d,
-    renderMode3d,
+    usesSurfaceMesh3d,
+    surfaceMesh,
+    mapData,
     surfaceLevel3d,
     surfaceDust3d,
-    surfaceSmoothing3d
+    surfaceSmoothing3d,
+    buildSurfaceDataKey,
+    buildVolumeDataKey,
   ]);
 
   const stats3d = useMemo(() => {
@@ -1682,16 +1732,17 @@ export default function VolumeViewer({
         overflow: "hidden",
       }}
     >
-      <Box
-        sx={{
-          width: 270,
-          borderRight: "1px solid #eee",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
+      {!expanded3d && (
+        <Box
+          sx={{
+            width: 270,
+            borderRight: "1px solid #eee",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
         <Box sx={{ p: 1.5, flexShrink: 0 }}>
           <Typography variant="subtitle2">Volumes</Typography>
           <Typography variant="caption" color="text.secondary">
@@ -1746,7 +1797,8 @@ export default function VolumeViewer({
             </List>
           )}
         </Box>
-      </Box>
+        </Box>
+      )}
 
       <Box
         sx={{
@@ -1828,6 +1880,7 @@ export default function VolumeViewer({
                   <span>
                     <IconButton
                       size="small"
+                      aria-label={autoRotate3d ? "Pause 3D rotation" : "Play 3D rotation"}
                       onClick={() => setAutoRotate3d((v) => !v)}
                       sx={{
                         border: "1px solid",
@@ -1841,17 +1894,39 @@ export default function VolumeViewer({
                 </Tooltip>
               )}
 
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+              {viewMode === "map3d" && (
+                <Tooltip title="Reset 3D view (double-click)">
+                  <IconButton
+                    size="small"
+                    aria-label="Reset 3D view"
+                    onClick={() => setReset3dViewKey((value) => value + 1)}
+                    sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}
+                  >
+                    <RotateCcw size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {viewMode === "map3d" && (
+                <Tooltip title={expanded3d ? "Restore panels (Esc)" : "Expand 3D view"}>
+                  <IconButton
+                    size="small"
+                    aria-label={expanded3d ? "Restore 3D panels" : "Expand 3D view"}
+                    onClick={() => setExpanded3d((value) => !value)}
+                    sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}
+                  >
+                    {expanded3d ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {viewMode === "slices" && sliceLayoutMode === "single" && (
                 <Box
                   sx={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 0.5,
                     cursor: "default",
-                    opacity:
-                      viewMode === "slices" && sliceLayoutMode === "single"
-                        ? 1
-                        : 0.4,
                   }}
                 >
                   <ZoomIn size={14} style={{ opacity: 0.6 }} />
@@ -1867,7 +1942,7 @@ export default function VolumeViewer({
                     {Math.round(zoomMul * 100)}%
                   </Typography>
                 </Box>
-              </Box>
+              )}
             </Box>
           </Box>
         </Paper>
@@ -1896,7 +1971,7 @@ export default function VolumeViewer({
                 display: "flex",
                 alignItems: viewMode === "metadata" ? "stretch" : "center",
                 justifyContent: viewMode === "metadata" ? "stretch" : "center",
-                p: viewMode === "metadata" ? 0 : 1.0,
+                p: viewMode === "metadata" ? 0 : expanded3d ? 0.25 : 1.0,
                 overflow: viewMode === "metadata" ? "auto" : "hidden",
                 position: "relative",
                 cursor: "default",
@@ -2030,6 +2105,7 @@ export default function VolumeViewer({
                   renderMode="volume"
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={0.8}
+                  resetViewKey={reset3dViewKey}
                   onError={handleMeshError}
                 />
               ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
@@ -2041,6 +2117,7 @@ export default function VolumeViewer({
                   colorMode={colorMode3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
+                  resetViewKey={reset3dViewKey}
                   cameraStateKey={meshCameraStateKey}
                   cameraStateRef={meshCameraStateRef}
                   onError={handleMeshError}
@@ -2061,7 +2138,7 @@ export default function VolumeViewer({
                 </Typography>
               )}
             </Box>
-            {viewMode !== "metadata" && (
+            {viewMode !== "metadata" && !expanded3d && (
               <>
                 <Divider />
                 <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap", flexShrink: 0 }}>
@@ -2093,7 +2170,7 @@ export default function VolumeViewer({
             )}
           </Box>
 
-          {viewMode !== "metadata" && (
+          {viewMode !== "metadata" && !expanded3d && (
             <>
               <Divider orientation="vertical" flexItem />
               <Box
@@ -2580,7 +2657,7 @@ export default function VolumeViewer({
                       <Button
                         size="small"
                         variant={dataDirty ? "contained" : "outlined"}
-                        onClick={load3d}
+                        onClick={() => void load3d({ force: true })}
                         disabled={selectedId == null || mapLoading}
                         sx={{ textTransform: "none", borderRadius: 1.5 }}
                       >
@@ -2650,7 +2727,7 @@ export default function VolumeViewer({
 
                       <SectionTitle title="Rendering" />
                       <ParamRow
-                        label="Iso mode"
+                        label="Mode"
                         helpKey="isoRenderMode3d"
                         onHelp={openHelp}
                         control={
@@ -2660,13 +2737,16 @@ export default function VolumeViewer({
                             value={renderMode3d}
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
+                            <ToggleButton value="volume">volume</ToggleButton>
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
 
-                      <ParamRow
+                      {usesSurfaceMesh3d && (
+                        <>
+                        <ParamRow
                         label="Hide dust"
                         helpKey="hideDust3d"
                         onHelp={openHelp}
@@ -2707,7 +2787,7 @@ export default function VolumeViewer({
                         }
                       />
 
-                      <ParamRow
+                        <ParamRow
                         label="Smoothing"
                         helpKey="surfaceSmoothing3d"
                         onHelp={openHelp}
@@ -2746,7 +2826,9 @@ export default function VolumeViewer({
                             <MenuItem value={8}>High</MenuItem>
                           </TextField>
                         }
-                      />
+                        />
+                        </>
+                      )}
 
                       {renderMode3d === "volume" ? (
                         <>

@@ -24,6 +24,7 @@ export type GpuVolumeViewProps = {
   renderMode?: "volume" | "surface";
   autoRotate?: boolean;
   autoRotateSpeed?: number;
+  resetViewKey?: number;
   onError?: (msg: string) => void;
 };
 
@@ -463,6 +464,7 @@ export default function GpuVolumeView({
   renderMode = "surface",
   autoRotate = false,
   autoRotateSpeed = 0.8,
+  resetViewKey = 0,
   onError,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -477,6 +479,7 @@ export default function GpuVolumeView({
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const requestRenderRef = useRef<() => void>(() => { });
+  const resetViewRef = useRef<() => void>(() => { });
 
   const onErrorRef = useRef(onError);
 
@@ -662,7 +665,7 @@ export default function GpuVolumeView({
         now - interactionState.lastWheelAt < 160;
 
       const interactionActive =
-        interactionState.isDragging || wheelActive;
+        interactionState.isDragging || wheelActive || controls.autoRotate;
 
       const desiredDpr = interactionActive
         ? Math.min(baseDpr, 1)
@@ -786,7 +789,7 @@ export default function GpuVolumeView({
       requestRender();
     };
 
-    const onDoubleClick = () => {
+    const resetView = () => {
       const cam = cameraRef.current;
       const ctrls = controlsRef.current;
       if (!cam || !ctrls) return;
@@ -799,23 +802,32 @@ export default function GpuVolumeView({
       requestRender();
     };
 
+    resetViewRef.current = resetView;
+
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
-    renderer.domElement.addEventListener("dblclick", onDoubleClick);
+    renderer.domElement.addEventListener("dblclick", resetView);
 
     const requestRender = () => {
-      if (rafRef.current != null) return;
+      if (rafRef.current != null || document.visibilityState === "hidden") return;
 
       rafRef.current = requestAnimationFrame(renderFrame);
     };
 
     requestRenderRef.current = requestRender;
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") requestRender();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     resize();
 
     function renderFrame() {
       rafRef.current = null;
+      if (document.visibilityState === "hidden") return;
 
       const rendererNow = rendererRef.current;
       const sceneNow = sceneRef.current;
@@ -921,7 +933,8 @@ export default function GpuVolumeView({
       renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", onPointerUp);
-      renderer.domElement.removeEventListener("dblclick", onDoubleClick);
+      renderer.domElement.removeEventListener("dblclick", resetView);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
 
       controls.removeEventListener(
         "start",
@@ -939,6 +952,7 @@ export default function GpuVolumeView({
       );
 
       requestRenderRef.current = () => { };
+      resetViewRef.current = () => { };
 
       controls.dispose();
       geometry.dispose();
@@ -980,6 +994,10 @@ export default function GpuVolumeView({
   useEffect(() => {
     return () => cleanupRef.current?.();
   }, []);
+
+  useEffect(() => {
+    if (resetViewKey > 0) resetViewRef.current();
+  }, [resetViewKey]);
 
   // updateAutoRotateWhenPropsChange
   useEffect(() => {

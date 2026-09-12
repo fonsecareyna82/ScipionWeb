@@ -785,6 +785,21 @@ describe("GpuVolumeView", () => {
         expect(threeState.lastCamera.position.z).toBe(1.8);
     });
 
+    it("resets the camera when resetViewKey changes", async () => {
+        const { rerender } = render(<GpuVolumeView {...makeProps({ resetViewKey: 0 })} />);
+
+        await waitFor(() => {
+            expect(threeState.lastCamera).not.toBeNull();
+        });
+
+        threeState.lastCamera.position.set(9, 8, 7);
+        rerender(<GpuVolumeView {...makeProps({ resetViewKey: 1 })} />);
+
+        expect(threeState.lastCamera.position.x).toBe(1.8);
+        expect(threeState.lastCamera.position.y).toBe(1.2);
+        expect(threeState.lastCamera.position.z).toBe(1.8);
+    });
+
     it("removes canvas listeners and disposes resources on unmount", async () => {
         const { unmount } = render(<GpuVolumeView {...makeProps()} />);
 

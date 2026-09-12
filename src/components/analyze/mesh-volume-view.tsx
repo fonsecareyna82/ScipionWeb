@@ -17,6 +17,7 @@ export type MeshVolumeViewProps = {
     autoRotate?: boolean;
     displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
+    resetViewKey?: number;
     cameraStateKey?: string | number | null;
     cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
@@ -39,6 +40,7 @@ type DragState = {
 
 const GTAO_BLEND_INTENSITY = 0.88;
 const GTAO_RESOLUTION_SCALE = 1.0;
+const GTAO_MOTION_RESOLUTION_SCALE = 0.62;
 
 const GTAO_PARAMETERS = {
     radius: 0.12,
@@ -350,6 +352,7 @@ export default function MeshVolumeView({
     colorMode = "solid",
     autoRotate = false,
     autoRotateSpeed = 3.8,
+    resetViewKey = 0,
     cameraStateKey = "default",
     cameraStateRef: externalCameraStateRef,
     onError,
@@ -368,6 +371,7 @@ export default function MeshVolumeView({
     const materialRef = useRef<THREE.MeshLambertMaterial | null>(null);
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
     const requestRenderRef = useRef<() => void>(() => undefined);
+    const resetViewRef = useRef<() => void>(() => undefined);
 
     useEffect(() => {
         onErrorRef.current = onError;
@@ -578,12 +582,39 @@ export default function MeshVolumeView({
             composer.addPass(outputPass);
 
             const clock = new THREE.Clock();
+            const baseDpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+            let controlsInteracting = false;
+            let appliedDpr = -1;
+            let appliedGtaoScale = -1;
+
+            const applyRenderQuality = (force = false) => {
+                if (!renderer || !composer || !gtaoPass) return;
+
+                const width = Math.max(1, host.clientWidth);
+                const height = Math.max(1, host.clientHeight);
+                const moving = autoRotateRef.current || controlsInteracting || dragState != null;
+                const desiredDpr = moving ? Math.min(baseDpr, 1) : baseDpr;
+                const gtaoScale = moving ? GTAO_MOTION_RESOLUTION_SCALE : GTAO_RESOLUTION_SCALE;
+
+                if (!force && desiredDpr === appliedDpr && gtaoScale === appliedGtaoScale) return;
+
+                appliedDpr = desiredDpr;
+                appliedGtaoScale = gtaoScale;
+                renderer.setPixelRatio(desiredDpr);
+                renderer.setSize(width, height, false);
+                composer.setPixelRatio(desiredDpr);
+                composer.setSize(width, height);
+                gtaoPass.setSize(Math.max(1, Math.floor(width * gtaoScale)), Math.max(1, Math.floor(height * gtaoScale)));
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            };
 
             const renderFrame = () => {
                 frameId = null;
                 if (!activeRef.current || document.visibilityState === "hidden") return;
 
                 const dt = Math.min(clock.getDelta(), 0.1);
+                applyRenderQuality();
 
                 if (autoRotateRef.current) {
                     surfacePivot.rotation.z += dt * (autoRotateSpeedRef.current / 10);
@@ -608,29 +639,27 @@ export default function MeshVolumeView({
                 requestRender();
             };
 
+            const handleControlsStart = () => {
+                controlsInteracting = true;
+                requestRender();
+            };
+
+            const handleControlsEnd = () => {
+                controlsInteracting = false;
+                requestRender();
+            };
+
             const handleVisibilityChange = () => {
                 if (document.visibilityState !== "hidden") requestRender();
             };
 
             controls.addEventListener("change", handleControlsChange);
+            controls.addEventListener("start", handleControlsStart);
+            controls.addEventListener("end", handleControlsEnd);
             document.addEventListener("visibilitychange", handleVisibilityChange);
 
             const resize = () => {
-                const width = Math.max(1, host.clientWidth);
-                const height = Math.max(1, host.clientHeight);
-
-                renderer?.setSize(width, height, false);
-
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
-
-                composer?.setSize(width, height);
-
-                gtaoPass?.setSize(
-                    Math.max(1, Math.floor(width * GTAO_RESOLUTION_SCALE)),
-                    Math.max(1, Math.floor(height * GTAO_RESOLUTION_SCALE)),
-                );
-
+                applyRenderQuality(true);
                 requestRender();
             };
 
@@ -642,6 +671,19 @@ export default function MeshVolumeView({
             const radius = Math.max(0.5, sphere?.radius ?? 0.5);
             camera.near = Math.max(0.001, radius / 100);
             camera.far = Math.max(100, radius * 100);
+
+            const resetView = () => {
+                camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
+                camera.zoom = 1;
+                controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
+                surfacePivot.quaternion.identity();
+                camera.updateProjectionMatrix();
+                controls.update();
+                saveCameraState();
+                requestRender();
+            };
+
+            resetViewRef.current = resetView;
 
             const savedCameraState = cameraStateRef.current;
             if (savedCameraState?.key === currentCameraStateKey) {
@@ -715,9 +757,16 @@ export default function MeshVolumeView({
 
             const viewerEvents = ["wheel", "contextmenu"] as const;
 
+            const handleDoubleClick = (event: MouseEvent) => {
+                stopViewerEvent(event);
+                event.preventDefault();
+                resetView();
+            };
+
             viewerEvents.forEach((eventName) => {
                 host.addEventListener(eventName, stopViewerEvent, { passive: false });
             });
+            host.addEventListener("dblclick", handleDoubleClick);
             host.addEventListener("pointerdown", handlePointerDown, { passive: false });
             host.addEventListener("pointermove", handlePointerMove, { passive: false });
             host.addEventListener("pointerup", endDrag, { passive: false });
@@ -729,11 +778,14 @@ export default function MeshVolumeView({
                 observer.disconnect();
 
                 controls.removeEventListener("change", handleControlsChange);
+                controls.removeEventListener("start", handleControlsStart);
+                controls.removeEventListener("end", handleControlsEnd);
                 document.removeEventListener("visibilitychange", handleVisibilityChange);
 
                 viewerEvents.forEach((eventName) => {
                     host.removeEventListener(eventName, stopViewerEvent);
                 });
+                host.removeEventListener("dblclick", handleDoubleClick);
                 host.removeEventListener("pointerdown", handlePointerDown);
                 host.removeEventListener("pointermove", handlePointerMove);
                 host.removeEventListener("pointerup", endDrag);
@@ -757,6 +809,7 @@ export default function MeshVolumeView({
                 materialRef.current = null;
                 geometryRef.current = null;
                 requestRenderRef.current = () => undefined;
+                resetViewRef.current = () => undefined;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
@@ -771,6 +824,10 @@ export default function MeshVolumeView({
         }
 
     }, [mesh, currentCameraStateKey]);
+
+    useEffect(() => {
+        if (resetViewKey > 0) resetViewRef.current();
+    }, [resetViewKey]);
 
     return (
         <div

@@ -35,11 +35,11 @@ vi.mock("react-plotly.js", () => ({
 }));
 
 vi.mock("../../analyze/gpu-volume-view", () => ({
-    default: () => <div>Mock GpuVolumeView</div>,
+    default: ({ resetViewKey = 0 }: { resetViewKey?: number }) => <div data-testid="mock-gpu-volume" data-reset-view-key={resetViewKey}>Mock GpuVolumeView</div>,
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: () => <div>Mock MeshVolumeView</div>,
+    default: ({ resetViewKey = 0 }: { resetViewKey?: number }) => <div data-testid="mock-mesh-volume" data-reset-view-key={resetViewKey}>Mock MeshVolumeView</div>,
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
@@ -333,6 +333,90 @@ describe("VolumeViewer", () => {
         });
 
         expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+    });
+
+    it("opens true GPU volume rendering from the 3D mode selector", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "volume" }));
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeData3d).toHaveBeenCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                1,
+                expect.objectContaining({ maxDim: 256, method: "stride" }),
+            );
+        });
+
+        expect(await screen.findByText("Mock GpuVolumeView")).toBeInTheDocument();
+        expect(screen.queryByText("Hide dust")).not.toBeInTheDocument();
+        expect(screen.getByText("Density window")).toBeInTheDocument();
+    });
+
+    it("reuses loaded 3D data when switching render modes", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "mesh" }));
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "volume" }));
+        expect(await screen.findByText("Mock GpuVolumeView")).toBeInTheDocument();
+        expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "surface" }));
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "volume" }));
+        expect(await screen.findByText("Mock GpuVolumeView")).toBeInTheDocument();
+        expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
+    });
+
+    it("expands the 3D canvas and restores its panels with Escape", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Expand 3D view" }));
+        expect(screen.queryByText("Volumes")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Controls" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Restore 3D panels" })).toBeInTheDocument();
+
+        fireEvent.keyDown(window, { key: "Escape" });
+        expect(await screen.findByText("Volumes")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Controls" })).toBeInTheDocument();
+    });
+
+    it("resets the active 3D renderer without reloading its data", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Reset 3D view" }));
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-reset-view-key", "1");
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "volume" }));
+        expect(await screen.findByText("Mock GpuVolumeView")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Reset 3D view" }));
+        expect(screen.getByTestId("mock-gpu-volume")).toHaveAttribute("data-reset-view-key", "2");
+        expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
     });
 
     it("switches to metadata mode when metadata is available", async () => {
