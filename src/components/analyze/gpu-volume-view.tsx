@@ -15,6 +15,10 @@ import {
   type VolumeSlicePosition,
   type VolumeSliceVisibility,
 } from "./volume-3d-types";
+import {
+  createVolumeOrientationGizmo,
+  type VolumeOrientationGizmo,
+} from "./volume-orientation-gizmo";
 
 export type GpuVolumeViewProps = {
   values: number[] | Float32Array;
@@ -560,6 +564,7 @@ export default function GpuVolumeView({
   const meshRef = useRef<THREE.Mesh | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
   const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
+  const orientationGizmoRef = useRef<VolumeOrientationGizmo | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const requestRenderRef = useRef<() => void>(() => { });
@@ -684,32 +689,11 @@ export default function GpuVolumeView({
     controls.update();
     controlsRef.current = controls;
 
-    const OrientationAxes = (THREE as any).AxesHelper as typeof THREE.AxesHelper | undefined;
-    const orientationAxes = OrientationAxes ? new OrientationAxes(0.18) : null;
-
-    if (orientationAxes) {
-      const axesMaterial = orientationAxes.material as THREE.LineBasicMaterial;
-      axesMaterial.depthTest = false;
-      axesMaterial.depthWrite = false;
-      axesMaterial.transparent = true;
-      axesMaterial.opacity = 0.95;
-      axesMaterial.toneMapped = false;
-      orientationAxes.renderOrder = 1000;
-      camera.add(orientationAxes);
-      scene.add(camera);
-    }
-
-    const updateOrientationAxes = () => {
-      if (!orientationAxes) return;
-
-      const distance = 2.0;
-      const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * distance;
-      const halfWidth = halfHeight * camera.aspect;
-      const margin = Math.min(halfWidth, halfHeight) * 0.28;
-
-      orientationAxes.position.set(halfWidth - margin, -halfHeight + margin, -distance);
-      orientationAxes.quaternion.copy(camera.quaternion).invert();
-    };
+    const orientationGizmo = createVolumeOrientationGizmo(
+      mount,
+      normalizedClipBounds,
+    );
+    orientationGizmoRef.current = orientationGizmo;
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
 
@@ -1176,7 +1160,10 @@ export default function GpuVolumeView({
           .invert();
       }
 
-      updateOrientationAxes();
+      orientationGizmo.updateOrientation(
+        cameraNow.quaternion,
+        meshRef.current?.quaternion,
+      );
       rendererNow.render(sceneNow, cameraNow);
 
       const wheelActive =
@@ -1233,11 +1220,9 @@ export default function GpuVolumeView({
       controls.dispose();
       geometry.dispose();
       material.dispose();
-
-      if (orientationAxes) {
-        camera.remove(orientationAxes);
-        orientationAxes.geometry.dispose();
-        (orientationAxes.material as THREE.Material).dispose();
+      orientationGizmo.dispose();
+      if (orientationGizmoRef.current === orientationGizmo) {
+        orientationGizmoRef.current = null;
       }
 
       if (prevTexRef.current) {
@@ -1360,6 +1345,8 @@ export default function GpuVolumeView({
   ]);
 
   useEffect(() => {
+    orientationGizmoRef.current?.setClipBounds(normalizedClipBounds);
+
     const mat = materialRef.current;
     if (!mat) return;
 
@@ -1419,7 +1406,10 @@ export default function GpuVolumeView({
           WebGL2 is required for GPU volume rendering.
         </div>
       )}
-      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        ref={mountRef}
+        style={{ width: "100%", height: "100%", position: "relative" }}
+      />
     </div>
   );
 }

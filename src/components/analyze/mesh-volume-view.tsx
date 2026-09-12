@@ -15,6 +15,10 @@ import {
     type VolumeSlicePosition,
     type VolumeSliceVisibility,
 } from "./volume-3d-types";
+import {
+    createVolumeOrientationGizmo,
+    type VolumeOrientationGizmo,
+} from "./volume-orientation-gizmo";
 
 export type MeshColorMode = "solid" | "density" | "components";
 
@@ -627,6 +631,7 @@ export default function MeshVolumeView({
         let composer: EffectComposer | null = null;
         let gtaoPass: GTAOPass | null = null;
         let outputPass: OutputPass | null = null;
+        let orientationGizmo: VolumeOrientationGizmo | null = null;
         let frameId: number | null = null;
         let dragState: ViewerDragState | null = null;
 
@@ -636,21 +641,6 @@ export default function MeshVolumeView({
 
             const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
             camera.position.set(0.9, -1.45, 0.9);
-
-            const OrientationAxes = (THREE as any).AxesHelper as typeof THREE.AxesHelper | undefined;
-            const orientationAxes = OrientationAxes ? new OrientationAxes(0.18) : null;
-
-            if (orientationAxes) {
-                const axesMaterial = orientationAxes.material as THREE.LineBasicMaterial;
-                axesMaterial.depthTest = false;
-                axesMaterial.depthWrite = false;
-                axesMaterial.transparent = true;
-                axesMaterial.opacity = 0.95;
-                axesMaterial.toneMapped = false;
-                orientationAxes.renderOrder = 1000;
-                camera.add(orientationAxes);
-                scene.add(camera);
-            }
 
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
@@ -744,6 +734,11 @@ export default function MeshVolumeView({
             surfacePivot.add(surface);
             scene.add(surfacePivot);
 
+            orientationGizmo = createVolumeOrientationGizmo(
+                host,
+                clipBoundsRef.current,
+            );
+
             const volumeBounds = getMeshVolumeLocalBounds(mesh, geometry.boundingBox);
             const localClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
             const worldClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
@@ -769,6 +764,7 @@ export default function MeshVolumeView({
                     gtaoPass.enabled = !isClippingActive(bounds);
                 }
 
+                orientationGizmo?.setClipBounds(bounds);
                 requestRenderRef.current();
             };
 
@@ -834,21 +830,6 @@ export default function MeshVolumeView({
             let appliedDpr = -1;
             let appliedGtaoScale = -1;
 
-            const updateOrientationAxes = () => {
-                if (!orientationAxes) return;
-
-                const distance = 2.0;
-                const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * distance;
-                const halfWidth = halfHeight * camera.aspect;
-                const margin = Math.min(halfWidth, halfHeight) * 0.28;
-
-                orientationAxes.position.set(halfWidth - margin, -halfHeight + margin, -distance);
-                orientationAxes.quaternion
-                    .copy(camera.quaternion)
-                    .invert()
-                    .multiply(surfacePivot.quaternion);
-            };
-
             const applyRenderQuality = (force = false) => {
                 if (!renderer || !composer || !gtaoPass) return;
 
@@ -869,7 +850,6 @@ export default function MeshVolumeView({
                 gtaoPass.setSize(Math.max(1, Math.floor(width * gtaoScale)), Math.max(1, Math.floor(height * gtaoScale)));
                 camera.aspect = width / height;
                 camera.updateProjectionMatrix();
-                updateOrientationAxes();
             };
 
             const renderFrame = () => {
@@ -889,7 +869,10 @@ export default function MeshVolumeView({
                 localClipPlanes.forEach((plane, index) => {
                     worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
                 });
-                updateOrientationAxes();
+                orientationGizmo?.updateOrientation(
+                    camera.quaternion,
+                    surfacePivot.quaternion,
+                );
                 composer?.render(dt);
 
                 if (autoRotateRef.current || controlsChanged) requestRender();
@@ -1166,6 +1149,8 @@ export default function MeshVolumeView({
                 gtaoPass?.dispose();
                 outputPass?.dispose();
                 composer?.dispose();
+                orientationGizmo?.dispose();
+                orientationGizmo = null;
 
                 disposeObject3d(scene);
                 renderer?.dispose();
@@ -1185,6 +1170,7 @@ export default function MeshVolumeView({
             gtaoPass?.dispose();
             outputPass?.dispose();
             composer?.dispose();
+            orientationGizmo?.dispose();
             renderer?.dispose();
             requestRenderRef.current = () => undefined;
             applyCameraCommandRef.current = () => undefined;
@@ -1215,6 +1201,7 @@ export default function MeshVolumeView({
                 minWidth: 0,
                 minHeight: 0,
                 overflow: "hidden",
+                position: "relative",
             }}
         />
     );
