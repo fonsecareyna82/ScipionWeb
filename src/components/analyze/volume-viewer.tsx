@@ -21,7 +21,7 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Crosshair } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2 } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
 import useVolumeRegions from "./use-volume-regions";
@@ -65,6 +65,7 @@ type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
 type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
+type OrthoAxis = "x" | "y" | "z";
 type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
 
 type SliceImageState = {
@@ -234,6 +235,7 @@ export default function VolumeViewer({
   const [sliceIndexZ, setSliceIndexZ] = useState(0);
   const [sliceIndexY, setSliceIndexY] = useState(0);
   const [sliceIndexX, setSliceIndexX] = useState(0);
+  const [focusedOrthoAxis, setFocusedOrthoAxis] = useState<OrthoAxis | null>(null);
 
   const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x" | "crosshair">(null);
 
@@ -532,6 +534,27 @@ export default function VolumeViewer({
   }, [viewMode]);
 
   useEffect(() => {
+    if (viewMode !== "slices" || sliceLayoutMode !== "triple") setFocusedOrthoAxis(null);
+  }, [viewMode, sliceLayoutMode]);
+
+  useEffect(() => {
+    setFocusedOrthoAxis(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!focusedOrthoAxis) return;
+
+    const restoreTripleView = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setFocusedOrthoAxis(null);
+    };
+
+    window.addEventListener("keydown", restoreTripleView);
+    return () => window.removeEventListener("keydown", restoreTripleView);
+  }, [focusedOrthoAxis]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -798,7 +821,7 @@ export default function VolumeViewer({
   const imgError = singleSlice.error;
 
   const zSlice = useVolumeSliceImage({
-    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices && (!focusedOrthoAxis || focusedOrthoAxis === "z"),
     svc,
     projectId,
     protocolId,
@@ -814,7 +837,7 @@ export default function VolumeViewer({
   });
 
   const ySlice = useVolumeSliceImage({
-    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices && (!focusedOrthoAxis || focusedOrthoAxis === "y"),
     svc,
     projectId,
     protocolId,
@@ -830,7 +853,7 @@ export default function VolumeViewer({
   });
 
   const xSlice = useVolumeSliceImage({
-    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices && (!focusedOrthoAxis || focusedOrthoAxis === "x"),
     svc,
     projectId,
     protocolId,
@@ -845,15 +868,14 @@ export default function VolumeViewer({
     cacheRef: sliceImageCacheRef,
   });
 
+  const visibleTripleSlices = focusedOrthoAxis === "z" ? [zSlice] : focusedOrthoAxis === "y" ? [ySlice] : focusedOrthoAxis === "x" ? [xSlice] : [zSlice, ySlice, xSlice];
+
   const sliceImagesLoading =
     viewMode === "slices" &&
     !volumeSwitching &&
     (
       (sliceLayoutMode === "single" && singleSlice.loading && !singleSlice.url) ||
-      (sliceLayoutMode === "triple" &&
-        ((zSlice.loading && !zSlice.url) ||
-          (ySlice.loading && !ySlice.url) ||
-          (xSlice.loading && !xSlice.url)))
+      (sliceLayoutMode === "triple" && visibleTripleSlices.some((slice) => slice.loading && !slice.url))
     );
 
   const waitingFor3dData =
@@ -876,7 +898,7 @@ export default function VolumeViewer({
     viewMode === "slices" &&
     (
       (sliceLayoutMode === "single" && !!singleSlice.url) ||
-      (sliceLayoutMode === "triple" && (!!zSlice.url || !!ySlice.url || !!xSlice.url))
+      (sliceLayoutMode === "triple" && visibleTripleSlices.some((slice) => !!slice.url))
     );
 
   const [delayedViewerLoading, setDelayedViewerLoading] = useState(false);
@@ -1939,6 +1961,8 @@ export default function VolumeViewer({
                     onNavigate={updateOrthoPosition}
                     onNavigateEnd={finishOrthoNavigation}
                     onStepSlice={stepOrthoSlice}
+                    focusedAxis={focusedOrthoAxis}
+                    onFocusedAxisChange={setFocusedOrthoAxis}
                   />
                 ) : imgError ? (
                   <Typography variant="body2" color="error">
@@ -3236,6 +3260,8 @@ function OrthoSlicesGrid({
   onNavigate,
   onNavigateEnd,
   onStepSlice,
+  focusedAxis,
+  onFocusedAxisChange,
 }: {
   dims: Record<"x" | "y" | "z", number>;
   zSlice: SliceImageState;
@@ -3251,7 +3277,9 @@ function OrthoSlicesGrid({
   xOverlayUrl?: string | null;
   onNavigate: (position: OrthoPosition) => void;
   onNavigateEnd: () => void;
-  onStepSlice: (axis: "x" | "y" | "z", delta: number) => void;
+  onStepSlice: (axis: OrthoAxis, delta: number) => void;
+  focusedAxis: OrthoAxis | null;
+  onFocusedAxisChange: (axis: OrthoAxis | null) => void;
 }) {
   const colX = ORTHO_AXIS_COLORS.x;
   const colY = ORTHO_AXIS_COLORS.y;
@@ -3279,9 +3307,11 @@ function OrthoSlicesGrid({
         label="Y (XZ)"
         labelDotColor={colY}
         active={activeAxis === "y"}
+        visible={!focusedAxis || focusedAxis === "y"}
+        focused={focusedAxis === "y"}
         currentSlice={sliceIndexY}
         maxSlice={Math.max(0, dims.y - 1)}
-        gridArea={{ col: "1 / 2", row: "1 / 2" }}
+        gridArea={focusedAxis === "y" ? { col: "1 / 3", row: "1 / 3" } : { col: "1 / 2", row: "1 / 2" }}
         imageUrl={ySlice.url}
         overlayUrl={yOverlayUrl}
         loading={ySlice.loading}
@@ -3307,15 +3337,18 @@ function OrthoSlicesGrid({
           setActiveAxis("y");
           onStepSlice("y", delta);
         }}
+        onToggleFocus={() => onFocusedAxisChange(focusedAxis === "y" ? null : "y")}
       />
 
       <OrthoSlicePanel
         label="Z (XY)"
         labelDotColor={colZ}
         active={activeAxis === "z"}
+        visible={!focusedAxis || focusedAxis === "z"}
+        focused={focusedAxis === "z"}
         currentSlice={sliceIndexZ}
         maxSlice={Math.max(0, dims.z - 1)}
-        gridArea={{ col: "1 / 2", row: "2 / 3" }}
+        gridArea={focusedAxis === "z" ? { col: "1 / 3", row: "1 / 3" } : { col: "1 / 2", row: "2 / 3" }}
         imageUrl={zSlice.url}
         overlayUrl={zOverlayUrl}
         loading={zSlice.loading}
@@ -3341,15 +3374,18 @@ function OrthoSlicesGrid({
           setActiveAxis("z");
           onStepSlice("z", delta);
         }}
+        onToggleFocus={() => onFocusedAxisChange(focusedAxis === "z" ? null : "z")}
       />
 
       <OrthoSlicePanel
         label="X (YZ)"
         labelDotColor={colX}
         active={activeAxis === "x"}
+        visible={!focusedAxis || focusedAxis === "x"}
+        focused={focusedAxis === "x"}
         currentSlice={sliceIndexX}
         maxSlice={Math.max(0, dims.x - 1)}
-        gridArea={{ col: "2 / 3", row: "2 / 3" }}
+        gridArea={focusedAxis === "x" ? { col: "1 / 3", row: "1 / 3" } : { col: "2 / 3", row: "2 / 3" }}
         imageUrl={xSlice.url}
         overlayUrl={xOverlayUrl}
         loading={xSlice.loading}
@@ -3376,53 +3412,8 @@ function OrthoSlicesGrid({
           setActiveAxis("x");
           onStepSlice("x", delta);
         }}
+        onToggleFocus={() => onFocusedAxisChange(focusedAxis === "x" ? null : "x")}
       />
-
-      <Box
-        aria-label={`MPR navigator position X ${sliceIndexX + 1} Y ${sliceIndexY + 1} Z ${sliceIndexZ + 1}`}
-        sx={{
-          gridColumn: "2 / 3",
-          gridRow: "1 / 2",
-          minWidth: 0,
-          minHeight: 0,
-          overflow: "hidden",
-          border: "1px solid",
-          borderColor: "rgba(79,70,229,0.24)",
-          borderRadius: 1,
-          background: "linear-gradient(135deg, rgba(37,99,235,0.12), rgba(124,58,237,0.10))",
-          p: 1.25,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          gap: 1,
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-          <Crosshair size={17} color="#4f46e5" />
-          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-            Interactive MPR
-          </Typography>
-        </Box>
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.6 }}>
-          {([
-            ["X", sliceIndexX, colX],
-            ["Y", sliceIndexY, colY],
-            ["Z", sliceIndexZ, colZ],
-          ] as const).map(([label, value, color]) => (
-            <Box key={label} sx={{ bgcolor: "background.paper", borderRadius: 1, px: 0.75, py: 0.5, borderTop: `3px solid ${color}`, minWidth: 0 }}>
-              <Typography variant="caption" color="text.secondary">
-                {label}
-              </Typography>
-              <Typography sx={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }} noWrap>
-                {value + 1}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-          Drag a view to move the crosshair. Wheel changes its plane; Shift moves 10 slices.
-        </Typography>
-      </Box>
     </Box>
   );
 }
@@ -3443,12 +3434,15 @@ function OrthoSlicePanel({
   crossV,
   crossH,
   active = false,
+  visible = true,
+  focused = false,
   currentSlice,
   maxSlice,
   onNavigate,
   onNavigationStart,
   onNavigationEnd,
   onStepSlice,
+  onToggleFocus,
 }: {
   label: string;
   labelDotColor?: string;
@@ -3465,12 +3459,15 @@ function OrthoSlicePanel({
   crossV?: { pos: number; color: string; max: number };
   crossH?: { pos: number; color: string; max: number };
   active?: boolean;
+  visible?: boolean;
+  focused?: boolean;
   currentSlice: number;
   maxSlice: number;
   onNavigate?: (imageX: number, imageY: number) => void;
   onNavigationStart?: () => void;
   onNavigationEnd?: () => void;
   onStepSlice?: (delta: number) => void;
+  onToggleFocus?: () => void;
 }) {
   const pointerDragRef = useRef<number | null>(null);
   const viewBoxW = rotate90 ? imageHeight : imageWidth;
@@ -3607,6 +3604,10 @@ function OrthoSlicePanel({
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
           onNavigationEnd?.();
         }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          onToggleFocus?.();
+        }}
         onWheel={(event) => {
           if (!imageUrl || !onStepSlice || event.deltaY === 0) return;
           event.preventDefault();
@@ -3688,13 +3689,39 @@ function OrthoSlicePanel({
         minWidth: 0,
         minHeight: 0,
         overflow: "hidden",
-        display: "flex",
+        display: visible ? "flex" : "none",
         alignItems: "center",
         justifyContent: "center",
         transition: "border-color 120ms ease, box-shadow 120ms ease",
       }}
     >
       {renderContent()}
+
+      <Tooltip title={focused ? "Restore 3 views (Esc)" : `Focus ${label} (double-click)`} placement="left">
+        <IconButton
+          size="small"
+          aria-label={focused ? "Restore 3 views" : `Maximize ${label} view`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleFocus?.();
+          }}
+          sx={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            zIndex: 2,
+            width: 26,
+            height: 26,
+            color: "common.white",
+            bgcolor: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(3px)",
+            "&:hover": { bgcolor: "rgba(0,0,0,0.78)" },
+          }}
+        >
+          {focused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </IconButton>
+      </Tooltip>
 
       <Box
         sx={{

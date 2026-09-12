@@ -456,7 +456,8 @@ describe("VolumeViewer", () => {
 
         fireEvent.click(zView, { clientX: 600, clientY: 500 });
 
-        expect(await screen.findByLabelText("MPR navigator position X 6 Y 5 Z 3")).toBeInTheDocument();
+        expect(screen.getByRole("application", { name: "X (YZ) slice view" })).toHaveAttribute("aria-valuetext", "6 of 7");
+        expect(screen.getByRole("application", { name: "Y (XZ) slice view" })).toHaveAttribute("aria-valuetext", "5 of 6");
 
         await waitFor(() => {
             expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledWith(
@@ -476,6 +477,29 @@ describe("VolumeViewer", () => {
                 expect.objectContaining({ axis: "y" }),
             );
         });
+    });
+
+    it("focuses an orthogonal plane and restores all views with Escape", async () => {
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        fireEvent.doubleClick(zView);
+
+        expect(screen.getByRole("application", { name: "Z (XY) slice view" })).toBeVisible();
+        expect(screen.queryByRole("application", { name: "Y (XZ) slice view" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("application", { name: "X (YZ) slice view" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Restore 3 views" })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Restore 3 views" }));
+        expect(await screen.findByRole("application", { name: "Y (XZ) slice view" })).toBeVisible();
+
+        fireEvent.click(screen.getByRole("button", { name: "Maximize Z (XY) view" }));
+        fireEvent.keyDown(window, { key: "Escape" });
+
+        expect(screen.getByRole("application", { name: "Y (XZ) slice view" })).toBeVisible();
+        expect(screen.getByRole("application", { name: "Z (XY) slice view" })).toBeVisible();
+        expect(screen.getByRole("application", { name: "X (YZ) slice view" })).toBeVisible();
+        expect(screen.queryByRole("button", { name: "Restore 3 views" })).not.toBeInTheDocument();
     });
 
     it("changes axis in single-slice mode and requests the correct slice axis", async () => {
