@@ -35,11 +35,35 @@ vi.mock("react-plotly.js", () => ({
 }));
 
 vi.mock("../../analyze/gpu-volume-view", () => ({
-    default: ({ resetViewKey = 0 }: { resetViewKey?: number }) => <div data-testid="mock-gpu-volume" data-reset-view-key={resetViewKey}>Mock GpuVolumeView</div>,
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, slicePosition, sliceVisibility }: any) => (
+        <div
+            data-testid="mock-gpu-volume"
+            data-reset-view-key={resetViewKey}
+            data-camera-preset={cameraCommand?.preset ?? ""}
+            data-camera-key={cameraCommand?.key ?? 0}
+            data-clip-x={JSON.stringify(clipBounds?.x ?? [])}
+            data-slice-x={slicePosition?.x ?? ""}
+            data-slice-x-visible={String(Boolean(sliceVisibility?.x))}
+        >
+            Mock GpuVolumeView
+        </div>
+    ),
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0 }: { resetViewKey?: number }) => <div data-testid="mock-mesh-volume" data-reset-view-key={resetViewKey}>Mock MeshVolumeView</div>,
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, slicePosition, sliceVisibility }: any) => (
+        <div
+            data-testid="mock-mesh-volume"
+            data-reset-view-key={resetViewKey}
+            data-camera-preset={cameraCommand?.preset ?? ""}
+            data-camera-key={cameraCommand?.key ?? 0}
+            data-clip-x={JSON.stringify(clipBounds?.x ?? [])}
+            data-slice-x={slicePosition?.x ?? ""}
+            data-slice-x-visible={String(Boolean(sliceVisibility?.x))}
+        >
+            Mock MeshVolumeView
+        </div>
+    ),
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
@@ -384,6 +408,27 @@ describe("VolumeViewer", () => {
         expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
     });
 
+    it("deduplicates an identical surface request while it is still loading", async () => {
+        const deferred = createDeferred<ReturnType<typeof makeSurfaceMesh>>();
+        serviceMocks.getVolumeSurfaceMesh.mockReturnValue(deferred.promise);
+
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "mesh" }));
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(1);
+
+        deferred.resolve(makeSurfaceMesh());
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
+    });
+
     it("expands the 3D canvas and restores its panels with Escape", async () => {
         renderViewer();
 
@@ -417,6 +462,52 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "Reset 3D view" }));
         expect(screen.getByTestId("mock-gpu-volume")).toHaveAttribute("data-reset-view-key", "2");
         expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates clipping and synchronized slice planes without reloading 3D data", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        const meshViewer = await screen.findByTestId("mock-mesh-volume");
+        expect(meshViewer).toHaveAttribute("data-clip-x", "[0,1]");
+        expect(meshViewer).toHaveAttribute("data-slice-x", "0.5");
+        expect(meshViewer).toHaveAttribute("data-slice-x-visible", "false");
+
+        const surfaceCalls = serviceMocks.getVolumeSurfaceMesh.mock.calls.length;
+        fireEvent.change(screen.getByRole("slider", { name: "X clipping minimum" }), { target: { value: "2" } });
+        fireEvent.change(screen.getByRole("slider", { name: "X 3D slice position" }), { target: { value: "5" } });
+        fireEvent.click(screen.getByRole("button", { name: "X slice plane" }));
+
+        await waitFor(() => {
+            expect(JSON.parse(screen.getByTestId("mock-mesh-volume").getAttribute("data-clip-x") || "[]")[0]).toBeCloseTo(2 / 6);
+            expect(Number(screen.getByTestId("mock-mesh-volume").getAttribute("data-slice-x"))).toBeCloseTo(5 / 6);
+            expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-slice-x-visible", "true");
+        });
+
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(surfaceCalls);
+        fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-clip-x", "[0,1]");
+    });
+
+    it("sends repeatable principal-axis camera commands to the active renderer", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+
+        const chooseCameraPreset = async (label: string) => {
+            fireEvent.mouseDown(screen.getByText("Choose view", { selector: '[role="combobox"]' }));
+            fireEvent.click(await screen.findByText(label, { selector: "li" }));
+        };
+
+        await chooseCameraPreset("Right (+X)");
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-camera-preset", "right");
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-camera-key", "1");
+
+        await chooseCameraPreset("Right (+X)");
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-camera-key", "2");
     });
 
     it("switches to metadata mode when metadata is available", async () => {

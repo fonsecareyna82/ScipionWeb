@@ -559,7 +559,6 @@ export default function GpuVolumeView({
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
-  const clipBoxRef = useRef<THREE.Box3Helper | null>(null);
   const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -737,16 +736,6 @@ export default function GpuVolumeView({
     mesh.scale.copy(scaleVec);
     meshRef.current = mesh;
     scene.add(mesh);
-
-    const clipBox = new THREE.Box3Helper(new THREE.Box3(), 0x94a3b8);
-    const clipBoxMaterial = clipBox.material as THREE.LineBasicMaterial;
-    clipBoxMaterial.transparent = true;
-    clipBoxMaterial.opacity = 0.72;
-    clipBoxMaterial.depthTest = false;
-    clipBox.renderOrder = 5;
-    clipBoxRef.current = clipBox;
-    updateGpuClipBox(clipBox, normalizedClipBounds, scaleVec);
-    scene.add(clipBox);
 
     const clock = new THREE.Clock();
 
@@ -1215,8 +1204,6 @@ export default function GpuVolumeView({
       controls.dispose();
       geometry.dispose();
       material.dispose();
-      clipBox.geometry.dispose();
-      clipBoxMaterial.dispose();
 
       if (prevTexRef.current) {
         try {
@@ -1246,7 +1233,6 @@ export default function GpuVolumeView({
       controlsRef.current = null;
       meshRef.current = null;
       materialRef.current = null;
-      clipBoxRef.current = null;
       uInvModelRef.current = null;
       rafRef.current = null;
     };
@@ -1344,9 +1330,8 @@ export default function GpuVolumeView({
 
     mat.uniforms.uClipMin.value.set(normalizedClipBounds.x[0], normalizedClipBounds.y[0], normalizedClipBounds.z[0]);
     mat.uniforms.uClipMax.value.set(normalizedClipBounds.x[1], normalizedClipBounds.y[1], normalizedClipBounds.z[1]);
-    if (clipBoxRef.current) updateGpuClipBox(clipBoxRef.current, normalizedClipBounds, scaleVec);
     requestRenderRef.current();
-  }, [normalizedClipBounds, scaleVec]);
+  }, [normalizedClipBounds]);
 
   useEffect(() => {
     const mat = materialRef.current;
@@ -1376,9 +1361,8 @@ export default function GpuVolumeView({
 
   useEffect(() => {
     meshRef.current?.scale.copy(scaleVec);
-    if (clipBoxRef.current) updateGpuClipBox(clipBoxRef.current, normalizedClipBounds, scaleVec);
     requestRenderRef.current();
-  }, [scaleVec, normalizedClipBounds]);
+  }, [scaleVec]);
 
   if (!tex) return <div style={{ width: "100%", height: "100%" }} />;
 
@@ -1425,21 +1409,6 @@ function setVectorAxis(vector: THREE.Vector3, axis: VolumeAxis, value: number): 
 function pointInsideBounds(point: THREE.Vector3, min: THREE.Vector3, max: THREE.Vector3): boolean {
   const epsilon = 1e-5;
   return point.x >= min.x - epsilon && point.x <= max.x + epsilon && point.y >= min.y - epsilon && point.y <= max.y + epsilon && point.z >= min.z - epsilon && point.z <= max.z + epsilon;
-}
-
-function updateGpuClipBox(helper: THREE.Box3Helper, bounds: VolumeClipBounds, scale: THREE.Vector3): void {
-  helper.box.min.set(
-    (bounds.x[0] - 0.5) * scale.x,
-    (bounds.y[0] - 0.5) * scale.y,
-    (bounds.z[0] - 0.5) * scale.z,
-  );
-  helper.box.max.set(
-    (bounds.x[1] - 0.5) * scale.x,
-    (bounds.y[1] - 0.5) * scale.y,
-    (bounds.z[1] - 0.5) * scale.z,
-  );
-  helper.visible = (["x", "y", "z"] as VolumeAxis[]).some((axis) => bounds[axis][0] > 0.0001 || bounds[axis][1] < 0.9999);
-  helper.updateMatrixWorld(true);
 }
 
 function cameraPresetDirection(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {

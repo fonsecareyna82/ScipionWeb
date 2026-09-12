@@ -187,7 +187,7 @@ const HELP_TEXT: Record<string, string> = {
   cameraPreset3d:
     "Snap the camera to a principal volume axis without reloading or modifying the data.",
   clipping3d:
-    "Restrict rendering to an X/Y/Z subvolume. GPU raycasting skips the excluded space, which can improve interaction speed.",
+    "Restrict rendering to an X/Y/Z subvolume. Everything outside the bounds is discarded completely, and GPU raycasting skips that space for faster interaction.",
   slicePlanes3d:
     "Show the current X/Y/Z slice positions inside the 3D view. Drag a visible plane to update the synchronized orthogonal views.",
   slicePlaneOpacity3d:
@@ -321,6 +321,7 @@ export default function VolumeViewer({
   const [surfaceRefreshError, setSurfaceRefreshError] = useState<string | null>(null);
   const surfaceAbortRef = useRef<AbortController | null>(null);
   const surfaceRequestSeqRef = useRef(0);
+  const surfaceRequestKeyRef = useRef("");
 
   const volumeAbortRef = useRef<AbortController | null>(null);
   const volumeRequestSeqRef = useRef(0);
@@ -425,7 +426,7 @@ export default function VolumeViewer({
   const [expanded3d, setExpanded3d] = useState(false);
   const [reset3dViewKey, setReset3dViewKey] = useState(0);
   const [clipBounds3d, setClipBounds3d] = useState<VolumeClipBounds>(() => createFullVolumeClipBounds());
-  const [slicePlanes3d, setSlicePlanes3d] = useState<VolumeSliceVisibility>({ x: true, y: true, z: true });
+  const [slicePlanes3d, setSlicePlanes3d] = useState<VolumeSliceVisibility>({ x: false, y: false, z: false });
   const [slicePlaneOpacity3d, setSlicePlaneOpacity3d] = useState(0.32);
   const [cameraCommand3d, setCameraCommand3d] = useState<VolumeCameraCommand | null>(null);
 
@@ -435,6 +436,7 @@ export default function VolumeViewer({
     surfaceRequestSeqRef.current += 1;
     surfaceAbortRef.current?.abort();
     surfaceAbortRef.current = null;
+    surfaceRequestKeyRef.current = "";
     setMapLoading(false);
     setSurfaceRefreshing(false);
     setAutoRotate3d(false);
@@ -445,6 +447,7 @@ export default function VolumeViewer({
       surfaceRequestSeqRef.current += 1;
       surfaceAbortRef.current?.abort();
       surfaceAbortRef.current = null;
+      surfaceRequestKeyRef.current = "";
 
       volumeRequestSeqRef.current += 1;
       volumeAbortRef.current?.abort();
@@ -502,6 +505,7 @@ export default function VolumeViewer({
     surfaceRequestSeqRef.current += 1;
     surfaceAbortRef.current?.abort();
     surfaceAbortRef.current = null;
+    surfaceRequestKeyRef.current = "";
     setSurfaceRefreshing(false);
     setMapLoading(false);
   }, [active, viewMode, usesSurfaceMesh3d]);
@@ -564,6 +568,7 @@ export default function VolumeViewer({
   useEffect(() => {
     surfaceAbortRef.current?.abort();
     surfaceRequestSeqRef.current += 1;
+    surfaceRequestKeyRef.current = "";
 
     volumeRequestSeqRef.current += 1;
     volumeAbortRef.current?.abort();
@@ -1091,6 +1096,7 @@ export default function VolumeViewer({
     surfaceRequestSeqRef.current += 1;
     surfaceAbortRef.current?.abort();
     surfaceAbortRef.current = null;
+    surfaceRequestKeyRef.current = "";
     setSurfaceRefreshing(false);
     setMapLoading(false);
     setSurfaceRefreshError("Surface update cancelled. Keeping the previous surface.");
@@ -1100,20 +1106,13 @@ export default function VolumeViewer({
     async (
       level: number | null,
       opts: {
+        force?: boolean;
         silent?: boolean;
         minComponentTriangles?: number;
         smoothingIterations?: number;
       } = {},
     ) => {
       if (!active || selectedId == null) return;
-
-      surfaceAbortRef.current?.abort();
-
-      const controller = new AbortController();
-      surfaceAbortRef.current = controller;
-
-      const requestSeq = surfaceRequestSeqRef.current + 1;
-      surfaceRequestSeqRef.current = requestSeq;
 
       const silent = opts.silent === true;
 
@@ -1124,6 +1123,19 @@ export default function VolumeViewer({
       const effectiveSurfaceSmoothing =
         opts.smoothingIterations ??
         surfaceSmoothing3d;
+
+      const requestKey = buildSurfaceDataKey(level, effectiveSurfaceDust, effectiveSurfaceSmoothing);
+
+      if (!opts.force && surfaceRequestKeyRef.current === requestKey) return;
+
+      surfaceAbortRef.current?.abort();
+
+      const controller = new AbortController();
+      surfaceAbortRef.current = controller;
+      surfaceRequestKeyRef.current = requestKey;
+
+      const requestSeq = surfaceRequestSeqRef.current + 1;
+      surfaceRequestSeqRef.current = requestSeq;
 
       if (silent) {
         setSurfaceRefreshing(true);
@@ -1147,6 +1159,7 @@ export default function VolumeViewer({
 
         if (surfaceAbortRef.current === controller) {
           surfaceAbortRef.current = null;
+          surfaceRequestKeyRef.current = "";
         }
 
         if (silent) {
@@ -1231,6 +1244,7 @@ export default function VolumeViewer({
 
         if (surfaceAbortRef.current === controller) {
           surfaceAbortRef.current = null;
+          surfaceRequestKeyRef.current = "";
         }
 
         if (surfaceRequestSeqRef.current === requestSeq) {
@@ -1330,6 +1344,7 @@ export default function VolumeViewer({
 
     if (usesSurfaceMesh3d) {
       const expectedKey = buildSurfaceDataKey(surfaceLevel3d, surfaceDust3d, surfaceSmoothing3d);
+      if (!force && surfaceRequestKeyRef.current === expectedKey) return;
       if (!force && surfaceMesh && surfaceDataKeyRef.current === expectedKey) {
         setMapError(null);
         setGpuError(null);
@@ -1349,7 +1364,7 @@ export default function VolumeViewer({
 
     try {
       if (usesSurfaceMesh3d) {
-        await reloadSurfaceMesh(surfaceLevel3d, { silent: false });
+        await reloadSurfaceMesh(surfaceLevel3d, { force, silent: false });
         return;
       }
 

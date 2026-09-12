@@ -14,7 +14,7 @@ import {
     type VolumeClipBounds,
     type VolumeSlicePosition,
     type VolumeSliceVisibility,
-} from  "./volume-3d-types";
+} from "./volume-3d-types";
 
 export type MeshColorMode = "solid" | "density" | "components";
 
@@ -416,10 +416,6 @@ function configureLocalClippingPlanes(planes: THREE.Plane[], volumeBounds: THREE
     planes[5].set(new THREE.Vector3(0, 0, -1), clipped.max.z);
 }
 
-function isClippingActive(bounds: VolumeClipBounds): boolean {
-    return (["x", "y", "z"] as VolumeAxis[]).some((axis) => bounds[axis][0] > 0.0001 || bounds[axis][1] < 0.9999);
-}
-
 function createMeshSlicePlane(axis: VolumeAxis, clippingPlanes: THREE.Plane[]): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
     const colors: Record<VolumeAxis, number> = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
     const material = new THREE.MeshBasicMaterial({
@@ -733,13 +729,6 @@ export default function MeshVolumeView({
             material.clippingPlanes = worldClipPlanes;
             renderer.localClippingEnabled = true;
 
-            const clipBox = new THREE.Box3Helper(volumeBounds.clone(), 0x64748b);
-            const clipBoxMaterial = clipBox.material as THREE.LineBasicMaterial;
-            clipBoxMaterial.transparent = true;
-            clipBoxMaterial.opacity = 0.72;
-            clipBox.renderOrder = 5;
-            surfacePivot.add(clipBox);
-
             const slicePlanes = {
                 x: createMeshSlicePlane("x", worldClipPlanes),
                 y: createMeshSlicePlane("y", worldClipPlanes),
@@ -754,11 +743,6 @@ export default function MeshVolumeView({
                 localClipPlanes.forEach((plane, index) => {
                     worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
                 });
-
-                const clippedBox = normalizedBoundsToBox3(volumeBounds, bounds);
-                clipBox.box.copy(clippedBox);
-                clipBox.visible = isClippingActive(bounds);
-                clipBox.updateMatrixWorld(true);
                 requestRenderRef.current();
             };
 

@@ -55,8 +55,29 @@ vi.mock("three", () => {
             return this;
         }
 
+        addScalar(value: number) {
+            this.x += value;
+            this.y += value;
+            this.z += value;
+            return this;
+        }
+
+        addScaledVector(v: Vector3, scale: number) {
+            this.x += v.x * scale;
+            this.y += v.y * scale;
+            this.z += v.z * scale;
+            return this;
+        }
+
         length() {
             return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+        }
+
+        distanceTo(v: Vector3) {
+            const dx = this.x - v.x;
+            const dy = this.y - v.y;
+            const dz = this.z - v.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
         normalize() {
@@ -72,6 +93,10 @@ vi.mock("three", () => {
             this.x *= len;
             this.y *= len;
             this.z *= len;
+            return this;
+        }
+
+        project() {
             return this;
         }
     }
@@ -98,6 +123,7 @@ vi.mock("three", () => {
     class PerspectiveCamera {
         aspect = 1;
         position = new Vector3();
+        up = new Vector3(0, 1, 0);
 
         constructor() {
             threeState.lastCamera = this;
@@ -144,6 +170,8 @@ vi.mock("three", () => {
         }
 
         updateMatrixWorld() { }
+        worldToLocal(vector: Vector3) { return vector; }
+        localToWorld(vector: Vector3) { return vector; }
     }
 
     class Data3DTexture {
@@ -238,7 +266,20 @@ vi.mock("three", () => {
 
 vi.mock("three/examples/jsm/controls/OrbitControls.js", () => ({
     OrbitControls: class {
-        target = { set: vi.fn() };
+        target = {
+            x: 0,
+            y: 0,
+            z: 0,
+            set: vi.fn(function (this: any, x: number, y: number, z: number) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                return this;
+            }),
+            clone() {
+                return { x: this.x, y: this.y, z: this.z };
+            },
+        };
         enableDamping = false;
         dampingFactor = 0;
         rotateSpeed = 0;
@@ -390,6 +431,66 @@ describe("GpuVolumeView", () => {
             expect(threeState.lastMaterial.uniforms.uOpacity.value).toBe(0.7);
             expect(threeState.lastMaterial.uniforms.uCmap.value).toBe(6);
             expect(threeState.lastMaterial.uniforms.uIsoMode.value).toBe(0);
+        });
+    });
+
+    it("updates clipping and synchronized slice-plane uniforms without rebuilding the renderer", async () => {
+        const props = makeProps();
+        const { rerender } = render(<GpuVolumeView {...props} />);
+
+        await waitFor(() => {
+            expect(threeState.lastMaterial).not.toBeNull();
+        });
+
+        const renderer = threeState.lastRenderer;
+        const material = threeState.lastMaterial;
+        const texture = material.uniforms.uTex.value;
+        expect(material.uniforms.uSliceVisible.value).toMatchObject({ x: 0, y: 0, z: 0 });
+        rerender(
+            <GpuVolumeView
+                {...props}
+                clipBounds={{ x: [0.2, 0.8], y: [0.1, 0.9], z: [0.3, 1] }}
+                slicePosition={{ x: 0.25, y: 0.5, z: 0.75 }}
+                sliceVisibility={{ x: true, y: false, z: true }}
+                slicePlaneOpacity={0.44}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(threeState.lastMaterial.uniforms.uClipMin.value).toMatchObject({ x: 0.2, y: 0.1, z: 0.3 });
+            expect(threeState.lastMaterial.uniforms.uClipMax.value).toMatchObject({ x: 0.8, y: 0.9, z: 1 });
+            expect(threeState.lastMaterial.uniforms.uSlicePosition.value).toMatchObject({ x: 0.25, y: 0.5, z: 0.75 });
+            expect(threeState.lastMaterial.uniforms.uSliceVisible.value).toMatchObject({ x: 1, y: 0, z: 1 });
+            expect(threeState.lastMaterial.uniforms.uSliceOpacity.value).toBe(0.44);
+        });
+
+        expect(threeState.lastRenderer).toBe(renderer);
+        expect(threeState.lastMaterial).toBe(material);
+        expect(threeState.lastMaterial.uniforms.uTex.value).toBe(texture);
+    });
+
+    it("snaps the existing camera to repeatable principal-axis commands", async () => {
+        const { rerender } = render(<GpuVolumeView {...makeProps({ cameraCommand: null })} />);
+
+        await waitFor(() => {
+            expect(threeState.lastCamera).not.toBeNull();
+        });
+
+        rerender(<GpuVolumeView {...makeProps({ cameraCommand: { preset: "right", key: 1 } })} />);
+
+        await waitFor(() => {
+            expect(threeState.lastCamera.position.x).toBeGreaterThan(0);
+            expect(threeState.lastCamera.position.y).toBeCloseTo(0);
+            expect(threeState.lastCamera.position.z).toBeCloseTo(0);
+        });
+
+        rerender(<GpuVolumeView {...makeProps({ cameraCommand: { preset: "top", key: 2 } })} />);
+
+        await waitFor(() => {
+            expect(threeState.lastCamera.position.x).toBeCloseTo(0);
+            expect(threeState.lastCamera.position.y).toBeGreaterThan(0);
+            expect(threeState.lastCamera.position.z).toBeCloseTo(0);
+            expect(threeState.lastCamera.up).toMatchObject({ x: 0, y: 0, z: -1 });
         });
     });
 
