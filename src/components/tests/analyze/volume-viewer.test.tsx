@@ -27,8 +27,12 @@ vi.mock("@/ProjectServiceContext", () => ({
 }));
 
 vi.mock("react-plotly.js", () => ({
-    default: ({ data }: { data?: Array<{ type?: string }> }) => (
-        <div data-testid="mock-plotly">
+    default: ({ data, layout }: { data?: Array<{ type?: string; x?: number[] }>; layout?: any }) => (
+        <div
+            data-testid="mock-plotly"
+            data-x-values={JSON.stringify(data?.[0]?.x ?? [])}
+            data-x-range={JSON.stringify(layout?.xaxis?.range ?? null)}
+        >
             {data?.[0]?.type ?? "plot"}
         </div>
     ),
@@ -496,6 +500,10 @@ describe("VolumeViewer", () => {
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
         expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Appearance" })).toBeInTheDocument();
+        expect(screen.queryByText("Choose view", { selector: '[role="combobox"]' })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
 
         const chooseCameraPreset = async (label: string) => {
             fireEvent.mouseDown(screen.getByText("Choose view", { selector: '[role="combobox"]' }));
@@ -522,7 +530,12 @@ describe("VolumeViewer", () => {
         ).toBeInTheDocument();
     });
 
-    it("loads the histogram when opening the histogram tab", async () => {
+    it("loads a robust histogram view when opening the histogram tab", async () => {
+        serviceMocks.getVolumeHistogram.mockResolvedValueOnce({
+            binEdges: [0, 1, 2, 1000],
+            counts: [1000, 1000, 1],
+        });
+
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -538,8 +551,14 @@ describe("VolumeViewer", () => {
             );
         });
 
-        expect(await screen.findByTestId("mock-plotly")).toBeInTheDocument();
+        const plot = await screen.findByTestId("mock-plotly");
         expect(screen.getByText("bar")).toBeInTheDocument();
+        expect(JSON.parse(plot.getAttribute("data-x-values") || "[]")).toEqual([0.5, 1.5]);
+
+        const range = JSON.parse(plot.getAttribute("data-x-range") || "null");
+        expect(range[0]).toBeLessThan(0.5);
+        expect(range[1]).toBeGreaterThan(1.5);
+        expect(range[1]).toBeLessThan(10);
     });
 
     it("switches from triple slices to single slices and requests the current slice", async () => {

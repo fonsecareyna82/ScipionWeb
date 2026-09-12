@@ -70,7 +70,7 @@ type HistogramData = {
 
 type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
-type RightTab = "ctrl" | "hist";
+type RightTab = "ctrl" | "appearance" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
 type MeshColorMode3d = "solid" | "density" | "components";
@@ -1714,6 +1714,33 @@ export default function VolumeViewer({
     return null;
   }, [histogram]);
 
+  const histogramPlotData = useMemo(() => {
+    if (!histogram?.binEdges?.length || !histogram?.counts?.length) {
+      return null;
+    }
+
+    const x: number[] = [];
+    const y: number[] = [];
+    const [displayMin, displayMax] = histogramLevelRange ?? [-Infinity, Infinity];
+    const binCount = Math.min(histogram.counts.length, histogram.binEdges.length - 1);
+
+    for (let i = 0; i < binCount; i += 1) {
+      const left = Number(histogram.binEdges[i]);
+      const right = Number(histogram.binEdges[i + 1]);
+      const count = Number(histogram.counts[i]);
+
+      if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) continue;
+
+      const center = 0.5 * (left + right);
+      if (center < displayMin || center > displayMax) continue;
+
+      x.push(center);
+      y.push(Number.isFinite(count) && count > 0 ? count : 0);
+    }
+
+    return x.length > 0 ? { x, y } : null;
+  }, [histogram, histogramLevelRange]);
+
 
   const surfaceLevelValue = useMemo(() => {
     return (
@@ -2312,6 +2339,9 @@ export default function VolumeViewer({
                   sx={{ flexShrink: 0 }}
                 >
                   <ToggleButton value="ctrl">Controls</ToggleButton>
+                  {viewMode === "map3d" && (
+                    <ToggleButton value="appearance">Appearance</ToggleButton>
+                  )}
                   <ToggleButton value="hist">Histogram</ToggleButton>
                 </ToggleButtonGroup>
 
@@ -2725,8 +2755,10 @@ export default function VolumeViewer({
                     </Box>
                   )}
 
-                  {rightTab === "ctrl" && viewMode === "map3d" && (
+                  {(rightTab === "ctrl" || rightTab === "appearance") && viewMode === "map3d" && (
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
+                      {rightTab === "ctrl" && (
+                        <>
                       <SectionTitle title="Data" />
                       <ParamRow
                         label="Quality"
@@ -2777,7 +2809,11 @@ export default function VolumeViewer({
                       </Button>
 
                       <Divider />
+                        </>
+                      )}
 
+                      {rightTab === "appearance" && (
+                        <>
                       <SectionTitle title="Appearance" />
                       <ParamRow
                         label="Camera"
@@ -2856,7 +2892,11 @@ export default function VolumeViewer({
                       />
 
                       <Divider />
+                        </>
+                      )}
 
+                      {rightTab === "ctrl" && (
+                        <>
                       <SectionTitle title="Rendering" />
                       <ParamRow
                         label="Mode"
@@ -3130,6 +3170,8 @@ export default function VolumeViewer({
                           Contour control will be available when the surface is ready.
                         </Typography>
                       )}
+                        </>
+                      )}
                     </Box>
                   )}
 
@@ -3152,24 +3194,34 @@ export default function VolumeViewer({
                         <Typography variant="caption" color="error" sx={{ mt: 1 }}>
                           {histError}
                         </Typography>
-                      ) : histogram && histogram.binEdges.length > 1 ? (
+                      ) : histogramPlotData ? (
                         <Box sx={{ mt: 1, flex: 1, minHeight: 240 }}>
                           <Plot
                             data={[
                               {
                                 type: "bar",
-                                x: histogram.binEdges
-                                  .slice(0, -1)
-                                  .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
-                                y: histogram.counts,
+                                x: histogramPlotData.x,
+                                y: histogramPlotData.y,
+                                hovertemplate: "Intensity %{x:.4g}<br>Count %{y:,}<extra></extra>",
                               },
                             ]}
                             layout={{
-                              margin: { l: 40, r: 10, t: 10, b: 30 },
+                              margin: { l: 48, r: 10, t: 10, b: 38 },
                               autosize: true,
                               showlegend: false,
-                              xaxis: { title: "Intensity" },
-                              yaxis: { title: "Count" },
+                              bargap: 0,
+                              xaxis: {
+                                title: "Intensity",
+                                range: histogramLevelRange ?? undefined,
+                                autorange: histogramLevelRange ? false : true,
+                                zeroline: false,
+                              },
+                              yaxis: {
+                                title: "Count",
+                                rangemode: "tozero",
+                                tickformat: "~s",
+                                zeroline: false,
+                              },
                             }}
                             style={{ width: "100%", height: "100%" }}
                             useResizeHandler

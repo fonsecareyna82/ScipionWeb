@@ -684,6 +684,33 @@ export default function GpuVolumeView({
     controls.update();
     controlsRef.current = controls;
 
+    const OrientationAxes = (THREE as any).AxesHelper as typeof THREE.AxesHelper | undefined;
+    const orientationAxes = OrientationAxes ? new OrientationAxes(0.18) : null;
+
+    if (orientationAxes) {
+      const axesMaterial = orientationAxes.material as THREE.LineBasicMaterial;
+      axesMaterial.depthTest = false;
+      axesMaterial.depthWrite = false;
+      axesMaterial.transparent = true;
+      axesMaterial.opacity = 0.95;
+      axesMaterial.toneMapped = false;
+      orientationAxes.renderOrder = 1000;
+      camera.add(orientationAxes);
+      scene.add(camera);
+    }
+
+    const updateOrientationAxes = () => {
+      if (!orientationAxes) return;
+
+      const distance = 2.0;
+      const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * distance;
+      const halfWidth = halfHeight * camera.aspect;
+      const margin = Math.min(halfWidth, halfHeight) * 0.28;
+
+      orientationAxes.position.set(halfWidth - margin, -halfHeight + margin, -distance);
+      orientationAxes.quaternion.copy(camera.quaternion).invert();
+    };
+
     const geometry = new THREE.BoxGeometry(1, 1, 1);
 
     const uInvModel = new THREE.Matrix4();
@@ -803,6 +830,7 @@ export default function GpuVolumeView({
       setRendererQuality(true);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      updateOrientationAxes();
       requestRender();
     };
 
@@ -1148,6 +1176,7 @@ export default function GpuVolumeView({
           .invert();
       }
 
+      updateOrientationAxes();
       rendererNow.render(sceneNow, cameraNow);
 
       const wheelActive =
@@ -1204,6 +1233,12 @@ export default function GpuVolumeView({
       controls.dispose();
       geometry.dispose();
       material.dispose();
+
+      if (orientationAxes) {
+        camera.remove(orientationAxes);
+        orientationAxes.geometry.dispose();
+        (orientationAxes.material as THREE.Material).dispose();
+      }
 
       if (prevTexRef.current) {
         try {
