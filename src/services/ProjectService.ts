@@ -311,12 +311,15 @@ export type Coordinates3dGalleryPoint = {
   z: number;
 };
 
+export type Coordinates3dGalleryView = "xy" | "xz" | "yz" | "triple";
+
 export type Coordinates3dGalleryRequest = {
   points: Coordinates3dGalleryPoint[];
   boxSize: number;
   size?: number;
   format?: "png" | "webp" | "jpeg";
   quality?: number;
+  view?: Coordinates3dGalleryView;
 };
 
 export type Coordinates3dGalleryItem = {
@@ -333,6 +336,7 @@ export type Coordinates3dGalleryResult = {
   boxSize: number;
   size: number;
   format: string;
+  view: Coordinates3dGalleryView;
 };
 
 /**

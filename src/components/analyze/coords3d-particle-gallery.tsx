@@ -4,6 +4,8 @@ import {
     CircularProgress,
     IconButton,
     Paper,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
 } from "@mui/material";
@@ -11,6 +13,7 @@ import { Trash2, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
     Coordinates3dPoint,
+    Coordinates3dGalleryView,
     Id,
 } from "@/services/ProjectService";
 
@@ -68,6 +71,11 @@ const DEFAULT_VIEWPORT_HEIGHT = 620;
 const MAX_CACHE_ITEMS = 240;
 const MAX_BATCH_SIZE = 48;
 const REQUEST_DEBOUNCE_MS = 120;
+const TRIPLE_VIEW_LABELS = [
+    { label: "XY", top: 2, left: 2 },
+    { label: "XZ", top: 2, left: "calc(50% + 2px)" },
+    { label: "YZ", top: "calc(50% + 2px)", left: 2 },
+] as const;
 
 function getPointId(point: GalleryPoint, index: number): string {
     return String(point.id ?? index);
@@ -78,6 +86,7 @@ function makeSignature(
     point: GalleryPoint,
     index: number,
     boxSize: number,
+    view: Coordinates3dGalleryView,
 ): string {
     return [
         String(tomogramId),
@@ -87,6 +96,7 @@ function makeSignature(
         Number(point.z).toFixed(2),
         boxSize,
         TILE_SIZE,
+        view,
     ].join(":");
 }
 
@@ -125,6 +135,7 @@ export default function Coords3dParticleGallery({
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [view, setView] = useState<Coordinates3dGalleryView>("xy");
     const [, setCacheVersion] = useState(0);
 
     const effectiveBoxSize = Math.max(16, Math.min(Math.round(boxSize || 64), 256));
@@ -153,7 +164,7 @@ export default function Coords3dParticleGallery({
                 index,
                 point,
                 pointId: getPointId(point, index),
-                signature: makeSignature(tomogramId, point, index, effectiveBoxSize),
+                signature: makeSignature(tomogramId, point, index, effectiveBoxSize, view),
                 row: Math.floor(index / COLUMNS),
                 column: index % COLUMNS,
             });
@@ -166,6 +177,7 @@ export default function Coords3dParticleGallery({
         points,
         startRow,
         tomogramId,
+        view,
     ]);
 
     const visibleSignatureKey = useMemo(
@@ -227,6 +239,7 @@ export default function Coords3dParticleGallery({
                             size: TILE_SIZE,
                             format: "webp",
                             quality: 68,
+                            view,
                         },
                         {
                             signal: controller.signal,
@@ -287,6 +300,7 @@ export default function Coords3dParticleGallery({
         tomogramId,
         visibleSignatureKey,
         visibleTiles,
+        view,
     ]);
 
     useEffect(() => {
@@ -521,6 +535,35 @@ export default function Coords3dParticleGallery({
                 </IconButton>
             </Box>
 
+            <Box sx={{ px: 1, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
+                <ToggleButtonGroup
+                    value={view}
+                    exclusive
+                    fullWidth
+                    size="small"
+                    aria-label="Particle preview orientation"
+                    onChange={(_event, nextView: Coordinates3dGalleryView | null) => {
+                        if (!nextView) return;
+                        setLoadError(null);
+                        setView(nextView);
+                    }}
+                    sx={{
+                        "& .MuiToggleButton-root": {
+                            py: 0.25,
+                            px: 0.5,
+                            fontSize: "0.68rem",
+                            fontWeight: 700,
+                            textTransform: "none",
+                        },
+                    }}
+                >
+                    <ToggleButton value="xy" aria-label="XY particle previews">XY</ToggleButton>
+                    <ToggleButton value="xz" aria-label="XZ particle previews">XZ</ToggleButton>
+                    <ToggleButton value="yz" aria-label="YZ particle previews">YZ</ToggleButton>
+                    <ToggleButton value="triple" aria-label="Triple particle previews">Triple</ToggleButton>
+                </ToggleButtonGroup>
+            </Box>
+
             {loadError && (
                 <Typography
                     variant="caption"
@@ -541,7 +584,7 @@ export default function Coords3dParticleGallery({
                 }}
                 sx={{
                     position: "relative",
-                    height: "min(620px, calc(100vh - 120px))",
+                    height: "min(580px, calc(100vh - 158px))",
                     overflowY: "auto",
                     overflowX: "hidden",
                     p: `${TILE_GAP}px`,
@@ -629,6 +672,27 @@ export default function Coords3dParticleGallery({
                                             <CircularProgress size={18} sx={{ color: "#cbd5e1" }} />
                                         </Box>
                                     )}
+
+                                    {view === "triple" && imageUrl && TRIPLE_VIEW_LABELS.map((item) => (
+                                        <Box
+                                            key={item.label}
+                                            component="span"
+                                            sx={{
+                                                position: "absolute",
+                                                top: item.top,
+                                                left: item.left,
+                                                px: 0.25,
+                                                color: "white",
+                                                bgcolor: "rgba(15, 23, 42, 0.7)",
+                                                fontSize: "7px",
+                                                fontWeight: 700,
+                                                lineHeight: "10px",
+                                                pointerEvents: "none",
+                                            }}
+                                        >
+                                            {item.label}
+                                        </Box>
+                                    ))}
 
                                     <Tooltip title="Remove coordinate">
                                         <IconButton

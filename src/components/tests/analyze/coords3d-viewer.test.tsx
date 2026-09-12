@@ -525,12 +525,20 @@ describe("Coords3dViewer", () => {
 
         serviceMocks.createCoords3dOutputFromPoints.mockResolvedValue({ success: true });
 
-        serviceMocks.fetchCoords3dTomogramGallery.mockResolvedValue({
-            items: [],
-            errors: [],
-            boxSize: 64,
-            size: 74,
-            format: "webp",
+        serviceMocks.fetchCoords3dTomogramGallery.mockImplementation(async (...args: any[]) => {
+            const payload = args[4];
+
+            return {
+                items: payload.points.map((point: { id: string }) => ({
+                    id: point.id,
+                    dataUrl: `data:image/webp;base64,${point.id}-${payload.view ?? "xy"}`,
+                })),
+                errors: [],
+                boxSize: payload.boxSize,
+                size: payload.size,
+                format: payload.format,
+                view: payload.view ?? "xy",
+            };
         });
     });
 
@@ -678,6 +686,34 @@ describe("Coords3dViewer", () => {
 
         fireEvent.keyDown(window, { key: "y", ctrlKey: true });
         await waitFor(() => expect(screen.getByText("Total 1")).toBeInTheDocument());
+    });
+
+    it("loads XY, XZ, YZ, and triple particle previews through the same batch endpoint", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Particles" }));
+
+        const expectGalleryView = async (view: "xy" | "xz" | "yz" | "triple") => {
+            await waitFor(() => {
+                expect(serviceMocks.fetchCoords3dTomogramGallery).toHaveBeenCalledWith(
+                    1,
+                    2,
+                    "coordsOutput",
+                    "t1",
+                    expect.objectContaining({ view }),
+                    { signal: expect.any(AbortSignal) },
+                );
+            });
+        };
+
+        await expectGalleryView("xy");
+        fireEvent.click(screen.getByRole("button", { name: "XZ particle previews" }));
+        await expectGalleryView("xz");
+        fireEvent.click(screen.getByRole("button", { name: "YZ particle previews" }));
+        await expectGalleryView("yz");
+        fireEvent.click(screen.getByRole("button", { name: "Triple particle previews" }));
+        await expectGalleryView("triple");
     });
 
     it("switches to metadata mode", async () => {
