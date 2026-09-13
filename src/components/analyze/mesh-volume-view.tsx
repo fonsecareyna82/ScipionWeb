@@ -426,7 +426,12 @@ function isClippingActive(bounds: VolumeClipBounds): boolean {
     );
 }
 
-function createMeshSlicePlane(axis: VolumeAxis, clippingPlanes: THREE.Plane[]): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
+function createMeshSlicePlane(
+    axis: VolumeAxis,
+): THREE.Mesh<
+    THREE.PlaneGeometry,
+    THREE.MeshBasicMaterial
+> {
     const colors: Record<VolumeAxis, number> = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
     const material = new THREE.MeshBasicMaterial({
         color: colors[axis],
@@ -434,7 +439,6 @@ function createMeshSlicePlane(axis: VolumeAxis, clippingPlanes: THREE.Plane[]): 
         opacity: 0.32,
         depthWrite: false,
         side: THREE.DoubleSide,
-        clippingPlanes,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     plane.userData.volumeAxis = axis;
@@ -446,30 +450,78 @@ function createMeshSlicePlane(axis: VolumeAxis, clippingPlanes: THREE.Plane[]): 
 }
 
 function updateMeshSlicePlane(
-    plane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>,
+    plane: THREE.Mesh<
+        THREE.PlaneGeometry,
+        THREE.MeshBasicMaterial
+    >,
     axis: VolumeAxis,
     volumeBounds: THREE.Box3,
+    clipBounds: VolumeClipBounds,
     normalizedPosition: number,
     visible: boolean,
     opacity: number,
 ): void {
-    const size = volumeBounds.getSize(new THREE.Vector3());
-    const center = volumeBounds.getCenter(new THREE.Vector3());
-    const position = clampNormalized(normalizedPosition);
+    const clippedBounds =
+        normalizedBoundsToBox3(
+            volumeBounds,
+            clipBounds,
+        );
+
+    const size = clippedBounds.getSize(
+        new THREE.Vector3(),
+    );
+
+    const center = clippedBounds.getCenter(
+        new THREE.Vector3(),
+    );
+
+    const position =
+        clampNormalized(
+            normalizedPosition,
+        );
 
     if (axis === "x") {
-        plane.scale.set(size.z, size.y, 1);
-        center.x = THREE.MathUtils.lerp(volumeBounds.min.x, volumeBounds.max.x, position);
+        plane.scale.set(
+            size.z,
+            size.y,
+            1,
+        );
+
+        center.x = THREE.MathUtils.lerp(
+            volumeBounds.min.x,
+            volumeBounds.max.x,
+            position,
+        );
     } else if (axis === "y") {
-        plane.scale.set(size.x, size.z, 1);
-        center.y = THREE.MathUtils.lerp(volumeBounds.min.y, volumeBounds.max.y, position);
+        plane.scale.set(
+            size.x,
+            size.z,
+            1,
+        );
+
+        center.y = THREE.MathUtils.lerp(
+            volumeBounds.min.y,
+            volumeBounds.max.y,
+            position,
+        );
     } else {
-        plane.scale.set(size.x, size.y, 1);
-        center.z = THREE.MathUtils.lerp(volumeBounds.min.z, volumeBounds.max.z, position);
+        plane.scale.set(
+            size.x,
+            size.y,
+            1,
+        );
+
+        center.z = THREE.MathUtils.lerp(
+            volumeBounds.min.z,
+            volumeBounds.max.z,
+            position,
+        );
     }
 
     plane.position.copy(center);
-    plane.visible = visible && opacity > 0.001;
+    plane.visible =
+        visible && opacity > 0.001;
+
     plane.material.opacity = opacity;
     plane.material.needsUpdate = true;
 }
@@ -747,16 +799,16 @@ export default function MeshVolumeView({
 
             const slicePlanes = {
                 x: [
-                    createMeshSlicePlane("x", worldClipPlanes),
-                    createMeshSlicePlane("x", worldClipPlanes),
+                    createMeshSlicePlane("x"),
+                    createMeshSlicePlane("x"),
                 ],
                 y: [
-                    createMeshSlicePlane("y", worldClipPlanes),
-                    createMeshSlicePlane("y", worldClipPlanes),
+                    createMeshSlicePlane("y"),
+                    createMeshSlicePlane("y"),
                 ],
                 z: [
-                    createMeshSlicePlane("z", worldClipPlanes),
-                    createMeshSlicePlane("z", worldClipPlanes),
+                    createMeshSlicePlane("z"),
+                    createMeshSlicePlane("z"),
                 ],
             };
             surfacePivot.add(
@@ -801,6 +853,7 @@ export default function MeshVolumeView({
                     slicePlanes.x[0],
                     "x",
                     volumeBounds,
+                    bounds,
                     bounds.x[0],
                     visibility.x,
                     planeOpacity,
@@ -810,6 +863,7 @@ export default function MeshVolumeView({
                     slicePlanes.x[1],
                     "x",
                     volumeBounds,
+                    bounds,
                     bounds.x[1],
                     visibility.x,
                     planeOpacity,
@@ -819,6 +873,7 @@ export default function MeshVolumeView({
                     slicePlanes.y[0],
                     "y",
                     volumeBounds,
+                    bounds,
                     bounds.y[0],
                     visibility.y,
                     planeOpacity,
@@ -828,6 +883,7 @@ export default function MeshVolumeView({
                     slicePlanes.y[1],
                     "y",
                     volumeBounds,
+                    bounds,
                     bounds.y[1],
                     visibility.y,
                     planeOpacity,
@@ -837,6 +893,7 @@ export default function MeshVolumeView({
                     slicePlanes.z[0],
                     "z",
                     volumeBounds,
+                    bounds,
                     bounds.z[0],
                     visibility.z,
                     planeOpacity,
@@ -846,6 +903,7 @@ export default function MeshVolumeView({
                     slicePlanes.z[1],
                     "z",
                     volumeBounds,
+                    bounds,
                     bounds.z[1],
                     visibility.z,
                     planeOpacity,
