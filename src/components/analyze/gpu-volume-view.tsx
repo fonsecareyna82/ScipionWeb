@@ -7,12 +7,9 @@ import type {
   VolumeRegionLabels,
 } from "./volume-color-utils";
 import {
-  clampNormalized,
   normalizeVolumeClipBounds,
-  type VolumeAxis,
   type VolumeCameraCommand,
   type VolumeClipBounds,
-  type VolumeSlicePosition,
   type VolumeSliceVisibility,
 } from "./volume-3d-types";
 import {
@@ -40,24 +37,12 @@ export type GpuVolumeViewProps = {
   resetViewKey?: number;
   cameraCommand?: VolumeCameraCommand | null;
   clipBounds?: VolumeClipBounds;
-  slicePosition?: VolumeSlicePosition;
   sliceVisibility?: VolumeSliceVisibility;
   slicePlaneOpacity?: number;
-  onSlicePositionChange?: (axis: VolumeAxis, position: number) => void;
-  onSlicePositionChangeEnd?: () => void;
   onError?: (msg: string) => void;
 };
 
-type SlicePlaneDragState = {
-  pointerId: number;
-  axis: VolumeAxis;
-  startPosition: number;
-  startX: number;
-  startY: number;
-  screenAxisX: number;
-  screenAxisY: number;
-  normalizedStep: number;
-};
+
 
 const VERT = `
   varying vec3 vPos;
@@ -98,7 +83,6 @@ const FRAG = `
   uniform vec3 uLightDir;
   uniform vec3 uClipMin;
   uniform vec3 uClipMax;
-  uniform vec3 uSlicePosition;
   uniform vec3 uSliceVisible;
   uniform float uSliceOpacity;
 
@@ -237,85 +221,21 @@ const FRAG = `
   }
 
   vec4 sampleClipSlice(vec3 uvw) {
-  if (uSliceOpacity <= 0.001) {
-    return vec4(0.0);
+    if (uSliceOpacity <= 0.001) return vec4(0.0);
+    vec3 epsilon = 0.75 / max(uTexSize, vec3(1.0));
+    vec3 axisColor;
+    if (uSliceVisible.x > 0.5 && (abs(uvw.x - uClipMin.x) <= epsilon.x || abs(uvw.x - uClipMax.x) <= epsilon.x)) {
+      axisColor = vec3(0.937, 0.267, 0.267);
+    } else if (uSliceVisible.y > 0.5 && (abs(uvw.y - uClipMin.y) <= epsilon.y || abs(uvw.y - uClipMax.y) <= epsilon.y)) {
+      axisColor = vec3(0.133, 0.773, 0.369);
+    } else if (uSliceVisible.z > 0.5 && (abs(uvw.z - uClipMin.z) <= epsilon.z || abs(uvw.z - uClipMax.z) <= epsilon.z)) {
+      axisColor = vec3(0.231, 0.510, 0.965);
+    } else {
+      return vec4(0.0);
+    }
+    float density = sampleD(clamp(uvw, vec3(0.0), vec3(1.0)));
+    return vec4(mix(cmap(density), axisColor, 0.20), clamp(uSliceOpacity * (0.42 + 0.58 * density), 0.0, 0.92));
   }
-
-  vec3 epsilon =
-    0.75 / max(uTexSize, vec3(1.0));
-
-  vec3 axisColor = vec3(0.0);
-  bool visible = false;
-
-  if (
-    uSliceVisible.x > 0.5 &&
-    (
-      abs(uvw.x - uClipMin.x) <= epsilon.x ||
-      abs(uvw.x - uClipMax.x) <= epsilon.x
-    )
-  ) {
-    axisColor =
-      vec3(0.937, 0.267, 0.267);
-
-    visible = true;
-  } else if (
-    uSliceVisible.y > 0.5 &&
-    (
-      abs(uvw.y - uClipMin.y) <= epsilon.y ||
-      abs(uvw.y - uClipMax.y) <= epsilon.y
-    )
-  ) {
-    axisColor =
-      vec3(0.133, 0.773, 0.369);
-
-    visible = true;
-  } else if (
-    uSliceVisible.z > 0.5 &&
-    (
-      abs(uvw.z - uClipMin.z) <= epsilon.z ||
-      abs(uvw.z - uClipMax.z) <= epsilon.z
-    )
-  ) {
-    axisColor =
-      vec3(0.231, 0.510, 0.965);
-
-    visible = true;
-  }
-
-  if (!visible) {
-    return vec4(0.0);
-  }
-
-  vec3 samplePosition =
-    clamp(
-      uvw,
-      vec3(0.0),
-      vec3(1.0)
-    );
-
-  float sliceDensity =
-    sampleD(samplePosition);
-
-  vec3 sliceColor =
-    mix(
-      cmap(sliceDensity),
-      axisColor,
-      0.20
-    );
-
-  float sliceAlpha =
-    clamp(
-      uSliceOpacity *
-        (0.42 + 0.58 * sliceDensity),
-      0.0,
-      0.92
-    );
-
-  return vec4(
-    sliceColor,
-    sliceAlpha
-  );
-}
 
   void main() {
     vec3 ro = vCamLocal;
@@ -330,22 +250,10 @@ const FRAG = `
     float dt = (t1 - t0) / raySteps;
     vec4 acc = vec4(0.0);
 
-    vec3 entryUvw =
-  ro + rd * t0 + vec3(0.5);
-
-vec4 entrySlice =
-  sampleClipSlice(entryUvw);
-
-if (entrySlice.a > 0.001) {
-  acc.rgb +=
-    (1.0 - acc.a) *
-    entrySlice.rgb *
-    entrySlice.a;
-
-  acc.a +=
-    (1.0 - acc.a) *
-    entrySlice.a;
-}
+    vec3 entryUvw = ro + rd * t0 + vec3(0.5);
+    vec4 entrySlice = sampleClipSlice(entryUvw);
+    acc.rgb += (1.0 - acc.a) * entrySlice.rgb * entrySlice.a;
+    acc.a += (1.0 - acc.a) * entrySlice.a;
 
     float denom = max(1e-5, (uIsoMax - uIsoMin));
     vec3 texStep = 1.0 / max(uTexSize, vec3(1.0));
@@ -360,7 +268,6 @@ if (entrySlice.a > 0.001) {
       float tRay = t0 + dt * (float(i) + 0.5) + tJit;
       vec3 p = ro + rd * tRay;
       vec3 uvw = p + 0.5;
-      vec3 nextUvw = uvw + rd * dt;
 
       float d = sampleD(uvw);
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
@@ -484,29 +391,13 @@ if (entrySlice.a > 0.001) {
       }
     }
 
-    vec3 exitUvw =
-  ro + rd * t1 + vec3(0.5);
-
-if (
-  distance(
-    entryUvw,
-    exitUvw
-  ) > 1e-5
-) {
-  vec4 exitSlice =
-    sampleClipSlice(exitUvw);
-
-  if (exitSlice.a > 0.001) {
-    acc.rgb +=
-      (1.0 - acc.a) *
-      exitSlice.rgb *
-      exitSlice.a;
-
-    acc.a +=
-      (1.0 - acc.a) *
-      exitSlice.a;
-  }
-}
+    vec3 exitUvw = ro + rd * t1 + vec3(0.5);
+    // A zero-width clip is a single slice, not two overlapping faces.
+    if (distance(entryUvw, exitUvw) > 1e-5) {
+      vec4 exitSlice = sampleClipSlice(exitUvw);
+      acc.rgb += (1.0 - acc.a) * exitSlice.rgb * exitSlice.a;
+      acc.a += (1.0 - acc.a) * exitSlice.a;
+    }
 
     if (acc.a <= 0.001) discard;
     gl_FragColor = acc;
@@ -629,11 +520,8 @@ export default function GpuVolumeView({
   resetViewKey = 0,
   cameraCommand = null,
   clipBounds,
-  slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
   sliceVisibility = { x: false, y: false, z: false },
   slicePlaneOpacity = 0.05,
-  onSlicePositionChange,
-  onSlicePositionChangeEnd,
   onError,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -651,19 +539,12 @@ export default function GpuVolumeView({
   const requestRenderRef = useRef<() => void>(() => { });
   const resetViewRef = useRef<() => void>(() => { });
   const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => { });
-  const onSlicePositionChangeRef = useRef(onSlicePositionChange);
-  const onSlicePositionChangeEndRef = useRef(onSlicePositionChangeEnd);
 
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
-
-  useEffect(() => {
-    onSlicePositionChangeRef.current = onSlicePositionChange;
-    onSlicePositionChangeEndRef.current = onSlicePositionChangeEnd;
-  }, [onSlicePositionChange, onSlicePositionChangeEnd]);
 
   const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
 
@@ -814,7 +695,6 @@ export default function GpuVolumeView({
         uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
         uClipMin: { value: new THREE.Vector3(normalizedClipBounds.x[0], normalizedClipBounds.y[0], normalizedClipBounds.z[0]) },
         uClipMax: { value: new THREE.Vector3(normalizedClipBounds.x[1], normalizedClipBounds.y[1], normalizedClipBounds.z[1]) },
-        uSlicePosition: { value: new THREE.Vector3(slicePosition.x, slicePosition.y, slicePosition.z) },
         uSliceVisible: { value: new THREE.Vector3(Number(sliceVisibility.x), Number(sliceVisibility.y), Number(sliceVisibility.z)) },
         uSliceOpacity: { value: clampFloat(slicePlaneOpacity, 0, 1) },
       },
@@ -841,7 +721,6 @@ export default function GpuVolumeView({
       lastWheelAt: 0,
       dprApplied: -1,
     };
-    let slicePlaneDrag: SlicePlaneDragState | null = null;
 
     const tmpDir = new THREE.Vector3();
     const tmpCamDir = new THREE.Vector3();
@@ -930,132 +809,11 @@ export default function GpuVolumeView({
       onControlsEnd,
     );
 
-    const pickSlicePlane = (event: PointerEvent): VolumeAxis | null => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return null;
-
-      const pointer = new THREE.Vector2(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        -((event.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(pointer, camera);
-      mesh.updateMatrixWorld(true);
-
-      const localOrigin = mesh.worldToLocal(raycaster.ray.origin.clone());
-      const localPoint = mesh.worldToLocal(raycaster.ray.origin.clone().add(raycaster.ray.direction));
-      const localDirection = localPoint.sub(localOrigin).normalize();
-      const clipMin = material.uniforms.uClipMin.value as THREE.Vector3;
-      const clipMax = material.uniforms.uClipMax.value as THREE.Vector3;
-      const positions = material.uniforms.uSlicePosition.value as THREE.Vector3;
-      const visible = material.uniforms.uSliceVisible.value as THREE.Vector3;
-      const axes: VolumeAxis[] = ["x", "y", "z"];
-      let selectedAxis: VolumeAxis | null = null;
-      let selectedDistance = Infinity;
-
-      for (const sliceAxis of axes) {
-        if (getVectorAxis(visible, sliceAxis) < 0.5) continue;
-        const direction = getVectorAxis(localDirection, sliceAxis);
-        if (Math.abs(direction) < 1e-6) continue;
-
-        const planeCoordinate = getVectorAxis(positions, sliceAxis) - 0.5;
-        const distance = (planeCoordinate - getVectorAxis(localOrigin, sliceAxis)) / direction;
-        if (distance <= 0 || distance >= selectedDistance) continue;
-
-        const hit = localOrigin.clone().addScaledVector(localDirection, distance).addScalar(0.5);
-        if (!pointInsideBounds(hit, clipMin, clipMax)) continue;
-
-        selectedAxis = sliceAxis;
-        selectedDistance = distance;
-      }
-
-      return selectedAxis;
-    };
-
-    const createSlicePlaneDrag = (event: PointerEvent, sliceAxis: VolumeAxis): SlicePlaneDragState => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const positions = material.uniforms.uSlicePosition.value as THREE.Vector3;
-      const clipMin = material.uniforms.uClipMin.value as THREE.Vector3;
-      const clipMax = material.uniforms.uClipMax.value as THREE.Vector3;
-      const center = new THREE.Vector3(
-        (clipMin.x + clipMax.x) * 0.5 - 0.5,
-        (clipMin.y + clipMax.y) * 0.5 - 0.5,
-        (clipMin.z + clipMax.z) * 0.5 - 0.5,
-      );
-      setVectorAxis(center, sliceAxis, getVectorAxis(positions, sliceAxis) - 0.5);
-
-      const normalizedStep = 0.2;
-      const shifted = center.clone();
-      setVectorAxis(shifted, sliceAxis, getVectorAxis(shifted, sliceAxis) + normalizedStep);
-
-      const projectedStart = mesh.localToWorld(center.clone()).project(camera);
-      const projectedEnd = mesh.localToWorld(shifted).project(camera);
-      let screenAxisX = (projectedEnd.x - projectedStart.x) * rect.width * 0.5;
-      let screenAxisY = -(projectedEnd.y - projectedStart.y) * rect.height * 0.5;
-
-      if (screenAxisX * screenAxisX + screenAxisY * screenAxisY < 64) {
-        screenAxisX = 0;
-        screenAxisY = -Math.max(100, Math.min(rect.width, rect.height) * 0.35);
-      }
-
-      return {
-        pointerId: event.pointerId,
-        axis: sliceAxis,
-        startPosition: getVectorAxis(positions, sliceAxis),
-        startX: event.clientX,
-        startY: event.clientY,
-        screenAxisX,
-        screenAxisY,
-        normalizedStep,
-      };
-    };
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.button === 0 && event.shiftKey && onSlicePositionChangeRef.current) {
-        const selectedAxis = pickSlicePlane(event);
-        if (selectedAxis) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          slicePlaneDrag = createSlicePlaneDrag(event, selectedAxis);
-          controls.enabled = false;
-          controls.autoRotate = false;
-          interactionState.isDragging = true;
-          renderer.domElement.style.cursor = "ns-resize";
-          renderer.domElement.setPointerCapture?.(event.pointerId);
-          requestRender();
-          return;
-        }
-      }
-
+    const onPointerDown = () => {
       interactionState.isDragging = true;
       requestRender();
     };
-
-    const onPointerMove = (event: PointerEvent) => {
-      if (!slicePlaneDrag || slicePlaneDrag.pointerId !== event.pointerId) return;
-      event.preventDefault();
-
-      const denominator = slicePlaneDrag.screenAxisX ** 2 + slicePlaneDrag.screenAxisY ** 2;
-      if (denominator <= 1e-6) return;
-
-      const deltaX = event.clientX - slicePlaneDrag.startX;
-      const deltaY = event.clientY - slicePlaneDrag.startY;
-      const projectedDelta = (deltaX * slicePlaneDrag.screenAxisX + deltaY * slicePlaneDrag.screenAxisY) / denominator;
-      const nextPosition = clampNormalized(slicePlaneDrag.startPosition + projectedDelta * slicePlaneDrag.normalizedStep);
-      onSlicePositionChangeRef.current?.(slicePlaneDrag.axis, nextPosition);
-      requestRender();
-    };
-
-    const onPointerUp = (event: PointerEvent) => {
-      if (slicePlaneDrag && slicePlaneDrag.pointerId === event.pointerId) {
-        renderer.domElement.releasePointerCapture?.(event.pointerId);
-        slicePlaneDrag = null;
-        controls.enabled = true;
-        renderer.domElement.style.cursor = "";
-        onSlicePositionChangeEndRef.current?.();
-      }
-
+    const onPointerUp = () => {
       interactionState.isDragging = false;
       requestRender();
     };
@@ -1140,7 +898,6 @@ export default function GpuVolumeView({
 
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     renderer.domElement.addEventListener("pointerdown", onPointerDown, { capture: true });
-    window.addEventListener("pointermove", onPointerMove, { passive: false });
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
     renderer.domElement.addEventListener("dblclick", resetView);
@@ -1272,7 +1029,6 @@ export default function GpuVolumeView({
 
       renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", resetView);
@@ -1439,11 +1195,6 @@ export default function GpuVolumeView({
     const mat = materialRef.current;
     if (!mat) return;
 
-    mat.uniforms.uSlicePosition.value.set(
-      clampNormalized(slicePosition.x),
-      clampNormalized(slicePosition.y),
-      clampNormalized(slicePosition.z),
-    );
     mat.uniforms.uSliceVisible.value.set(
       Number(sliceVisibility.x),
       Number(sliceVisibility.y),
@@ -1452,9 +1203,6 @@ export default function GpuVolumeView({
     mat.uniforms.uSliceOpacity.value = clampFloat(slicePlaneOpacity, 0, 1);
     requestRenderRef.current();
   }, [
-    slicePosition.x,
-    slicePosition.y,
-    slicePosition.z,
     sliceVisibility.x,
     sliceVisibility.y,
     sliceVisibility.z,
@@ -1497,23 +1245,6 @@ export default function GpuVolumeView({
 function clampFloat(v: number, lo: number, hi: number) {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
-}
-
-function getVectorAxis(vector: THREE.Vector3, axis: VolumeAxis): number {
-  if (axis === "x") return vector.x;
-  if (axis === "y") return vector.y;
-  return vector.z;
-}
-
-function setVectorAxis(vector: THREE.Vector3, axis: VolumeAxis, value: number): void {
-  if (axis === "x") vector.x = value;
-  else if (axis === "y") vector.y = value;
-  else vector.z = value;
-}
-
-function pointInsideBounds(point: THREE.Vector3, min: THREE.Vector3, max: THREE.Vector3): boolean {
-  const epsilon = 1e-5;
-  return point.x >= min.x - epsilon && point.x <= max.x + epsilon && point.y >= min.y - epsilon && point.y <= max.y + epsilon && point.z >= min.z - epsilon && point.z <= max.z + epsilon;
 }
 
 function cameraPresetDirection(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {

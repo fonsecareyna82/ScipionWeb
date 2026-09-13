@@ -2,8 +2,6 @@ export type VolumeAxis = "x" | "y" | "z";
 
 export type VolumeClipBounds = Record<VolumeAxis, [number, number]>;
 
-export type VolumeSlicePosition = Record<VolumeAxis, number>;
-
 export type VolumeSliceVisibility = Record<VolumeAxis, boolean>;
 
 export type VolumeCameraPreset =

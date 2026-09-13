@@ -24,6 +24,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
+import { useClippingSliceImages } from "./use-clipping-slice-images";
 import useVolumeRegions from "./use-volume-regions";
 import {
   buildVolumeSliceOverlayDataUrl,
@@ -188,9 +189,9 @@ const HELP_TEXT: Record<string, string> = {
   clipping3d:
     "Restrict rendering to an X/Y/Z subvolume. Everything outside the bounds is discarded completely, and GPU raycasting skips that space for faster interaction.",
   slicePlanes3d:
-    "Show the current X/Y/Z slice positions inside the 3D view. Drag a visible plane to update the synchronized orthogonal views.",
+    "Show density images on the two clipping faces of each enabled axis. Move the clipping limits to choose the cuts.",
   slicePlaneOpacity3d:
-    "Opacity of the synchronized slice planes drawn inside the 3D view.",
+    "Opacity of the density images on the clipping faces. These faces follow the clipping limits, independently of the orthogonal views.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -425,6 +426,8 @@ export default function VolumeViewer({
   const [expanded3d, setExpanded3d] = useState(false);
   const [reset3dViewKey, setReset3dViewKey] = useState(0);
   const [clipBounds3d, setClipBounds3d] = useState<VolumeClipBounds>(() => createFullVolumeClipBounds());
+  const [draggingClip3d, setDraggingClip3d] = useState(false);
+  useEffect(() => setDraggingClip3d(false), [selectedId]);
   const [slicePlanes3d, setSlicePlanes3d] = useState<VolumeSliceVisibility>({ x: false, y: false, z: false });
   const [slicePlaneOpacity3d, setSlicePlaneOpacity3d] = useState(0.05);
   const [cameraCommand3d, setCameraCommand3d] = useState<VolumeCameraCommand | null>(null);
@@ -960,6 +963,12 @@ export default function VolumeViewer({
     reloadKey: sliceReloadNonce,
     requestOptions: xSliceFetchOptions,
     cacheRef: sliceImageCacheRef,
+  });
+
+  const clippingSlices = useClippingSliceImages({
+    enabled: active && viewMode === "map3d" && usesSurfaceMesh3d && selectedMetaReady && !draggingClip3d && slicePlaneOpacity3d > 0.001,
+    projectId, protocolId, outputName, volumeId: selectedId, dims, bounds: clipBounds3d, visibility: slicePlanes3d,
+    colormap: colormap3d, windowMin: sliceIntensityWindow?.[0], windowMax: sliceIntensityWindow?.[1], sourceVersion: meta,
   });
 
   const visibleTripleSlices = focusedOrthoAxis === "z" ? [zSlice] : focusedOrthoAxis === "y" ? [ySlice] : focusedOrthoAxis === "x" ? [xSlice] : [zSlice, ySlice, xSlice];
@@ -2230,6 +2239,7 @@ export default function VolumeViewer({
                   clipBounds={clipBounds3d}
                   sliceVisibility={slicePlanes3d}
                   slicePlaneOpacity={slicePlaneOpacity3d}
+                  sliceImages={clippingSlices.images}
                   cameraStateKey={meshCameraStateKey}
                   cameraStateRef={meshCameraStateRef}
                   onError={handleMeshError}
@@ -2919,12 +2929,15 @@ export default function VolumeViewer({
                             sliceVisibility={slicePlanes3d}
                             slicePlaneOpacity={slicePlaneOpacity3d}
                             retainedPercent={clippedVolumePercent3d}
-                            onBoundsChange={updateClipBounds3d}
-                            onResetBounds={() => setClipBounds3d(createFullVolumeClipBounds())}
+                            onBoundsChange={(axis, range) => { setDraggingClip3d(true); updateClipBounds3d(axis, range); }}
+                            onBoundsChangeEnd={() => setDraggingClip3d(false)}
+                            onResetBounds={() => { setDraggingClip3d(false); setClipBounds3d(createFullVolumeClipBounds()); }}
                             onSliceVisibilityChange={setSlicePlanes3d}
                             onSlicePlaneOpacityChange={setSlicePlaneOpacity3d}
                             onHelp={openHelp}
                           />
+                          {usesSurfaceMesh3d && clippingSlices.loading && <Typography role="status" variant="caption">Loading clipping slices…</Typography>}
+                          {usesSurfaceMesh3d && clippingSlices.error && <Box role="alert"><Typography variant="caption" color="error">{clippingSlices.error}</Typography><Button size="small" onClick={clippingSlices.retry}>Retry slices</Button></Box>}
 
                           {usesSurfaceMesh3d && (
                             <>
@@ -3226,6 +3239,7 @@ function VolumeClippingControls({
   slicePlaneOpacity,
   retainedPercent,
   onBoundsChange,
+  onBoundsChangeEnd,
   onResetBounds,
   onSliceVisibilityChange,
   onSlicePlaneOpacityChange,
@@ -3240,6 +3254,7 @@ function VolumeClippingControls({
     axis: VolumeAxis,
     range: [number, number],
   ) => void;
+  onBoundsChangeEnd: () => void;
   onResetBounds: () => void;
   onSliceVisibilityChange: (
     visibility: VolumeSliceVisibility,
@@ -3279,6 +3294,7 @@ function VolumeClippingControls({
           range={bounds[axis]}
           showSlices={sliceVisibility[axis]}
           onChange={(range) => onBoundsChange(axis, range)}
+          onChangeEnd={onBoundsChangeEnd}
           onShowSlicesChange={(showSlices) => {
             onSliceVisibilityChange({
               ...sliceVisibility,
@@ -3326,6 +3342,7 @@ function ClipAxisRangeControl({
   range,
   showSlices,
   onChange,
+  onChangeEnd,
   onShowSlicesChange,
 }: {
   axis: VolumeAxis;
@@ -3333,6 +3350,7 @@ function ClipAxisRangeControl({
   range: [number, number];
   showSlices: boolean;
   onChange: (range: [number, number]) => void;
+  onChangeEnd: () => void;
   onShowSlicesChange: (showSlices: boolean) => void;
 }) {
   const sliderMax = Math.max(1, maxIndex);
@@ -3403,6 +3421,7 @@ function ClipAxisRangeControl({
         getAriaLabel={(thumbIndex) => `${axis.toUpperCase()} clipping ${thumbIndex === 0 ? "minimum" : "maximum"}`}
         valueLabelDisplay="auto"
         valueLabelFormat={(index) => `${(index as number) + 1}`}
+        onChangeCommitted={onChangeEnd}
         onChange={(_, rawValue) => {
           const values = rawValue as number[];
           onChange([values[0] / sliderMax, values[1] / sliderMax]);

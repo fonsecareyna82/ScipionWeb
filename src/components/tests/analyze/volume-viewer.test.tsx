@@ -40,14 +40,13 @@ vi.mock("react-plotly.js", () => ({
 }));
 
 vi.mock("../../analyze/gpu-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, slicePosition, sliceVisibility }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility }: any) => (
         <div
             data-testid="mock-gpu-volume"
             data-reset-view-key={resetViewKey}
             data-camera-preset={cameraCommand?.preset ?? ""}
             data-camera-key={cameraCommand?.key ?? 0}
             data-clip-x={JSON.stringify(clipBounds?.x ?? [])}
-            data-slice-x={slicePosition?.x ?? ""}
             data-slice-x-visible={String(Boolean(sliceVisibility?.x))}
         >
             Mock GpuVolumeView
@@ -56,14 +55,13 @@ vi.mock("../../analyze/gpu-volume-view", () => ({
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, slicePosition, sliceVisibility }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility }: any) => (
         <div
             data-testid="mock-mesh-volume"
             data-reset-view-key={resetViewKey}
             data-camera-preset={cameraCommand?.preset ?? ""}
             data-camera-key={cameraCommand?.key ?? 0}
             data-clip-x={JSON.stringify(clipBounds?.x ?? [])}
-            data-slice-x={slicePosition?.x ?? ""}
             data-slice-x-visible={String(Boolean(sliceVisibility?.x))}
         >
             Mock MeshVolumeView
@@ -467,6 +465,20 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "Reset 3D view" }));
         expect(screen.getByTestId("mock-gpu-volume")).toHaveAttribute("data-reset-view-key", "2");
         expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
+    });
+
+    it("requests only the enabled mesh clipping faces and keeps surface data loaded", async () => {
+        renderViewer();
+        await screen.findByText("Vol A");
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        await screen.findByTestId("mock-mesh-volume");
+        serviceMocks.fetchVolumeSliceObjectUrl.mockClear();
+        const surfaceCalls = serviceMocks.getVolumeSurfaceMesh.mock.calls.length;
+        fireEvent.click(screen.getByRole("button", { name: "Show X clipping slices" }));
+        await waitFor(() => expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledTimes(2));
+        expect(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.map(call => call[5].axis)).toEqual(["x", "x"]);
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(surfaceCalls);
+        expect(serviceMocks.getVolumeData3d).not.toHaveBeenCalled();
     });
 
     it(

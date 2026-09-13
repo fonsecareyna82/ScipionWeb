@@ -450,7 +450,6 @@ describe("GpuVolumeView", () => {
             <GpuVolumeView
                 {...props}
                 clipBounds={{ x: [0.2, 0.8], y: [0.1, 0.9], z: [0.3, 1] }}
-                slicePosition={{ x: 0.25, y: 0.5, z: 0.75 }}
                 sliceVisibility={{ x: true, y: false, z: true }}
                 slicePlaneOpacity={0.44}
             />,
@@ -459,7 +458,6 @@ describe("GpuVolumeView", () => {
         await waitFor(() => {
             expect(threeState.lastMaterial.uniforms.uClipMin.value).toMatchObject({ x: 0.2, y: 0.1, z: 0.3 });
             expect(threeState.lastMaterial.uniforms.uClipMax.value).toMatchObject({ x: 0.8, y: 0.9, z: 1 });
-            expect(threeState.lastMaterial.uniforms.uSlicePosition.value).toMatchObject({ x: 0.25, y: 0.5, z: 0.75 });
             expect(threeState.lastMaterial.uniforms.uSliceVisible.value).toMatchObject({ x: 1, y: 0, z: 1 });
             expect(threeState.lastMaterial.uniforms.uSliceOpacity.value).toBe(0.44);
         });

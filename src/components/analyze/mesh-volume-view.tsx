@@ -5,6 +5,8 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { setClippingSliceImage, updateClippingSliceUvs } from "./mesh-clipping-slices";
+import type { ClippingSliceImages } from "./use-clipping-slice-images";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import {
     clampNormalized,
@@ -12,7 +14,6 @@ import {
     type VolumeAxis,
     type VolumeCameraCommand,
     type VolumeClipBounds,
-    type VolumeSlicePosition,
     type VolumeSliceVisibility,
 } from "./volume-3d-types";
 import {
@@ -33,11 +34,9 @@ export type MeshVolumeViewProps = {
     resetViewKey?: number;
     cameraCommand?: VolumeCameraCommand | null;
     clipBounds?: VolumeClipBounds;
-    slicePosition?: VolumeSlicePosition;
+    sliceImages?: ClippingSliceImages;
     sliceVisibility?: VolumeSliceVisibility;
     slicePlaneOpacity?: number;
-    onSlicePositionChange?: (axis: VolumeAxis, position: number) => void;
-    onSlicePositionChangeEnd?: () => void;
     cameraStateKey?: string | number | null;
     cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
@@ -58,20 +57,6 @@ type DragState = {
     lastX: number;
     lastY: number;
 };
-
-type SlicePlaneDragState = {
-    kind: "slice";
-    pointerId: number;
-    axis: VolumeAxis;
-    startPosition: number;
-    startX: number;
-    startY: number;
-    screenAxisX: number;
-    screenAxisY: number;
-    normalizedStep: number;
-};
-
-type ViewerDragState = DragState | SlicePlaneDragState;
 
 const GTAO_BLEND_INTENSITY = 0.88;
 const GTAO_RESOLUTION_SCALE = 1.0;
@@ -432,12 +417,12 @@ function createMeshSlicePlane(
     THREE.PlaneGeometry,
     THREE.MeshBasicMaterial
 > {
-    const colors: Record<VolumeAxis, number> = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
     const material = new THREE.MeshBasicMaterial({
-        color: colors[axis],
+        color: 0xffffff,
         transparent: true,
         opacity: 0.32,
         depthWrite: false,
+        toneMapped: false,
         side: THREE.DoubleSide,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
@@ -519,23 +504,10 @@ function updateMeshSlicePlane(
     }
 
     plane.position.copy(center);
-    plane.visible =
-        visible && opacity > 0.001;
+    plane.visible = visible && opacity > 0.001 && !!plane.material.map;
 
     plane.material.opacity = opacity;
-    plane.material.needsUpdate = true;
-}
-
-function getVectorAxis(vector: THREE.Vector3, axis: VolumeAxis): number {
-    if (axis === "x") return vector.x;
-    if (axis === "y") return vector.y;
-    return vector.z;
-}
-
-function setVectorAxis(vector: THREE.Vector3, axis: VolumeAxis, value: number): void {
-    if (axis === "x") vector.x = value;
-    else if (axis === "y") vector.y = value;
-    else vector.z = value;
+    updateClippingSliceUvs(plane.geometry, axis, clipBounds);
 }
 
 function cameraPresetDirection(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
@@ -564,11 +536,9 @@ export default function MeshVolumeView({
     resetViewKey = 0,
     cameraCommand = null,
     clipBounds,
-    slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
+    sliceImages,
     sliceVisibility = { x: false, y: false, z: false },
     slicePlaneOpacity = 0.05,
-    onSlicePositionChange,
-    onSlicePositionChangeEnd,
     cameraStateKey = "default",
     cameraStateRef: externalCameraStateRef,
     onError,
@@ -591,11 +561,9 @@ export default function MeshVolumeView({
     const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => undefined);
     const applyClipBoundsRef = useRef<() => void>(() => undefined);
     const applySlicePlanesRef = useRef<() => void>(() => undefined);
-    const onSlicePositionChangeRef = useRef(onSlicePositionChange);
-    const onSlicePositionChangeEndRef = useRef(onSlicePositionChangeEnd);
     const normalizedClipBounds = useMemo(() => normalizeVolumeClipBounds(clipBounds), [clipBounds]);
     const clipBoundsRef = useRef(normalizedClipBounds);
-    const slicePositionRef = useRef(slicePosition);
+    const sliceImagesRef = useRef(sliceImages);
     const sliceVisibilityRef = useRef(sliceVisibility);
     const slicePlaneOpacityRef = useRef(slicePlaneOpacity);
 
@@ -604,21 +572,16 @@ export default function MeshVolumeView({
     }, [onError]);
 
     useEffect(() => {
-        onSlicePositionChangeRef.current = onSlicePositionChange;
-        onSlicePositionChangeEndRef.current = onSlicePositionChangeEnd;
-    }, [onSlicePositionChange, onSlicePositionChangeEnd]);
-
-    useEffect(() => {
         clipBoundsRef.current = normalizedClipBounds;
         applyClipBoundsRef.current();
     }, [normalizedClipBounds]);
 
     useEffect(() => {
-        slicePositionRef.current = slicePosition;
+        sliceImagesRef.current = sliceImages;
         sliceVisibilityRef.current = sliceVisibility;
         slicePlaneOpacityRef.current = slicePlaneOpacity;
         applySlicePlanesRef.current();
-    }, [slicePosition, sliceVisibility, slicePlaneOpacity]);
+    }, [sliceImages, sliceVisibility, slicePlaneOpacity]);
 
     useEffect(() => {
         const geometry = geometryRef.current;
@@ -685,7 +648,7 @@ export default function MeshVolumeView({
         let outputPass: OutputPass | null = null;
         let orientationGizmo: VolumeOrientationGizmo | null = null;
         let frameId: number | null = null;
-        let dragState: ViewerDragState | null = null;
+        let dragState: DragState | null = null;
 
         try {
             const scene = new THREE.Scene();
@@ -849,73 +812,20 @@ export default function MeshVolumeView({
                     ),
                 );
 
-                updateMeshSlicePlane(
-                    slicePlanes.x[0],
-                    "x",
-                    volumeBounds,
-                    bounds,
-                    bounds.x[0],
-                    visibility.x,
-                    planeOpacity,
-                );
-
-                updateMeshSlicePlane(
-                    slicePlanes.x[1],
-                    "x",
-                    volumeBounds,
-                    bounds,
-                    bounds.x[1],
-                    visibility.x,
-                    planeOpacity,
-                );
-
-                updateMeshSlicePlane(
-                    slicePlanes.y[0],
-                    "y",
-                    volumeBounds,
-                    bounds,
-                    bounds.y[0],
-                    visibility.y,
-                    planeOpacity,
-                );
-
-                updateMeshSlicePlane(
-                    slicePlanes.y[1],
-                    "y",
-                    volumeBounds,
-                    bounds,
-                    bounds.y[1],
-                    visibility.y,
-                    planeOpacity,
-                );
-
-                updateMeshSlicePlane(
-                    slicePlanes.z[0],
-                    "z",
-                    volumeBounds,
-                    bounds,
-                    bounds.z[0],
-                    visibility.z,
-                    planeOpacity,
-                );
-
-                updateMeshSlicePlane(
-                    slicePlanes.z[1],
-                    "z",
-                    volumeBounds,
-                    bounds,
-                    bounds.z[1],
-                    visibility.z,
-                    planeOpacity,
-                );
-
+                for (const axis of ["x", "y", "z"] as VolumeAxis[]) {
+                    for (const side of [0, 1] as const) {
+                        const plane = slicePlanes[axis][side];
+                        const distinctFace = side === 0 || Math.abs(bounds[axis][1] - bounds[axis][0]) > 1e-6;
+                        setClippingSliceImage(plane.material, distinctFace ? sliceImagesRef.current?.[axis][side] ?? null : null);
+                        updateMeshSlicePlane(plane, axis, volumeBounds, bounds, bounds[axis][side], visibility[axis] && distinctFace, planeOpacity);
+                    }
+                }
                 requestRenderRef.current();
             };
 
             applyClipBoundsRef.current = updateClipBounds;
             applySlicePlanesRef.current = updateSlicePlanes;
             updateClipBounds();
-            updateSlicePlanes();
 
             const saveCameraState = () => {
                 cameraStateRef.current = {
@@ -1115,77 +1025,12 @@ export default function MeshVolumeView({
                 }
             };
 
-            const pickSlicePlane = (event: PointerEvent): VolumeAxis | null => {
-                const rect = host.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) return null;
-
-                const pointer = new THREE.Vector2(
-                    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-                    -((event.clientY - rect.top) / rect.height) * 2 + 1,
-                );
-                const raycaster = new THREE.Raycaster();
-                raycaster.setFromCamera(pointer, camera);
-                const intersections = raycaster.intersectObjects([
-                    ...slicePlanes.x,
-                    ...slicePlanes.y,
-                    ...slicePlanes.z,
-                ], false);
-                return (intersections[0]?.object.userData.volumeAxis as VolumeAxis | undefined) ?? null;
-            };
-
-            const createSlicePlaneDrag = (event: PointerEvent, sliceAxis: VolumeAxis): SlicePlaneDragState => {
-                const rect = host.getBoundingClientRect();
-                const center = volumeBounds.getCenter(new THREE.Vector3());
-                const axisMin = getVectorAxis(volumeBounds.min, sliceAxis);
-                const axisMax = getVectorAxis(volumeBounds.max, sliceAxis);
-                const startPosition = clampNormalized(slicePositionRef.current[sliceAxis]);
-                setVectorAxis(center, sliceAxis, THREE.MathUtils.lerp(axisMin, axisMax, startPosition));
-
-                const normalizedStep = 0.2;
-                const shifted = center.clone();
-                setVectorAxis(shifted, sliceAxis, getVectorAxis(shifted, sliceAxis) + (axisMax - axisMin) * normalizedStep);
-                surfacePivot.updateMatrixWorld(true);
-
-                const projectedStart = surfacePivot.localToWorld(center.clone()).project(camera);
-                const projectedEnd = surfacePivot.localToWorld(shifted).project(camera);
-                let screenAxisX = (projectedEnd.x - projectedStart.x) * rect.width * 0.5;
-                let screenAxisY = -(projectedEnd.y - projectedStart.y) * rect.height * 0.5;
-
-                if (screenAxisX * screenAxisX + screenAxisY * screenAxisY < 64) {
-                    screenAxisX = 0;
-                    screenAxisY = -Math.max(100, Math.min(rect.width, rect.height) * 0.35);
-                }
-
-                return {
-                    kind: "slice",
-                    pointerId: event.pointerId,
-                    axis: sliceAxis,
-                    startPosition,
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    screenAxisX,
-                    screenAxisY,
-                    normalizedStep,
-                };
-            };
-
             const handlePointerDown = (event: PointerEvent) => {
                 stopViewerEvent(event);
 
                 if (event.button !== 0) return;
 
                 event.preventDefault();
-
-                if (event.shiftKey && onSlicePositionChangeRef.current) {
-                    const selectedAxis = pickSlicePlane(event);
-                    if (selectedAxis) {
-                        dragState = createSlicePlaneDrag(event, selectedAxis);
-                        host.style.cursor = "ns-resize";
-                        host.setPointerCapture?.(event.pointerId);
-                        requestRender();
-                        return;
-                    }
-                }
 
                 dragState = {
                     kind: "rotate",
@@ -1205,19 +1050,6 @@ export default function MeshVolumeView({
 
                 event.preventDefault();
 
-                if (dragState.kind === "slice") {
-                    const denominator = dragState.screenAxisX ** 2 + dragState.screenAxisY ** 2;
-                    if (denominator <= 1e-6) return;
-
-                    const deltaX = event.clientX - dragState.startX;
-                    const deltaY = event.clientY - dragState.startY;
-                    const projectedDelta = (deltaX * dragState.screenAxisX + deltaY * dragState.screenAxisY) / denominator;
-                    const nextPosition = clampNormalized(dragState.startPosition + projectedDelta * dragState.normalizedStep);
-                    onSlicePositionChangeRef.current?.(dragState.axis, nextPosition);
-                    requestRender();
-                    return;
-                }
-
                 const dx = event.clientX - dragState.lastX;
                 const dy = event.clientY - dragState.lastY;
                 dragState.lastX = event.clientX;
@@ -1234,11 +1066,9 @@ export default function MeshVolumeView({
                 if (!dragState || dragState.pointerId !== event.pointerId) return;
 
                 event.preventDefault();
-                const completedSliceDrag = dragState.kind === "slice";
                 dragState = null;
                 host.style.cursor = "grab";
                 host.releasePointerCapture?.(event.pointerId);
-                if (completedSliceDrag) onSlicePositionChangeEndRef.current?.();
                 saveCameraState();
                 requestRender();
             };
@@ -1290,6 +1120,7 @@ export default function MeshVolumeView({
                 orientationGizmo?.dispose();
                 orientationGizmo = null;
 
+                for (const pair of Object.values(slicePlanes)) pair.forEach(plane => setClippingSliceImage(plane.material, null));
                 disposeObject3d(scene);
                 renderer?.dispose();
 
