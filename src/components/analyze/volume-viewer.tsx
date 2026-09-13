@@ -39,7 +39,6 @@ import {
   type VolumeCameraCommand,
   type VolumeCameraPreset,
   type VolumeClipBounds,
-  type VolumeSlicePosition,
   type VolumeSliceVisibility,
 } from "./volume-3d-types";
 
@@ -427,7 +426,7 @@ export default function VolumeViewer({
   const [reset3dViewKey, setReset3dViewKey] = useState(0);
   const [clipBounds3d, setClipBounds3d] = useState<VolumeClipBounds>(() => createFullVolumeClipBounds());
   const [slicePlanes3d, setSlicePlanes3d] = useState<VolumeSliceVisibility>({ x: false, y: false, z: false });
-  const [slicePlaneOpacity3d, setSlicePlaneOpacity3d] = useState(0.32);
+  const [slicePlaneOpacity3d, setSlicePlaneOpacity3d] = useState(0.05);
   const [cameraCommand3d, setCameraCommand3d] = useState<VolumeCameraCommand | null>(null);
 
   useEffect(() => {
@@ -777,12 +776,6 @@ export default function VolumeViewer({
   const maxSliceY = Math.max(0, dims.y - 1);
   const maxSliceX = Math.max(0, dims.x - 1);
 
-  const slicePosition3d = useMemo<VolumeSlicePosition>(() => ({
-    x: maxSliceX > 0 ? sliceIndexX / maxSliceX : 0.5,
-    y: maxSliceY > 0 ? sliceIndexY / maxSliceY : 0.5,
-    z: maxSliceZ > 0 ? sliceIndexZ / maxSliceZ : 0.5,
-  }), [sliceIndexX, sliceIndexY, sliceIndexZ, maxSliceX, maxSliceY, maxSliceZ]);
-
   const clippingActive3d = useMemo(() => {
     return (["x", "y", "z"] as VolumeAxis[]).some((clipAxis) => {
       const [min, max] = clipBounds3d[clipAxis];
@@ -804,19 +797,6 @@ export default function VolumeViewer({
       ...current,
       [clipAxis]: first <= second ? [first, second] : [second, first],
     }));
-  }, []);
-
-  const updateSlicePlane3d = useCallback((sliceAxis: VolumeAxis, normalized: number) => {
-    const value = clampNormalized(normalized);
-    setAutoRotate3d(false);
-    setDraggingSlice("crosshair");
-    if (sliceAxis === "x") setSliceIndexX(Math.round(value * maxSliceX));
-    if (sliceAxis === "y") setSliceIndexY(Math.round(value * maxSliceY));
-    if (sliceAxis === "z") setSliceIndexZ(Math.round(value * maxSliceZ));
-  }, [maxSliceX, maxSliceY, maxSliceZ]);
-
-  const finishSlicePlane3d = useCallback(() => {
-    setDraggingSlice((current) => current === "crosshair" ? null : current);
   }, []);
 
   const applyCameraPreset3d = useCallback((preset: VolumeCameraPreset) => {
@@ -1867,60 +1847,60 @@ export default function VolumeViewer({
             overflow: "hidden",
           }}
         >
-        <Box sx={{ p: 1.5, flexShrink: 0 }}>
-          <Typography variant="subtitle2">Volumes</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {loadingList ? "" : `${volumes.length} item(s)`}
-          </Typography>
-        </Box>
-        <Divider />
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-          {loadingList ? (
-            <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2" color="text.secondary">
-                Loading tomograms...
-              </Typography>
-            </Box>
-          ) : listError ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="error">
-                {listError}
-              </Typography>
-            </Box>
-          ) : volumes.length === 0 ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                No volumes in this output.
-              </Typography>
-            </Box>
-          ) : (
-            <List dense disablePadding>
-              {volumes.map((v) => {
-                const selected = String(selectedId) === String(v.id);
-                return (
-                  <ListItemButton
-                    key={String(v.id)}
-                    selected={selected}
-                    onClick={() => {
-                      setSelectedId(v.id);
-                      onVolumeSelect?.(v);
-                    }}
-                    sx={{ px: 1.5, py: 1 }}
-                  >
-                    <ListItemText
-                      primaryTypographyProps={{
-                        variant: "body2",
-                        noWrap: true,
+          <Box sx={{ p: 1.5, flexShrink: 0 }}>
+            <Typography variant="subtitle2">Volumes</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {loadingList ? "" : `${volumes.length} item(s)`}
+            </Typography>
+          </Box>
+          <Divider />
+          <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {loadingList ? (
+              <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading tomograms...
+                </Typography>
+              </Box>
+            ) : listError ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="error">
+                  {listError}
+                </Typography>
+              </Box>
+            ) : volumes.length === 0 ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No volumes in this output.
+                </Typography>
+              </Box>
+            ) : (
+              <List dense disablePadding>
+                {volumes.map((v) => {
+                  const selected = String(selectedId) === String(v.id);
+                  return (
+                    <ListItemButton
+                      key={String(v.id)}
+                      selected={selected}
+                      onClick={() => {
+                        setSelectedId(v.id);
+                        onVolumeSelect?.(v);
                       }}
-                      primary={v.label || `Volume ${String(v.id)}`}
-                    />
-                  </ListItemButton>
-                );
-              })}
-            </List>
-          )}
-        </Box>
+                      sx={{ px: 1.5, py: 1 }}
+                    >
+                      <ListItemText
+                        primaryTypographyProps={{
+                          variant: "body2",
+                          noWrap: true,
+                        }}
+                        primary={v.label || `Volume ${String(v.id)}`}
+                      />
+                    </ListItemButton>
+                  );
+                })}
+              </List>
+            )}
+          </Box>
         </Box>
       )}
 
@@ -2232,11 +2212,8 @@ export default function VolumeViewer({
                   resetViewKey={reset3dViewKey}
                   cameraCommand={cameraCommand3d}
                   clipBounds={clipBounds3d}
-                  slicePosition={slicePosition3d}
                   sliceVisibility={slicePlanes3d}
                   slicePlaneOpacity={slicePlaneOpacity3d}
-                  onSlicePositionChange={updateSlicePlane3d}
-                  onSlicePositionChangeEnd={finishSlicePlane3d}
                   onError={handleMeshError}
                 />
               ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
@@ -2251,11 +2228,8 @@ export default function VolumeViewer({
                   resetViewKey={reset3dViewKey}
                   cameraCommand={cameraCommand3d}
                   clipBounds={clipBounds3d}
-                  slicePosition={slicePosition3d}
                   sliceVisibility={slicePlanes3d}
                   slicePlaneOpacity={slicePlaneOpacity3d}
-                  onSlicePositionChange={updateSlicePlane3d}
-                  onSlicePositionChangeEnd={finishSlicePlane3d}
                   cameraStateKey={meshCameraStateKey}
                   cameraStateRef={meshCameraStateRef}
                   onError={handleMeshError}
@@ -2362,121 +2336,121 @@ export default function VolumeViewer({
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, ml: 1 }}>
                       {rightTab === "ctrl" && (
                         <>
-                      <SectionTitle title="Slices" />
+                          <SectionTitle title="Slices" />
 
-                      <ParamRow
-                        label="Layout"
-                        helpKey="sliceLayout"
-                        onHelp={openHelp}
-                        control={
-                          <ToggleButtonGroup
-                            size="small"
-                            exclusive
-                            value={sliceLayoutMode}
-                            onChange={(_, v) => v && setSliceLayoutMode(v)}
-                          >
-                            <ToggleButton value="single">single</ToggleButton>
-                            <ToggleButton value="triple">3 Views</ToggleButton>
-                          </ToggleButtonGroup>
-                        }
-                      />
-
-                      {sliceLayoutMode === "single" ? (
-                        <>
                           <ParamRow
-                            label="Axis"
-                            helpKey="axis"
+                            label="Layout"
+                            helpKey="sliceLayout"
                             onHelp={openHelp}
                             control={
                               <ToggleButtonGroup
                                 size="small"
-                                value={axis}
                                 exclusive
-                                onChange={(_, v) => v && setAxis(v)}
+                                value={sliceLayoutMode}
+                                onChange={(_, v) => v && setSliceLayoutMode(v)}
                               >
-                                <ToggleButton value="z">Z</ToggleButton>
-                                <ToggleButton value="y">Y</ToggleButton>
-                                <ToggleButton value="x">X</ToggleButton>
+                                <ToggleButton value="single">single</ToggleButton>
+                                <ToggleButton value="triple">3 Views</ToggleButton>
                               </ToggleButtonGroup>
                             }
                           />
 
-                          <AxisSliceSliderControl
-                            title="Slice"
-                            helpKey="sliceIndex"
-                            onHelp={openHelp}
-                            value={Math.min(sliceIndex, maxSlice)}
-                            min={0}
-                            max={maxSlice}
-                            onChange={(v) => {
-                              setDraggingSlice("single");
-                              setSliceIndex(v);
-                            }}
-                            onChangeCommitted={(v) => {
-                              setSliceIndex(v);
-                              setDraggingSlice((current) => current === "single" ? null : current);
-                            }}
-                            disabled={!readySlices}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <AxisSliceSliderControl
-                            title="Slice Z"
-                            helpKey="sliceIndexZ"
-                            onHelp={openHelp}
-                            value={Math.min(sliceIndexZ, maxSliceZ)}
-                            min={0}
-                            max={maxSliceZ}
-                            onChange={(v) => {
-                              setDraggingSlice("z");
-                              setSliceIndexZ(v);
-                            }}
-                            onChangeCommitted={(v) => {
-                              setSliceIndexZ(v);
-                              setDraggingSlice((current) => current === "z" ? null : current);
-                            }}
-                            disabled={!readyTripleSlices}
-                            axisColor={ORTHO_AXIS_COLORS.z}
-                          />
-                          <AxisSliceSliderControl
-                            title="Slice Y"
-                            helpKey="sliceIndexY"
-                            onHelp={openHelp}
-                            value={Math.min(sliceIndexY, maxSliceY)}
-                            min={0}
-                            max={maxSliceY}
-                            onChange={(v) => {
-                              setDraggingSlice("y");
-                              setSliceIndexY(v);
-                            }}
-                            onChangeCommitted={(v) => {
-                              setSliceIndexY(v);
-                              setDraggingSlice((current) => current === "y" ? null : current);
-                            }}
-                            disabled={!readyTripleSlices}
-                            axisColor={ORTHO_AXIS_COLORS.y}
-                          />
-                          <AxisSliceSliderControl
-                            title="Slice X"
-                            helpKey="sliceIndexX"
-                            onHelp={openHelp}
-                            value={Math.min(sliceIndexX, maxSliceX)}
-                            min={0}
-                            max={maxSliceX}
-                            onChange={(v) => {
-                              setDraggingSlice("x");
-                              setSliceIndexX(v);
-                            }}
-                            onChangeCommitted={(v) => {
-                              setSliceIndexX(v);
-                              setDraggingSlice((current) => current === "x" ? null : current);
-                            }}
-                            disabled={!readyTripleSlices}
-                            axisColor={ORTHO_AXIS_COLORS.x}
-                          />
-                        </>
-                      )}
+                          {sliceLayoutMode === "single" ? (
+                            <>
+                              <ParamRow
+                                label="Axis"
+                                helpKey="axis"
+                                onHelp={openHelp}
+                                control={
+                                  <ToggleButtonGroup
+                                    size="small"
+                                    value={axis}
+                                    exclusive
+                                    onChange={(_, v) => v && setAxis(v)}
+                                  >
+                                    <ToggleButton value="z">Z</ToggleButton>
+                                    <ToggleButton value="y">Y</ToggleButton>
+                                    <ToggleButton value="x">X</ToggleButton>
+                                  </ToggleButtonGroup>
+                                }
+                              />
+
+                              <AxisSliceSliderControl
+                                title="Slice"
+                                helpKey="sliceIndex"
+                                onHelp={openHelp}
+                                value={Math.min(sliceIndex, maxSlice)}
+                                min={0}
+                                max={maxSlice}
+                                onChange={(v) => {
+                                  setDraggingSlice("single");
+                                  setSliceIndex(v);
+                                }}
+                                onChangeCommitted={(v) => {
+                                  setSliceIndex(v);
+                                  setDraggingSlice((current) => current === "single" ? null : current);
+                                }}
+                                disabled={!readySlices}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <AxisSliceSliderControl
+                                title="Slice Z"
+                                helpKey="sliceIndexZ"
+                                onHelp={openHelp}
+                                value={Math.min(sliceIndexZ, maxSliceZ)}
+                                min={0}
+                                max={maxSliceZ}
+                                onChange={(v) => {
+                                  setDraggingSlice("z");
+                                  setSliceIndexZ(v);
+                                }}
+                                onChangeCommitted={(v) => {
+                                  setSliceIndexZ(v);
+                                  setDraggingSlice((current) => current === "z" ? null : current);
+                                }}
+                                disabled={!readyTripleSlices}
+                                axisColor={ORTHO_AXIS_COLORS.z}
+                              />
+                              <AxisSliceSliderControl
+                                title="Slice Y"
+                                helpKey="sliceIndexY"
+                                onHelp={openHelp}
+                                value={Math.min(sliceIndexY, maxSliceY)}
+                                min={0}
+                                max={maxSliceY}
+                                onChange={(v) => {
+                                  setDraggingSlice("y");
+                                  setSliceIndexY(v);
+                                }}
+                                onChangeCommitted={(v) => {
+                                  setSliceIndexY(v);
+                                  setDraggingSlice((current) => current === "y" ? null : current);
+                                }}
+                                disabled={!readyTripleSlices}
+                                axisColor={ORTHO_AXIS_COLORS.y}
+                              />
+                              <AxisSliceSliderControl
+                                title="Slice X"
+                                helpKey="sliceIndexX"
+                                onHelp={openHelp}
+                                value={Math.min(sliceIndexX, maxSliceX)}
+                                min={0}
+                                max={maxSliceX}
+                                onChange={(v) => {
+                                  setDraggingSlice("x");
+                                  setSliceIndexX(v);
+                                }}
+                                onChangeCommitted={(v) => {
+                                  setSliceIndexX(v);
+                                  setDraggingSlice((current) => current === "x" ? null : current);
+                                }}
+                                disabled={!readyTripleSlices}
+                                axisColor={ORTHO_AXIS_COLORS.x}
+                              />
+                            </>
+                          )}
                         </>
                       )}
 
@@ -2484,71 +2458,401 @@ export default function VolumeViewer({
                         <>
                           <SectionTitle title="Image" />
 
-                      <ParamRow
-                        label="Colormap"
-                        helpKey="colormap2d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={colormap}
-                            onChange={(e) => setColormap(e.target.value)}
-                            SelectProps={{ MenuProps: { disablePortal: true } }}
-                          >
-                            {CMAP_OPTIONS.map((cm) => (
-                              <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                            ))}
-                          </TextField>
-                        }
-                      />
-
-                      <Divider />
-
-                      <SectionTitle title="Volume overlay" />
-
-                      <ParamRow
-                        label="Color"
-                        helpKey="sliceColorOverlay"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={
-                              sliceOverlayEnabled
-                                ? colorMode3d
-                                : "off"
-                            }
-                            onChange={(event) => {
-                              const value = event.target.value;
-
-                              if (value === "off") {
-                                setSliceOverlayEnabled(false);
-                                return;
-                              }
-
-                              setSliceOverlayEnabled(true);
-                              setColorMode3d(
-                                value as MeshColorMode3d,
-                              );
-                            }}
-                            SelectProps={{
-                              MenuProps: { disablePortal: true },
-                            }}
-                          >
-                            <MenuItem value="off">off</MenuItem>
-                            <MenuItem value="solid">solid</MenuItem>
-                            <MenuItem value="density">density</MenuItem>
-                            <MenuItem value="components">regions</MenuItem>
-                          </TextField>
-                        }
-                      />
-
-                      {sliceOverlayEnabled ? (
-                        <>
                           <ParamRow
-                            label="Overlay cmap"
+                            label="Colormap"
+                            helpKey="colormap2d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={colormap}
+                                onChange={(e) => setColormap(e.target.value)}
+                                SelectProps={{ MenuProps: { disablePortal: true } }}
+                              >
+                                {CMAP_OPTIONS.map((cm) => (
+                                  <MenuItem key={cm} value={cm}>{cm}</MenuItem>
+                                ))}
+                              </TextField>
+                            }
+                          />
+
+                          <Divider />
+
+                          <SectionTitle title="Volume overlay" />
+
+                          <ParamRow
+                            label="Color"
+                            helpKey="sliceColorOverlay"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={
+                                  sliceOverlayEnabled
+                                    ? colorMode3d
+                                    : "off"
+                                }
+                                onChange={(event) => {
+                                  const value = event.target.value;
+
+                                  if (value === "off") {
+                                    setSliceOverlayEnabled(false);
+                                    return;
+                                  }
+
+                                  setSliceOverlayEnabled(true);
+                                  setColorMode3d(
+                                    value as MeshColorMode3d,
+                                  );
+                                }}
+                                SelectProps={{
+                                  MenuProps: { disablePortal: true },
+                                }}
+                              >
+                                <MenuItem value="off">off</MenuItem>
+                                <MenuItem value="solid">solid</MenuItem>
+                                <MenuItem value="density">density</MenuItem>
+                                <MenuItem value="components">regions</MenuItem>
+                              </TextField>
+                            }
+                          />
+
+                          {sliceOverlayEnabled ? (
+                            <>
+                              <ParamRow
+                                label="Overlay cmap"
+                                helpKey="colormap3d"
+                                onHelp={openHelp}
+                                control={
+                                  <TextField
+                                    size="small"
+                                    select
+                                    value={colormap3d}
+                                    disabled={colorMode3d === "components"}
+                                    onChange={(event) =>
+                                      setColormap3d(event.target.value)
+                                    }
+                                    SelectProps={{
+                                      MenuProps: { disablePortal: true },
+                                    }}
+                                  >
+                                    {CMAP_OPTIONS.map((cm) => (
+                                      <MenuItem key={cm} value={cm}>
+                                        {cm}
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                }
+                              />
+
+                              <ParamRow
+                                label="Opacity"
+                                helpKey="opacity3d"
+                                onHelp={openHelp}
+                                control={
+                                  <Slider
+                                    size="small"
+                                    value={opacity3d}
+                                    min={0.05}
+                                    max={1}
+                                    step={0.05}
+                                    onChange={(_, value) =>
+                                      setOpacity3d(value as number)
+                                    }
+                                  />
+                                }
+                              />
+
+                              {surfaceLevelRange ? (
+                                <SurfaceLevelHistogramSlider
+                                  histogram={histogram}
+                                  loading={histLoading}
+                                  error={histError}
+                                  displayRange={surfaceLevelRange}
+                                  validRange={surfaceLevelRange}
+                                  value={surfaceLevelValue}
+                                  disabled={false}
+                                  onHelp={openHelp("surfaceLevel3d")}
+                                  onChange={(level) =>
+                                    setSurfaceLevel3d(level)
+                                  }
+                                  onCommit={(level) =>
+                                    setSurfaceLevel3d(level)
+                                  }
+                                />
+                              ) : null}
+
+                              {volumeRegionsLoading ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Detecting 3D regions…
+                                </Typography>
+                              ) : null}
+
+                              {volumeRegionsError ? (
+                                <Typography
+                                  variant="caption"
+                                  color="warning.main"
+                                >
+                                  {volumeRegionsError}
+                                </Typography>
+                              ) : null}
+                            </>
+                          ) : null}
+
+                          <Divider />
+
+                          <ParamRow
+                            label="Interpolation"
+                            helpKey="interp2d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={interp2d}
+                                disabled={sliceLayoutMode === "triple"}
+                                onChange={(e) => setInterp2d(e.target.value as Interp2d)}
+                                SelectProps={{
+                                  MenuProps: { disablePortal: true },
+                                  inputProps: {
+                                    "aria-label": "Slice interpolation",
+                                  },
+                                }}
+                              >
+                                <MenuItem value="nearest">nearest</MenuItem>
+                                <MenuItem value="linear">linear</MenuItem>
+                                <MenuItem value="high">high</MenuItem>
+                              </TextField>
+                            }
+                          />
+
+                          <ParamRow
+                            label="Sharpen"
+                            helpKey="sharpen2d"
+                            onHelp={openHelp}
+                            control={
+                              <ToggleButtonGroup
+                                size="small"
+                                exclusive
+                                value={sharpen2d ? "on" : "off"}
+                                disabled={sliceLayoutMode === "triple"}
+                                onChange={(_, v) => {
+                                  if (v === "on") setSharpen2d(true);
+                                  if (v === "off") setSharpen2d(false);
+                                }}
+                              >
+                                <ToggleButton value="off">off</ToggleButton>
+                                <ToggleButton value="on">on</ToggleButton>
+                              </ToggleButtonGroup>
+                            }
+                          />
+
+                          <Divider />
+
+                          <SectionTitle title="Display" />
+
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              mt: 0.5,
+                            }}
+                          >
+                            <Typography variant="caption" color="text.secondary">
+                              Intensity
+                            </Typography>
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                setBrightness2d(0);
+                                setContrast2d(1);
+                              }}
+                            >
+                              Reset
+                            </Button>
+                          </Box>
+
+                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                            <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Brightness
+                              </Typography>
+                              <IconButton size="small" onClick={openHelp("brightness2d")}>
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            <Slider
+                              size="small"
+                              value={brightness2d}
+                              min={-1}
+                              max={1}
+                              step={0.02}
+                              onChange={(_, v) => setBrightness2d(v as number)}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) =>
+                                `${Math.round((1 + (v as number)) * 100)}%`
+                              }
+                            />
+                          </Box>
+
+                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                            <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Contrast
+                              </Typography>
+                              <IconButton size="small" onClick={openHelp("contrast2d")}>
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            <Slider
+                              size="small"
+                              value={contrast2d}
+                              min={0.5}
+                              max={2}
+                              step={0.02}
+                              onChange={(_, v) => setContrast2d(v as number)}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) =>
+                                `${Math.round((v as number) * 100)}%`
+                              }
+                            />
+                          </Box>
+                        </>
+                      )}
+
+                      {rightTab === "ctrl" && (
+                        <>
+                          <Divider />
+
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={fitZoom}
+                            disabled={sliceLayoutMode !== "single"}
+                            sx={{ textTransform: "none" }}
+                          >
+                            Fit + reset pan
+                          </Button>
+
+                          <Typography variant="caption" color="text.secondary">
+                            {sliceLayoutMode === "single"
+                              ? "Pan: Ctrl+drag or middle mouse"
+                              : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+                  )}
+
+                  {(rightTab === "ctrl" || rightTab === "appearance") && viewMode === "map3d" && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
+                      {rightTab === "ctrl" && (
+                        <>
+                          <SectionTitle title="Data" />
+                          <ParamRow
+                            label="Quality"
+                            helpKey="maxDim3d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={maxDim3d}
+                                onChange={(e) => setMaxDim3d(Number(e.target.value))}
+                                SelectProps={{ MenuProps: { disablePortal: true } }}
+                              >
+                                <MenuItem value={128}>Fast</MenuItem>
+                                <MenuItem value={256}>Balanced</MenuItem>
+                                <MenuItem value={384}>High</MenuItem>
+                                <MenuItem value={512}>Maximum</MenuItem>
+                              </TextField>
+                            }
+                          />
+                          <ParamRow
+                            label="Method"
+                            helpKey="method3d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value={method3d}
+                                onChange={(e) => setMethod3d(e.target.value as any)}
+                                SelectProps={{ MenuProps: { disablePortal: true } }}
+                              >
+                                <MenuItem value="binning">binning</MenuItem>
+                                <MenuItem value="stride">stride</MenuItem>
+                                <MenuItem value="none">none</MenuItem>
+                              </TextField>
+                            }
+                          />
+
+                          <Button
+                            size="small"
+                            variant={dataDirty ? "contained" : "outlined"}
+                            onClick={() => void load3d({ force: true })}
+                            disabled={selectedId == null || mapLoading}
+                            sx={{ textTransform: "none", borderRadius: 1.5 }}
+                          >
+                            Reload data
+                          </Button>
+
+                          <Divider />
+                        </>
+                      )}
+
+                      {rightTab === "appearance" && (
+                        <>
+                          <SectionTitle title="Appearance" />
+                          <ParamRow
+                            label="Camera"
+                            helpKey="cameraPreset3d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                select
+                                value=""
+                                aria-label="3D camera preset"
+                                onChange={(event) => applyCameraPreset3d(event.target.value as VolumeCameraPreset)}
+                                SelectProps={{ displayEmpty: true, MenuProps: { disablePortal: true } }}
+                              >
+                                <MenuItem value="" disabled>Choose view</MenuItem>
+                                {CAMERA_PRESET_LABELS.map((item) => (
+                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                ))}
+                              </TextField>
+                            }
+                          />
+                          <ParamRow
+                            label="Color"
+                            helpKey="colorMode3d"
+                            onHelp={openHelp}
+                            control={
+                              <ToggleButtonGroup
+                                size="small"
+                                exclusive
+                                value={colorMode3d}
+                                onChange={(_, value) => {
+                                  if (value) {
+                                    setColorMode3d(value as MeshColorMode3d);
+                                  }
+                                }}
+                              >
+                                <ToggleButton value="solid">solid</ToggleButton>
+                                <ToggleButton value="density">density</ToggleButton>
+                                <ToggleButton value="components">regions</ToggleButton>
+                              </ToggleButtonGroup>
+                            }
+                          />
+                          <ParamRow
+                            label="Colormap"
                             helpKey="colormap3d"
                             onHelp={openHelp}
                             control={
@@ -2557,17 +2861,11 @@ export default function VolumeViewer({
                                 select
                                 value={colormap3d}
                                 disabled={colorMode3d === "components"}
-                                onChange={(event) =>
-                                  setColormap3d(event.target.value)
-                                }
-                                SelectProps={{
-                                  MenuProps: { disablePortal: true },
-                                }}
+                                onChange={(e) => setColormap3d(e.target.value)}
+                                SelectProps={{ MenuProps: { disablePortal: true } }}
                               >
                                 {CMAP_OPTIONS.map((cm) => (
-                                  <MenuItem key={cm} value={cm}>
-                                    {cm}
-                                  </MenuItem>
+                                  <MenuItem key={cm} value={cm}>{cm}</MenuItem>
                                 ))}
                               </TextField>
                             }
@@ -2578,619 +2876,289 @@ export default function VolumeViewer({
                             helpKey="opacity3d"
                             onHelp={openHelp}
                             control={
-                              <Slider
+                              <TextField
                                 size="small"
+                                type="number"
                                 value={opacity3d}
-                                min={0.05}
-                                max={1}
-                                step={0.05}
-                                onChange={(_, value) =>
-                                  setOpacity3d(value as number)
-                                }
+                                onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
+                                inputProps={{ min: 0.05, max: 1, step: 0.05 }}
                               />
                             }
                           />
 
-                          {surfaceLevelRange ? (
-                            <SurfaceLevelHistogramSlider
-                              histogram={histogram}
-                              loading={histLoading}
-                              error={histError}
-                              displayRange={surfaceLevelRange}
-                              validRange={surfaceLevelRange}
-                              value={surfaceLevelValue}
-                              disabled={false}
-                              onHelp={openHelp("surfaceLevel3d")}
-                              onChange={(level) =>
-                                setSurfaceLevel3d(level)
-                              }
-                              onCommit={(level) =>
-                                setSurfaceLevel3d(level)
-                              }
-                            />
-                          ) : null}
-
-                          {volumeRegionsLoading ? (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Detecting 3D regions…
-                            </Typography>
-                          ) : null}
-
-                          {volumeRegionsError ? (
-                            <Typography
-                              variant="caption"
-                              color="warning.main"
-                            >
-                              {volumeRegionsError}
-                            </Typography>
-                          ) : null}
-                        </>
-                      ) : null}
-
-                      <Divider />
-
-                      <ParamRow
-                        label="Interpolation"
-                        helpKey="interp2d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={interp2d}
-                            disabled={sliceLayoutMode === "triple"}
-                            onChange={(e) => setInterp2d(e.target.value as Interp2d)}
-                            SelectProps={{
-                              MenuProps: { disablePortal: true },
-                              inputProps: {
-                                "aria-label": "Slice interpolation",
-                              },
-                            }}
-                          >
-                            <MenuItem value="nearest">nearest</MenuItem>
-                            <MenuItem value="linear">linear</MenuItem>
-                            <MenuItem value="high">high</MenuItem>
-                          </TextField>
-                        }
-                      />
-
-                      <ParamRow
-                        label="Sharpen"
-                        helpKey="sharpen2d"
-                        onHelp={openHelp}
-                        control={
-                          <ToggleButtonGroup
-                            size="small"
-                            exclusive
-                            value={sharpen2d ? "on" : "off"}
-                            disabled={sliceLayoutMode === "triple"}
-                            onChange={(_, v) => {
-                              if (v === "on") setSharpen2d(true);
-                              if (v === "off") setSharpen2d(false);
-                            }}
-                          >
-                            <ToggleButton value="off">off</ToggleButton>
-                            <ToggleButton value="on">on</ToggleButton>
-                          </ToggleButtonGroup>
-                        }
-                      />
-
-                      <Divider />
-
-                      <SectionTitle title="Display" />
-
-                      <Box
-                        sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          mt: 0.5,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Intensity
-                        </Typography>
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            setBrightness2d(0);
-                            setContrast2d(1);
-                          }}
-                        >
-                          Reset
-                        </Button>
-                      </Box>
-
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Brightness
-                          </Typography>
-                          <IconButton size="small" onClick={openHelp("brightness2d")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
-                        <Slider
-                          size="small"
-                          value={brightness2d}
-                          min={-1}
-                          max={1}
-                          step={0.02}
-                          onChange={(_, v) => setBrightness2d(v as number)}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) =>
-                            `${Math.round((1 + (v as number)) * 100)}%`
-                          }
-                        />
-                      </Box>
-
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Contrast
-                          </Typography>
-                          <IconButton size="small" onClick={openHelp("contrast2d")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
-                        <Slider
-                          size="small"
-                          value={contrast2d}
-                          min={0.5}
-                          max={2}
-                          step={0.02}
-                          onChange={(_, v) => setContrast2d(v as number)}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) =>
-                            `${Math.round((v as number) * 100)}%`
-                          }
-                        />
-                      </Box>
+                          <Divider />
                         </>
                       )}
 
                       {rightTab === "ctrl" && (
                         <>
-                      <Divider />
-
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={fitZoom}
-                        disabled={sliceLayoutMode !== "single"}
-                        sx={{ textTransform: "none" }}
-                      >
-                        Fit + reset pan
-                      </Button>
-
-                      <Typography variant="caption" color="text.secondary">
-                        {sliceLayoutMode === "single"
-                          ? "Pan: Ctrl+drag or middle mouse"
-                          : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
-                      </Typography>
-                        </>
-                      )}
-                    </Box>
-                  )}
-
-                  {(rightTab === "ctrl" || rightTab === "appearance") && viewMode === "map3d" && (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
-                      {rightTab === "ctrl" && (
-                        <>
-                      <SectionTitle title="Data" />
-                      <ParamRow
-                        label="Quality"
-                        helpKey="maxDim3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={maxDim3d}
-                            onChange={(e) => setMaxDim3d(Number(e.target.value))}
-                            SelectProps={{ MenuProps: { disablePortal: true } }}
-                          >
-                            <MenuItem value={128}>Fast</MenuItem>
-                            <MenuItem value={256}>Balanced</MenuItem>
-                            <MenuItem value={384}>High</MenuItem>
-                            <MenuItem value={512}>Maximum</MenuItem>
-                          </TextField>
-                        }
-                      />
-                      <ParamRow
-                        label="Method"
-                        helpKey="method3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={method3d}
-                            onChange={(e) => setMethod3d(e.target.value as any)}
-                            SelectProps={{ MenuProps: { disablePortal: true } }}
-                          >
-                            <MenuItem value="binning">binning</MenuItem>
-                            <MenuItem value="stride">stride</MenuItem>
-                            <MenuItem value="none">none</MenuItem>
-                          </TextField>
-                        }
-                      />
-
-                      <Button
-                        size="small"
-                        variant={dataDirty ? "contained" : "outlined"}
-                        onClick={() => void load3d({ force: true })}
-                        disabled={selectedId == null || mapLoading}
-                        sx={{ textTransform: "none", borderRadius: 1.5 }}
-                      >
-                        Reload data
-                      </Button>
-
-                      <Divider />
-                        </>
-                      )}
-
-                      {rightTab === "appearance" && (
-                        <>
-                      <SectionTitle title="Appearance" />
-                      <ParamRow
-                        label="Camera"
-                        helpKey="cameraPreset3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value=""
-                            aria-label="3D camera preset"
-                            onChange={(event) => applyCameraPreset3d(event.target.value as VolumeCameraPreset)}
-                            SelectProps={{ displayEmpty: true, MenuProps: { disablePortal: true } }}
-                          >
-                            <MenuItem value="" disabled>Choose view</MenuItem>
-                            {CAMERA_PRESET_LABELS.map((item) => (
-                              <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
-                            ))}
-                          </TextField>
-                        }
-                      />
-                      <ParamRow
-                        label="Color"
-                        helpKey="colorMode3d"
-                        onHelp={openHelp}
-                        control={
-                          <ToggleButtonGroup
-                            size="small"
-                            exclusive
-                            value={colorMode3d}
-                            onChange={(_, value) => {
-                              if (value) {
-                                setColorMode3d(value as MeshColorMode3d);
-                              }
-                            }}
-                          >
-                            <ToggleButton value="solid">solid</ToggleButton>
-                            <ToggleButton value="density">density</ToggleButton>
-                            <ToggleButton value="components">regions</ToggleButton>
-                          </ToggleButtonGroup>
-                        }
-                      />
-                      <ParamRow
-                        label="Colormap"
-                        helpKey="colormap3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={colormap3d}
-                            disabled={colorMode3d === "components"}
-                            onChange={(e) => setColormap3d(e.target.value)}
-                            SelectProps={{ MenuProps: { disablePortal: true } }}
-                          >
-                            {CMAP_OPTIONS.map((cm) => (
-                              <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                            ))}
-                          </TextField>
-                        }
-                      />
-
-                      <ParamRow
-                        label="Opacity"
-                        helpKey="opacity3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={opacity3d}
-                            onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
-                            inputProps={{ min: 0.05, max: 1, step: 0.05 }}
-                          />
-                        }
-                      />
-
-                      <Divider />
-                        </>
-                      )}
-
-                      {rightTab === "ctrl" && (
-                        <>
-                      <SectionTitle title="Rendering" />
-                      <ParamRow
-                        label="Mode"
-                        helpKey="isoRenderMode3d"
-                        onHelp={openHelp}
-                        control={
-                          <ToggleButtonGroup
-                            size="small"
-                            exclusive
-                            value={renderMode3d}
-                            onChange={(_, v) => v && setRenderMode3d(v)}
-                          >
-                            <ToggleButton value="volume">volume</ToggleButton>
-                            <ToggleButton value="surface">surface</ToggleButton>
-                            <ToggleButton value="mesh">mesh</ToggleButton>
-                          </ToggleButtonGroup>
-                        }
-                      />
-
-                      <Divider />
-
-                      <VolumeClippingControls
-                        bounds={clipBounds3d}
-                        dims={dims}
-                        sliceIndices={{ x: sliceIndexX, y: sliceIndexY, z: sliceIndexZ }}
-                        sliceVisibility={slicePlanes3d}
-                        slicePlaneOpacity={slicePlaneOpacity3d}
-                        retainedPercent={clippedVolumePercent3d}
-                        onBoundsChange={updateClipBounds3d}
-                        onResetBounds={() => setClipBounds3d(createFullVolumeClipBounds())}
-                        onSliceVisibilityChange={setSlicePlanes3d}
-                        onSliceIndexChange={(sliceAxis, index) => {
-                          const maxIndex = Math.max(0, dims[sliceAxis] - 1);
-                          updateSlicePlane3d(sliceAxis, maxIndex > 0 ? index / maxIndex : 0.5);
-                        }}
-                        onSliceIndexChangeEnd={finishSlicePlane3d}
-                        onSlicePlaneOpacityChange={setSlicePlaneOpacity3d}
-                        onHelp={openHelp}
-                      />
-
-                      {usesSurfaceMesh3d && (
-                        <>
-                        <ParamRow
-                        label="Hide dust"
-                        helpKey="hideDust3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={surfaceDust3d}
-                            disabled={
-                              selectedId == null ||
-                              mapLoading ||
-                              surfaceRefreshing
-                            }
-                            onChange={(event) => {
-                              const value = Number(event.target.value);
-
-                              setSurfaceDust3d(value);
-
-                              if (surfaceMesh) {
-                                void reloadSurfaceMesh(
-                                  surfaceLevel3d,
-                                  {
-                                    silent: true,
-                                    minComponentTriangles: value,
-                                  },
-                                );
-                              }
-                            }}
-                            SelectProps={{
-                              MenuProps: { disablePortal: true },
-                            }}
-                          >
-                            <MenuItem value={0}>Off</MenuItem>
-                            <MenuItem value={100}>Light</MenuItem>
-                            <MenuItem value={400}>Standard</MenuItem>
-                            <MenuItem value={1000}>Strong</MenuItem>
-                          </TextField>
-                        }
-                      />
-
-                        <ParamRow
-                        label="Smoothing"
-                        helpKey="surfaceSmoothing3d"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            select
-                            value={surfaceSmoothing3d}
-                            disabled={
-                              selectedId == null ||
-                              mapLoading ||
-                              surfaceRefreshing
-                            }
-                            onChange={(event) => {
-                              const value = Number(event.target.value);
-
-                              setSurfaceSmoothing3d(value);
-
-                              if (surfaceMesh) {
-                                void reloadSurfaceMesh(
-                                  surfaceLevel3d,
-                                  {
-                                    silent: true,
-                                    smoothingIterations: value,
-                                  },
-                                );
-                              }
-                            }}
-                            SelectProps={{
-                              MenuProps: { disablePortal: true },
-                            }}
-                          >
-                            <MenuItem value={0}>Off</MenuItem>
-                            <MenuItem value={2}>Low</MenuItem>
-                            <MenuItem value={4}>Medium</MenuItem>
-                            <MenuItem value={8}>High</MenuItem>
-                          </TextField>
-                        }
-                        />
-                        </>
-                      )}
-
-                      {renderMode3d === "volume" ? (
-                        <>
-                          <Box>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                              }}
-                            >
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                Density window
-                              </Typography>
-
-                              <IconButton
+                          <SectionTitle title="Rendering" />
+                          <ParamRow
+                            label="Mode"
+                            helpKey="isoRenderMode3d"
+                            onHelp={openHelp}
+                            control={
+                              <ToggleButtonGroup
                                 size="small"
-                                onClick={openHelp("volumeWindow3d")}
+                                exclusive
+                                value={renderMode3d}
+                                onChange={(_, v) => v && setRenderMode3d(v)}
                               >
-                                <HelpCircle size={14} />
-                              </IconButton>
-                            </Box>
+                                <ToggleButton value="volume">volume</ToggleButton>
+                                <ToggleButton value="surface">surface</ToggleButton>
+                                <ToggleButton value="mesh">mesh</ToggleButton>
+                              </ToggleButtonGroup>
+                            }
+                          />
 
-                            <Slider
-                              size="small"
-                              value={thrPct}
-                              min={0}
-                              max={100}
-                              step={1}
-                              disableSwap
-                              onChange={(_, value) =>
-                                setThrPct(
-                                  value as [number, number],
-                                )
-                              }
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(value) =>
-                                `${value}%`
-                              }
-                            />
-                          </Box>
+                          <Divider />
 
-                          {colorMode3d === "components" &&
-                            surfaceLevelRange ? (
-                            <SurfaceLevelHistogramSlider
-                              histogram={histogram}
-                              loading={histLoading}
-                              error={histError}
-                              displayRange={surfaceLevelRange}
-                              validRange={surfaceLevelRange}
-                              value={surfaceLevelValue}
-                              disabled={false}
-                              onHelp={openHelp("surfaceLevel3d")}
-                              onChange={(level) =>
-                                setSurfaceLevel3d(level)
-                              }
-                              onCommit={(level) =>
-                                setSurfaceLevel3d(level)
-                              }
-                            />
-                          ) : null}
+                          <VolumeClippingControls
+                            bounds={clipBounds3d}
+                            dims={dims}
+                            sliceVisibility={slicePlanes3d}
+                            slicePlaneOpacity={slicePlaneOpacity3d}
+                            retainedPercent={clippedVolumePercent3d}
+                            onBoundsChange={updateClipBounds3d}
+                            onResetBounds={() => setClipBounds3d(createFullVolumeClipBounds())}
+                            onSliceVisibilityChange={setSlicePlanes3d}
+                            onSlicePlaneOpacityChange={setSlicePlaneOpacity3d}
+                            onHelp={openHelp}
+                          />
 
-                          {volumeRegionsLoading ? (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Detecting 3D regions…
-                            </Typography>
-                          ) : null}
-                        </>
-                      ) : null}
+                          {usesSurfaceMesh3d && (
+                            <>
+                              <ParamRow
+                                label="Hide dust"
+                                helpKey="hideDust3d"
+                                onHelp={openHelp}
+                                control={
+                                  <TextField
+                                    size="small"
+                                    select
+                                    value={surfaceDust3d}
+                                    disabled={
+                                      selectedId == null ||
+                                      mapLoading ||
+                                      surfaceRefreshing
+                                    }
+                                    onChange={(event) => {
+                                      const value = Number(event.target.value);
 
-                      {usesSurfaceMesh3d && (
-                        <>
-                          {surfaceLevelRange && (
-                            <SurfaceLevelHistogramSlider
-                              histogram={histogram}
-                              loading={histLoading}
-                              error={histError}
-                              displayRange={surfaceLevelRange}
-                              validRange={surfaceLevelRange ?? surfaceLevelRange}
-                              value={surfaceLevelValue}
-                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
-                              onHelp={openHelp("surfaceLevel3d")}
-                              onChange={(level) => {
-                                setSurfaceLevel3d(level);
-                              }}
-                              onCommit={(level) => {
-                                setSurfaceLevel3d(level);
-                                void reloadSurfaceMesh(level, { silent: true });
-                              }}
-                            />
+                                      setSurfaceDust3d(value);
+
+                                      if (surfaceMesh) {
+                                        void reloadSurfaceMesh(
+                                          surfaceLevel3d,
+                                          {
+                                            silent: true,
+                                            minComponentTriangles: value,
+                                          },
+                                        );
+                                      }
+                                    }}
+                                    SelectProps={{
+                                      MenuProps: { disablePortal: true },
+                                    }}
+                                  >
+                                    <MenuItem value={0}>Off</MenuItem>
+                                    <MenuItem value={100}>Light</MenuItem>
+                                    <MenuItem value={400}>Standard</MenuItem>
+                                    <MenuItem value={1000}>Strong</MenuItem>
+                                  </TextField>
+                                }
+                              />
+
+                              <ParamRow
+                                label="Smoothing"
+                                helpKey="surfaceSmoothing3d"
+                                onHelp={openHelp}
+                                control={
+                                  <TextField
+                                    size="small"
+                                    select
+                                    value={surfaceSmoothing3d}
+                                    disabled={
+                                      selectedId == null ||
+                                      mapLoading ||
+                                      surfaceRefreshing
+                                    }
+                                    onChange={(event) => {
+                                      const value = Number(event.target.value);
+
+                                      setSurfaceSmoothing3d(value);
+
+                                      if (surfaceMesh) {
+                                        void reloadSurfaceMesh(
+                                          surfaceLevel3d,
+                                          {
+                                            silent: true,
+                                            smoothingIterations: value,
+                                          },
+                                        );
+                                      }
+                                    }}
+                                    SelectProps={{
+                                      MenuProps: { disablePortal: true },
+                                    }}
+                                  >
+                                    <MenuItem value={0}>Off</MenuItem>
+                                    <MenuItem value={2}>Low</MenuItem>
+                                    <MenuItem value={4}>Medium</MenuItem>
+                                    <MenuItem value={8}>High</MenuItem>
+                                  </TextField>
+                                }
+                              />
+                            </>
                           )}
 
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
-                              onClick={() => {
-                                setSurfaceLevel3d(null);
-                                void reloadSurfaceMesh(null, { silent: true });
-                              }}
-                              sx={{ textTransform: "none", borderRadius: 1.5 }}
-                            >
-                              Auto contour
-                            </Button>
+                          {renderMode3d === "volume" ? (
+                            <>
+                              <Box>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Density window
+                                  </Typography>
 
-                            {surfaceRefreshing && (
-                              <>
-                                <Typography variant="caption" color="text.secondary">
-                                  updating surface…
+                                  <IconButton
+                                    size="small"
+                                    onClick={openHelp("volumeWindow3d")}
+                                  >
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+
+                                <Slider
+                                  size="small"
+                                  value={thrPct}
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  disableSwap
+                                  onChange={(_, value) =>
+                                    setThrPct(
+                                      value as [number, number],
+                                    )
+                                  }
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(value) =>
+                                    `${value}%`
+                                  }
+                                />
+                              </Box>
+
+                              {colorMode3d === "components" &&
+                                surfaceLevelRange ? (
+                                <SurfaceLevelHistogramSlider
+                                  histogram={histogram}
+                                  loading={histLoading}
+                                  error={histError}
+                                  displayRange={surfaceLevelRange}
+                                  validRange={surfaceLevelRange}
+                                  value={surfaceLevelValue}
+                                  disabled={false}
+                                  onHelp={openHelp("surfaceLevel3d")}
+                                  onChange={(level) =>
+                                    setSurfaceLevel3d(level)
+                                  }
+                                  onCommit={(level) =>
+                                    setSurfaceLevel3d(level)
+                                  }
+                                />
+                              ) : null}
+
+                              {volumeRegionsLoading ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Detecting 3D regions…
                                 </Typography>
+                              ) : null}
+                            </>
+                          ) : null}
+
+                          {usesSurfaceMesh3d && (
+                            <>
+                              {surfaceLevelRange && (
+                                <SurfaceLevelHistogramSlider
+                                  histogram={histogram}
+                                  loading={histLoading}
+                                  error={histError}
+                                  displayRange={surfaceLevelRange}
+                                  validRange={surfaceLevelRange ?? surfaceLevelRange}
+                                  value={surfaceLevelValue}
+                                  disabled={selectedId == null || mapLoading || surfaceRefreshing}
+                                  onHelp={openHelp("surfaceLevel3d")}
+                                  onChange={(level) => {
+                                    setSurfaceLevel3d(level);
+                                  }}
+                                  onCommit={(level) => {
+                                    setSurfaceLevel3d(level);
+                                    void reloadSurfaceMesh(level, { silent: true });
+                                  }}
+                                />
+                              )}
+
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                                 <Button
                                   size="small"
-                                  variant="text"
-                                  onClick={cancelSurfaceRefresh}
-                                  sx={{ textTransform: "none", minWidth: 0 }}
+                                  variant="outlined"
+                                  disabled={selectedId == null || mapLoading || surfaceRefreshing}
+                                  onClick={() => {
+                                    setSurfaceLevel3d(null);
+                                    void reloadSurfaceMesh(null, { silent: true });
+                                  }}
+                                  sx={{ textTransform: "none", borderRadius: 1.5 }}
                                 >
-                                  Cancel
+                                  Auto contour
                                 </Button>
-                              </>
-                            )}
-                          </Box>
 
-                          {surfaceRefreshError && (
-                            <Typography variant="caption" color="warning.main">
-                              {surfaceRefreshError}
-                            </Typography>
+                                {surfaceRefreshing && (
+                                  <>
+                                    <Typography variant="caption" color="text.secondary">
+                                      updating surface…
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      onClick={cancelSurfaceRefresh}
+                                      sx={{ textTransform: "none", minWidth: 0 }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                )}
+                              </Box>
+
+                              {surfaceRefreshError && (
+                                <Typography variant="caption" color="warning.main">
+                                  {surfaceRefreshError}
+                                </Typography>
+                              )}
+
+                              {surfaceResolvedLevel != null && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Current contour: {formatSci(surfaceResolvedLevel)}
+                                </Typography>
+                              )}
+                            </>
                           )}
 
-                          {surfaceResolvedLevel != null && (
+                          {!surfaceLevelRange && (
                             <Typography variant="caption" color="text.secondary">
-                              Current contour: {formatSci(surfaceResolvedLevel)}
+                              Contour control will be available when the surface is ready.
                             </Typography>
                           )}
-                        </>
-                      )}
-
-                      {!surfaceLevelRange && (
-                        <Typography variant="caption" color="text.secondary">
-                          Contour control will be available when the surface is ready.
-                        </Typography>
-                      )}
                         </>
                       )}
                     </Box>
@@ -3254,31 +3222,36 @@ export default function VolumeViewer({
 function VolumeClippingControls({
   bounds,
   dims,
-  sliceIndices,
   sliceVisibility,
   slicePlaneOpacity,
   retainedPercent,
   onBoundsChange,
   onResetBounds,
   onSliceVisibilityChange,
-  onSliceIndexChange,
-  onSliceIndexChangeEnd,
   onSlicePlaneOpacityChange,
   onHelp,
 }: {
   bounds: VolumeClipBounds;
   dims: Record<VolumeAxis, number>;
-  sliceIndices: Record<VolumeAxis, number>;
   sliceVisibility: VolumeSliceVisibility;
   slicePlaneOpacity: number;
   retainedPercent: number;
-  onBoundsChange: (axis: VolumeAxis, range: [number, number]) => void;
+  onBoundsChange: (
+    axis: VolumeAxis,
+    range: [number, number],
+  ) => void;
   onResetBounds: () => void;
-  onSliceVisibilityChange: (visibility: VolumeSliceVisibility) => void;
-  onSliceIndexChange: (axis: VolumeAxis, index: number) => void;
-  onSliceIndexChangeEnd: () => void;
-  onSlicePlaneOpacityChange: (opacity: number) => void;
-  onHelp: (key: string) => (event: React.MouseEvent<HTMLElement>) => void;
+  onSliceVisibilityChange: (
+    visibility: VolumeSliceVisibility,
+  ) => void;
+  onSlicePlaneOpacityChange: (
+    opacity: number,
+  ) => void;
+  onHelp: (
+    key: string,
+  ) => (
+    event: React.MouseEvent<HTMLElement>,
+  ) => void;
 }) {
   const axes: VolumeAxis[] = ["x", "y", "z"];
   const visibleAxes = axes.filter((axis) => sliceVisibility[axis]);
@@ -3304,51 +3277,21 @@ function VolumeClippingControls({
           axis={axis}
           maxIndex={Math.max(0, dims[axis] - 1)}
           range={bounds[axis]}
+          showSlices={sliceVisibility[axis]}
           onChange={(range) => onBoundsChange(axis, range)}
-        />
-      ))}
-
-      <Divider sx={{ my: 0.25 }} />
-
-      <ParamRow
-        label="Slice planes"
-        helpKey="slicePlanes3d"
-        onHelp={onHelp}
-        control={
-          <ToggleButtonGroup
-            size="small"
-            value={visibleAxes}
-            aria-label="Visible 3D slice planes"
-            onChange={(_, values: VolumeAxis[]) => {
-              const selected = new Set(values);
-              onSliceVisibilityChange({ x: selected.has("x"), y: selected.has("y"), z: selected.has("z") });
-            }}
-          >
-            {axes.map((axis) => (
-              <ToggleButton key={axis} value={axis} aria-label={`${axis.toUpperCase()} slice plane`} sx={{ color: ORTHO_AXIS_COLORS[axis] }}>
-                {axis.toUpperCase()}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        }
-      />
-
-      {axes.map((axis) => (
-        <SlicePlanePositionControl
-          key={axis}
-          axis={axis}
-          value={sliceIndices[axis]}
-          maxIndex={Math.max(0, dims[axis] - 1)}
-          visible={sliceVisibility[axis]}
-          onChange={(index) => onSliceIndexChange(axis, index)}
-          onChangeEnd={onSliceIndexChangeEnd}
+          onShowSlicesChange={(showSlices) => {
+            onSliceVisibilityChange({
+              ...sliceVisibility,
+              [axis]: showSlices,
+            });
+          }}
         />
       ))}
 
       <Box>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">Plane opacity</Typography>
+            <Typography variant="caption" color="text.secondary">Slice opacity</Typography>
             <IconButton size="small" onClick={onHelp("slicePlaneOpacity3d")}>
               <HelpCircle size={14} />
             </IconButton>
@@ -3362,13 +3305,16 @@ function VolumeClippingControls({
           max={0.8}
           step={0.01}
           disabled={visibleAxes.length === 0}
-          aria-label="3D slice plane opacity"
+          aria-label="3D clipping slice opacity"
           onChange={(_, value) => onSlicePlaneOpacityChange(value as number)}
         />
       </Box>
 
-      <Typography variant="caption" color="text.secondary">
-        Shift+drag a visible plane in 3D to move its synchronized X/Y/Z slice.
+      <Typography
+        variant="caption"
+        color="text.secondary"
+      >
+        Show slices displays both clipping faces for each enabled axis.
       </Typography>
     </Box>
   );
@@ -3378,21 +3324,73 @@ function ClipAxisRangeControl({
   axis,
   maxIndex,
   range,
+  showSlices,
   onChange,
+  onShowSlicesChange,
 }: {
   axis: VolumeAxis;
   maxIndex: number;
   range: [number, number];
+  showSlices: boolean;
   onChange: (range: [number, number]) => void;
+  onShowSlicesChange: (showSlices: boolean) => void;
 }) {
   const sliderMax = Math.max(1, maxIndex);
   const value: [number, number] = [Math.round(range[0] * sliderMax), Math.round(range[1] * sliderMax)];
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="caption" sx={{ color: ORTHO_AXIS_COLORS[axis], fontWeight: 700 }}>{axis.toUpperCase()} clip</Typography>
-        <Typography variant="caption" color="text.secondary">{value[0] + 1}–{value[1] + 1}</Typography>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 1,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            color: ORTHO_AXIS_COLORS[axis],
+            fontWeight: 700,
+          }}
+        >
+          {axis.toUpperCase()} clip
+        </Typography>
+
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+          >
+            {value[0] + 1}–{value[1] + 1}
+          </Typography>
+
+          <ToggleButton
+            size="small"
+            value="show-slices"
+            selected={showSlices}
+            aria-label={`Show ${axis.toUpperCase()} clipping slices`}
+            onChange={() =>
+              onShowSlicesChange(!showSlices)
+            }
+            sx={{
+              px: 0.75,
+              py: 0.125,
+              minWidth: 0,
+              textTransform: "none",
+              fontSize: "0.7rem",
+            }}
+          >
+            Show slices
+          </ToggleButton>
+        </Box>
       </Box>
       <Slider
         size="small"
@@ -3411,43 +3409,6 @@ function ClipAxisRangeControl({
         }}
         sx={{ color: ORTHO_AXIS_COLORS[axis], py: 0.5 }}
       />
-    </Box>
-  );
-}
-
-function SlicePlanePositionControl({
-  axis,
-  value,
-  maxIndex,
-  visible,
-  onChange,
-  onChangeEnd,
-}: {
-  axis: VolumeAxis;
-  value: number;
-  maxIndex: number;
-  visible: boolean;
-  onChange: (index: number) => void;
-  onChangeEnd: () => void;
-}) {
-  return (
-    <Box sx={{ display: "grid", gridTemplateColumns: "48px 1fr 48px", gap: 1, alignItems: "center" }}>
-      <Typography variant="caption" sx={{ color: ORTHO_AXIS_COLORS[axis], fontWeight: 700 }}>{axis.toUpperCase()} slice</Typography>
-      <Slider
-        size="small"
-        value={Math.max(0, Math.min(value, maxIndex))}
-        min={0}
-        max={Math.max(1, maxIndex)}
-        step={1}
-        disabled={!visible || maxIndex <= 0}
-        aria-label={`${axis.toUpperCase()} 3D slice position`}
-        onChange={(_, rawValue) => onChange(rawValue as number)}
-        onChangeCommitted={onChangeEnd}
-        sx={{ color: ORTHO_AXIS_COLORS[axis], py: 0.5 }}
-      />
-      <Typography variant="caption" color="text.secondary" sx={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-        {Math.min(value, maxIndex) + 1}/{maxIndex + 1}
-      </Typography>
     </Box>
   );
 }

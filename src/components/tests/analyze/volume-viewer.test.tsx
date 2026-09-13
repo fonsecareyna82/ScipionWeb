@@ -469,31 +469,113 @@ describe("VolumeViewer", () => {
         expect(serviceMocks.getVolumeData3d).toHaveBeenCalledTimes(1);
     });
 
-    it("updates clipping and synchronized slice planes without reloading 3D data", async () => {
-        renderViewer();
+    it(
+        "updates clipping slices without reloading 3D data",
+        async () => {
+            renderViewer();
 
-        expect(await screen.findByText("Vol A")).toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
-        const meshViewer = await screen.findByTestId("mock-mesh-volume");
-        expect(meshViewer).toHaveAttribute("data-clip-x", "[0,1]");
-        expect(meshViewer).toHaveAttribute("data-slice-x", "0.5");
-        expect(meshViewer).toHaveAttribute("data-slice-x-visible", "false");
+            expect(
+                await screen.findByText("Vol A"),
+            ).toBeInTheDocument();
 
-        const surfaceCalls = serviceMocks.getVolumeSurfaceMesh.mock.calls.length;
-        fireEvent.change(screen.getByRole("slider", { name: "X clipping minimum" }), { target: { value: "2" } });
-        fireEvent.change(screen.getByRole("slider", { name: "X 3D slice position" }), { target: { value: "5" } });
-        fireEvent.click(screen.getByRole("button", { name: "X slice plane" }));
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    { name: "3D Map" },
+                ),
+            );
 
-        await waitFor(() => {
-            expect(JSON.parse(screen.getByTestId("mock-mesh-volume").getAttribute("data-clip-x") || "[]")[0]).toBeCloseTo(2 / 6);
-            expect(Number(screen.getByTestId("mock-mesh-volume").getAttribute("data-slice-x"))).toBeCloseTo(5 / 6);
-            expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-slice-x-visible", "true");
-        });
+            const meshViewer =
+                await screen.findByTestId(
+                    "mock-mesh-volume",
+                );
 
-        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(surfaceCalls);
-        fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-clip-x", "[0,1]");
-    });
+            expect(meshViewer).toHaveAttribute(
+                "data-clip-x",
+                "[0,1]",
+            );
+
+            expect(meshViewer).toHaveAttribute(
+                "data-slice-x-visible",
+                "false",
+            );
+
+            const surfaceCalls =
+                serviceMocks
+                    .getVolumeSurfaceMesh
+                    .mock.calls.length;
+
+            fireEvent.change(
+                screen.getByRole(
+                    "slider",
+                    {
+                        name: "X clipping minimum",
+                    },
+                ),
+                {
+                    target: {
+                        value: "2",
+                    },
+                },
+            );
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name:
+                            "Show X clipping slices",
+                    },
+                ),
+            );
+
+            await waitFor(() => {
+                expect(
+                    JSON.parse(
+                        screen
+                            .getByTestId(
+                                "mock-mesh-volume",
+                            )
+                            .getAttribute(
+                                "data-clip-x",
+                            ) || "[]",
+                    )[0],
+                ).toBeCloseTo(2 / 6);
+
+                expect(
+                    screen.getByTestId(
+                        "mock-mesh-volume",
+                    ),
+                ).toHaveAttribute(
+                    "data-slice-x-visible",
+                    "true",
+                );
+            });
+
+            expect(
+                serviceMocks
+                    .getVolumeSurfaceMesh,
+            ).toHaveBeenCalledTimes(
+                surfaceCalls,
+            );
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    { name: "Reset" },
+                ),
+            );
+
+            expect(
+                screen.getByTestId(
+                    "mock-mesh-volume",
+                ),
+            ).toHaveAttribute(
+                "data-clip-x",
+                "[0,1]",
+            );
+        },
+    );
 
     it("sends repeatable principal-axis camera commands to the active renderer", async () => {
         renderViewer();

@@ -236,11 +236,86 @@ const FRAG = `
     return t1 >= max(t0, 0.0);
   }
 
-  bool crossesSlice(float currentValue, float nextValue, float sliceValue) {
-    return
-      (currentValue <= sliceValue && nextValue >= sliceValue) ||
-      (currentValue >= sliceValue && nextValue <= sliceValue);
+  vec4 sampleClipSlice(vec3 uvw) {
+  if (uSliceOpacity <= 0.001) {
+    return vec4(0.0);
   }
+
+  vec3 epsilon =
+    0.75 / max(uTexSize, vec3(1.0));
+
+  vec3 axisColor = vec3(0.0);
+  bool visible = false;
+
+  if (
+    uSliceVisible.x > 0.5 &&
+    (
+      abs(uvw.x - uClipMin.x) <= epsilon.x ||
+      abs(uvw.x - uClipMax.x) <= epsilon.x
+    )
+  ) {
+    axisColor =
+      vec3(0.937, 0.267, 0.267);
+
+    visible = true;
+  } else if (
+    uSliceVisible.y > 0.5 &&
+    (
+      abs(uvw.y - uClipMin.y) <= epsilon.y ||
+      abs(uvw.y - uClipMax.y) <= epsilon.y
+    )
+  ) {
+    axisColor =
+      vec3(0.133, 0.773, 0.369);
+
+    visible = true;
+  } else if (
+    uSliceVisible.z > 0.5 &&
+    (
+      abs(uvw.z - uClipMin.z) <= epsilon.z ||
+      abs(uvw.z - uClipMax.z) <= epsilon.z
+    )
+  ) {
+    axisColor =
+      vec3(0.231, 0.510, 0.965);
+
+    visible = true;
+  }
+
+  if (!visible) {
+    return vec4(0.0);
+  }
+
+  vec3 samplePosition =
+    clamp(
+      uvw,
+      vec3(0.0),
+      vec3(1.0)
+    );
+
+  float sliceDensity =
+    sampleD(samplePosition);
+
+  vec3 sliceColor =
+    mix(
+      cmap(sliceDensity),
+      axisColor,
+      0.20
+    );
+
+  float sliceAlpha =
+    clamp(
+      uSliceOpacity *
+        (0.42 + 0.58 * sliceDensity),
+      0.0,
+      0.92
+    );
+
+  return vec4(
+    sliceColor,
+    sliceAlpha
+  );
+}
 
   void main() {
     vec3 ro = vCamLocal;
@@ -254,6 +329,23 @@ const FRAG = `
     float raySteps = max(24.0, ceil(float(uSteps) * rayFraction));
     float dt = (t1 - t0) / raySteps;
     vec4 acc = vec4(0.0);
+
+    vec3 entryUvw =
+  ro + rd * t0 + vec3(0.5);
+
+vec4 entrySlice =
+  sampleClipSlice(entryUvw);
+
+if (entrySlice.a > 0.001) {
+  acc.rgb +=
+    (1.0 - acc.a) *
+    entrySlice.rgb *
+    entrySlice.a;
+
+  acc.a +=
+    (1.0 - acc.a) *
+    entrySlice.a;
+}
 
     float denom = max(1e-5, (uIsoMax - uIsoMin));
     vec3 texStep = 1.0 / max(uTexSize, vec3(1.0));
@@ -272,41 +364,6 @@ const FRAG = `
 
       float d = sampleD(uvw);
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
-
-      if (uSliceOpacity > 0.001) {
-        vec3 sliceAxisColor = vec3(0.0);
-        vec3 sliceUvw = uvw;
-        bool hitSlice = false;
-
-        if (uSliceVisible.x > 0.5 && abs(rd.x) > 1e-6 && crossesSlice(uvw.x, nextUvw.x, uSlicePosition.x)) {
-          sliceUvw = uvw + rd * ((uSlicePosition.x - uvw.x) / rd.x);
-          sliceAxisColor = vec3(0.937, 0.267, 0.267);
-          hitSlice = true;
-        } else if (uSliceVisible.y > 0.5 && abs(rd.y) > 1e-6 && crossesSlice(uvw.y, nextUvw.y, uSlicePosition.y)) {
-          sliceUvw = uvw + rd * ((uSlicePosition.y - uvw.y) / rd.y);
-          sliceAxisColor = vec3(0.133, 0.773, 0.369);
-          hitSlice = true;
-        } else if (uSliceVisible.z > 0.5 && abs(rd.z) > 1e-6 && crossesSlice(uvw.z, nextUvw.z, uSlicePosition.z)) {
-          sliceUvw = uvw + rd * ((uSlicePosition.z - uvw.z) / rd.z);
-          sliceAxisColor = vec3(0.231, 0.510, 0.965);
-          hitSlice = true;
-        }
-
-        if (
-          hitSlice &&
-          all(greaterThanEqual(sliceUvw, uClipMin - vec3(1e-5))) &&
-          all(lessThanEqual(sliceUvw, uClipMax + vec3(1e-5)))
-        ) {
-          float sliceDensity = sampleD(sliceUvw);
-          vec3 sliceColor = mix(cmap(sliceDensity), sliceAxisColor, 0.20);
-          float sliceAlpha = clamp(uSliceOpacity * (0.42 + 0.58 * sliceDensity), 0.0, 0.92);
-
-          acc.rgb += (1.0 - acc.a) * sliceColor * sliceAlpha;
-          acc.a += (1.0 - acc.a) * sliceAlpha;
-
-          if (acc.a > 0.94) break;
-        }
-      }
 
       if (uIsoMode == 0) {
         if (uColorMode == 2 && uHasRegions == 1) {
@@ -427,6 +484,30 @@ const FRAG = `
       }
     }
 
+    vec3 exitUvw =
+  ro + rd * t1 + vec3(0.5);
+
+if (
+  distance(
+    entryUvw,
+    exitUvw
+  ) > 1e-5
+) {
+  vec4 exitSlice =
+    sampleClipSlice(exitUvw);
+
+  if (exitSlice.a > 0.001) {
+    acc.rgb +=
+      (1.0 - acc.a) *
+      exitSlice.rgb *
+      exitSlice.a;
+
+    acc.a +=
+      (1.0 - acc.a) *
+      exitSlice.a;
+  }
+}
+
     if (acc.a <= 0.001) discard;
     gl_FragColor = acc;
   }
@@ -463,14 +544,14 @@ function buildFloatTexture(
   }
 
   const data: Float32Array<ArrayBuffer> =
-  values instanceof Float32Array &&
-  values.buffer instanceof ArrayBuffer
-    ? new Float32Array(
+    values instanceof Float32Array &&
+      values.buffer instanceof ArrayBuffer
+      ? new Float32Array(
         values.buffer,
         values.byteOffset,
         values.length,
       )
-    : new Float32Array(values);
+      : new Float32Array(values);
 
   const tex = new THREE.Data3DTexture(data, x, y, z);
 
@@ -550,7 +631,7 @@ export default function GpuVolumeView({
   clipBounds,
   slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
   sliceVisibility = { x: false, y: false, z: false },
-  slicePlaneOpacity = 0.32,
+  slicePlaneOpacity = 0.05,
   onSlicePositionChange,
   onSlicePositionChangeEnd,
   onError,

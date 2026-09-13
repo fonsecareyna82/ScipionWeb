@@ -514,7 +514,7 @@ export default function MeshVolumeView({
     clipBounds,
     slicePosition = { x: 0.5, y: 0.5, z: 0.5 },
     sliceVisibility = { x: false, y: false, z: false },
-    slicePlaneOpacity = 0.32,
+    slicePlaneOpacity = 0.05,
     onSlicePositionChange,
     onSlicePositionChangeEnd,
     cameraStateKey = "default",
@@ -746,11 +746,27 @@ export default function MeshVolumeView({
             renderer.localClippingEnabled = true;
 
             const slicePlanes = {
-                x: createMeshSlicePlane("x", worldClipPlanes),
-                y: createMeshSlicePlane("y", worldClipPlanes),
-                z: createMeshSlicePlane("z", worldClipPlanes),
+                x: [
+                    createMeshSlicePlane("x", worldClipPlanes),
+                    createMeshSlicePlane("x", worldClipPlanes),
+                ],
+                y: [
+                    createMeshSlicePlane("y", worldClipPlanes),
+                    createMeshSlicePlane("y", worldClipPlanes),
+                ],
+                z: [
+                    createMeshSlicePlane("z", worldClipPlanes),
+                    createMeshSlicePlane("z", worldClipPlanes),
+                ],
             };
-            surfacePivot.add(slicePlanes.x, slicePlanes.y, slicePlanes.z);
+            surfacePivot.add(
+                slicePlanes.x[0],
+                slicePlanes.x[1],
+                slicePlanes.y[0],
+                slicePlanes.y[1],
+                slicePlanes.z[0],
+                slicePlanes.z[1],
+            );
 
             const updateClipBounds = () => {
                 const bounds = clipBoundsRef.current;
@@ -766,15 +782,75 @@ export default function MeshVolumeView({
 
                 orientationGizmo?.setClipBounds(bounds);
                 requestRenderRef.current();
+                updateSlicePlanes();
             };
 
             const updateSlicePlanes = () => {
-                const position = slicePositionRef.current;
+                const bounds = clipBoundsRef.current;
                 const visibility = sliceVisibilityRef.current;
-                const planeOpacity = Math.max(0, Math.min(1, slicePlaneOpacityRef.current));
-                updateMeshSlicePlane(slicePlanes.x, "x", volumeBounds, position.x, visibility.x, planeOpacity);
-                updateMeshSlicePlane(slicePlanes.y, "y", volumeBounds, position.y, visibility.y, planeOpacity);
-                updateMeshSlicePlane(slicePlanes.z, "z", volumeBounds, position.z, visibility.z, planeOpacity);
+
+                const planeOpacity = Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        slicePlaneOpacityRef.current,
+                    ),
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.x[0],
+                    "x",
+                    volumeBounds,
+                    bounds.x[0],
+                    visibility.x,
+                    planeOpacity,
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.x[1],
+                    "x",
+                    volumeBounds,
+                    bounds.x[1],
+                    visibility.x,
+                    planeOpacity,
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.y[0],
+                    "y",
+                    volumeBounds,
+                    bounds.y[0],
+                    visibility.y,
+                    planeOpacity,
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.y[1],
+                    "y",
+                    volumeBounds,
+                    bounds.y[1],
+                    visibility.y,
+                    planeOpacity,
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.z[0],
+                    "z",
+                    volumeBounds,
+                    bounds.z[0],
+                    visibility.z,
+                    planeOpacity,
+                );
+
+                updateMeshSlicePlane(
+                    slicePlanes.z[1],
+                    "z",
+                    volumeBounds,
+                    bounds.z[1],
+                    visibility.z,
+                    planeOpacity,
+                );
+
                 requestRenderRef.current();
             };
 
@@ -991,7 +1067,11 @@ export default function MeshVolumeView({
                 );
                 const raycaster = new THREE.Raycaster();
                 raycaster.setFromCamera(pointer, camera);
-                const intersections = raycaster.intersectObjects([slicePlanes.x, slicePlanes.y, slicePlanes.z], false);
+                const intersections = raycaster.intersectObjects([
+                    ...slicePlanes.x,
+                    ...slicePlanes.y,
+                    ...slicePlanes.z,
+                ], false);
                 return (intersections[0]?.object.userData.volumeAxis as VolumeAxis | undefined) ?? null;
             };
 
