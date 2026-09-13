@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -871,6 +871,13 @@ describe("MetadataViewer", () => {
         await waitFor(() => {
             expect(document.querySelector('[data-row-index="0"]')).not.toBeNull();
         });
+        const firstCard = screen.getByRole("button", { name: "Row 1, item 1" });
+        const secondCard = screen.getByRole("button", { name: "Row 2, item 2" });
+        firstCard.focus();
+        fireEvent.keyDown(firstCard, { key: "ArrowRight" });
+        expect(secondCard).toHaveFocus();
+        fireEvent.keyDown(secondCard, { key: "Enter" });
+        expect(secondCard).toHaveAttribute("aria-pressed", "true");
     });
 
     it("goes to an item by id and selects it", async () => {
@@ -990,6 +997,26 @@ describe("MetadataViewer", () => {
         });
     });
 
+    it("cancels criteria scans without applying late partial results", async () => {
+        renderViewer();
+        await screen.findByText("0.91");
+        fireEvent.click(screen.getByText("0.82"));
+        fireEvent.contextMenu(screen.getAllByText("Score")[0].closest("th")!);
+        fireEvent.click(await screen.findByText("Select where…"));
+        fireEvent.change(screen.getByLabelText("Value"), { target: { value: "0.91" } });
+        const pending = createDeferred<ReturnType<typeof makeWindowRows>>();
+        serviceMocks.fetchMetadataTableWindow.mockImplementationOnce(() => pending.promise);
+        fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+        const signal = serviceMocks.fetchMetadataTableWindow.mock.calls[serviceMocks.fetchMetadataTableWindow.mock.calls.length - 1]?.[4].signal;
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Stop selection" }));
+        expect(signal.aborted).toBe(true);
+        await act(async () => pending.resolve(makeWindowRows("particles")));
+        expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        expect(screen.getByText("0.82").closest("tr")).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByText("0.91").closest("tr")).not.toHaveAttribute("aria-selected", "true");
+    });
+
     it("supports range selection with shift-click", async () => {
         renderViewer();
 
@@ -1071,6 +1098,19 @@ describe("MetadataViewer", () => {
         ).toBeInTheDocument();
     });
 
+    it("freezes a sparse selection without scanning unselected rows", async () => {
+        renderViewer();
+        await screen.findByText("0.82");
+        const lastRow = screen.getByText("0.82").closest("tr")!;
+        fireEvent.contextMenu(lastRow);
+        fireEvent.click(await screen.findByText("From here"));
+        serviceMocks.fetchMetadataTableWindow.mockResolvedValueOnce({ offset: 1, rows: [makeWindowRows("particles").rows[1]] });
+        fireEvent.contextMenu(lastRow);
+        fireEvent.click(await screen.findByText("Freeze selection (ids)"));
+        await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenLastCalledWith(1, 2, "metadataOutput", "particles", expect.objectContaining({ offset: 1, limit: 1, signal: expect.any(AbortSignal) })));
+        expect(lastRow).toHaveAttribute("aria-selected", "true");
+    });
+
     it("freezes an index-based selection into ids", async () => {
         renderViewer();
 
@@ -1098,6 +1138,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 2,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: undefined,
                     asc: undefined,

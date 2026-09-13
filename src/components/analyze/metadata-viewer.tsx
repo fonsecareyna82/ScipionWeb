@@ -70,6 +70,8 @@ import type {
 import { CloseIcon } from "@/icons";
 import { useProjectService } from "@/ProjectServiceContext";
 import { MetadataPlotterDialog } from "./metadata-plotter-dialog";
+import { useMetadataGalleryRows, getGalleryLayout } from "./use-metadata-gallery";
+import { metadataScanWindows } from "./metadata-scan-windows";
 type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
@@ -272,6 +274,12 @@ type MetadataTablePanelProps = {
 };
 
 type MetadataGalleryPanelProps = {
+  galleryLayout: ReturnType<typeof getGalleryLayout>;
+  totalRows: number;
+  jumpToGalleryIndex: (index: number) => void;
+  retryGallery: () => void;
+  imageColumns: MetadataColumnWithVisibility[];
+  onImageColumnChange: (name: string) => void;
   sortBy: string | null;
   sortAsc: boolean;
   schema: MetadataTableSchema | null;
@@ -349,7 +357,6 @@ const ZOOM_APPLY_DEBOUNCE_MS = 300;
 const ZOOM_MIN_PERCENT = Math.round((MIN_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 
-const GALLERY_PAGE_SIZE = 80;
 const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
@@ -1789,226 +1796,6 @@ function useVirtualTableWindow(params: {
   };
 }
 
-function useMetadataGalleryRows(params: {
-  projectId: number;
-  protocolId: number;
-  outputName: string;
-  selectedTable: string;
-  schema: MetadataTableSchema | null;
-  totalRows: number;
-  viewMode: ViewMode;
-  isMountedRef: MutableRefObject<boolean>;
-  sortBy: string | null;
-  sortAsc: boolean;
-  anchorRowIndex: number | null;
-}) {
-  const {
-    projectId,
-    protocolId,
-    outputName,
-    selectedTable,
-    schema,
-    totalRows,
-    viewMode,
-    isMountedRef,
-    sortBy,
-    sortAsc,
-  } = params;
-
-  const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
-  const [galleryNextOffset, setGalleryNextOffset] = useState(0);
-  const [galleryLoading, setGalleryLoading] = useState(false);
-  const [galleryError, setGalleryError] = useState<string | null>(null);
-  const [galleryHasMore, setGalleryHasMore] = useState(false);
-
-  const [galleryBaseOffset, setGalleryBaseOffset] = useState(0);
-  const galleryBaseOffsetRef = useRef(0);
-
-  useEffect(() => {
-    // keepGalleryBaseOffsetRefUpdated
-    galleryBaseOffsetRef.current = galleryBaseOffset;
-  }, [galleryBaseOffset]);
-
-  const galleryRequestInFlightRef = useRef(false);
-  const galleryEpochRef = useRef(0);
-  const galleryAbortRef = useRef<AbortController | null>(null);
-  const galleryLoadedRef = useRef(false);
-  useEffect(() => () => {
-    galleryEpochRef.current += 1;
-    galleryAbortRef.current?.abort();
-  }, []);
-  const svcRef = useProjectServiceRef();
-
-  const invalidateGalleryState = useCallback(() => {
-    galleryEpochRef.current += 1;
-    galleryAbortRef.current?.abort();
-    galleryRequestInFlightRef.current = false;
-    galleryLoadedRef.current = false;
-    setGalleryRows([]);
-    setGalleryNextOffset(0);
-    setGalleryLoading(false);
-    setGalleryError(null);
-    setGalleryHasMore(false);
-    setGalleryBaseOffset(0);
-  }, []);
-
-  const loadGalleryChunk = useCallback(
-    async (offset: number) => {
-      if (!selectedTable || !schema || totalRows === 0) return;
-      if (galleryRequestInFlightRef.current) return;
-
-      const remaining = totalRows - offset;
-      if (remaining <= 0) {
-        setGalleryHasMore(false);
-        return;
-      }
-
-      const limit = Math.min(GALLERY_PAGE_SIZE, remaining);
-      const requestEpoch = galleryEpochRef.current;
-      const controller = new AbortController();
-      galleryAbortRef.current = controller;
-
-      galleryRequestInFlightRef.current = true;
-      setGalleryLoading(true);
-      setGalleryError(null);
-
-      try {
-        const response = (await svcRef.current.fetchMetadataTableWindow(
-          projectId,
-          protocolId,
-          outputName,
-          selectedTable,
-          {
-            signal: controller.signal,
-            offset,
-            limit,
-            selectionOnly: false,
-            sortBy: sortBy ?? undefined,
-            asc: sortBy ? sortAsc : undefined,
-          },
-        )) as MetadataWindowResponse;
-
-        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-          return;
-        }
-
-        const parsed = parseWindowResponse(response);
-        galleryLoadedRef.current = true;
-
-        const baseOffset = galleryBaseOffsetRef.current;
-        setGalleryRows((prev) => (offset === baseOffset ? parsed.rows : [...prev, ...parsed.rows]));
-
-        const nextOffset = offset + parsed.rows.length;
-        setGalleryNextOffset(nextOffset);
-        setGalleryHasMore(parsed.rows.length > 0 && nextOffset < totalRows);
-      } catch (error) {
-        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-          return;
-        }
-
-        setGalleryError(getErrorMessage(error, "Failed to load gallery images"));
-      } finally {
-        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-          return;
-        }
-
-        setGalleryLoading(false);
-        galleryRequestInFlightRef.current = false;
-      }
-    },
-    [
-      isMountedRef,
-      outputName,
-      projectId,
-      protocolId,
-      schema,
-      selectedTable,
-      totalRows,
-      svcRef,
-      sortBy,
-      sortAsc,
-    ],
-  );
-
-  useEffect(() => {
-    invalidateGalleryState();
-
-    if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode !== "gallery") return;
-
-    const maxIndex = Math.max(0, totalRows - 1);
-    const safeAnchor =
-      params.anchorRowIndex == null ? 0 : clampIndex(params.anchorRowIndex, 0, maxIndex);
-
-    const buffer = Math.floor(GALLERY_PAGE_SIZE / 2);
-    const maxStartOffset = Math.max(0, totalRows - GALLERY_PAGE_SIZE);
-
-    let startOffset = safeAnchor - buffer;
-    if (startOffset < 0) startOffset = 0;
-    if (startOffset > maxStartOffset) startOffset = maxStartOffset;
-
-    galleryBaseOffsetRef.current = startOffset;
-    setGalleryBaseOffset(startOffset);
-    void loadGalleryChunk(startOffset);
-  }, [
-    schema,
-    selectedTable,
-    totalRows,
-    viewMode,
-    sortBy,
-    sortAsc,
-    params.anchorRowIndex,
-    invalidateGalleryState,
-    loadGalleryChunk,
-  ]);
-
-  useEffect(() => {
-    if (
-      viewMode === "gallery" &&
-      schema &&
-      selectedTable &&
-      totalRows > 0 &&
-      galleryRows.length === 0 &&
-      !galleryLoadedRef.current &&
-      !galleryLoading &&
-      !galleryError
-    ) {
-      void loadGalleryChunk(galleryBaseOffsetRef.current);
-    }
-  }, [
-    viewMode,
-    schema,
-    selectedTable,
-    totalRows,
-    galleryRows.length,
-    galleryLoading,
-    galleryError,
-    loadGalleryChunk,
-  ]);
-
-  const handleGalleryScroll = useCallback<UIEventHandler<HTMLDivElement>>(
-    (event) => {
-      if (!galleryHasMore || galleryLoading) return;
-
-      const element = event.currentTarget;
-      if (element.scrollTop + element.clientHeight >= element.scrollHeight - 400) {
-        void loadGalleryChunk(galleryNextOffset);
-      }
-    },
-    [galleryHasMore, galleryLoading, galleryNextOffset, loadGalleryChunk],
-  );
-
-  return {
-    galleryRows,
-    galleryLoading,
-    galleryError,
-    galleryHasMore,
-    handleGalleryScroll,
-    invalidateGalleryState,
-    galleryBaseOffset,
-  };
-}
-
 function useRowSelection(totalRows: number) {
   const [selectionState, setSelectionState] = useState<RowSelectionState>(createEmptySelectionState());
 
@@ -2457,7 +2244,6 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
   visibleColumns,
   columnSettings,
   rowHeight,
-  rowSizeForScroll,
   imageThumbSize,
   imageColMinWidth,
   tableMinWidth,
@@ -2653,6 +2439,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
               return (
                 <TableRow
                   key={rowId ?? `${windowOffset}-${rowIndexInWindow}`}
+                  aria-selected={isHighlightedRow}
                   hover
                   onMouseDown={(event) => {
                     // preventBrowserTextSelectionDuringShiftRangeSelection
@@ -2920,6 +2707,12 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
 });
 
 const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
+  galleryLayout,
+  totalRows,
+  jumpToGalleryIndex,
+  retryGallery,
+  imageColumns,
+  onImageColumnChange,
   schema,
   firstImageColumn,
   galleryRows,
@@ -2944,6 +2737,18 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   sortBy,
   sortAsc,
 }: MetadataGalleryPanelProps) {
+  const [jumpInput, setJumpInput] = useState("");
+  const pendingFocus = useRef<number | null>(null);
+  useEffect(() => {
+    if (pendingFocus.current == null) return;
+    const cell = galleryScrollRef.current?.querySelector<HTMLElement>(`[data-row-index="${pendingFocus.current}"]`);
+    if (cell) { cell.focus({ preventScroll: true }); pendingFocus.current = null; }
+  }, [galleryRows, galleryLayout, galleryScrollRef]);
+  const go = () => {
+    const index = Number(jumpInput);
+    if (Number.isInteger(index) && index >= 1 && index <= totalRows) jumpToGalleryIndex(index - 1);
+  };
+
   return (
     <Paper
       variant="outlined"
@@ -2963,11 +2768,15 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
     >
       <Box
         ref={galleryScrollRef}
+        aria-label="Metadata gallery"
+        aria-busy={galleryLoading}
         onScroll={handleGalleryScroll}
         sx={{
           flex: 1,
           minHeight: 0,
           overflow: "auto",
+          position: "relative",
+          overflowAnchor: "none",
         }}
       >
         {!firstImageColumn && (
@@ -2989,14 +2798,14 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
         {firstImageColumn && (
           <Box
             sx={{
-              p: 1,
-              display: "grid",
-              gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(170, imageThumbSize + 10)}px, 1fr))`,
-              gap: 0,
+              position: "relative",
+              height: galleryLayout.scrollHeight,
+              minWidth: imageThumbSize + 32,
             }}
           >
             {galleryRows.map((row, index) => {
               const globalRowIndex = galleryBaseOffset + index;
+              if (globalRowIndex < galleryLayout.start || globalRowIndex >= galleryLayout.end) return null;
               const rowId = resolveMetadataRowId(schema, row);
 
               const cellValue = row.values[firstImageColumn.index];
@@ -3025,6 +2834,24 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                 <Box
                   key={rowId ?? row.id ?? `${index}`}
                   data-row-index={globalRowIndex}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Row ${globalRowIndex + 1}, item ${rowId ?? "unknown"}`}
+                  aria-pressed={isSelected}
+                  onKeyDown={event => {
+                    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); return; }
+                    const shifts: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -galleryLayout.columns, ArrowDown: galleryLayout.columns };
+                    const target = event.key === "Home" ? 0 : event.key === "End" ? totalRows - 1 : shifts[event.key] != null ? globalRowIndex + shifts[event.key] : null;
+                    if (target == null) return;
+                    event.preventDefault();
+                    pendingFocus.current = Math.max(0, Math.min(target, totalRows - 1));
+                    jumpToGalleryIndex(pendingFocus.current);
+                    const targetCard = galleryScrollRef.current?.querySelector<HTMLElement>(`[data-row-index="${pendingFocus.current}"]`);
+                    if (targetCard) {
+                      targetCard.focus({ preventScroll: true });
+                      pendingFocus.current = null;
+                    }
+                  }}
                   onClick={(event) => {
                     onPrimaryRowClick(globalRowIndex, rowId, event);
                     setSelectedRowIndex(globalRowIndex);
@@ -3038,6 +2865,14 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     }
                   }}
                   sx={{
+                    position: "absolute",
+                    top: Math.floor(globalRowIndex / galleryLayout.columns) * galleryLayout.cardHeight - galleryLayout.logicalTop + galleryLayout.physicalTop + 8,
+                    left: `calc(8px + (100% - 16px) * ${globalRowIndex % galleryLayout.columns} / ${galleryLayout.columns})`,
+                    width: `calc((100% - 16px) / ${galleryLayout.columns})`,
+                    height: galleryLayout.cardHeight - 4,
+                    boxSizing: "border-box",
+                    overflow: "hidden",
+                    "&:focus-visible": { outline: "3px solid #2563eb", outlineOffset: -3 },
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
@@ -3081,7 +2916,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     />
                   )}
 
-                  <Box sx={{ minHeight: 18 }}>
+                  <Box sx={{ minHeight: 18, display: "flex", gap: 1 }}>
                     {sizeLabel && (
                       <Typography variant="caption" color="text.secondary">
                         {sizeLabel}
@@ -3097,6 +2932,13 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
         {galleryLoading && (
           <Box
             sx={{
+              position: "sticky",
+              bottom: 8,
+              mx: "auto",
+              width: "fit-content",
+              bgcolor: "background.paper",
+              borderRadius: 2,
+              boxShadow: 1,
               py: 1,
               px: 2,
               display: "flex",
@@ -3113,10 +2955,11 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
         )}
 
         {galleryError && (
-          <Box sx={{ py: 1, px: 2 }}>
+          <Box sx={{ position: "sticky", bottom: 8, py: 1, px: 2, bgcolor: "background.paper" }}>
             <Typography variant="caption" color="error">
               {galleryError}
             </Typography>
+            <Button size="small" onClick={retryGallery}>Retry gallery</Button>
           </Box>
         )}
 
@@ -3335,7 +3178,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   const { imageCacheRef, clearImageCache } = useImageCache();
 
   const [galleryAnchorRowIndex, setGalleryAnchorRowIndex] = useState<number | null>(null);
-  const pendingGalleryScrollIndexRef = useRef<number | null>(null);
 
   const focusedRowIndex = useMemo(() => {
     return selectedImageCell?.rowIndexInTable ?? selectedRowIndex ?? null;
@@ -3380,7 +3222,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     selectToHere,
     invertSelection,
     selectRange,
-    selectIndexCompare,
     setSelectionRanges,
   } = useRowSelection(totalRows);
 
@@ -3410,7 +3251,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   );
 
   const hasImageColumns = imageColumns.length > 0;
-  const firstImageColumn = imageColumns[0] ?? null;
+  const [galleryImageColumn, setGalleryImageColumn] = useState("");
+  const firstImageColumn = imageColumns.find(column => column.name === galleryImageColumn) ?? imageColumns[0] ?? null;
 
   const [zoomInputPercent, setZoomInputPercent] = useState<number>(100);
   const [zoomPercent, setZoomPercent] = useState<number>(100);
@@ -3584,6 +3426,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     handleGalleryScroll,
     invalidateGalleryState,
     galleryBaseOffset,
+    galleryLayout,
+    jumpToGalleryIndex,
   } = useMetadataGalleryRows({
     projectId,
     protocolId,
@@ -3592,7 +3436,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     schema,
     totalRows,
     viewMode,
-    isMountedRef,
+    imageThumbSize,
+    galleryScrollRef,
     sortBy,
     sortAsc,
     anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
@@ -3615,7 +3460,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
     if (viewMode === "gallery") {
       setGalleryAnchorRowIndex(focusedRowIndex);
-      pendingGalleryScrollIndexRef.current = focusedRowIndex;
     }
   }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode]);
 
@@ -3992,6 +3836,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     selectionBusyRef.current = selectionBusy;
   }, [selectionBusy]);
 
+  const selectionControllerRef = useRef<AbortController | null>(null);
+  const cancelSelectionWork = useCallback(() => {
+    selectionControllerRef.current?.abort();
+    selectionControllerRef.current = null;
+    selectionBusyRef.current = false;
+    setSelectionBusy(false);
+    setSelectionProgress(null);
+  }, []);
+
+  useEffect(() => {
+    cancelSelectionWork();
+    return () => { selectionControllerRef.current?.abort(); };
+  }, [projectId, protocolId, outputName, selectedTable, schema, totalRows, sortBy, sortAsc, cancelSelectionWork]);
+
   const actionSubmittingRef = useRef(actionSubmitting);
   useEffect(() => {
     // keepActionSubmittingRefUpdated
@@ -4007,7 +3865,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     if (viewMode === "gallery") {
       if (focusedRowIndex != null) {
         setGalleryAnchorRowIndex(focusedRowIndex);
-        pendingGalleryScrollIndexRef.current = focusedRowIndex;
       } else {
         setGalleryAnchorRowIndex(0);
       }
@@ -4034,24 +3891,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   }, [viewMode, focusedRowIndex, jumpToRowIndex]);
 
 
-  useEffect(() => {
-    if (viewMode !== "gallery") return;
-
-    const targetIndex = pendingGalleryScrollIndexRef.current;
-    if (targetIndex == null) return;
-
-    const container = galleryScrollRef.current;
-    if (!container) return;
-
-    const selector = `[data-row-index="${targetIndex}"]`;
-    const el = container.querySelector(selector) as HTMLElement | null;
-
-    if (!el) return;
-
-    el.scrollIntoView({ block: "center", inline: "nearest" });
-    pendingGalleryScrollIndexRef.current = null;
-  }, [viewMode, galleryRows.length, galleryBaseOffset, imageThumbSize]);
-
   const focusRowAfterSelection = useCallback(
     (rowIndex: number | null) => {
       if (rowIndex == null) return;
@@ -4066,7 +3905,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
       if (viewMode === "gallery") {
         setGalleryAnchorRowIndex(rowIndex);
-        pendingGalleryScrollIndexRef.current = rowIndex;
       }
     },
     [jumpToRowIndex, viewMode],
@@ -4446,10 +4284,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const materializeIndexSelectionToIds = useCallback(async () => {
     // materializeIndexSelectionToIds
-    if (selectionMode === "ids") return;
+    if (selectionBusyRef.current || selectionMode === "ids") return;
     if (!schema || !selectedTable || totalRows <= 0) return;
     if (selectedCountByIndex <= 0) return;
 
+    const controller = new AbortController();
+    selectionControllerRef.current = controller;
+    selectionBusyRef.current = true;
     setSelectionBusy(true);
     setSelectionDialogError(null);
     setSelectionProgress({ done: 0, total: selectedCountByIndex });
@@ -4459,7 +4300,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     let done = 0;
 
     try {
-      for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
+      for (const { offset, limit } of metadataScanWindows(selectionStateToSelectedRanges(selectionState, totalRows), SELECTION_IDS_SCAN_PAGE_SIZE)) {
+        if (controller.signal.aborted) return;
         const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
@@ -4467,13 +4309,15 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           selectedTable,
           {
             offset,
-            limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
+            limit,
+            signal: controller.signal,
             selectionOnly: false,
             sortBy: sortBy ?? undefined,
             asc: sortBy ? sortAsc : undefined,
           },
         )) as MetadataWindowResponse;
 
+        if (controller.signal.aborted) return;
         const parsed = parseWindowResponse(response);
         const actualOffset = parsed.offset ?? offset;
 
@@ -4503,11 +4347,15 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       setSelectedRowIndex(null);
       setSelectedImageCell(null);
     } catch (error) {
-      setSelectionDialogError(getErrorMessage(error, "Failed to freeze selection"));
+      if (!controller.signal.aborted) setSelectionDialogError(getErrorMessage(error, "Failed to freeze selection"));
     } finally {
-      if (isMountedRef.current) {
-        setSelectionBusy(false);
-        setSelectionProgress(null);
+      if (selectionControllerRef.current === controller) {
+        selectionControllerRef.current = null;
+        selectionBusyRef.current = false;
+        if (isMountedRef.current) {
+          setSelectionBusy(false);
+          setSelectionProgress(null);
+        }
       }
     }
   }, [
@@ -4556,6 +4404,9 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           ? prevKeys.size
           : selectedCountByIndex;
 
+    const controller = new AbortController();
+    selectionControllerRef.current = controller;
+    selectionBusyRef.current = true;
     setSelectionBusy(true);
     setSelectionDialogError(null);
     setSelectionProgress({ done: 0, total: Math.max(0, targetScopeTotal) });
@@ -4580,29 +4431,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       return isRowIndexSelected(selectionState, globalRowIndex);
     };
 
-    const offsetsToScan: Array<{ offset: number; limit: number }> = [];
-
-    if (selectionDialog.scope === "currentSelection" && selectionMode === "index" && selectionState.baseMode === "none") {
-      const merged = mergeRanges(selectionState.ranges);
-      for (const range of merged) {
-        let offset = range.start;
-        while (offset <= range.end) {
-          const limit = Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, range.end - offset + 1);
-          offsetsToScan.push({ offset, limit });
-          offset += limit;
-        }
-      }
-    } else {
-      for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
-        offsetsToScan.push({
-          offset,
-          limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
-        });
-      }
-    }
+    const rangesToScan = selectionDialog.scope === "currentSelection" && selectionMode === "index"
+      ? selectionStateToSelectedRanges(selectionState, totalRows)
+      : [{ start: 0, end: totalRows - 1 }];
+    const offsetsToScan = metadataScanWindows(rangesToScan, SELECTION_IDS_SCAN_PAGE_SIZE);
 
     try {
       for (const { offset, limit } of offsetsToScan) {
+        if (controller.signal.aborted) return;
         const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
@@ -4611,12 +4447,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           {
             offset,
             limit,
+            signal: controller.signal,
             selectionOnly: false,
             sortBy: sortBy ?? undefined,
             asc: sortBy ? sortAsc : undefined,
           },
         )) as MetadataWindowResponse;
 
+        if (controller.signal.aborted) return;
         const parsed = parseWindowResponse(response);
         const actualOffset = parsed.offset ?? offset;
 
@@ -4700,6 +4538,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         const firstSelected = nextRanges.length ? nextRanges[0].start : null;
         focusRowAfterSelection(firstSelected);
 
+        selectionBusyRef.current = false;
         closeSelectionDialog();
         closeContextMenu();
         return;
@@ -4727,14 +4566,19 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         focusRowAfterSelection(firstMatchIndex);
       }
 
+      selectionBusyRef.current = false;
       closeSelectionDialog();
       closeContextMenu();
     } catch (error) {
-      setSelectionDialogError(getErrorMessage(error, "Failed to apply selection criteria"));
+      if (!controller.signal.aborted) setSelectionDialogError(getErrorMessage(error, "Failed to apply selection criteria"));
     } finally {
-      if (isMountedRef.current) {
-        setSelectionBusy(false);
-        setSelectionProgress(null);
+      if (selectionControllerRef.current === controller) {
+        selectionControllerRef.current = null;
+        selectionBusyRef.current = false;
+        if (isMountedRef.current) {
+          setSelectionBusy(false);
+          setSelectionProgress(null);
+        }
       }
     }
   }, [
@@ -5146,6 +4990,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
         {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
           <MetadataGalleryPanel
+            galleryLayout={galleryLayout}
+            totalRows={totalRows}
+            jumpToGalleryIndex={jumpToGalleryIndex}
+            retryGallery={invalidateGalleryState}
+            imageColumns={imageColumns}
+            onImageColumnChange={setGalleryImageColumn}
             schema={schema}
             firstImageColumn={firstImageColumn}
             sortBy={sortBy}
@@ -5227,9 +5077,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           )}
 
           {selectionBusy && (
-            <Typography variant="caption" color="text.secondary">
-              Selecting…
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Selecting… {selectionProgress ? `${selectionProgress.done.toLocaleString()}/${selectionProgress.total.toLocaleString()}` : ""}
+              </Typography>
+              <Button size="small" onClick={cancelSelectionWork}>Stop selection</Button>
+            </Box>
           )}
         </Box>
 
@@ -6029,15 +5882,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         >
           <Button
             variant="outlined"
-            onClick={closeSelectionDialog}
-            disabled={selectionBusy}
+            onClick={selectionBusy ? cancelSelectionWork : closeSelectionDialog}
             sx={{
               textTransform: "none",
               fontWeight: 700,
               borderRadius: 2,
             }}
           >
-            Cancel
+            {selectionBusy ? "Stop selection" : "Cancel"}
           </Button>
 
           <Button
