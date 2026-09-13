@@ -454,6 +454,22 @@ const defaultMockService: Partial<ProjectService> = {
     return { offset: 0, limit: 0, totalRows: 0, rows: [] };
   },
 
+  async fetchMetadataRowPosition(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _tableName: string,
+    rowId: number,
+  ): Promise<{
+    rowId: number;
+    index: number;
+  }> {
+    return {
+      rowId,
+      index: Math.max(0, rowId - 1),
+    };
+  },
+
   async fetchMetadataImageCellObjectUrl(): Promise<{ url: string; revoke: () => void }> {
     return { url: mockSliceDataUrl(0), revoke: () => { } };
   },
@@ -832,6 +848,10 @@ function normalizeServiceAPI(
   mapFn("fetchMetadataTablePage", "fetchMetadataTablePage");
   mapFn("exportMetadataTable", "exportMetadataTable");
   mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
+  mapFn(
+    "fetchMetadataRowPosition",
+    "fetchMetadataRowPosition",
+  );
   mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");

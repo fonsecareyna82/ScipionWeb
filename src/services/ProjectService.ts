@@ -1975,6 +1975,22 @@ export interface ProjectService<
     rows: MetadataRow[];
   }>;
 
+  fetchMetadataRowPosition(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number,
+    opts?: {
+      sortBy?: string;
+      asc?: boolean;
+      signal?: AbortSignal;
+    }
+  ): Promise<{
+    rowId: number;
+    index: number;
+  }>;
+
   fetchMetadataImageCellObjectUrl(
     projectId: Id,
     protocolId: Id,

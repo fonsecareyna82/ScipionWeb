@@ -3536,6 +3536,81 @@ export async function fetchMetadataTableWindow(
 }
 
 
+export interface MetadataRowPosition {
+  rowId: number;
+  index: number;
+}
+
+export async function fetchMetadataRowPosition(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  rowId: number,
+  opts: {
+    sortBy?: string;
+    asc?: boolean;
+    signal?: AbortSignal;
+  } = {},
+): Promise<MetadataRowPosition> {
+  const params = new URLSearchParams();
+
+  params.set("rowId", String(rowId));
+
+  if (
+    typeof opts.sortBy === "string" &&
+    opts.sortBy.trim()
+  ) {
+    params.set("sortBy", opts.sortBy.trim());
+  }
+
+  if (typeof opts.asc === "boolean") {
+    params.set("asc", String(opts.asc));
+  }
+
+  const enc = encodeURIComponent;
+
+  const base =
+    `${BASE_URL}/projects/${projectId}` +
+    `/protocols/${protocolId}` +
+    `/outputs/${enc(outputName)}` +
+    `/metadata/tables/${enc(tableName)}` +
+    `/row-position`;
+
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to resolve metadata row position",
+    );
+  }
+
+  const data = await safeJson<any>(res);
+
+  if (
+    !data ||
+    !Number.isSafeInteger(data.rowId) ||
+    !Number.isInteger(data.index) ||
+    data.index < 0
+  ) {
+    throw new Error(
+      "Unexpected response format for metadata row position",
+    );
+  }
+
+  return {
+    rowId: data.rowId,
+    index: data.index,
+  };
+}
+
+
 /* ======================= Analyze Results: Tilt series ======================= */
 
 export interface TiltSeriesListItem {

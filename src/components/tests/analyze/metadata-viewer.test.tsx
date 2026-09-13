@@ -7,6 +7,7 @@ const serviceMocks = vi.hoisted(() => ({
     fetchMetadataTableWindow: vi.fn(),
     fetchMetadataImageCellObjectUrl: vi.fn(),
     runMetadataTableAction: vi.fn(),
+    fetchMetadataRowPosition: vi.fn(),
 }));
 
 vi.mock("@/ProjectServiceContext", () => ({
@@ -238,6 +239,13 @@ describe("MetadataViewer", () => {
         });
 
         serviceMocks.runMetadataTableAction.mockResolvedValue({ success: true });
+
+        serviceMocks
+            .fetchMetadataRowPosition
+            .mockResolvedValue({
+                rowId: 2,
+                index: 1,
+            });
     });
 
     it("shows the loading state while metadata tables are pending", async () => {
@@ -316,7 +324,7 @@ describe("MetadataViewer", () => {
     });
 
     it("aborts a pending row request when the viewer unmounts", async () => {
-        serviceMocks.fetchMetadataTableWindow.mockImplementation(() => new Promise(() => {}));
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(() => new Promise(() => { }));
         const { unmount } = renderViewer();
         await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalled());
         const signal = serviceMocks.fetchMetadataTableWindow.mock.lastCall?.[4].signal;
@@ -868,6 +876,11 @@ describe("MetadataViewer", () => {
 
         fireEvent.click(galleryButton);
 
+        const goToInput =
+            screen.getByLabelText("Go to item");
+
+        expect(goToInput).toBeDisabled();
+
         await waitFor(() => {
             expect(document.querySelector('[data-row-index="0"]')).not.toBeNull();
         });
@@ -880,37 +893,69 @@ describe("MetadataViewer", () => {
         expect(secondCard).toHaveAttribute("aria-pressed", "true");
     });
 
-    it("goes to an item by id and selects it", async () => {
-        renderViewer();
+    it(
+        "resolves an item position directly without scanning metadata rows",
+        async () => {
+            renderViewer();
 
-        expect(await screen.findByText("0.91")).toBeInTheDocument();
-
-        const goToInput = screen.getAllByRole("spinbutton")[1];
-        fireEvent.change(goToInput, { target: { value: "2" } });
-        fireEvent.blur(goToInput);
-
-        await waitFor(() => {
             expect(
-                screen.getByText((_, node) => node?.textContent === "Selected: 1"),
+                await screen.findByText("0.91"),
             ).toBeInTheDocument();
-        });
 
-        await waitFor(() => {
-            expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledWith(
-                1,
-                2,
-                "metadataOutput",
-                "particles",
+            const rowCallsBeforeGoTo =
+                serviceMocks.fetchMetadataTableWindow
+                    .mock.calls.length;
+
+            const goToInput =
+                screen.getAllByRole("spinbutton")[1];
+
+            fireEvent.change(
+                goToInput,
                 {
-                    offset: 0,
-                    limit: 2,
-                    selectionOnly: false,
-                    sortBy: undefined,
-                    asc: undefined,
+                    target: {
+                        value: "2",
+                    },
                 },
             );
-        });
-    });
+
+            fireEvent.blur(goToInput);
+
+            await waitFor(() => {
+                expect(
+                    serviceMocks.fetchMetadataRowPosition,
+                ).toHaveBeenCalledWith(
+                    1,
+                    2,
+                    "metadataOutput",
+                    "particles",
+                    2,
+                    {
+                        sortBy: undefined,
+                        asc: undefined,
+                    },
+                );
+            });
+
+            expect(
+                serviceMocks.fetchMetadataRowPosition,
+            ).toHaveBeenCalledTimes(1);
+
+            await waitFor(() => {
+                expect(
+                    screen.getByText(
+                        (_, node) =>
+                            node?.textContent ===
+                            "Selected: 1",
+                    ),
+                ).toBeInTheDocument();
+            });
+
+            expect(
+                serviceMocks.fetchMetadataTableWindow
+                    .mock.calls.length,
+            ).toBe(rowCallsBeforeGoTo);
+        },
+    );
 
     it("keeps a stable selection after sorting", async () => {
         renderViewer();

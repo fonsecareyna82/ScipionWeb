@@ -660,6 +660,23 @@ const defaultService: ProjectService = {
     return { offset: data.offset ?? offset, limit: data.limit ?? limit, totalRows: data.totalRows ?? data.rows.length, rows: data.rows };
   },
 
+  fetchMetadataRowPosition: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number,
+    opts = {},
+  ) =>
+    api.fetchMetadataRowPosition(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      rowId,
+      opts,
+    ),
+
   fetchMetadataImageCellObjectUrl: (
     projectId: Id,
     protocolId: Id,

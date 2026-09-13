@@ -3627,13 +3627,32 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const goToItemById = useCallback(
     async (rawValue?: string) => {
-      if (!schema || !selectedTable || totalRows <= 0) return;
+      if (goToTimeoutRef.current) {
+        window.clearTimeout(goToTimeoutRef.current);
+        goToTimeoutRef.current = null;
+      }
+
+      if (
+        viewMode !== "table" ||
+        !schema ||
+        !selectedTable ||
+        totalRows <= 0
+      ) {
+        return;
+      }
 
       const value = (rawValue ?? goToIdInput).trim();
-      if (!value) return;
 
-      const targetId = normalizeRowId(value);
-      if (targetId == null) {
+      if (!value) {
+        return;
+      }
+
+      const targetId = Number(value);
+
+      if (
+        !Number.isSafeInteger(targetId) ||
+        targetId < 1
+      ) {
         setGoToError("Invalid id");
         return;
       }
@@ -3645,96 +3664,92 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       setGoToError(null);
 
       try {
-        // Ensure table mode so scrollRef is relevant
-        if (viewMode !== "table") {
-          setViewMode("table");
-        }
-
-        const targetKey = rowIdToKey(targetId);
-
-        const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
-        const idColumn =
-          columns.find((c) => c.name === "id") ??
-          columns.find((c) => (c.name || "").toLowerCase() === "id");
-
-        const idColumnIndex = typeof idColumn?.index === "number" ? idColumn.index : null;
-
-        const pageSize = Math.max(200, SELECTION_IDS_SCAN_PAGE_SIZE);
-
-        for (let offset = 0; offset < totalRows; offset += pageSize) {
-          if (!isMountedRef.current || goToEpochRef.current !== epoch) return;
-
-          const response = (await svcRef.current.fetchMetadataTableWindow(
+        const position =
+          await svcRef.current.fetchMetadataRowPosition(
             projectId,
             protocolId,
             outputName,
             selectedTable,
+            targetId,
             {
-              offset,
-              limit: Math.min(pageSize, totalRows - offset),
-              selectionOnly: false,
               sortBy: sortBy ?? undefined,
               asc: sortBy ? sortAsc : undefined,
             },
-          )) as MetadataWindowResponse;
+          );
 
-          const parsed = parseWindowResponse(response);
-          const actualOffset = parsed.offset ?? offset;
-
-          for (let i = 0; i < parsed.rows.length; i += 1) {
-            const row = parsed.rows[i];
-            const globalRowIndex = actualOffset + i;
-
-            const resolved = resolveMetadataRowId(schema, row);
-            const resolvedKey = resolved != null ? rowIdToKey(resolved) : null;
-
-            let idColKey: string | null = null;
-            let idColValue: RowId | null = null;
-
-            if (idColumnIndex != null) {
-              const candidate = normalizeRowId(row.values?.[idColumnIndex]);
-              if (candidate != null) {
-                idColValue = candidate;
-                idColKey = rowIdToKey(candidate);
-              }
-            }
-
-            if (resolvedKey === targetKey || idColKey === targetKey) {
-              const chosenRowId = resolved ?? idColValue ?? targetId;
-              const chosenKey = rowIdToKey(chosenRowId);
-
-              // Set stable selection (ids)
-              clearSelection();
-              selectedRowIdValuesRef.current.clear();
-              selectedRowIdValuesRef.current.set(chosenKey, chosenRowId);
-              setSelectedRowIdKeys(new Set([chosenKey]));
-              setSelectionMode("ids");
-
-              setSelectedRowIndex(globalRowIndex);
-              setSelectedImageCell(null);
-
-              jumpToRowIndex(globalRowIndex);
-              setGoToError(null);
-              return;
-            }
-          }
+        if (
+          !isMountedRef.current ||
+          goToEpochRef.current !== epoch
+        ) {
+          return;
         }
 
-        setGoToError("Item not found");
+        if (
+          !Number.isInteger(position.index) ||
+          position.index < 0 ||
+          position.index >= totalRows
+        ) {
+          throw new Error(
+            "Metadata API returned an invalid row position",
+          );
+        }
+
+        const chosenRowId =
+          normalizeRowId(position.rowId) ?? targetId;
+
+        const chosenKey =
+          rowIdToKey(chosenRowId);
+
+        clearSelection();
+
+        selectedRowIdValuesRef.current.clear();
+
+        selectedRowIdValuesRef.current.set(
+          chosenKey,
+          chosenRowId,
+        );
+
+        setSelectedRowIdKeys(
+          new Set([chosenKey]),
+        );
+
+        setSelectionMode("ids");
+
+        setSelectedRowIndex(position.index);
+        setSelectedImageCell(null);
+
+        jumpToRowIndex(position.index);
+
+        setGoToError(null);
       } catch (error) {
-        setGoToError(getErrorMessage(error, "Failed to go to item"));
+        if (
+          !isMountedRef.current ||
+          goToEpochRef.current !== epoch
+        ) {
+          return;
+        }
+
+        setGoToError(
+          getErrorMessage(
+            error,
+            "Failed to go to item",
+          ),
+        );
       } finally {
-        if (isMountedRef.current && goToEpochRef.current === epoch) {
+        if (
+          isMountedRef.current &&
+          goToEpochRef.current === epoch
+        ) {
           setGoToBusy(false);
         }
       }
     },
     [
+      viewMode,
       schema,
       selectedTable,
       totalRows,
       goToIdInput,
-      viewMode,
       svcRef,
       projectId,
       protocolId,
@@ -3750,18 +3765,48 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   const scheduleGoTo = useCallback(
     (nextValue: string) => {
       if (goToTimeoutRef.current) {
-        window.clearTimeout(goToTimeoutRef.current);
+        window.clearTimeout(
+          goToTimeoutRef.current,
+        );
         goToTimeoutRef.current = null;
       }
 
-      if (!nextValue.trim()) return;
+      if (
+        viewMode !== "table" ||
+        !nextValue.trim()
+      ) {
+        return;
+      }
 
-      goToTimeoutRef.current = window.setTimeout(() => {
-        void goToItemById(nextValue);
-      }, 450);
+      goToTimeoutRef.current =
+        window.setTimeout(() => {
+          void goToItemById(nextValue);
+        }, 450);
     },
-    [goToItemById],
+    [
+      goToItemById,
+      viewMode,
+    ],
   );
+
+  useEffect(() => {
+    if (viewMode === "table") {
+      return;
+    }
+
+    goToEpochRef.current += 1;
+
+    if (goToTimeoutRef.current) {
+      window.clearTimeout(
+        goToTimeoutRef.current,
+      );
+
+      goToTimeoutRef.current = null;
+    }
+
+    setGoToBusy(false);
+    setGoToError(null);
+  }, [viewMode]);
 
 
   const materializeSingleIndexSelectionToIds = useCallback(async (): Promise<boolean> => {
@@ -4934,10 +4979,16 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
                 onBlur={() => {
                   void goToItemById();
                 }}
-                disabled={!schema || !selectedTable || totalRows <= 0 || goToBusy}
+                disabled={
+                  viewMode !== "table" ||
+                  !schema ||
+                  !selectedTable ||
+                  totalRows <= 0 ||
+                  goToBusy
+                }
                 error={!!goToError}
                 sx={{ width: 150 }}
-                inputProps={{ step: 1, min: 0 }}
+                inputProps={{ step: 1, min: 1 }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">

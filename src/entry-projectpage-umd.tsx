@@ -326,6 +326,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchMetadataTablePage", "fetchMetadataTablePage");
   mapFn("exportMetadataTable", "exportMetadataTable");
   mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
+  mapFn(
+  "fetchMetadataRowPosition",
+  "fetchMetadataRowPosition",
+);
   mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");

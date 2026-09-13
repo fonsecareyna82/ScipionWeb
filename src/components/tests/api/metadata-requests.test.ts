@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fetchMetadataTableWindow, getMetadataImageCellUrl } from "@/api/projects";
+import { fetchMetadataRowPosition, fetchMetadataTableWindow, getMetadataImageCellUrl, } from "@/api/projects";
 import { fetchWithAuth } from "@/api/auth";
 
 vi.mock("@/api/auth", () => ({ fetchWithAuth: vi.fn() }));
@@ -13,6 +13,64 @@ it("addresses a thumbnail by logical ID and preserves ordering for legacy source
   expect(url.searchParams.get("sortBy")).toBe("score");
   expect(url.searchParams.get("asc")).toBe("false");
 });
+
+it(
+  "resolves a metadata row position with the active ordering",
+  async () => {
+    vi.mocked(fetchWithAuth).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          rowId: 901,
+          index: 37,
+        }),
+      ),
+    );
+
+    const result =
+      await fetchMetadataRowPosition(
+        1,
+        2,
+        "particles/a",
+        "Class 001",
+        901,
+        {
+          sortBy: "score",
+          asc: false,
+        },
+      );
+
+    const [url] =
+      vi.mocked(fetchWithAuth).mock.lastCall!;
+
+    const parsed = new URL(
+      String(url),
+      "http://localhost",
+    );
+
+    expect(parsed.pathname).toContain(
+      "/projects/1/protocols/2/outputs/" +
+      "particles%2Fa/metadata/tables/" +
+      "Class%20001/row-position",
+    );
+
+    expect(
+      parsed.searchParams.get("rowId"),
+    ).toBe("901");
+
+    expect(
+      parsed.searchParams.get("sortBy"),
+    ).toBe("score");
+
+    expect(
+      parsed.searchParams.get("asc"),
+    ).toBe("false");
+
+    expect(result).toEqual({
+      rowId: 901,
+      index: 37,
+    });
+  },
+);
 
 it("passes row cancellation to authenticated fetch without serializing the signal", async () => {
   const controller = new AbortController();
