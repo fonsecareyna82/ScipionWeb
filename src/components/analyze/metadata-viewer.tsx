@@ -110,6 +110,7 @@ interface ImageJob {
   onSuccess: (result: ImageJobResult) => void;
   onError: (error: unknown) => void;
   isCancelled: () => boolean;
+  getPriority: () => 0 | 1;
 }
 
 type IndexRange = {
@@ -360,6 +361,7 @@ const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
+const MAX_CONCURRENT_PRELOAD_IMAGE_REQUESTS = 3;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
 const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
 
@@ -419,8 +421,30 @@ const closeBtnSx = {
 
 /* ======================= Global image queue ======================= */
 
+function getImageJobPriority(
+  element: HTMLElement | null,
+  scrollRoot: HTMLElement | null,
+): 0 | 1 {
+  if (!element || !scrollRoot) {
+    return 0;
+  }
+
+  const elementRect = element.getBoundingClientRect();
+  const rootRect = scrollRoot.getBoundingClientRect();
+
+  const isActuallyVisible =
+    elementRect.bottom > rootRect.top &&
+    elementRect.top < rootRect.bottom &&
+    elementRect.right > rootRect.left &&
+    elementRect.left < rootRect.right;
+
+  return isActuallyVisible ? 0 : 1;
+}
+
+
 const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
+let activePreloadImageJobs = 0;
 
 function pruneCancelledImageJobs() {
   for (let i = imageJobQueue.length - 1; i >= 0; i -= 1) {
@@ -434,14 +458,44 @@ function scheduleNextImageJob() {
   pruneCancelledImageJobs();
 
   while (activeImageJobs < MAX_CONCURRENT_IMAGE_REQUESTS) {
-    const job = imageJobQueue.shift();
-    if (!job) return;
+    const visibleJobIndex = imageJobQueue.findIndex(
+      (job) => job.getPriority() === 0,
+    );
+
+    let jobIndex = visibleJobIndex;
+
+    if (jobIndex < 0) {
+      if (
+        activePreloadImageJobs >=
+        MAX_CONCURRENT_PRELOAD_IMAGE_REQUESTS
+      ) {
+        return;
+      }
+
+      jobIndex = imageJobQueue.length > 0 ? 0 : -1;
+    }
+
+    if (jobIndex < 0) {
+      return;
+    }
+
+    const [job] = imageJobQueue.splice(jobIndex, 1);
+
+    if (!job) {
+      return;
+    }
 
     if (job.isCancelled()) {
       continue;
     }
 
+    const startedAsPreload = job.getPriority() === 1;
+
     activeImageJobs += 1;
+
+    if (startedAsPreload) {
+      activePreloadImageJobs += 1;
+    }
 
     void (async () => {
       try {
@@ -457,7 +511,18 @@ function scheduleNextImageJob() {
           job.onError(error);
         }
       } finally {
-        activeImageJobs = Math.max(0, activeImageJobs - 1);
+        activeImageJobs = Math.max(
+          0,
+          activeImageJobs - 1,
+        );
+
+        if (startedAsPreload) {
+          activePreloadImageJobs = Math.max(
+            0,
+            activePreloadImageJobs - 1,
+          );
+        }
+
         scheduleNextImageJob();
       }
     })();
@@ -2107,6 +2172,13 @@ function MetadataImageCell({
 
     const job: ImageJob = {
       isCancelled: () => cancelled,
+
+      getPriority: () =>
+        getImageJobPriority(
+          rootRef.current,
+          scrollRootRef.current,
+        ),
+
       run: async () => {
         const baseOptions = {
           rowId: rowId ?? undefined,
@@ -2184,6 +2256,7 @@ function MetadataImageCell({
     protocolId,
     rowIndexInTable,
     rowId,
+    scrollRootRef,
     sortBy,
     sortAsc,
     size,
