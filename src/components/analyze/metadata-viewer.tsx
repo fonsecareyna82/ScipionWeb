@@ -2867,9 +2867,16 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                   sx={{
                     position: "absolute",
                     top: Math.floor(globalRowIndex / galleryLayout.columns) * galleryLayout.cardHeight - galleryLayout.logicalTop + galleryLayout.physicalTop + 8,
-                    left: `calc(8px + (100% - 16px) * ${globalRowIndex % galleryLayout.columns} / ${galleryLayout.columns})`,
-                    width: `calc((100% - 16px) / ${galleryLayout.columns})`,
-                    height: galleryLayout.cardHeight - 4,
+                    left:
+                      galleryLayout.leftInset +
+                      (globalRowIndex % galleryLayout.columns) *
+                      galleryLayout.columnStride,
+
+                    width: galleryLayout.cardWidth,
+
+                    height:
+                      galleryLayout.cardHeight -
+                      galleryLayout.rowGap,
                     boxSizing: "border-box",
                     overflow: "hidden",
                     "&:focus-visible": { outline: "3px solid #2563eb", outlineOffset: -3 },
@@ -2877,7 +2884,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     flexDirection: "column",
                     alignItems: "center",
                     gap: 0.5,
-                    p: 0.75,
+                    p: 0.5,
                     borderRadius: 1.5,
                     border: isSelected
                       ? "2px dashed #dc2626"

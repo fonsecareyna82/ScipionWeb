@@ -18,7 +18,7 @@ function mountGallery() {
 beforeEach(() => {
   service.fetchMetadataTableWindow.mockReset();
   service.fetchMetadataTableWindow.mockImplementation(async (_p, _r, _o, _t, { offset, limit }) => ({ offset, rows: Array.from({ length: limit }, (_, i) => ({ id: offset + i + 1, values: [] })) }));
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  vi.stubGlobal("ResizeObserver", class { observe() { } disconnect() { } });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,7 +28,10 @@ describe("metadata gallery", () => {
     expect(layout.scrollHeight).toBe(16_000_000);
     expect(layout.end).toBe(100_000_000);
     expect(layout.end - layout.start).toBeLessThan(50);
-    expect(layout.cardHeight).toBe(176);
+    expect(layout.cardWidth).toBe(140);
+    expect(layout.cardHeight).toBe(166);
+    expect(layout.columnGap).toBe(8);
+    expect(layout.rowGap).toBe(4);
     const lastTop = Math.floor((layout.end - 1) / layout.columns) * layout.cardHeight - layout.logicalTop;
     expect(lastTop).toBeGreaterThanOrEqual(0);
     expect(lastTop + layout.cardHeight).toBeLessThanOrEqual(600);

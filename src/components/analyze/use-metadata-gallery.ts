@@ -7,8 +7,25 @@ const MAX_CACHED_WINDOWS = 8;
 const MAX_SCROLL_HEIGHT = 16_000_000;
 
 export function getGalleryLayout(total: number, width: number, height: number, thumbnailSize: number, scrollTop: number) {
-  const columns = Math.max(1, Math.floor(Math.max(1, width - 16) / (thumbnailSize + 16)));
-  const cardHeight = thumbnailSize + 48;
+  const cardWidth = thumbnailSize + 12;
+  const columnGap = 8;
+  const rowGap = 4;
+  const availableWidth = Math.max(1, width - 16);
+  const columns = Math.max(
+    1,
+    Math.floor((availableWidth + columnGap) / (cardWidth + columnGap)),
+  );
+  const columnStride = cardWidth + columnGap;
+  const contentWidth =
+    columns * cardWidth +
+    Math.max(0, columns - 1) * columnGap;
+
+  const leftInset = Math.max(
+    8,
+    (width - contentWidth) / 2,
+  );
+
+  const cardHeight = thumbnailSize + 38;
   // Cap the DOM height; card positions compensate for the compressed scrollbar.
   const logicalHeight = Math.ceil(total / columns) * cardHeight + 16;
   const scrollHeight = Math.min(MAX_SCROLL_HEIGHT, logicalHeight);
@@ -18,7 +35,22 @@ export function getGalleryLayout(total: number, width: number, height: number, t
   const firstRow = Math.max(0, Math.floor(logicalTop / cardHeight));
   const start = Math.min(total, Math.max(0, firstRow - 2) * columns);
   const end = Math.min(total, (Math.ceil((logicalTop + height) / cardHeight) + 2) * columns);
-  return { columns, cardHeight, scrollHeight, logicalHeight, logicalTop, physicalTop, start, end, height };
+  return {
+    columns,
+    cardWidth,
+    cardHeight,
+    columnGap,
+    columnStride,
+    rowGap,
+    leftInset,
+    scrollHeight,
+    logicalHeight,
+    logicalTop,
+    physicalTop,
+    start,
+    end,
+    height,
+  };
 }
 
 type GalleryParams = {
