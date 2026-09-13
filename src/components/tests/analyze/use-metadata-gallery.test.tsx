@@ -37,6 +37,82 @@ describe("metadata gallery", () => {
     expect(lastTop + layout.cardHeight).toBeLessThanOrEqual(600);
   });
 
+  it("keeps overlapping rows while fetching only the missing page", async () => {
+    const { result } = mountGallery();
+
+    await waitFor(() =>
+      expect(result.current.galleryRows.length).toBe(80),
+    );
+
+    expect(
+      service.fetchMetadataTableWindow,
+    ).toHaveBeenCalledTimes(1);
+
+    expect(
+      service.fetchMetadataTableWindow.mock.calls[0][4],
+    ).toMatchObject({
+      offset: 0,
+      limit: 80,
+    });
+
+    let resolveNext!: (value: unknown) => void;
+
+    service.fetchMetadataTableWindow.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveNext = resolve;
+        }),
+    );
+
+    act(() => {
+      result.current.jumpToGalleryIndex(80);
+    });
+
+    await waitFor(() =>
+      expect(
+        service.fetchMetadataTableWindow,
+      ).toHaveBeenCalledTimes(2),
+    );
+
+    expect(
+      service.fetchMetadataTableWindow.mock.calls[1][4],
+    ).toMatchObject({
+      offset: 80,
+      limit: 80,
+    });
+
+    // Page 0 is still useful for part of the new viewport.
+    // Do not blank the gallery while page 80 is loading.
+    expect(result.current.galleryRows).toHaveLength(80);
+    expect(result.current.galleryBaseOffset).toBe(0);
+    expect(result.current.galleryRows[0]?.id).toBe(1);
+    expect(result.current.galleryRows[79]?.id).toBe(80);
+
+    await act(async () => {
+      resolveNext({
+        offset: 80,
+        rows: Array.from(
+          { length: 80 },
+          (_, index) => ({
+            id: 81 + index,
+            values: [],
+          }),
+        ),
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        result.current.galleryRows.some(
+          (row) => row.id === 81,
+        ),
+      ).toBe(true),
+    );
+
+    expect(result.current.galleryRows).toHaveLength(160);
+    expect(result.current.galleryBaseOffset).toBe(0);
+  });
+
   it("jumps to the end with one small request and reuses recent windows", async () => {
     const { result } = mountGallery();
     await waitFor(() => expect(result.current.galleryRows.length).toBeGreaterThan(0));
@@ -74,7 +150,29 @@ describe("metadata gallery", () => {
     await act(async () => resolveOld({ offset: 0, rows: [{ id: -1, values: [] }] }));
     expect(result.current.galleryRows[result.current.galleryRows.length - 1]?.id).toBe(100_000_000);
     unmount();
-    expect(service.fetchMetadataTableWindow.mock.calls[service.fetchMetadataTableWindow.mock.calls.length - 1]?.[4].signal.aborted).toBe(true);
+  });
+
+  it("aborts in-flight gallery requests on unmount", async () => {
+    service.fetchMetadataTableWindow.mockImplementationOnce(
+      () => new Promise(() => { }),
+    );
+
+    const { unmount } = mountGallery();
+
+    await waitFor(() =>
+      expect(
+        service.fetchMetadataTableWindow,
+      ).toHaveBeenCalledTimes(1),
+    );
+
+    const signal =
+      service.fetchMetadataTableWindow.mock.calls[0][4].signal;
+
+    expect(signal.aborted).toBe(false);
+
+    unmount();
+
+    expect(signal.aborted).toBe(true);
   });
 
   it("retries a failed window without jumping back to the beginning", async () => {
