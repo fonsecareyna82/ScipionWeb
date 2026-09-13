@@ -873,11 +873,10 @@ describe("MetadataViewer", () => {
 
         const galleryButton = getButtonFromIconTestId("gallery-icon");
         expect(galleryButton).not.toBeDisabled();
-
         fireEvent.click(galleryButton);
 
         const goToInput =
-            screen.getByLabelText("Go to item");
+            screen.getAllByRole("spinbutton")[1];
 
         expect(goToInput).toBeDisabled();
 
