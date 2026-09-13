@@ -2810,17 +2810,12 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   sortBy,
   sortAsc,
 }: MetadataGalleryPanelProps) {
-  const [jumpInput, setJumpInput] = useState("");
   const pendingFocus = useRef<number | null>(null);
   useEffect(() => {
     if (pendingFocus.current == null) return;
     const cell = galleryScrollRef.current?.querySelector<HTMLElement>(`[data-row-index="${pendingFocus.current}"]`);
     if (cell) { cell.focus({ preventScroll: true }); pendingFocus.current = null; }
   }, [galleryRows, galleryLayout, galleryScrollRef]);
-  const go = () => {
-    const index = Number(jumpInput);
-    if (Number.isInteger(index) && index >= 1 && index <= totalRows) jumpToGalleryIndex(index - 1);
-  };
 
   return (
     <Paper
@@ -2998,9 +2993,19 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
 
                   <Box sx={{ minHeight: 18, display: "flex", gap: 1 }}>
                     {sizeLabel && (
-                      <Typography variant="caption" color="text.secondary">
-                        {sizeLabel}
-                      </Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          gap: 1,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          {sizeLabel}
+                        </Typography>
+                      </Box>
                     )}
                   </Box>
                 </Box>
