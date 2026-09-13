@@ -296,6 +296,51 @@ describe("MetadataViewer", () => {
         });
     });
 
+    it("reuses recently visited windows and invalidates them when sorting changes", async () => {
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValue([{ name: "particles", alias: "Particles", rowCount: 2000 }]);
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(async (_p, _r, _o, _t, options) => ({
+            offset: options.offset,
+            rows: Array.from({ length: options.limit }, (_, i) => ({ rowId: options.offset + i + 1, values: [options.offset + i + 1, `item ${options.offset + i}`] })),
+        }));
+        renderViewer();
+        expect(await screen.findByText("item 0")).toBeInTheDocument();
+        const scroll = screen.getByLabelText("Metadata rows");
+        fireEvent.scroll(scroll, { target: { scrollTop: 6400 } });
+        expect(await screen.findByText("item 200")).toBeInTheDocument();
+        const calls = serviceMocks.fetchMetadataTableWindow.mock.calls.length;
+        fireEvent.scroll(scroll, { target: { scrollTop: 0 } });
+        expect(await screen.findByText("item 0")).toBeInTheDocument();
+        expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledTimes(calls);
+        fireEvent.click(screen.getByText("Score"));
+        await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow.mock.calls.length).toBeGreaterThan(calls));
+    });
+
+    it("aborts a pending row request when the viewer unmounts", async () => {
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(() => new Promise(() => {}));
+        const { unmount } = renderViewer();
+        await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalled());
+        const signal = serviceMocks.fetchMetadataTableWindow.mock.lastCall?.[4].signal;
+        expect(signal.aborted).toBe(false);
+        unmount();
+        expect(signal.aborted).toBe(true);
+    });
+
+    it("filters columns and applies visibility to matching columns without fetching rows", async () => {
+        renderViewer();
+        expect(await screen.findByText("0.91")).toBeInTheDocument();
+        const calls = serviceMocks.fetchMetadataTableWindow.mock.calls.length;
+        fireEvent.click(getButtonFromIconTestId("columns-icon"));
+        const dialog = screen.getByRole("dialog");
+        fireEvent.change(within(dialog).getByLabelText("Find columns"), { target: { value: "score" } });
+        expect(within(dialog).getByText("1 of 2 columns")).toBeInTheDocument();
+        expect(within(dialog).queryByLabelText("Show Id")).not.toBeInTheDocument();
+        fireEvent.click(within(dialog).getByRole("button", { name: "Hide matching" }));
+        fireEvent.click(within(dialog).getByRole("button", { name: "Ok" }));
+        await waitFor(() => expect(screen.queryByText("Score")).not.toBeInTheDocument());
+        expect(screen.getByText("Id")).toBeInTheDocument();
+        expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledTimes(calls);
+    });
+
     it("loads the initial schema and first window of rows", async () => {
         renderViewer();
 
@@ -323,6 +368,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 60,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: undefined,
                     asc: undefined,
@@ -362,6 +408,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 60,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: undefined,
                     asc: undefined,
@@ -436,6 +483,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 60,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: "score",
                     asc: true,
@@ -454,6 +502,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 60,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: "score",
                     asc: false,
@@ -662,7 +711,7 @@ describe("MetadataViewer", () => {
                     return {
                         rows: [
                             {
-                                rowId: 1,
+                                rowId: 901,
                                 values: [
                                     1,
                                     {
@@ -719,6 +768,8 @@ describe("MetadataViewer", () => {
             ).toHaveBeenCalled();
         });
 
+        expect(serviceMocks.fetchMetadataImageCellObjectUrl.mock.lastCall?.[4]).toBe(0);
+        expect(serviceMocks.fetchMetadataImageCellObjectUrl.mock.lastCall?.[6].rowId).toBe(901);
         expect(capturedSignal).toBeDefined();
         expect(capturedSignal?.aborted).toBe(false);
 
@@ -879,6 +930,7 @@ describe("MetadataViewer", () => {
                 {
                     offset: 0,
                     limit: 60,
+                    signal: expect.any(AbortSignal),
                     selectionOnly: false,
                     sortBy: "score",
                     asc: true,

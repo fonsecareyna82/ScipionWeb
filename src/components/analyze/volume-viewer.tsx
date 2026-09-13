@@ -19,7 +19,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
-import Plot from "react-plotly.js";
+import { VolumeHistogramPlot } from "./volume-histogram-plot";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
@@ -2349,6 +2349,8 @@ export default function VolumeViewer({
                   sx={{
                     flex: 1,
                     minHeight: 0,
+                    display: rightTab === "hist" ? "flex" : "block",
+                    flexDirection: "column",
                     overflowY: "auto",
                     overflowX: "hidden",
                     pr: 1,
@@ -3214,40 +3216,7 @@ export default function VolumeViewer({
                           {histError}
                         </Typography>
                       ) : histogramPlotData ? (
-                        <Box sx={{ mt: 1, flex: 1, minHeight: 240 }}>
-                          <Plot
-                            data={[
-                              {
-                                type: "bar",
-                                x: histogramPlotData.x,
-                                y: histogramPlotData.y,
-                                width: histogramPlotData.width,
-                                hovertemplate: "Intensity %{x:.4g}<br>Count %{y:,}<extra></extra>",
-                              },
-                            ]}
-                            layout={{
-                              margin: { l: 48, r: 10, t: 10, b: 38 },
-                              autosize: true,
-                              showlegend: false,
-                              bargap: 0,
-                              xaxis: {
-                                title: "Intensity",
-                                range: histogramLevelRange ?? undefined,
-                                autorange: histogramLevelRange ? false : true,
-                                zeroline: false,
-                              },
-                              yaxis: {
-                                title: "Count",
-                                rangemode: "tozero",
-                                tickformat: "~s",
-                                zeroline: false,
-                              },
-                            }}
-                            style={{ width: "100%", height: "100%" }}
-                            useResizeHandler
-                            config={{ displaylogo: false, responsive: true }}
-                          />
-                        </Box>
+                        <VolumeHistogramPlot data={histogramPlotData} range={histogramLevelRange} />
                       ) : (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
                           No histogram data.

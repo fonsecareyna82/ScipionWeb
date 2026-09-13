@@ -1961,6 +1961,7 @@ export interface ProjectService<
     outputName: string,
     tableName: string,
     opts?: {
+      signal?: AbortSignal;
       offset?: number;
       limit?: number;
       selectionOnly?: boolean;
@@ -1982,6 +1983,9 @@ export interface ProjectService<
     rowIndex: number,
     columnName: string,
     opts?: {
+      rowId?: number | string;
+      sortBy?: string;
+      asc?: boolean;
       size?: number;
       applyTransform?: boolean;
       inline?: boolean;
@@ -1998,6 +2002,9 @@ export interface ProjectService<
     rowIndex: number,
     columnName: string,
     opts?: {
+      rowId?: number | string;
+      sortBy?: string;
+      asc?: boolean;
       size?: number;
       applyTransform?: boolean;
       inline?: boolean;

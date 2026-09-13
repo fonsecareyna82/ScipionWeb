@@ -199,6 +199,9 @@ type SelectionDialogState =
   };
 
 type MetadataImageCellProps = {
+  rowId: RowId | null;
+  sortBy: string | null;
+  sortAsc: boolean;
   projectId: number;
   protocolId: number;
   outputName: string;
@@ -269,6 +272,8 @@ type MetadataTablePanelProps = {
 };
 
 type MetadataGalleryPanelProps = {
+  sortBy: string | null;
+  sortAsc: boolean;
   schema: MetadataTableSchema | null;
   firstImageColumn: MetadataColumnWithVisibility | null;
   galleryRows: MetadataRow[];
@@ -297,6 +302,7 @@ type MetadataGalleryPanelProps = {
 };
 
 type ColumnsDialogProps = {
+  onSetVisibility: (names: string[], visible: boolean) => void;
   open: boolean;
   onClose: () => void;
   onApply: () => void;
@@ -1468,12 +1474,28 @@ function useVirtualTableWindow(params: {
   const pendingWindowOffsetRef = useRef<number | null>(null);
   const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
+  const windowAbortRef = useRef<AbortController | null>(null);
+  const windowCacheRef = useRef(new Map<string, { rows: MetadataRow[]; offset: number }>());
+
+  useEffect(() => () => {
+    windowEpochRef.current += 1;
+    windowAbortRef.current?.abort();
+    windowCacheRef.current.clear();
+  }, []);
   const viewModeRef = useRef<ViewMode>(viewMode);
   const hasWindowRowsRef = useRef(false);
   const latestWindowTargetRef = useRef(0);
 
   useEffect(() => {
     viewModeRef.current = viewMode;
+    if (viewMode !== "table") {
+      windowEpochRef.current += 1;
+      windowAbortRef.current?.abort();
+      windowRequestInFlightRef.current = false;
+      inFlightOffsetRef.current = null;
+      pendingWindowOffsetRef.current = null;
+      setWindowLoading(false);
+    }
   }, [viewMode]);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
@@ -1485,6 +1507,8 @@ function useVirtualTableWindow(params: {
 
   const invalidateWindowState = useCallback((options?: { keepRows?: boolean }) => {
     windowEpochRef.current += 1;
+    windowAbortRef.current?.abort();
+    windowCacheRef.current.clear();
     windowRequestInFlightRef.current = false;
     pendingWindowOffsetRef.current = null;
     inFlightOffsetRef.current = null;
@@ -1509,6 +1533,19 @@ function useVirtualTableWindow(params: {
       const clampedOffset = Math.min(Math.max(0, requestedOffset), maxOffset);
 
       latestWindowTargetRef.current = clampedOffset;
+      const cacheKey = `${clampedOffset}:${limit}`;
+      const cached = windowCacheRef.current.get(cacheKey);
+      if (cached) {
+        windowCacheRef.current.delete(cacheKey);
+        windowCacheRef.current.set(cacheKey, cached);
+        pendingWindowOffsetRef.current = null;
+        hasWindowRowsRef.current = cached.rows.length > 0;
+        setWindowRows(cached.rows);
+        setWindowOffset(cached.offset);
+        setWindowLoading(false);
+        setWindowError(null);
+        return;
+      }
 
       if (windowRequestInFlightRef.current) {
         // avoidQueuingSameOffsetTwice
@@ -1523,6 +1560,8 @@ function useVirtualTableWindow(params: {
       }
 
       const requestEpoch = windowEpochRef.current;
+      const controller = new AbortController();
+      windowAbortRef.current = controller;
       const showLoading = !hasWindowRowsRef.current;
 
       windowRequestInFlightRef.current = true;
@@ -1541,6 +1580,7 @@ function useVirtualTableWindow(params: {
           outputName,
           selectedTable,
           {
+            signal: controller.signal,
             offset: clampedOffset,
             limit,
             selectionOnly: false,
@@ -1554,6 +1594,10 @@ function useVirtualTableWindow(params: {
         }
 
         const parsed = parseWindowResponse(response);
+        windowCacheRef.current.set(cacheKey, { rows: parsed.rows, offset: parsed.offset ?? clampedOffset });
+        while (windowCacheRef.current.size > 12) {
+          windowCacheRef.current.delete(windowCacheRef.current.keys().next().value!);
+        }
 
         if (clampedOffset !== latestWindowTargetRef.current) {
           return;
@@ -1613,7 +1657,7 @@ function useVirtualTableWindow(params: {
   );
 
   useEffect(() => {
-    invalidateWindowState({ keepRows: true });
+    invalidateWindowState();
 
     if (!schema || !selectedTable || totalRows === 0) return;
     if (viewModeRef.current === "table") {
@@ -1787,11 +1831,19 @@ function useMetadataGalleryRows(params: {
 
   const galleryRequestInFlightRef = useRef(false);
   const galleryEpochRef = useRef(0);
+  const galleryAbortRef = useRef<AbortController | null>(null);
+  const galleryLoadedRef = useRef(false);
+  useEffect(() => () => {
+    galleryEpochRef.current += 1;
+    galleryAbortRef.current?.abort();
+  }, []);
   const svcRef = useProjectServiceRef();
 
   const invalidateGalleryState = useCallback(() => {
     galleryEpochRef.current += 1;
+    galleryAbortRef.current?.abort();
     galleryRequestInFlightRef.current = false;
+    galleryLoadedRef.current = false;
     setGalleryRows([]);
     setGalleryNextOffset(0);
     setGalleryLoading(false);
@@ -1813,6 +1865,8 @@ function useMetadataGalleryRows(params: {
 
       const limit = Math.min(GALLERY_PAGE_SIZE, remaining);
       const requestEpoch = galleryEpochRef.current;
+      const controller = new AbortController();
+      galleryAbortRef.current = controller;
 
       galleryRequestInFlightRef.current = true;
       setGalleryLoading(true);
@@ -1825,6 +1879,7 @@ function useMetadataGalleryRows(params: {
           outputName,
           selectedTable,
           {
+            signal: controller.signal,
             offset,
             limit,
             selectionOnly: false,
@@ -1838,13 +1893,14 @@ function useMetadataGalleryRows(params: {
         }
 
         const parsed = parseWindowResponse(response);
+        galleryLoadedRef.current = true;
 
         const baseOffset = galleryBaseOffsetRef.current;
         setGalleryRows((prev) => (offset === baseOffset ? parsed.rows : [...prev, ...parsed.rows]));
 
         const nextOffset = offset + parsed.rows.length;
         setGalleryNextOffset(nextOffset);
-        setGalleryHasMore(nextOffset < totalRows);
+        setGalleryHasMore(parsed.rows.length > 0 && nextOffset < totalRows);
       } catch (error) {
         if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
           return;
@@ -1891,6 +1947,7 @@ function useMetadataGalleryRows(params: {
     if (startOffset < 0) startOffset = 0;
     if (startOffset > maxStartOffset) startOffset = maxStartOffset;
 
+    galleryBaseOffsetRef.current = startOffset;
     setGalleryBaseOffset(startOffset);
     void loadGalleryChunk(startOffset);
   }, [
@@ -1912,6 +1969,7 @@ function useMetadataGalleryRows(params: {
       selectedTable &&
       totalRows > 0 &&
       galleryRows.length === 0 &&
+      !galleryLoadedRef.current &&
       !galleryLoading &&
       !galleryError
     ) {
@@ -2153,6 +2211,9 @@ function useRowSelection(totalRows: number) {
 /* ======================= UI subcomponents ======================= */
 
 function MetadataImageCell({
+  rowId,
+  sortBy,
+  sortAsc,
   projectId,
   protocolId,
   outputName,
@@ -2183,11 +2244,14 @@ function MetadataImageCell({
         tableName,
         columnName,
         cell.path,
+        rowId ?? rowIndexInTable,
         size,
         METADATA_IMAGE_CACHE_VARIANT,
       ].join("|"),
     [
       cell.path,
+      rowId,
+      rowIndexInTable,
       columnName,
       outputName,
       projectId,
@@ -2213,10 +2277,7 @@ function MetadataImageCell({
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (!entry?.isIntersecting) return;
-
-        setIsVisible(true);
-        observer.disconnect();
+        setIsVisible(Boolean(entry?.isIntersecting));
       },
       {
         root: scrollRootRef.current,
@@ -2261,6 +2322,9 @@ function MetadataImageCell({
       isCancelled: () => cancelled,
       run: async () => {
         const baseOptions = {
+          rowId: rowId ?? undefined,
+          sortBy: sortBy ?? undefined,
+          asc: sortBy ? sortAsc : undefined,
           size,
           applyTransform: false,
           inline: true,
@@ -2332,6 +2396,9 @@ function MetadataImageCell({
     projectId,
     protocolId,
     rowIndexInTable,
+    rowId,
+    sortBy,
+    sortAsc,
     size,
     tableName,
     svcRef,
@@ -2429,7 +2496,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
         mt: 0,
         minHeight: 0,
         maxHeight: "none",
-        minWidth: 840,
+        minWidth: 0,
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
@@ -2442,6 +2509,8 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
     >
       <TableContainer
         ref={scrollRef}
+        aria-label="Metadata rows"
+        aria-busy={windowLoading}
         onScroll={handleScroll}
         sx={{
           flex: 1,
@@ -2507,6 +2576,14 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                 return (
                   <TableCell
                     key={column.name}
+                    aria-sort={isActive ? (sortAsc ? "ascending" : "descending") : "none"}
+                    tabIndex={isSortable ? 0 : undefined}
+                    onKeyDown={event => {
+                      if (isSortable && (event.key === "Enter" || event.key === " ")) {
+                        event.preventDefault();
+                        onToggleSort(column);
+                      }
+                    }}
                     onClick={() => {
                       if (!isSortable) return;
                       onToggleSort(column);
@@ -2692,6 +2769,9 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                               protocolId={protocolId}
                               outputName={outputName}
                               tableName={selectedTable}
+                              rowId={rowId}
+                              sortBy={sortBy}
+                              sortAsc={sortAsc}
                               rowIndexInTable={displayRowIndex}
                               columnName={column.name}
                               cell={imageCell}
@@ -2861,6 +2941,8 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   sizeColumn,
   imageThumbSize,
   galleryBaseOffset,
+  sortBy,
+  sortAsc,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -2869,7 +2951,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
         mt: 0,
         minHeight: 0,
         maxHeight: "none",
-        minWidth: 840,
+        minWidth: 0,
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
@@ -2978,6 +3060,9 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                       protocolId={protocolId}
                       outputName={outputName}
                       tableName={selectedTable}
+                      rowId={rowId}
+                      sortBy={sortBy}
+                      sortAsc={sortAsc}
                       rowIndexInTable={globalRowIndex}
                       columnName={firstImageColumn.name}
                       cell={imageCell}
@@ -3056,6 +3141,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
 });
 
 function ColumnsDialog({
+  onSetVisibility,
   open,
   onClose,
   onApply,
@@ -3064,6 +3150,13 @@ function ColumnsDialog({
   draftColumnSettings,
   updateDraftColumnSettings,
 }: ColumnsDialogProps) {
+  const [query, setQuery] = useState("");
+  useEffect(() => { if (open) setQuery(""); }, [open]);
+  const filteredColumns = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return allColumns.filter(column => `${column.name} ${column.alias ?? ""}`.toLowerCase().includes(needle));
+  }, [allColumns, query]);
+
   return (
     <Dialog
       open={open}
@@ -3087,6 +3180,12 @@ function ColumnsDialog({
       </DialogTitle>
 
       <DialogContent dividers>
+        <TextField autoFocus fullWidth size="small" label="Find columns" value={query} onChange={event => setQuery(event.target.value)} sx={{ mb: 1.5 }} />
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{filteredColumns.length} of {allColumns.length} columns</Typography>
+          <Button size="small" onClick={() => onSetVisibility(filteredColumns.map(column => column.name), true)}>Show matching</Button>
+          <Button size="small" onClick={() => onSetVisibility(filteredColumns.map(column => column.name), false)}>Hide matching</Button>
+        </Box>
         <Table size="small">
           <TableHead>
             <TableRow sx={{ backgroundColor: DIALOG_HEADER_BG }}>
@@ -3101,7 +3200,7 @@ function ColumnsDialog({
           </TableHead>
 
           <TableBody>
-            {allColumns.map((column, index) => {
+            {filteredColumns.map((column, index) => {
               const draft = draftColumnSettings?.[column.name];
               const current = columnSettings[column.name];
 
@@ -3128,6 +3227,7 @@ function ColumnsDialog({
                   <TableCell align="center">
                     <Checkbox
                       size="small"
+                      inputProps={{ "aria-label": `Show ${column.alias || column.name}` }}
                       checked={effectiveVisible}
                       onChange={(event) =>
                         updateDraftColumnSettings(column.name, {
@@ -3140,6 +3240,7 @@ function ColumnsDialog({
                   <TableCell align="center">
                     <Checkbox
                       size="small"
+                      inputProps={{ "aria-label": `Render ${column.alias || column.name} as image` }}
                       checked={canRender && effectiveRenderAsImage}
                       disabled={!canRender}
                       onChange={(event) =>
@@ -5047,6 +5148,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           <MetadataGalleryPanel
             schema={schema}
             firstImageColumn={firstImageColumn}
+            sortBy={sortBy}
+            sortAsc={sortAsc}
             galleryRows={galleryRows}
             galleryLoading={galleryLoading}
             galleryError={galleryError}
@@ -5205,6 +5308,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           columnSettings={columnSettings}
           draftColumnSettings={draftColumnSettings}
           updateDraftColumnSettings={updateDraftColumnSettings}
+          onSetVisibility={(names, visible) => setDraftColumnSettings(previous => {
+            const next = { ...(previous ?? columnSettings) };
+            for (const name of names) next[name] = { ...next[name], visible };
+            return next;
+          })}
         />
       )}
 

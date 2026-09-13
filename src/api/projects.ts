@@ -3381,6 +3381,9 @@ export async function fetchMetadataImageCellObjectUrl(
   rowIndex: number | string,
   columnName: string,
   opts: {
+    rowId?: number | string;
+    sortBy?: string;
+    asc?: boolean;
     size?: number;
     applyTransform?: boolean;
     inline?: boolean;
@@ -3394,6 +3397,9 @@ export async function fetchMetadataImageCellObjectUrl(
     inline = true,
     format = "png",
     signal,
+    rowId,
+    sortBy,
+    asc,
   } = opts;
 
   const baseUrl = getMetadataImageCellUrl(
@@ -3403,7 +3409,7 @@ export async function fetchMetadataImageCellObjectUrl(
     tableName,
     rowIndex,
     columnName,
-    { size, applyTransform, inline, format },
+    { size, applyTransform, inline, format, rowId, sortBy, asc },
   );
 
   const res = await fetchWithAuth(baseUrl, {
@@ -3429,6 +3435,9 @@ export function getMetadataImageCellUrl(
   rowIndex: number | string,
   columnName: string,
   opts: {
+    rowId?: number | string;
+    sortBy?: string;
+    asc?: boolean;
     size?: number;
     applyTransform?: boolean;
     inline?: boolean;
@@ -3441,13 +3450,16 @@ export function getMetadataImageCellUrl(
   const params = new URLSearchParams();
   // 0-based index in the current table order
   params.set("rowIndex", String(rowIndex));
+  if (opts.rowId != null) params.set("rowId", String(opts.rowId));
+  if (opts.sortBy) params.set("sortBy", opts.sortBy);
+  if (opts.asc != null) params.set("asc", String(opts.asc));
   params.set("column", columnName);
   params.set("size", String(size));
   params.set("applyTransform", String(applyTransform));
   params.set("inline", String(inline));
   params.set("fmt", format);
 
-  return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${outputName}/metadata/tables/${encodeURIComponent(
+  return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodeURIComponent(outputName)}/metadata/tables/${encodeURIComponent(
     tableName,
   )}/image?${params.toString()}`;
 }
@@ -3465,6 +3477,7 @@ export async function fetchMetadataTableWindow(
   outputName: string,
   tableName: string,
   opts: {
+    signal?: AbortSignal;
     offset?: number;
     limit?: number;
     selectionOnly?: boolean;
@@ -3500,7 +3513,7 @@ export async function fetchMetadataTableWindow(
   )}/metadata/tables/${enc(tableName)}/rows`;
   const url = `${base}?${params.toString()}`;
 
-  const res = await fetchWithAuth(url, { method: "GET" });
+  const res = await fetchWithAuth(url, { method: "GET", signal: opts.signal });
   if (!res.ok)
     throw await toApiError(res, "Failed to fetch metadata rows window");
 

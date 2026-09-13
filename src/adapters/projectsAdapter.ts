@@ -652,56 +652,12 @@ const defaultService: ProjectService = {
       opts,
     ),
 
-  // Window by offset + limit for virtual scroll
-  fetchMetadataTableWindow: async (
-    projectId: Id,
-    protocolId: Id,
-    outputName: string,
-    tableName: string,
-    opts = {},
-  ) => {
-    const {
-      offset = 0,
-      limit = 100,
-      selectionOnly = false,
-      sortBy,
-      asc,
-    } = opts as {
-      offset?: number;
-      limit?: number;
-      selectionOnly?: boolean;
-      sortBy?: string;
-      asc?: boolean;
-    };
-
-    const safeLimit = Math.max(1, Number(limit) || 100);
-    const safeOffset = Math.max(0, Number(offset) || 0);
-    const page = Math.floor(safeOffset / safeLimit) + 1;
-
-    const pageData = await api.fetchMetadataTablePage(
-      toId(projectId),
-      toId(protocolId),
-      outputName,
-      tableName,
-      {
-        page,
-        pageSize: safeLimit,
-        selectionOnly,
-        sortBy,
-        asc,
-      },
-    ) as any;
-
-    const rows = Array.isArray(pageData?.rows) ? pageData.rows : [];
-
-    return {
-      offset: safeOffset,
-      limit: safeLimit,
-      totalRows: Number.isFinite(Number(pageData?.totalRows))
-        ? Number(pageData.totalRows)
-        : rows.length,
-      rows,
-    };
+  // Preserve exact offsets and cancellation through the window endpoint.
+  fetchMetadataTableWindow: async (projectId: Id, protocolId: Id, outputName: string, tableName: string, opts = {}) => {
+    const offset = Math.max(0, Math.trunc(Number(opts.offset) || 0));
+    const limit = Math.max(1, Math.trunc(Number(opts.limit) || 100));
+    const data = await api.fetchMetadataTableWindow(toId(projectId), toId(protocolId), outputName, tableName, { ...opts, offset, limit });
+    return { offset: data.offset ?? offset, limit: data.limit ?? limit, totalRows: data.totalRows ?? data.rows.length, rows: data.rows };
   },
 
   fetchMetadataImageCellObjectUrl: (
