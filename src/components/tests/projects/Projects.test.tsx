@@ -144,6 +144,41 @@ vi.mock("@/components/projects/ImportProjectDialog", () => ({
     ) : null,
 }));
 
+vi.mock("@/components/projects/ImportWorkflowDialog", () => ({
+  default: ({
+    open,
+    onClose,
+    onImported,
+  }: {
+    open: boolean;
+    onClose: () => void;
+    onImported?: () => Promise<void> | void;
+  }) =>
+    open ? (
+      <div>
+        <div>
+          Mock ImportWorkflowDialog
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            void onImported?.()
+          }
+        >
+          Complete workflow import
+        </button>
+
+        <button
+          type="button"
+          onClick={onClose}
+        >
+          Close workflow import
+        </button>
+      </div>
+    ) : null,
+}));
+
 vi.mock("react-hot-toast", () => ({
   default: {
     success: vi.fn(),
@@ -219,6 +254,68 @@ describe("Projects page", () => {
     expect(screen.getByText("New project")).toBeInTheDocument();
     expect(screen.getByText("Import project")).toBeInTheDocument();
     expect(screen.getByText("Import workflow")).toBeInTheDocument();
+  });
+
+  it("opens the workflow import dialog and refreshes projects after import", async () => {
+    const fetchList = vi.fn()
+      .mockResolvedValue([]);
+
+    const service =
+      createProjectServiceMock({
+        fetchList,
+      });
+
+    renderWithProviders(
+      <Projects />,
+      { service },
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "No projects found.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      fetchList,
+    ).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole(
+        "button",
+        { name: /Actions/i },
+      ),
+    );
+
+    fireEvent.click(
+      screen.getByText(
+        "Import workflow",
+      ),
+    );
+
+    expect(
+      screen.getByText(
+        "Mock ImportWorkflowDialog",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole(
+        "button",
+        {
+          name:
+            "Complete workflow import",
+        },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchList,
+      ).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("opens the new project modal and prepends the created project", async () => {

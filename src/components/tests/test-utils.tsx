@@ -36,6 +36,8 @@ export function createProjectServiceMock(
     previewRemoteEntry: vi.fn(),
     buildProtocolDownloadUrl: vi.fn(),
     importProject: vi.fn(),
+    inspectWorkflowFile: vi.fn(),
+    importWorkflowFile: vi.fn(),
     ...overrides,
   };
 }

@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
+import ImportWorkflowDialog from "@/components/projects/ImportWorkflowDialog";
 //import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
@@ -207,6 +208,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showImportProject, setShowImportProject] = useState(false);
+  const [showImportWorkflow, setShowImportWorkflow] = useState(false);
 
   const [shareProject, setShareProject] = useState<{
     id: string | number;
@@ -780,7 +782,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         )}
                         onClick={() => {
                           setShowDropdown(false);
-                          console.log("Import Workflow");
+                          setShowImportWorkflow(true);
                         }}
                       >
                         <CloudDownload className="h-4 w-4" />
@@ -875,6 +877,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         listRemoteDirectory={(p) => svc.listRemoteDirectory(-1, -1, p)}
         previewRemoteEntry={(p) => svc.previewRemoteEntry(-1, -1, p)}
         buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl("-1", "-1", p, !!inline)}
+      />
+
+      <ImportWorkflowDialog
+        open={showImportWorkflow}
+        onClose={() => setShowImportWorkflow(false)}
+        onImported={() =>
+          loadProjects({ silent: true })
+        }
       />
 
       <ShareProjectModal

@@ -68,6 +68,8 @@ import type {
   ProjectFetchOptions,
   Coordinates3dGalleryRequest,
   Coordinates3dGalleryResult,
+  WorkflowFileInspection,
+  WorkflowFileImportResult,
 
 } from "@/services/ProjectService";
 
@@ -287,6 +289,17 @@ const defaultService: ProjectService = {
     payload: WorkflowImportRequestPayload,
   ): Promise<WorkflowImportResult> =>
     api.importWorkflowProtocols(toId(projectId), payload),
+
+  inspectWorkflowFile: (
+    path: string,
+  ): Promise<WorkflowFileInspection> =>
+    api.inspectWorkflowFile(path),
+
+  importWorkflowFile: (
+    projectId: Id,
+    path: string,
+  ): Promise<WorkflowFileImportResult> =>
+    api.importWorkflowFile(toId(projectId), path),
 
   getNextProtocolSuggestions: (
     projectId: Id,

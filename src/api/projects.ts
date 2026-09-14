@@ -66,6 +66,8 @@ import {
   CtfModelListResult,
   Coordinates3dGalleryRequest,
   Coordinates3dGalleryResult,
+  WorkflowFileInspection,
+  WorkflowFileImportResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -1107,6 +1109,54 @@ export async function fetchWorkflows(): Promise<WorkflowDescriptor[]> {
   if (data && Array.isArray((data as any).results)) return (data as any).results as WorkflowDescriptor[];
 
   return [];
+}
+
+export async function inspectWorkflowFile(
+  path: string,
+): Promise<WorkflowFileInspection> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/workflows/inspect-file`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to inspect workflow file",
+    );
+  }
+
+  return safeJson<WorkflowFileInspection>(response);
+}
+
+
+export async function importWorkflowFile(
+  projectId: Id,
+  path: string,
+): Promise<WorkflowFileImportResult> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(
+      String(projectId),
+    )}/workflows/import-file`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to import workflow file",
+    );
+  }
+
+  return safeJson<WorkflowFileImportResult>(response);
 }
 
 

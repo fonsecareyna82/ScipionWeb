@@ -1532,6 +1532,22 @@ export type WorkflowImportResult = {
   dependenciesCount?: number;
 };
 
+export type WorkflowFileInspection = {
+  path: string;
+  fileName: string;
+  scipionWebWrapped: boolean;
+  protocolsCount?: number | null;
+  requiredPluginNames: string[];
+  missingPluginNames: string[];
+  canLoad: boolean;
+  disabledReason?: string;
+};
+
+export type WorkflowFileImportResult = WorkflowImportResult & {
+  fileName?: string;
+  requiredPluginNames?: string[];
+};
+
 export type WriteRemoteFilePayload = {
   path: string;
   content: string;
@@ -1686,6 +1702,14 @@ export interface ProjectService<
     payload: loadWorkflowPayload,
   ): Promise<any>;
 
+  inspectWorkflowFile(
+    path: string,
+  ): Promise<WorkflowFileInspection>;
+
+  importWorkflowFile(
+    projectId: Id,
+    path: string,
+  ): Promise<WorkflowFileImportResult>;
 
   /** Execute a protocol with given params. */
   executeProtocol(
