@@ -602,6 +602,11 @@ describe("ImportWorkflowDialog", () => {
                 path: "valid.json",
                 isDir: false,
             },
+            {
+                name: "workflow.template",
+                path: "workflow.template",
+                isDir: false,
+            },
         ]);
     });
 });

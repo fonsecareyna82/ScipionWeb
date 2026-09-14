@@ -808,7 +808,7 @@ export default function ImportWorkflowDialog({
                     onClose={() =>
                         setBrowserOpen(false)
                     }
-                    title="Select workflow JSON"
+                    title="Select workflow file"
                     confirmLabel="Select workflow"
                     resolveBrowserPaths={() =>
                         svc.resolveBrowserPaths(
