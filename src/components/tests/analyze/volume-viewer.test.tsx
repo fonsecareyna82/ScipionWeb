@@ -6,6 +6,7 @@ const serviceMocks = vi.hoisted(() => ({
     getVolumeInfo: vi.fn(),
     getVolumeHistogram: vi.fn(),
     fetchVolumeSliceObjectUrl: vi.fn(),
+    fetchVolumeSlicesBatch: vi.fn(),
     getVolumeSurfaceMesh: vi.fn(),
     getVolumeData3d: vi.fn(),
 }));
@@ -250,6 +251,12 @@ describe("VolumeViewer", () => {
 
         serviceMocks.getVolumeSurfaceMesh.mockResolvedValue(makeSurfaceMesh());
         serviceMocks.getVolumeData3d.mockResolvedValue(make3dData());
+        serviceMocks.fetchVolumeSlicesBatch.mockResolvedValue({
+            volumeId: "1",
+            fmt: "webp",
+            items: [],
+            errors: [],
+        });
     });
 
     it("shows a loading state while the volume list is pending", async () => {
@@ -728,6 +735,73 @@ describe("VolumeViewer", () => {
         await new Promise((resolve) => window.setTimeout(resolve, 30));
         const zCenterCallsAfterReturn = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.filter((call) => call[4] === 2 && call[5]?.axis === "z").length;
         expect(zCenterCallsAfterReturn).toBe(zCenterCallsBeforeReturn);
+    });
+
+    it("prefetches neighboring Z slices in the background and reuses them without a real fetch", async () => {
+        serviceMocks.fetchVolumeSlicesBatch.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                _volumeId: number,
+                opts: { items: Array<{ axis: string; index: number }> },
+            ) => ({
+                volumeId: "1",
+                fmt: "webp",
+                items: (opts.items ?? []).map((item) => ({
+                    axis: item.axis,
+                    index: item.index,
+                    contentType: "image/webp",
+                    dataUrl: `data:image/webp;base64,PREFETCHED-${item.axis}-${item.index}`,
+                })),
+                errors: [],
+            }),
+        );
+
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        await waitFor(() => {
+            expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        });
+
+        // The prefetch is debounced -- wait for it to actually fire.
+        await waitFor(() => {
+            const batchCall = serviceMocks.fetchVolumeSlicesBatch.mock.calls.find(
+                (call) => call[4]?.items?.some((item: any) => item.axis === "z"),
+            );
+            expect(batchCall).toBeTruthy();
+        });
+
+        const batchCall = serviceMocks.fetchVolumeSlicesBatch.mock.calls.find(
+            (call) => call[4]?.items?.some((item: any) => item.axis === "z"),
+        );
+        if (!batchCall) throw new Error("Expected a Z-axis prefetch batch call");
+        const zIndices = (batchCall[4].items as Array<{ axis: string; index: number }>)
+            .filter((item) => item.axis === "z")
+            .map((item) => item.index)
+            .sort((a, b) => a - b);
+
+        // Center default is index 2 (of 5) -- neighbors -2/-1/1/2 -> 0/1/3/4.
+        expect(zIndices).toEqual([0, 1, 3, 4]);
+
+        serviceMocks.fetchVolumeSliceObjectUrl.mockClear();
+
+        fireEvent.wheel(zView, { deltaY: 100 });
+
+        await waitFor(() => {
+            expect(zView).toHaveAttribute("aria-valuetext", "4 of 5");
+        });
+
+        // Give any (incorrect) real fetch a chance to fire before asserting
+        // it never did -- index 3 was already warmed by the prefetch above.
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+        expect(
+            serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.some(
+                (call) => call[4] === 3 && call[5]?.axis === "z",
+            ),
+        ).toBe(false);
     });
 
     it("moves the synchronized MPR crosshair by clicking an orthogonal view", async () => {

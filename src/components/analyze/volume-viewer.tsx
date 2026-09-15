@@ -106,6 +106,8 @@ const SURFACE_MAX_TRIANGLES = 500000;
 const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 const SLICE_IMAGE_CACHE_MAX_ITEMS = 48;
+const SLICE_NEIGHBOR_PREFETCH_OFFSETS = [-2, -1, 1, 2];
+const SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS = 150;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
@@ -4339,6 +4341,9 @@ function useVolumeSliceImage({
   const requestKeyRef = useRef<string | null>(null);
   const runNextRef = useRef<(() => void) | null>(null);
 
+  const prefetchAbortRef = useRef<AbortController | null>(null);
+  const prefetchTimerRef = useRef<number | null>(null);
+
   runNextRef.current = () => {
     if (inFlightRef.current) return;
 
@@ -4520,11 +4525,135 @@ function useVolumeSliceImage({
     cacheRef,
   ]);
 
+  // neighborSlicePrefetch -- warms cacheRef with the slices just ahead of /
+  // behind the current one on this same axis, so pausing on a slice that
+  // was already passed through while scrubbing shows instantly instead of
+  // a real "Loading..." round trip. Debounced and coalesced into a single
+  // batch request; never touches url/loading/error state directly.
+  useEffect(() => {
+    if (prefetchTimerRef.current != null) {
+      window.clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+
+    if (!enabled || volumeId == null || sliceIndex == null) {
+      prefetchAbortRef.current?.abort();
+      prefetchAbortRef.current = null;
+      return;
+    }
+
+    if (typeof svc?.fetchVolumeSlicesBatch !== "function") return;
+
+    const clampedIndex = Math.max(0, Math.min(sliceIndex, maxSlice));
+
+    const requestKey = [
+      projectId,
+      protocolId,
+      outputName,
+      volumeId,
+      axis,
+      colormap,
+      reloadKey ?? "",
+      requestOptions?.thumb ?? "",
+      requestOptions?.format ?? "",
+      requestOptions?.fast ?? "",
+      requestOptions?.quality ?? "",
+      requestOptions?.windowMin ?? "",
+      requestOptions?.windowMax ?? "",
+    ].map(String).join("|");
+
+    prefetchTimerRef.current = window.setTimeout(() => {
+      prefetchTimerRef.current = null;
+
+      const candidates = Array.from(
+        new Set(
+          SLICE_NEIGHBOR_PREFETCH_OFFSETS
+            .map((offset) => clampedIndex + offset)
+            .filter((index) => index >= 0 && index <= maxSlice && index !== clampedIndex),
+        ),
+      );
+
+      const missing = candidates.filter(
+        (index) => !cacheRef.current.has(`${requestKey}|${index}`),
+      );
+
+      if (!missing.length) return;
+
+      prefetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      prefetchAbortRef.current = controller;
+
+      svc
+        .fetchVolumeSlicesBatch(projectId, protocolId, outputName, volumeId, {
+          items: missing.map((index) => ({ axis, index })),
+          cmap: colormap,
+          windowMin: requestOptions?.windowMin,
+          windowMax: requestOptions?.windowMax,
+          format: requestOptions?.format,
+          thumb: requestOptions?.thumb,
+          fast: requestOptions?.fast,
+          quality: requestOptions?.quality,
+          signal: controller.signal,
+        })
+        .then((result: any) => {
+          if (controller.signal.aborted) return;
+
+          for (const item of result?.items ?? []) {
+            if (!item?.dataUrl) continue;
+
+            const itemCacheKey = `${requestKey}|${item.index}`;
+            if (cacheRef.current.has(itemCacheKey)) continue;
+
+            storeCachedSliceImage(cacheRef.current, itemCacheKey, {
+              url: item.dataUrl,
+              revoke: () => {},
+            });
+          }
+        })
+        .catch(() => {
+          // Background prefetch errors are non-fatal -- the main fetch
+          // path will simply do a real request if the user lands here.
+        });
+    }, SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS);
+
+    return () => {
+      if (prefetchTimerRef.current != null) {
+        window.clearTimeout(prefetchTimerRef.current);
+        prefetchTimerRef.current = null;
+      }
+    };
+  }, [
+    enabled,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    volumeId,
+    axis,
+    sliceIndex,
+    maxSlice,
+    colormap,
+    reloadKey,
+    requestOptions?.thumb,
+    requestOptions?.format,
+    requestOptions?.fast,
+    requestOptions?.quality,
+    requestOptions?.windowMin,
+    requestOptions?.windowMax,
+    cacheRef,
+  ]);
+
   useEffect(() => {
     return () => {
       controllerRef.current?.abort();
       controllerRef.current = null;
       pendingJobRef.current = null;
+      prefetchAbortRef.current?.abort();
+      prefetchAbortRef.current = null;
+      if (prefetchTimerRef.current != null) {
+        window.clearTimeout(prefetchTimerRef.current);
+        prefetchTimerRef.current = null;
+      }
     };
   }, []);
 

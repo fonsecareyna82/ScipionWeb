@@ -185,6 +185,46 @@ export type VolumeSliceObjectUrl = {
   revoke: () => void;
 };
 
+export type VolumeSliceBatchItem = {
+  axis: "x" | "y" | "z";
+  index: number;
+};
+
+export type VolumeSliceBatchResultItem = {
+  axis: "x" | "y" | "z";
+  index: number;
+  contentType?: string | null;
+  dataUrl: string;
+  width?: number;
+  height?: number;
+};
+
+export type VolumeSliceBatchResult = {
+  volumeId: string;
+  fmt: string;
+  items: VolumeSliceBatchResultItem[];
+  errors?: Array<{
+    axis: string;
+    index: number;
+    error: string;
+  }>;
+};
+
+/** Shared render options for a batch of volume slices, plus which (axis, index) pairs to render. */
+export type VolumeSliceBatchOptions = {
+  items: VolumeSliceBatchItem[];
+  cmap?: string;
+  normalize?: "minmax" | "zscore" | "none";
+  windowMin?: number;
+  windowMax?: number;
+  scale?: number;
+  format?: "png" | "webp" | "jpeg";
+  thumb?: number;
+  fast?: boolean;
+  quality?: number;
+  signal?: AbortSignal;
+};
+
 /** Histogram data for a volume, already aggregated in bins. */
 export type VolumeHistogram = {
   // Normalized fields for the viewer
@@ -1852,6 +1892,15 @@ export interface ProjectService<
     sliceIndex: number,
     opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl>;
+
+  /** Render several volume slices (possibly across axes) in one request, for prefetching. */
+  fetchVolumeSlicesBatch(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts: VolumeSliceBatchOptions,
+  ): Promise<VolumeSliceBatchResult>;
 
   getVolumeSurfaceMesh(
     projectId: string | number,

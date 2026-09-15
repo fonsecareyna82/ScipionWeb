@@ -2732,6 +2732,101 @@ export async function fetchVolumeSliceObjectUrl(
   return { url: objUrl, meta, revoke };
 }
 
+export async function fetchVolumeSlicesBatch(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  opts: {
+    items: Array<{ axis: "z" | "y" | "x"; index: number }>;
+    cmap?: string;
+    normalize?: "minmax" | "zscore" | "none";
+    windowMin?: number;
+    windowMax?: number;
+    scale?: number;
+    format?: "png" | "webp" | "jpeg";
+    thumb?: number;
+    fast?: boolean;
+    quality?: number;
+    signal?: AbortSignal;
+  },
+): Promise<{
+  volumeId: string;
+  fmt: string;
+  items: Array<{
+    axis: "z" | "y" | "x";
+    index: number;
+    contentType?: string | null;
+    dataUrl: string;
+    width?: number;
+    height?: number;
+  }>;
+  errors: Array<{ axis: string; index: number; error: string }>;
+}> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/volumes/${enc(String(volumeId))}/slice/batch`;
+
+  const body = {
+    items: Array.isArray(opts.items)
+      ? opts.items.map((item) => ({ axis: item.axis, index: item.index }))
+      : [],
+    cmap: opts.cmap,
+    normalize: opts.normalize ?? "minmax",
+    windowMin: opts.windowMin,
+    windowMax: opts.windowMax,
+    scale: opts.scale ?? 1.0,
+    fmt: opts.format ?? "webp",
+    thumb: opts.thumb,
+    fast: opts.fast ?? true,
+    quality: opts.quality ?? 75,
+    inline: true,
+  };
+
+  const res = await fetchWithAuth(base, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    signal: opts.signal,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) throw await toApiError(res, "Failed to fetch volume slice batch");
+
+  const raw = await safeJson<any>(res);
+
+  const items = Array.isArray(raw?.items)
+    ? raw.items
+      .map((item: any) => ({
+        axis: (item?.axis === "y" || item?.axis === "x" ? item.axis : "z") as "z" | "y" | "x",
+        index: Number(item?.index),
+        contentType: item?.contentType ?? null,
+        dataUrl: String(item?.dataUrl ?? ""),
+        width: item?.width != null ? Number(item.width) : undefined,
+        height: item?.height != null ? Number(item.height) : undefined,
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.dataUrl)
+    : [];
+
+  const errors = Array.isArray(raw?.errors)
+    ? raw.errors
+      .map((item: any) => ({
+        axis: String(item?.axis ?? ""),
+        index: Number(item?.index),
+        error: String(item?.error ?? ""),
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.error)
+    : [];
+
+  return {
+    volumeId: String(raw?.volumeId ?? volumeId),
+    fmt: String(raw?.fmt ?? body.fmt),
+    items,
+    errors,
+  };
+}
+
 
 export type VolumeSurfaceMethod =
   | "binning"

@@ -9,6 +9,8 @@ import type {
   Id,
   NextProtocolSuggestion,
   VolumeSliceObjectUrl,
+  VolumeSliceBatchOptions,
+  VolumeSliceBatchResult,
   VolumeHistogram,
   VolumeHistogramOptions,
   VolumeData3d,
@@ -469,6 +471,21 @@ const defaultService: ProjectService = {
       sliceIndex,
       // API uses { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
       opts as any,
+    ),
+
+  fetchVolumeSlicesBatch: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts: VolumeSliceBatchOptions,
+  ): Promise<VolumeSliceBatchResult> =>
+    api.fetchVolumeSlicesBatch(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      opts,
     ),
 
   getVolumeSurfaceMesh(
