@@ -842,6 +842,70 @@ describe("Coords3dViewer", () => {
         expect(yCalls.length).toBeGreaterThan(0);
     });
 
+    it("requests a cheap thumbnail while actively dragging the Z slice slider, full resolution once settled", async () => {
+        renderViewer();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+        });
+
+        serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockClear();
+
+        const sliders = screen.getAllByRole("slider");
+        const zSlider = sliders[0];
+
+        // A real drag (mousedown, no mouseup yet) is required to observe
+        // draggingSlice === "z" -- unlike a real browser, MUI's hidden
+        // range input (which fireEvent.change/keyDown target) fires
+        // onChange and onChangeCommitted together, so those never leave a
+        // genuinely "in-progress drag" state to assert against.
+        const sliderRoot = zSlider.closest(".MuiSlider-root") as HTMLElement;
+        sliderRoot.getBoundingClientRect = () =>
+            ({
+                left: 0,
+                right: 100,
+                width: 100,
+                top: 0,
+                bottom: 10,
+                height: 10,
+                x: 0,
+                y: 0,
+                toJSON: () => ({}),
+            }) as DOMRect;
+
+        // dims for t1 are [100, 80, 60] -> maxSliceZ = 59; clientX 60/100
+        // of the rail maps to slice 35, distinct from the default 30.
+        fireEvent.mouseDown(sliderRoot, { button: 0, clientX: 60, clientY: 5 });
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+        });
+
+        const draggingCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls;
+        const draggingCall = draggingCalls[draggingCalls.length - 1];
+
+        expect(draggingCall[5]).toMatchObject({
+            thumb: 512,
+            fast: true,
+            quality: 70,
+        });
+
+        serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockClear();
+
+        fireEvent.mouseUp(document);
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+        });
+
+        const settledCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls;
+        const settledCall = settledCalls[settledCalls.length - 1];
+
+        expect(settledCall[5]).not.toHaveProperty("thumb");
+        expect(settledCall[5]).not.toHaveProperty("fast");
+        expect(settledCall[5]).not.toHaveProperty("quality");
+    });
+
     it("revokes the previous Z slice object URL once a new one replaces it", async () => {
         renderViewer();
 

@@ -112,6 +112,13 @@ const DEBUG_SYNTHETIC_GRID = false;
 const SLICE_SLIDER_THROTTLE_MS = 200;
 
 const SLICE_PREVIEW_FORMAT = "webp" as const;
+// While actively dragging a slice slider, request a cheap thumbnail instead
+// of the full-resolution render -- same idea as volume-viewer.tsx's
+// SLICE_DRAG_PREVIEW_MAX_SIDE/QUALITY. The resting (non-dragging) request
+// is left untouched (still full resolution) to avoid changing the default
+// browsing quality.
+const SLICE_DRAG_PREVIEW_MAX_SIDE = 512;
+const SLICE_DRAG_PREVIEW_QUALITY = 70;
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -1134,12 +1141,19 @@ export default function Coords3dViewer({
   );
 
   const buildSliceFetchOptions = useCallback(
-    (axis: SliceAxis, _isDragging: boolean, signal: AbortSignal) => ({
+    (axis: SliceAxis, isDragging: boolean, signal: AbortSignal) => ({
       axis,
       cmap: tomogramColormap,
       format: SLICE_PREVIEW_FORMAT,
       normalize: "minmax",
       scale: 1,
+      ...(isDragging
+        ? {
+          thumb: SLICE_DRAG_PREVIEW_MAX_SIDE,
+          fast: true,
+          quality: SLICE_DRAG_PREVIEW_QUALITY,
+        }
+        : null),
       signal,
     }),
     [tomogramColormap],
