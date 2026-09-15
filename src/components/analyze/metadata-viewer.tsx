@@ -2944,17 +2944,14 @@ function MetadataImagePreviewDialog({
               sx={{
                 position: "relative",
                 zIndex: 1,
-                maxWidth: "100%",
-                maxHeight: "100%",
+                width: "min(1024px, 100%)",
+                height: "min(1024px, calc(100vh - 220px))",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: "10px",
                 overflow: "hidden",
-                backgroundColor: "#020617",
-                border: "1px solid rgba(15,23,42,0.32)",
-                boxShadow:
-                  "0 22px 55px rgba(15,23,42,0.26), 0 4px 12px rgba(15,23,42,0.12)",
+                
               }}
             >
               <img
@@ -2962,10 +2959,8 @@ function MetadataImagePreviewDialog({
                 alt={state?.path ?? ""}
                 style={{
                   display: "block",
-                  maxWidth: "100%",
-                  maxHeight: "calc(100vh - 220px)",
-                  width: "auto",
-                  height: "auto",
+                  width: "100%",
+                  height: "100%",
                   objectFit: "contain",
                 }}
               />
