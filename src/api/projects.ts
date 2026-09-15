@@ -2645,7 +2645,10 @@ export async function buildVolumeSliceUrl(
   }
   if (typeof opts?.scale === "number") qp.push(`scale=${opts.scale}`);
   const url = `${base}?${qp.join("&")}`;
-  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
+  // Opt into normal browser HTTP caching (fetchWithAuth defaults to
+  // no-store): the backend serves this with an ETag + Cache-Control, so
+  // the browser can revalidate instead of always doing a full round trip.
+  const res = await fetchWithAuth(url, { method: "GET", cache: "default" });
   if (!res.ok) throw await toApiError(res, "Failed to render volume slice");
   const blob = await res.blob();
   return URL.createObjectURL(blob);
@@ -2701,9 +2704,10 @@ export async function fetchVolumeSliceObjectUrl(
     qp.push(`quality=${opts.quality}`);
   const url = `${base}?${qp.join("&")}`;
 
+  // Same ETag/Cache-Control revalidation opt-in as buildVolumeSliceUrl above.
   const res = await fetchWithAuth(url, {
     method: "GET",
-    cache: "no-store",
+    cache: "default",
     signal: opts?.signal,
   });
   if (!res.ok) throw await toApiError(res, "Failed to render volume slice");
@@ -2912,9 +2916,12 @@ export async function getVolumeSurfaceMesh(
 
   const url = params.toString() ? `${base}?${params.toString()}` : base;
 
+  // Opt into browser HTTP caching: the backend now caches + ETags the
+  // mesh, so a revisit to the same volume/params can revalidate instead
+  // of recomputing and re-transferring the whole (possibly large) mesh.
   const res = await fetchWithAuth(url, {
     method: "GET",
-    cache: "no-store",
+    cache: "default",
     signal: opts.signal,
   });
 
@@ -3001,11 +3008,14 @@ export async function getVolumeData3d(
 
   params.set("binary", "true");
 
+  // Opt into browser HTTP caching: the backend now ETags this binary
+  // payload (which can be tens of MB), so a revisit can revalidate
+  // instead of re-transferring it in full.
   const res = await fetchWithAuth(
     `${base}?${params.toString()}`,
     {
       method: "GET",
-      cache: "no-store",
+      cache: "default",
       signal: opts.signal,
     },
   );

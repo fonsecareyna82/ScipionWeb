@@ -262,7 +262,10 @@ export async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}):
   if (hasBody && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (!headers.has("Accept")) headers.set("Accept", "*/*");
 
-  const req: RequestInit = { ...init, headers, credentials: "include", mode: "cors", cache: "no-store", redirect: "follow" };
+  // Defaults to "no-store" (unchanged behavior for every existing caller);
+  // a caller can opt into normal browser HTTP caching (ETag revalidation,
+  // etc.) by passing its own `cache` value explicitly.
+  const req: RequestInit = { ...init, headers, credentials: "include", mode: "cors", cache: init.cache ?? "no-store", redirect: "follow" };
 
   let res = await fetch(input, req);
   if (res.status === 401) {
