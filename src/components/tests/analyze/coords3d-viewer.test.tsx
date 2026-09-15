@@ -908,7 +908,6 @@ describe("Coords3dViewer", () => {
 
     it("coalesces rapid Z slider drag ticks into a single chase fetch instead of one per tick", async () => {
         const firstTickGate = createDeferred<void>();
-        let callCount = 0;
 
         serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockImplementation(
             async (
@@ -919,7 +918,6 @@ describe("Coords3dViewer", () => {
                 sliceIndex: number,
                 options?: { axis?: string },
             ) => {
-                callCount += 1;
                 // Gate by the REQUESTED slice index, not call order -- the
                 // very first call is the auto-select mount fetch (index
                 // 30), fired before any drag and never gated by the
@@ -931,10 +929,19 @@ describe("Coords3dViewer", () => {
             },
         );
 
+        // Filtered to the Z axis only -- the X/Y sliders' own independent
+        // neighbor-slice prefetch (debounced, real timers) can legitimately
+        // fire background calls for OTHER axes while this test's waitFor
+        // calls are polling, which isn't what this test is about.
+        const zCalls = () =>
+            serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.filter(
+                (call) => call[5]?.axis === "z",
+            );
+
         renderViewer();
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(1);
+            expect(zCalls()).toHaveLength(1);
         });
 
         const sliders = screen.getAllByRole("slider");
@@ -958,7 +965,7 @@ describe("Coords3dViewer", () => {
         fireEvent.mouseDown(sliderRoot, { button: 0, clientX: 60, clientY: 5 });
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+            expect(zCalls()).toHaveLength(2);
         });
 
         // Simulates the rest of a fast drag while the index-35 fetch is
@@ -973,18 +980,18 @@ describe("Coords3dViewer", () => {
         });
 
         // Only the mount fetch (index 30) and the first tick (index 35)
-        // reached the network -- the rest coalesced.
-        expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+        // reached the network on the Z axis -- the rest coalesced.
+        expect(zCalls()).toHaveLength(2);
 
         firstTickGate.resolve();
 
         // Once the in-flight fetch settles, it chases straight to the
         // LATEST position (59, the last tick) -- never 47 along the way.
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(3);
+            expect(zCalls()).toHaveLength(3);
         });
 
-        const chaseCallArgs = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls[2];
+        const chaseCallArgs = zCalls()[2];
         expect(Number(chaseCallArgs[4])).toBe(59);
     });
 
