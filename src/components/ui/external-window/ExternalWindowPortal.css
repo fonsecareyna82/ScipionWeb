@@ -286,27 +286,63 @@
 }
 
 .sew-root.metadata-image-preview-window .sew-header {
-    background:
-        linear-gradient(
-            135deg,
-            #1d4ed8 0%,
-            #4f46e5 52%,
-            #7c3aed 100%
-        );
+    background: #e5e7eb;
+
+    color: #111827;
 
     border-bottom:
-        1px solid rgba(
-            255,
-            255,
-            255,
-            0.18
-        );
+        1px solid #cbd5e1;
 
     box-shadow:
-        0 6px 18px rgba(
-            79,
-            70,
-            229,
-            0.20
+        0 3px 10px rgba(
+            15,
+            23,
+            42,
+            0.10
         );
+}
+
+
+.sew-root.metadata-image-preview-window .sew-controlButton {
+    color: #334155;
+
+    background:
+        rgba(
+            255,
+            255,
+            255,
+            0.55
+        );
+
+    border-color:
+        rgba(
+            100,
+            116,
+            139,
+            0.28
+        );
+}
+
+
+.sew-root.metadata-image-preview-window .sew-controlButton:hover {
+    color: #0f172a;
+
+    background: #ffffff;
+
+    border-color:
+        rgba(
+            71,
+            85,
+            105,
+            0.45
+        );
+}
+
+
+.sew-root.metadata-image-preview-window .sew-closeButton:hover {
+    color: #b91c1c;
+
+    background: #fee2e2;
+
+    border-color: #fecaca;
 }

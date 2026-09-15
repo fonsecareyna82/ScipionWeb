@@ -2951,7 +2951,7 @@ function MetadataImagePreviewDialog({
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              color: "rgba(255,255,255,0.78)",
+              color: "#64748b",
               fontSize: "0.68rem",
               lineHeight: 1.2,
             }}
