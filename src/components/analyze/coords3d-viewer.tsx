@@ -641,6 +641,15 @@ export default function Coords3dViewer({
 
   const [draggingSlice, setDraggingSlice] = useState<null | "z" | "x" | "y">(null);
 
+  // Per-axis booleans, not the raw draggingSlice string, so that each
+  // axis's slice-fetch effect only re-runs when ITS OWN drag state toggles
+  // -- otherwise starting/stopping a drag on one axis (e.g. X) also
+  // re-triggers the other two axes' effects (Z, Y), which depend on
+  // draggingSlice too even though their own fetch target never changed.
+  const isDraggingZ = draggingSlice === "z";
+  const isDraggingX = draggingSlice === "x";
+  const isDraggingY = draggingSlice === "y";
+
   const [displayedSliceIndexZ, setDisplayedSliceIndexZ] = useState<number | null>(null);
   const [displayedSliceIndexX, setDisplayedSliceIndexX] = useState<number | null>(null);
   const [displayedSliceIndexY, setDisplayedSliceIndexY] = useState<number | null>(null);
@@ -682,22 +691,22 @@ export default function Coords3dViewer({
   // the SliderField onChange handlers below are allowed to leave
   // fetchSliceIndex* lagging behind, and only while dragging that axis.
   useEffect(() => {
-    if (draggingSlice === "z") return;
+    if (isDraggingZ) return;
     scrubTargetIndexZRef.current = sliceIndex;
     setFetchSliceIndexZ(sliceIndex);
-  }, [sliceIndex, draggingSlice]);
+  }, [sliceIndex, isDraggingZ]);
 
   useEffect(() => {
-    if (draggingSlice === "x") return;
+    if (isDraggingX) return;
     scrubTargetIndexXRef.current = sliceIndexX;
     setFetchSliceIndexX(sliceIndexX);
-  }, [sliceIndexX, draggingSlice]);
+  }, [sliceIndexX, isDraggingX]);
 
   useEffect(() => {
-    if (draggingSlice === "y") return;
+    if (isDraggingY) return;
     scrubTargetIndexYRef.current = sliceIndexY;
     setFetchSliceIndexY(sliceIndexY);
-  }, [sliceIndexY, draggingSlice]);
+  }, [sliceIndexY, isDraggingY]);
 
   useEffect(() => {
     coordsDraftRef.current = coordsDraft;
@@ -1410,7 +1419,6 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexZ, maxSliceZ));
-    const isDraggingZ = draggingSlice === "z";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|z|${tomogramColormap}|${isDraggingZ ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1503,7 +1511,7 @@ export default function Coords3dViewer({
     coordsReadyForSelectedTomo,
     effectiveTomoId,
     fetchSliceIndexZ,
-    draggingSlice,
+    isDraggingZ,
     buildSliceFetchOptions,
     maxSliceZ,
     projectId,
@@ -1538,7 +1546,6 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexX, maxSliceX));
-    const isDraggingX = draggingSlice === "x";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|x|${tomogramColormap}|${isDraggingX ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1629,7 +1636,7 @@ export default function Coords3dViewer({
     coordsReadyForSelectedTomo,
     effectiveTomoId,
     fetchSliceIndexX,
-    draggingSlice,
+    isDraggingX,
     buildSliceFetchOptions,
     maxSliceX,
     projectId,
@@ -1664,7 +1671,6 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexY, maxSliceY));
-    const isDraggingY = draggingSlice === "y";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|y|${tomogramColormap}|${isDraggingY ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1755,7 +1761,7 @@ export default function Coords3dViewer({
     coordsReadyForSelectedTomo,
     effectiveTomoId,
     fetchSliceIndexY,
-    draggingSlice,
+    isDraggingY,
     buildSliceFetchOptions,
     maxSliceY,
     projectId,
