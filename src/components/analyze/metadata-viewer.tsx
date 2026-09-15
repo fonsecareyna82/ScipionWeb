@@ -88,6 +88,14 @@ type SelectedImageCell = {
   columnName: string;
 };
 
+type ImagePreviewState = {
+  rowIndexInTable: number;
+  rowId: RowId | null;
+  columnName: string;
+  columnAlias: string;
+  path: string;
+};
+
 type MetadataColumnWithVisibility = MetadataColumn & {
   visible?: boolean;
 };
@@ -237,6 +245,7 @@ type MetadataImageCellProps = {
   size: number;
   isSelected?: boolean;
   onClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
   scrollRootRef: MutableRefObject<HTMLDivElement | null>;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
 };
@@ -285,6 +294,7 @@ type MetadataTablePanelProps = {
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
+  onImageDoubleClick: (state: ImagePreviewState) => void;
   projectId: number;
   protocolId: number;
   outputName: string;
@@ -321,6 +331,7 @@ type MetadataGalleryPanelProps = {
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
+  onImageDoubleClick: (state: ImagePreviewState) => void;
   projectId: number;
   protocolId: number;
   outputName: string;
@@ -2214,6 +2225,7 @@ function MetadataImageCell({
   size,
   isSelected = false,
   onClick,
+  onDoubleClick,
   scrollRootRef,
   imageCacheRef,
 }: MetadataImageCellProps) {
@@ -2425,10 +2437,17 @@ function MetadataImageCell({
     onClick(event);
   };
 
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onDoubleClick) return;
+    event.stopPropagation();
+    onDoubleClick(event);
+  };
+
   return (
     <Box
       ref={rootRef}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       sx={{
         cursor: "pointer",
         width: size,
@@ -2464,6 +2483,221 @@ function MetadataImageCell({
   );
 }
 
+// Target size requested for the double-click "view in detail" dialog --
+// deliberately larger than any thumbnail size the grid/table ever renders,
+// so this is a genuine higher-resolution fetch and not just an upscaled
+// thumbnail.
+const METADATA_IMAGE_PREVIEW_SIZE = 1024;
+
+type MetadataImagePreviewDialogProps = {
+  state: ImagePreviewState | null;
+  onClose: () => void;
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  tableName: string;
+  sortBy: string | null;
+  sortAsc: boolean;
+};
+
+function MetadataImagePreviewDialog({
+  state,
+  onClose,
+  projectId,
+  protocolId,
+  outputName,
+  tableName,
+  sortBy,
+  sortAsc,
+}: MetadataImagePreviewDialogProps) {
+  const svcRef = useProjectServiceRef();
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!state) {
+      setPreviewUrl(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let revokeCurrent: (() => void) | null = null;
+    const abortController = new AbortController();
+
+    setPreviewUrl(null);
+    setError(null);
+    setLoading(true);
+
+    const baseOptions = {
+      rowId: state.rowId ?? undefined,
+      sortBy: sortBy ?? undefined,
+      asc: sortBy ? sortAsc : undefined,
+      size: METADATA_IMAGE_PREVIEW_SIZE,
+      applyTransform: false,
+      inline: true,
+      signal: abortController.signal,
+    };
+
+    (async () => {
+      let result: { url: string; revoke: () => void };
+
+      try {
+        try {
+          result = await svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            state.rowIndexInTable,
+            state.columnName,
+            { ...baseOptions, format: METADATA_IMAGE_PRIMARY_FORMAT },
+          );
+        } catch (err) {
+          if (abortController.signal.aborted) throw err;
+
+          result = await svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            state.rowIndexInTable,
+            state.columnName,
+            { ...baseOptions, format: METADATA_IMAGE_FALLBACK_FORMAT },
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Failed to load image"));
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (cancelled) {
+        result.revoke();
+        return;
+      }
+
+      revokeCurrent = result.revoke;
+      setPreviewUrl(result.url);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+      revokeCurrent?.();
+    };
+  }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, svcRef]);
+
+  const open = !!state;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          overflow: "hidden",
+          border: "1px solid rgba(15,23,42,0.08)",
+          boxShadow: "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
+        },
+      }}
+    >
+      <DialogTitle
+        sx={{
+          px: 2,
+          py: 1.4,
+          display: "flex",
+          alignItems: "center",
+          gap: 1.25,
+          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+          color: "#e2e8f0",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 700, lineHeight: 1.15, color: "#f8fafc" }}
+            noWrap
+          >
+            {state
+              ? `${state.columnAlias} — Row ${state.rowIndexInTable + 1}${state.rowId != null ? ` (id ${state.rowId})` : ""}`
+              : ""}
+          </Typography>
+          {state && (
+            <Typography
+              variant="caption"
+              sx={{ color: "rgba(226,232,240,0.82)", display: "block", mt: 0.25 }}
+              noWrap
+            >
+              {state.path}
+            </Typography>
+          )}
+        </Box>
+
+        <IconButton
+          size="small"
+          onClick={onClose}
+          aria-label="Close image preview"
+          sx={{
+            color: "#e2e8f0",
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "rgba(255,255,255,0.06)",
+            "&:hover": {
+              background: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(255,255,255,0.28)",
+            },
+          }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent
+        dividers
+        sx={{
+          px: 2,
+          py: 2,
+          minHeight: 320,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0b1220",
+        }}
+      >
+        {loading && <CircularProgress size={28} sx={{ color: "#94a3b8" }} />}
+
+        {!loading && error && (
+          <Typography variant="body2" sx={{ color: "#fca5a5" }}>
+            {error}
+          </Typography>
+        )}
+
+        {!loading && !error && previewUrl && (
+          <img
+            src={previewUrl}
+            alt={state?.path ?? ""}
+            style={{
+              maxWidth: "100%",
+              maxHeight: "75vh",
+              objectFit: "contain",
+              borderRadius: 4,
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const MetadataTablePanel = memo(function MetadataTablePanel({
   schema,
   totalRows,
@@ -2489,6 +2723,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
   selectedImageCell,
   setSelectedRowIndex,
   setSelectedImageCell,
+  onImageDoubleClick,
   projectId,
   protocolId,
   outputName,
@@ -2798,6 +3033,15 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                                   columnName: column.name,
                                 });
                               }}
+                              onDoubleClick={() => {
+                                onImageDoubleClick({
+                                  rowIndexInTable: displayRowIndex,
+                                  rowId,
+                                  columnName: column.name,
+                                  columnAlias: column.alias || column.name,
+                                  path: imageCell.path,
+                                });
+                              }}
                               scrollRootRef={scrollRef}
                               imageCacheRef={imageCacheRef}
                             />
@@ -2951,6 +3195,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   selectedImageCell,
   setSelectedRowIndex,
   setSelectedImageCell,
+  onImageDoubleClick,
   projectId,
   protocolId,
   outputName,
@@ -3084,6 +3329,16 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     } else {
                       setSelectedImageCell(null);
                     }
+                  }}
+                  onDoubleClick={() => {
+                    if (!imageCell) return;
+                    onImageDoubleClick({
+                      rowIndexInTable: globalRowIndex,
+                      rowId,
+                      columnName: firstImageColumn.name,
+                      columnAlias: firstImageColumn.alias || firstImageColumn.name,
+                      path: imageCell.path,
+                    });
                   }}
                   sx={{
                     position: "absolute",
@@ -3384,6 +3639,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
 
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const [draftColumnSettings, setDraftColumnSettings] =
@@ -5340,6 +5596,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             selectedImageCell={selectedImageCell}
             setSelectedRowIndex={setSelectedRowIndex}
             setSelectedImageCell={setSelectedImageCell}
+            onImageDoubleClick={setImagePreview}
             projectId={projectId}
             protocolId={protocolId}
             outputName={outputName}
@@ -5374,6 +5631,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             selectedImageCell={selectedImageCell}
             setSelectedRowIndex={setSelectedRowIndex}
             setSelectedImageCell={setSelectedImageCell}
+            onImageDoubleClick={setImagePreview}
             projectId={projectId}
             protocolId={protocolId}
             outputName={outputName}
@@ -6500,6 +6758,17 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           </Box>
         </DialogActions>
       </Dialog>
+
+      <MetadataImagePreviewDialog
+        state={imagePreview}
+        onClose={() => setImagePreview(null)}
+        projectId={projectId}
+        protocolId={protocolId}
+        outputName={outputName}
+        tableName={selectedTable}
+        sortBy={sortBy}
+        sortAsc={sortAsc}
+      />
     </Box>
   );
 }

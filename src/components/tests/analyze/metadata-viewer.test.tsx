@@ -1093,6 +1093,157 @@ describe("MetadataViewer", () => {
         expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(1);
     });
 
+    it("opens a larger preview dialog on double-click and requests a bigger image", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [{ rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] }],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataImageCellObjectUrl.mockImplementation(
+            async (_p, _r, _o, _t, _rowIndex, _col, opts) => ({
+                url: opts.size === 1024 ? "blob:preview-large" : "blob:thumb-small",
+                revoke: vi.fn(),
+            }),
+        );
+
+        renderViewer();
+
+        const thumb = await screen.findByAltText("/img/1.png");
+        expect(thumb).toHaveAttribute("src", "blob:thumb-small");
+
+        fireEvent.doubleClick(thumb);
+
+        const dialog = await screen.findByRole("dialog");
+        expect(within(dialog).getByText(/Row 1/)).toBeInTheDocument();
+
+        const preview = await within(dialog).findByRole("img");
+        expect(preview).toHaveAttribute("src", "blob:preview-large");
+
+        const lastCall = serviceMocks.fetchMetadataImageCellObjectUrl.mock.calls[
+            serviceMocks.fetchMetadataImageCellObjectUrl.mock.calls.length - 1
+        ];
+        expect(lastCall[6]).toMatchObject({ size: 1024, format: "webp" });
+
+        fireEvent.click(within(dialog).getByRole("button", { name: "Close image preview" }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        });
+    });
+
+    it("opens the preview dialog on double-click in gallery mode too", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [{ rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] }],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(tableName as "particles" | "classes");
+            },
+        );
+
+        renderViewer();
+
+        expect(await screen.findByAltText("/img/1.png")).toBeInTheDocument();
+
+        fireEvent.click(getButtonFromIconTestId("gallery-icon"));
+
+        await waitFor(() => {
+            expect(document.querySelector('[data-row-index="0"]')).not.toBeNull();
+        });
+        const firstCard = screen.getByRole("button", { name: "Row 1, item 1" });
+
+        fireEvent.doubleClick(firstCard);
+
+        const dialog = await screen.findByRole("dialog");
+        expect(within(dialog).getByText(/Row 1/)).toBeInTheDocument();
+    });
+
     it(
         "resolves an item position directly without scanning metadata rows",
         async () => {
