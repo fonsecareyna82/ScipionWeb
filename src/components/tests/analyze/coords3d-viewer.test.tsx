@@ -842,6 +842,33 @@ describe("Coords3dViewer", () => {
         expect(yCalls.length).toBeGreaterThan(0);
     });
 
+    it("revokes the previous Z slice object URL once a new one replaces it", async () => {
+        renderViewer();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+        });
+
+        const firstRevoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
+            .results[0].value.then((result: { revoke: () => void }) => result.revoke);
+
+        const sliders = screen.getAllByRole("slider");
+        fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.length).toBe(2);
+        });
+
+        const secondRevoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
+            .results[1].value.then((result: { revoke: () => void }) => result.revoke);
+
+        // The first slice's blob URL is no longer displayed -- it must have
+        // been revoked once the second one took its place. The second one
+        // is still on screen, so it must NOT have been revoked yet.
+        expect(firstRevoke).toHaveBeenCalledTimes(1);
+        expect(secondRevoke).not.toHaveBeenCalled();
+    });
+
     it("applies a score-range filter", async () => {
         renderViewer();
 

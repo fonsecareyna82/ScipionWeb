@@ -514,6 +514,7 @@ export default function Coords3dViewer({
   const [sliceLoading, setSliceLoading] = useState(false);
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
+  const sliceUrlRevokeRef = useRef<(() => void) | null>(null);
 
   const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
     null,
@@ -546,6 +547,8 @@ export default function Coords3dViewer({
   const sliceYAbortRef = useRef<AbortController | null>(null);
   const sliceXReqIdRef = useRef(0);
   const sliceYReqIdRef = useRef(0);
+  const sliceXUrlRevokeRef = useRef<(() => void) | null>(null);
+  const sliceYUrlRevokeRef = useRef<(() => void) | null>(null);
 
   const throttledSliceIndex = useThrottledValue(sliceIndex, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
@@ -1197,6 +1200,12 @@ export default function Coords3dViewer({
           return;
         }
 
+        // The previous slice's object URL is only ever referenced from
+        // this ref -- revoke it now that it's about to be replaced (or
+        // cleared), otherwise every completed load leaks a blob.
+        sliceUrlRevokeRef.current?.();
+        sliceUrlRevokeRef.current = result?.revoke ?? null;
+
         const nextUrl = result?.url ?? null;
         setSliceImageUrl(nextUrl);
         if (nextUrl) {
@@ -1284,6 +1293,9 @@ export default function Coords3dViewer({
           }
           return;
         }
+
+        sliceXUrlRevokeRef.current?.();
+        sliceXUrlRevokeRef.current = result?.revoke ?? null;
 
         const nextUrl = result?.url ?? null;
         setSliceXImageUrl(nextUrl);
@@ -1374,6 +1386,9 @@ export default function Coords3dViewer({
           return;
         }
 
+        sliceYUrlRevokeRef.current?.();
+        sliceYUrlRevokeRef.current = result?.revoke ?? null;
+
         const nextUrl = result?.url ?? null;
         setSliceYImageUrl(nextUrl);
         if (nextUrl) {
@@ -1406,6 +1421,18 @@ export default function Coords3dViewer({
     outputName,
     svc,
   ]);
+
+  // revokeSliceObjectUrlsOnUnmount -- the per-axis revoke refs above only
+  // fire when a *new* slice replaces the current one; on unmount there is
+  // no "next" load to trigger that, so the last object URL held by each
+  // axis would otherwise never be revoked.
+  useEffect(() => {
+    return () => {
+      sliceUrlRevokeRef.current?.();
+      sliceXUrlRevokeRef.current?.();
+      sliceYUrlRevokeRef.current?.();
+    };
+  }, []);
 
   const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
   const singleSvgRef = useRef<SVGSVGElement | null>(null);
