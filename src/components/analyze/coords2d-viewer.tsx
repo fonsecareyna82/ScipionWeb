@@ -190,6 +190,11 @@ const PARTICLE_CROP_BATCH_SIZE = 40;
 
 const MICROGRAPH_IMAGE_SIZE = 2200;
 const MICROGRAPH_IMAGE_CACHE_LIMIT = 4;
+// Server-cached, low-cost placeholder shown while the full-resolution
+// image is still loading -- big enough to look reasonable filling the
+// canvas, far cheaper than the 2200px full image. 512 is the backend's
+// max allowed thumbnail size (coords2d_router.py).
+const MICROGRAPH_PREVIEW_SIZE = 512;
 
 
 function createDragState(): DragState {
@@ -1122,6 +1127,8 @@ function Coords2dViewer({
     let cancelled = false;
     let objectUrl: ObjectUrlResult | null = null;
     let storedInCache = false;
+    let previewObjectUrl: ObjectUrlResult | null = null;
+    let fullImageSettled = false;
 
     setImageOriginalSize(null);
     setImageUrl(null);
@@ -1131,6 +1138,62 @@ function Coords2dViewer({
     setPreviewHiddenPointIds(new Set());
     setHistogramOpen(false);
     setError(null);
+
+    // Best-effort, low-cost placeholder: server-cached (see ScipionAPI's
+    // coords2d image cache) and much smaller than the full-resolution
+    // fetch below, so it typically resolves first and gives the user
+    // something recognizable -- correctly scaled via its own
+    // X-Preview-Original-* headers -- instead of a blank canvas for the
+    // ~1-2s the full image takes to decode. The full-resolution result
+    // always wins once it arrives; this never overwrites it.
+    async function loadPreview() {
+      try {
+        const preview = normalizeObjectUrl(
+          await service.fetchCoords2dMicrographThumbnailObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            selectedMicId,
+            { size: MICROGRAPH_PREVIEW_SIZE, format: "png" },
+          ),
+        );
+
+        if (!preview || cancelled || fullImageSettled) {
+          preview?.revoke?.();
+          return;
+        }
+
+        const img = new Image();
+
+        img.onload = () => {
+          if (cancelled || fullImageSettled) {
+            preview.revoke?.();
+            return;
+          }
+
+          previewObjectUrl = preview;
+          setImageUrl(preview.url);
+          setImage(img);
+
+          if (preview.originalWidth && preview.originalHeight) {
+            setImageOriginalSize({
+              width: preview.originalWidth,
+              height: preview.originalHeight,
+            });
+          }
+          // loadingImage stays true: the sharp version is still on its way.
+        };
+
+        img.onerror = () => {
+          preview.revoke?.();
+        };
+
+        img.src = preview.url;
+      } catch {
+        // Preview is a nice-to-have -- loadImage() below still runs and
+        // reports its own error if the real load fails too.
+      }
+    }
 
     async function loadImage() {
       try {
@@ -1145,9 +1208,13 @@ function Coords2dViewer({
         );
 
         if (!objectUrl) {
+          fullImageSettled = true;
+
           if (!cancelled) {
-            setImageUrl(null);
-            setImage(null);
+            if (!previewObjectUrl) {
+              setImageUrl(null);
+              setImage(null);
+            }
             setImageLoadAttempted(true);
             setLoadingImage(false);
           }
@@ -1164,11 +1231,15 @@ function Coords2dViewer({
 
         img.onload = () => {
           if (!objectUrl) return;
+          fullImageSettled = true;
 
           if (cancelled) {
             objectUrl.revoke?.();
             return;
           }
+
+          previewObjectUrl?.revoke?.();
+          previewObjectUrl = null;
 
           const cache = imageObjectUrlCacheRef.current;
 
@@ -1207,14 +1278,22 @@ function Coords2dViewer({
         };
 
         img.onerror = () => {
+          fullImageSettled = true;
+
           if (objectUrl && !storedInCache) {
             objectUrl.revoke?.();
           }
 
           if (cancelled) return;
 
-          setImageUrl(null);
-          setImage(null);
+          // Keep whatever preview is already showing rather than
+          // blanking to gray -- a low-res image beats nothing even when
+          // the sharp version failed to decode.
+          if (!previewObjectUrl) {
+            setImageUrl(null);
+            setImage(null);
+          }
+
           setImageLoadAttempted(true);
           setLoadingImage(false);
           setError("The micrograph image returned by the backend could not be decoded.");
@@ -1222,9 +1301,13 @@ function Coords2dViewer({
 
         img.src = objectUrl.url;
       } catch (err) {
+        fullImageSettled = true;
+
         if (!cancelled) {
-          setImageUrl(null);
-          setImage(null);
+          if (!previewObjectUrl) {
+            setImageUrl(null);
+            setImage(null);
+          }
           setImageLoadAttempted(true);
           setLoadingImage(false);
           setError(err instanceof Error ? err.message : "Failed to load micrograph image");
@@ -1232,6 +1315,7 @@ function Coords2dViewer({
       }
     }
 
+    void loadPreview();
     void loadImage();
 
     return () => {
@@ -1240,6 +1324,8 @@ function Coords2dViewer({
       if (objectUrl && !storedInCache) {
         objectUrl.revoke?.();
       }
+
+      previewObjectUrl?.revoke?.();
     };
   }, [service, projectId, protocolId, outputName, selectedMicId]);
 

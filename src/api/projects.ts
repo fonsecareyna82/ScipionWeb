@@ -4331,10 +4331,45 @@ export async function fetchCoords2dMicrographThumbnailObjectUrl(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
     `/coords2d/micrographs/${enc(String(micId))}/thumbnail?${params.toString()}`;
 
-  const objectUrl = await fetchBlobObjectUrl(url, { signal: opts.signal });
+  // Mirrors fetchCoords2dMicrographImageObjectUrl: the thumbnail endpoint
+  // returns the same X-Preview-Original-* headers as the full image (see
+  // ScipionAPI's coords2d_service.py _resolveMicrographImageContent), so a
+  // caller can use a thumbnail as a correctly-scaled placeholder while the
+  // full-resolution image is still loading.
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+  });
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to fetch 2D micrograph thumbnail",
+    );
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  const originalWidth = Number(
+    response.headers.get("X-Preview-Original-Width"),
+  );
+
+  const originalHeight = Number(
+    response.headers.get("X-Preview-Original-Height"),
+  );
+
   return {
     url: objectUrl,
     revoke: () => URL.revokeObjectURL(objectUrl),
+    originalWidth:
+      Number.isFinite(originalWidth) && originalWidth > 0
+        ? originalWidth
+        : null,
+    originalHeight:
+      Number.isFinite(originalHeight) && originalHeight > 0
+        ? originalHeight
+        : null,
   };
 }
 
