@@ -906,11 +906,11 @@ describe("Coords3dViewer", () => {
         expect(settledCall[5]).not.toHaveProperty("quality");
     });
 
-    it("revokes the previous Z slice object URL once a new one replaces it", async () => {
+    it("caches Z slice object URLs so revisiting an index skips a new fetch", async () => {
         renderViewer();
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(1);
         });
 
         const firstRevoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
@@ -920,17 +920,33 @@ describe("Coords3dViewer", () => {
         fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.length).toBe(2);
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
         });
 
-        const secondRevoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
-            .results[1].value.then((result: { revoke: () => void }) => result.revoke);
+        // Move back to the original index, already cached from the first
+        // load -- this must be served from the cache, not a new fetch, and
+        // the cached entry must not have been revoked in the meantime.
+        fireEvent.keyDown(sliders[0], { key: "ArrowLeft" });
 
-        // The first slice's blob URL is no longer displayed -- it must have
-        // been revoked once the second one took its place. The second one
-        // is still on screen, so it must NOT have been revoked yet.
-        expect(firstRevoke).toHaveBeenCalledTimes(1);
-        expect(secondRevoke).not.toHaveBeenCalled();
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+        expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+        expect(firstRevoke).not.toHaveBeenCalled();
+    });
+
+    it("revokes every cached slice object URL on unmount", async () => {
+        const { unmount } = renderViewer();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(1);
+        });
+
+        const revoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
+            .results[0].value.then((result: { revoke: () => void }) => result.revoke);
+
+        expect(revoke).not.toHaveBeenCalled();
+        unmount();
+        expect(revoke).toHaveBeenCalledTimes(1);
     });
 
     it("applies a score-range filter", async () => {

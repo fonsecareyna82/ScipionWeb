@@ -3179,9 +3179,12 @@ export async function fetchCoords3dTomogramSliceObjectUrl(
 
   const url = `${base}?${qp.join("&")}`;
 
+  // Opt into browser HTTP caching (fetchWithAuth defaults to no-store):
+  // the backend now ETags this response, so a revisit can revalidate
+  // instead of always doing a full round trip.
   const res = await fetchWithAuth(url, {
     method: "GET",
-    cache: "no-store",
+    cache: "default",
     signal: opts.signal,
   });
   if (!res.ok) {

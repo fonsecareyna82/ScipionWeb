@@ -37,6 +37,11 @@ import type { Id, Coordinates3dTomogramPoints } from "@/services/ProjectService"
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
 import Coords3dParticleGallery from "./coords3d-particle-gallery";
+import {
+  clearCachedEntries,
+  storeCachedEntry,
+  touchCachedEntry,
+} from "./lru-object-cache";
 
 type Coords3dViewerProps = {
   projectId: Id;
@@ -119,6 +124,13 @@ const SLICE_PREVIEW_FORMAT = "webp" as const;
 // browsing quality.
 const SLICE_DRAG_PREVIEW_MAX_SIDE = 512;
 const SLICE_DRAG_PREVIEW_QUALITY = 70;
+
+// Client-side cache for rendered tomogram slice object URLs, shared across
+// all three axes and kept across tomogram switches (keyed by tomogram id
+// too) -- revisiting a slice/tomogram already seen this session is then
+// instant instead of a full network round trip + re-render.
+type SliceImageCacheEntry = { url: string; revoke: () => void };
+const SLICE_IMAGE_CACHE_MAX_ITEMS = 96;
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -521,7 +533,7 @@ export default function Coords3dViewer({
   const [sliceLoading, setSliceLoading] = useState(false);
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
-  const sliceUrlRevokeRef = useRef<(() => void) | null>(null);
+  const sliceImageCacheRef = useRef<Map<string, SliceImageCacheEntry>>(new Map());
 
   const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
     null,
@@ -554,8 +566,6 @@ export default function Coords3dViewer({
   const sliceYAbortRef = useRef<AbortController | null>(null);
   const sliceXReqIdRef = useRef(0);
   const sliceYReqIdRef = useRef(0);
-  const sliceXUrlRevokeRef = useRef<(() => void) | null>(null);
-  const sliceYUrlRevokeRef = useRef<(() => void) | null>(null);
 
   const throttledSliceIndex = useThrottledValue(sliceIndex, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
@@ -1183,6 +1193,18 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(effectiveSliceIndex, maxSliceZ));
+    const isDraggingZ = draggingSlice === "z";
+    const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|z|${tomogramColormap}|${isDraggingZ ? "drag" : "full"}|${clamped}`;
+
+    const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
+    if (cached) {
+      sliceAbortRef.current?.abort();
+      setSliceError(null);
+      setSliceLoading(false);
+      setSliceImageUrl(cached.url);
+      setDisplayedSliceIndexZ(clamped);
+      return;
+    }
 
     sliceAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1200,7 +1222,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          buildSliceFetchOptions("z", draggingSlice === "z", controller.signal),
+          buildSliceFetchOptions("z", isDraggingZ, controller.signal),
         );
 
         if (controller.signal.aborted || sliceReqIdRef.current !== reqId) {
@@ -1214,11 +1236,14 @@ export default function Coords3dViewer({
           return;
         }
 
-        // The previous slice's object URL is only ever referenced from
-        // this ref -- revoke it now that it's about to be replaced (or
-        // cleared), otherwise every completed load leaks a blob.
-        sliceUrlRevokeRef.current?.();
-        sliceUrlRevokeRef.current = result?.revoke ?? null;
+        if (result?.url && result?.revoke) {
+          storeCachedEntry(
+            sliceImageCacheRef.current,
+            cacheKey,
+            { url: result.url, revoke: result.revoke },
+            SLICE_IMAGE_CACHE_MAX_ITEMS,
+          );
+        }
 
         const nextUrl = result?.url ?? null;
         setSliceImageUrl(nextUrl);
@@ -1249,6 +1274,7 @@ export default function Coords3dViewer({
     projectId,
     protocolId,
     outputName,
+    tomogramColormap,
     svc,
   ]);
 
@@ -1277,6 +1303,18 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(effectiveSliceIndexX, maxSliceX));
+    const isDraggingX = draggingSlice === "x";
+    const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|x|${tomogramColormap}|${isDraggingX ? "drag" : "full"}|${clamped}`;
+
+    const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
+    if (cached) {
+      sliceXAbortRef.current?.abort();
+      setSliceXError(null);
+      setSliceXLoading(false);
+      setSliceXImageUrl(cached.url);
+      setDisplayedSliceIndexX(clamped);
+      return;
+    }
 
     sliceXAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1294,7 +1332,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          buildSliceFetchOptions("x", draggingSlice === "x", controller.signal),
+          buildSliceFetchOptions("x", isDraggingX, controller.signal),
         );
 
         if (controller.signal.aborted || sliceXReqIdRef.current !== reqId) {
@@ -1308,8 +1346,14 @@ export default function Coords3dViewer({
           return;
         }
 
-        sliceXUrlRevokeRef.current?.();
-        sliceXUrlRevokeRef.current = result?.revoke ?? null;
+        if (result?.url && result?.revoke) {
+          storeCachedEntry(
+            sliceImageCacheRef.current,
+            cacheKey,
+            { url: result.url, revoke: result.revoke },
+            SLICE_IMAGE_CACHE_MAX_ITEMS,
+          );
+        }
 
         const nextUrl = result?.url ?? null;
         setSliceXImageUrl(nextUrl);
@@ -1341,6 +1385,7 @@ export default function Coords3dViewer({
     projectId,
     protocolId,
     outputName,
+    tomogramColormap,
     svc,
   ]);
 
@@ -1369,6 +1414,18 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(effectiveSliceIndexY, maxSliceY));
+    const isDraggingY = draggingSlice === "y";
+    const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|y|${tomogramColormap}|${isDraggingY ? "drag" : "full"}|${clamped}`;
+
+    const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
+    if (cached) {
+      sliceYAbortRef.current?.abort();
+      setSliceYError(null);
+      setSliceYLoading(false);
+      setSliceYImageUrl(cached.url);
+      setDisplayedSliceIndexY(clamped);
+      return;
+    }
 
     sliceYAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1386,7 +1443,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          buildSliceFetchOptions("y", draggingSlice === "y", controller.signal),
+          buildSliceFetchOptions("y", isDraggingY, controller.signal),
         );
 
         if (controller.signal.aborted || sliceYReqIdRef.current !== reqId) {
@@ -1400,8 +1457,14 @@ export default function Coords3dViewer({
           return;
         }
 
-        sliceYUrlRevokeRef.current?.();
-        sliceYUrlRevokeRef.current = result?.revoke ?? null;
+        if (result?.url && result?.revoke) {
+          storeCachedEntry(
+            sliceImageCacheRef.current,
+            cacheKey,
+            { url: result.url, revoke: result.revoke },
+            SLICE_IMAGE_CACHE_MAX_ITEMS,
+          );
+        }
 
         const nextUrl = result?.url ?? null;
         setSliceYImageUrl(nextUrl);
@@ -1428,23 +1491,23 @@ export default function Coords3dViewer({
     effectiveTomoId,
     effectiveSliceIndexY,
     draggingSlice,
-    buildSliceFetchOptions, ,
+    buildSliceFetchOptions,
     maxSliceY,
     projectId,
     protocolId,
     outputName,
+    tomogramColormap,
     svc,
   ]);
 
-  // revokeSliceObjectUrlsOnUnmount -- the per-axis revoke refs above only
-  // fire when a *new* slice replaces the current one; on unmount there is
-  // no "next" load to trigger that, so the last object URL held by each
-  // axis would otherwise never be revoked.
+  // revokeSliceObjectUrlsOnUnmount -- all three axes' object URLs live in
+  // sliceImageCacheRef (see the effects above), which normally only
+  // revokes entries once evicted past SLICE_IMAGE_CACHE_MAX_ITEMS; on
+  // unmount there is no future eviction to do that, so revoke everything
+  // still held here.
   useEffect(() => {
     return () => {
-      sliceUrlRevokeRef.current?.();
-      sliceXUrlRevokeRef.current?.();
-      sliceYUrlRevokeRef.current?.();
+      clearCachedEntries(sliceImageCacheRef.current);
     };
   }, []);
 
