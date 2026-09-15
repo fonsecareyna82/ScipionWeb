@@ -114,8 +114,6 @@ const NEARBY_SLICE_RANGE = 10;
 const MIN_NEARBY_SLICE_FACTOR = 0.25;
 const DEBUG_SYNTHETIC_GRID = false;
 
-const SLICE_SLIDER_THROTTLE_MS = 200;
-
 const SLICE_PREVIEW_FORMAT = "webp" as const;
 // While actively dragging a slice slider, request a cheap thumbnail instead
 // of the full-resolution render -- same idea as volume-viewer.tsx's
@@ -658,18 +656,48 @@ export default function Coords3dViewer({
   const sliceXReqIdRef = useRef(0);
   const sliceYReqIdRef = useRef(0);
 
-  const throttledSliceIndex = useThrottledValue(sliceIndex, SLICE_SLIDER_THROTTLE_MS);
-  const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
-  const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
+  // Decouples "what the slider shows" (sliceIndex*, always live) from "what
+  // the slice-fetch effect below actually fetches" (fetchSliceIndex*) --
+  // coalesce-to-latest, self-paced by completion, same pattern as
+  // tiltseries-viewer.tsx's fetchRowIndex/scrubTargetIndexRef and
+  // volume-viewer.tsx's useVolumeSliceImage. A fixed-interval throttle
+  // (the old useThrottledValue-based approach) still fires a fetch every
+  // tick regardless of whether the previous one has resolved -- under real
+  // latency, most of those get aborted before they land and the image can
+  // appear to "freeze" mid-drag. Here, a new fetch only starts once the
+  // in-flight one finishes, and always chases the latest slider position.
+  const [fetchSliceIndexZ, setFetchSliceIndexZ] = useState<number | null>(null);
+  const [fetchSliceIndexX, setFetchSliceIndexX] = useState<number | null>(null);
+  const [fetchSliceIndexY, setFetchSliceIndexY] = useState<number | null>(null);
+  const scrubTargetIndexZRef = useRef<number | null>(null);
+  const scrubTargetIndexXRef = useRef<number | null>(null);
+  const scrubTargetIndexYRef = useRef<number | null>(null);
+  const scrubFetchBusyZRef = useRef(false);
+  const scrubFetchBusyXRef = useRef(false);
+  const scrubFetchBusyYRef = useRef(false);
 
-  const effectiveSliceIndex =
-    draggingSlice === "z" ? throttledSliceIndex : sliceIndex;
+  // Outside of an active drag on that axis, fetchSliceIndex* must track
+  // sliceIndex* immediately (keyboard nav, wheel, "go to point" jumps,
+  // tomogram switches, etc. all still update sliceIndex* directly) -- only
+  // the SliderField onChange handlers below are allowed to leave
+  // fetchSliceIndex* lagging behind, and only while dragging that axis.
+  useEffect(() => {
+    if (draggingSlice === "z") return;
+    scrubTargetIndexZRef.current = sliceIndex;
+    setFetchSliceIndexZ(sliceIndex);
+  }, [sliceIndex, draggingSlice]);
 
-  const effectiveSliceIndexX =
-    draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
+  useEffect(() => {
+    if (draggingSlice === "x") return;
+    scrubTargetIndexXRef.current = sliceIndexX;
+    setFetchSliceIndexX(sliceIndexX);
+  }, [sliceIndexX, draggingSlice]);
 
-  const effectiveSliceIndexY =
-    draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+  useEffect(() => {
+    if (draggingSlice === "y") return;
+    scrubTargetIndexYRef.current = sliceIndexY;
+    setFetchSliceIndexY(sliceIndexY);
+  }, [sliceIndexY, draggingSlice]);
 
   useEffect(() => {
     coordsDraftRef.current = coordsDraft;
@@ -1372,7 +1400,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      effectiveSliceIndex == null ||
+      fetchSliceIndexZ == null ||
       maxSliceZ == null ||
       maxSliceZ < 0
     ) {
@@ -1381,7 +1409,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(effectiveSliceIndex, maxSliceZ));
+    const clamped = Math.max(0, Math.min(fetchSliceIndexZ, maxSliceZ));
     const isDraggingZ = draggingSlice === "z";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|z|${tomogramColormap}|${isDraggingZ ? "drag" : "full"}|${clamped}`;
 
@@ -1399,6 +1427,11 @@ export default function Coords3dViewer({
     const controller = new AbortController();
     sliceAbortRef.current = controller;
     const reqId = ++sliceReqIdRef.current;
+    const targetIndexForThisFetch = fetchSliceIndexZ;
+
+    if (isDraggingZ) {
+      scrubFetchBusyZRef.current = true;
+    }
 
     (async () => {
       try {
@@ -1444,11 +1477,24 @@ export default function Coords3dViewer({
         setSliceError(e?.message || "Failed to load tomogram slice");
       } finally {
         if (sliceReqIdRef.current === reqId) setSliceLoading(false);
+
+        if (isDraggingZ) {
+          scrubFetchBusyZRef.current = false;
+
+          const latestTarget = scrubTargetIndexZRef.current;
+          if (latestTarget != null && latestTarget !== targetIndexForThisFetch) {
+            // The slider moved on while this fetch was in flight -- chase
+            // it by kicking off a fetch for wherever it is NOW, skipping
+            // whatever intermediate positions were passed through.
+            setFetchSliceIndexZ(latestTarget);
+          }
+        }
       }
     })();
 
     return () => {
       controller.abort();
+      scrubFetchBusyZRef.current = false;
     };
   }, [
     viewMode,
@@ -1456,7 +1502,7 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    effectiveSliceIndex,
+    fetchSliceIndexZ,
     draggingSlice,
     buildSliceFetchOptions,
     maxSliceZ,
@@ -1482,7 +1528,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      effectiveSliceIndexX == null ||
+      fetchSliceIndexX == null ||
       maxSliceX == null ||
       maxSliceX < 0
     ) {
@@ -1491,7 +1537,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(effectiveSliceIndexX, maxSliceX));
+    const clamped = Math.max(0, Math.min(fetchSliceIndexX, maxSliceX));
     const isDraggingX = draggingSlice === "x";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|x|${tomogramColormap}|${isDraggingX ? "drag" : "full"}|${clamped}`;
 
@@ -1509,6 +1555,11 @@ export default function Coords3dViewer({
     const controller = new AbortController();
     sliceXAbortRef.current = controller;
     const reqId = ++sliceXReqIdRef.current;
+    const targetIndexForThisFetch = fetchSliceIndexX;
+
+    if (isDraggingX) {
+      scrubFetchBusyXRef.current = true;
+    }
 
     (async () => {
       try {
@@ -1554,11 +1605,21 @@ export default function Coords3dViewer({
         setSliceXError(e?.message || "Failed to load tomogram slice (X)");
       } finally {
         if (sliceXReqIdRef.current === reqId) setSliceXLoading(false);
+
+        if (isDraggingX) {
+          scrubFetchBusyXRef.current = false;
+
+          const latestTarget = scrubTargetIndexXRef.current;
+          if (latestTarget != null && latestTarget !== targetIndexForThisFetch) {
+            setFetchSliceIndexX(latestTarget);
+          }
+        }
       }
     })();
 
     return () => {
       controller.abort();
+      scrubFetchBusyXRef.current = false;
     };
   }, [
     viewMode,
@@ -1567,7 +1628,7 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    effectiveSliceIndexX,
+    fetchSliceIndexX,
     draggingSlice,
     buildSliceFetchOptions,
     maxSliceX,
@@ -1593,7 +1654,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      effectiveSliceIndexY == null ||
+      fetchSliceIndexY == null ||
       maxSliceY == null ||
       maxSliceY < 0
     ) {
@@ -1602,7 +1663,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(effectiveSliceIndexY, maxSliceY));
+    const clamped = Math.max(0, Math.min(fetchSliceIndexY, maxSliceY));
     const isDraggingY = draggingSlice === "y";
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|y|${tomogramColormap}|${isDraggingY ? "drag" : "full"}|${clamped}`;
 
@@ -1620,6 +1681,11 @@ export default function Coords3dViewer({
     const controller = new AbortController();
     sliceYAbortRef.current = controller;
     const reqId = ++sliceYReqIdRef.current;
+    const targetIndexForThisFetch = fetchSliceIndexY;
+
+    if (isDraggingY) {
+      scrubFetchBusyYRef.current = true;
+    }
 
     (async () => {
       try {
@@ -1665,11 +1731,21 @@ export default function Coords3dViewer({
         setSliceYError(e?.message || "Failed to load tomogram slice (Y)");
       } finally {
         if (sliceYReqIdRef.current === reqId) setSliceYLoading(false);
+
+        if (isDraggingY) {
+          scrubFetchBusyYRef.current = false;
+
+          const latestTarget = scrubTargetIndexYRef.current;
+          if (latestTarget != null && latestTarget !== targetIndexForThisFetch) {
+            setFetchSliceIndexY(latestTarget);
+          }
+        }
       }
     })();
 
     return () => {
       controller.abort();
+      scrubFetchBusyYRef.current = false;
     };
   }, [
     viewMode,
@@ -1678,7 +1754,7 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    effectiveSliceIndexY,
+    fetchSliceIndexY,
     draggingSlice,
     buildSliceFetchOptions,
     maxSliceY,
@@ -3654,6 +3730,10 @@ export default function Coords3dViewer({
                             onChange={(v) => {
                               setDraggingSlice("z");
                               setSliceIndex(v);
+                              scrubTargetIndexZRef.current = v;
+                              if (!scrubFetchBusyZRef.current) {
+                                setFetchSliceIndexZ(v);
+                              }
                             }}
                             onChangeCommitted={(v) => {
                               setSliceIndex(v);
@@ -3672,6 +3752,10 @@ export default function Coords3dViewer({
                               onChange={(v) => {
                                 setDraggingSlice("x");
                                 setSliceIndexX(v);
+                                scrubTargetIndexXRef.current = v;
+                                if (!scrubFetchBusyXRef.current) {
+                                  setFetchSliceIndexX(v);
+                                }
                               }}
                               onChangeCommitted={(v) => {
                                 setSliceIndexX(v);
@@ -3691,6 +3775,10 @@ export default function Coords3dViewer({
                               onChange={(v) => {
                                 setDraggingSlice("y");
                                 setSliceIndexY(v);
+                                scrubTargetIndexYRef.current = v;
+                                if (!scrubFetchBusyYRef.current) {
+                                  setFetchSliceIndexY(v);
+                                }
                               }}
                               onChangeCommitted={(v) => {
                                 setSliceIndexY(v);
@@ -5694,42 +5782,3 @@ function isHotkeyWindowActive(
 }
 
 
-function useThrottledValue<T>(value: T, delayMs: number): T {
-  const [throttled, setThrottled] = useState<T>(value);
-  const lastExecutedRef = useRef<number>(0);
-  const timeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const now = performance.now();
-    const elapsed = now - lastExecutedRef.current;
-
-    const runNow = () => {
-      lastExecutedRef.current = performance.now();
-      setThrottled(value);
-    };
-
-    if (elapsed >= delayMs) {
-      runNow();
-      if (timeoutRef.current != null) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    } else {
-      if (timeoutRef.current != null) window.clearTimeout(timeoutRef.current);
-      const remaining = delayMs - elapsed;
-      timeoutRef.current = window.setTimeout(() => {
-        runNow();
-        timeoutRef.current = null;
-      }, remaining);
-    }
-
-    return () => {
-      if (timeoutRef.current != null) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
-  }, [value, delayMs]);
-
-  return throttled;
-}

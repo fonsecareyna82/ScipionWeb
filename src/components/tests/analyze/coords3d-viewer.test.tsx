@@ -906,6 +906,88 @@ describe("Coords3dViewer", () => {
         expect(settledCall[5]).not.toHaveProperty("quality");
     });
 
+    it("coalesces rapid Z slider drag ticks into a single chase fetch instead of one per tick", async () => {
+        const firstTickGate = createDeferred<void>();
+        let callCount = 0;
+
+        serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                _tomoId: string,
+                sliceIndex: number,
+                options?: { axis?: string },
+            ) => {
+                callCount += 1;
+                // Gate by the REQUESTED slice index, not call order -- the
+                // very first call is the auto-select mount fetch (index
+                // 30), fired before any drag and never gated by the
+                // scrub-busy ref (isDraggingZ is false at that point).
+                if (String(options?.axis ?? "z") === "z" && sliceIndex === 35) {
+                    await firstTickGate.promise;
+                }
+                return makeSliceUrl(String(options?.axis ?? "z"), Number(sliceIndex));
+            },
+        );
+
+        renderViewer();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(1);
+        });
+
+        const sliders = screen.getAllByRole("slider");
+        const zSlider = sliders[0];
+        const sliderRoot = zSlider.closest(".MuiSlider-root") as HTMLElement;
+        sliderRoot.getBoundingClientRect = () =>
+            ({
+                left: 0,
+                right: 100,
+                width: 100,
+                top: 0,
+                bottom: 10,
+                height: 10,
+                x: 0,
+                y: 0,
+                toJSON: () => ({}),
+            }) as DOMRect;
+
+        // dims for t1 are [100, 80, 60] -> maxSliceZ = 59; clientX
+        // 60/80/100 of the rail map to slices 35/47/59.
+        fireEvent.mouseDown(sliderRoot, { button: 0, clientX: 60, clientY: 5 });
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+        });
+
+        // Simulates the rest of a fast drag while the index-35 fetch is
+        // still pending -- these must be coalesced, not each firing their
+        // own request.
+        fireEvent.mouseMove(document, { clientX: 80, clientY: 5, buttons: 1 });
+        fireEvent.mouseMove(document, { clientX: 100, clientY: 5, buttons: 1 });
+
+        // The slider handle itself must still track the drag live...
+        await waitFor(() => {
+            expect(zSlider).toHaveAttribute("aria-valuenow", "59");
+        });
+
+        // Only the mount fetch (index 30) and the first tick (index 35)
+        // reached the network -- the rest coalesced.
+        expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+
+        firstTickGate.resolve();
+
+        // Once the in-flight fetch settles, it chases straight to the
+        // LATEST position (59, the last tick) -- never 47 along the way.
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(3);
+        });
+
+        const chaseCallArgs = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls[2];
+        expect(Number(chaseCallArgs[4])).toBe(59);
+    });
+
     it("caches Z slice object URLs so revisiting an index skips a new fetch", async () => {
         renderViewer();
 
