@@ -120,17 +120,7 @@ function mappedSliceIndex(
   );
 }
 
-export function buildVolumeSliceOverlayDataUrl({
-  data,
-  regions,
-  axis,
-  sourceIndex,
-  sourceDims,
-  colorMode,
-  level,
-  opacity,
-  colormap,
-}: {
+export type VolumeSliceOverlayParams = {
   data: VolumeRenderData;
   regions?: VolumeRegionLabels | null;
   axis: "x" | "y" | "z";
@@ -140,7 +130,19 @@ export function buildVolumeSliceOverlayDataUrl({
   level: number;
   opacity: number;
   colormap: string;
-}): string | null {
+};
+
+function buildVolumeSliceOverlayCanvas({
+  data,
+  regions,
+  axis,
+  sourceIndex,
+  sourceDims,
+  colorMode,
+  level,
+  opacity,
+  colormap,
+}: VolumeSliceOverlayParams): HTMLCanvasElement | null {
   const { dims } = data;
 
   if (!data.values.length || !dims.x || !dims.y || !dims.z) {
@@ -245,5 +247,37 @@ export function buildVolumeSliceOverlayDataUrl({
   }
 
   ctx.putImageData(image, 0, 0);
-  return canvas.toDataURL("image/png");
+  return canvas;
+}
+
+/**
+ * Synchronous, data-URL flavor -- kept for callers that need the string
+ * immediately. Prefer buildVolumeSliceOverlayObjectUrl for anything driven
+ * by slice scrubbing: toDataURL's base64 encode is synchronous and blocks
+ * the main thread, on top of the pixel-compositing loop above.
+ */
+export function buildVolumeSliceOverlayDataUrl(
+  params: VolumeSliceOverlayParams,
+): string | null {
+  const canvas = buildVolumeSliceOverlayCanvas(params);
+  return canvas ? canvas.toDataURL("image/png") : null;
+}
+
+/**
+ * Same pixel compositing as buildVolumeSliceOverlayDataUrl, but encodes via
+ * canvas.toBlob() (async, off the main thread) instead of toDataURL()
+ * (synchronous base64 encode). Callers should revoke the returned URL with
+ * URL.revokeObjectURL once it's no longer displayed.
+ */
+export function buildVolumeSliceOverlayObjectUrl(
+  params: VolumeSliceOverlayParams,
+): Promise<string | null> {
+  const canvas = buildVolumeSliceOverlayCanvas(params);
+  if (!canvas) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob ? URL.createObjectURL(blob) : null);
+    }, "image/png");
+  });
 }

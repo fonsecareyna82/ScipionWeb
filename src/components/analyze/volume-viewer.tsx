@@ -27,7 +27,9 @@ import GpuVolumeView from "./gpu-volume-view";
 import { useClippingSliceImages } from "./use-clipping-slice-images";
 import useVolumeRegions from "./use-volume-regions";
 import {
-  buildVolumeSliceOverlayDataUrl,
+  buildVolumeSliceOverlayObjectUrl,
+  type VolumeColorMode,
+  type VolumeRegionLabels,
   type VolumeRenderData,
 } from "./volume-color-utils";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
@@ -1777,57 +1779,24 @@ export default function VolumeViewer({
     maxRegions: 96,
   });
 
-  const buildSliceOverlay = useCallback(
-    (
-      sliceAxis: "x" | "y" | "z",
-      index: number,
-    ) => {
-      if (!sliceOverlayEnabled || !mapData) {
-        return null;
-      }
-
-      return buildVolumeSliceOverlayDataUrl({
-        data: mapData,
-        regions: volumeRegions,
-        axis: sliceAxis,
-        sourceIndex: index,
-        sourceDims: dims,
-        colorMode: colorMode3d,
-        level: surfaceLevelValue,
-        opacity: opacity3d,
-        colormap: colormap3d,
-      });
-    },
-    [
-      sliceOverlayEnabled,
-      mapData,
-      volumeRegions,
-      dims,
-      colorMode3d,
-      surfaceLevelValue,
-      opacity3d,
-      colormap3d,
-    ],
+  const singleOverlayUrl = useSliceOverlayObjectUrl(
+    sliceOverlayEnabled, mapData, volumeRegions, axis, effectiveSliceIndex,
+    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
-  const singleOverlayUrl = useMemo(
-    () => buildSliceOverlay(axis, effectiveSliceIndex),
-    [buildSliceOverlay, axis, effectiveSliceIndex],
+  const zOverlayUrl = useSliceOverlayObjectUrl(
+    sliceOverlayEnabled, mapData, volumeRegions, "z", effectiveSliceIndexZ,
+    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
-  const zOverlayUrl = useMemo(
-    () => buildSliceOverlay("z", effectiveSliceIndexZ),
-    [buildSliceOverlay, effectiveSliceIndexZ],
+  const yOverlayUrl = useSliceOverlayObjectUrl(
+    sliceOverlayEnabled, mapData, volumeRegions, "y", effectiveSliceIndexY,
+    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
-  const yOverlayUrl = useMemo(
-    () => buildSliceOverlay("y", effectiveSliceIndexY),
-    [buildSliceOverlay, effectiveSliceIndexY],
-  );
-
-  const xOverlayUrl = useMemo(
-    () => buildSliceOverlay("x", effectiveSliceIndexX),
-    [buildSliceOverlay, effectiveSliceIndexX],
+  const xOverlayUrl = useSliceOverlayObjectUrl(
+    sliceOverlayEnabled, mapData, volumeRegions, "x", effectiveSliceIndexX,
+    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
   const meshCameraStateKey = useMemo(
@@ -4288,6 +4257,92 @@ function storeCachedSliceImage(cache: SliceImageCache, key: string, entry: Slice
 function clearSliceImageCache(cache: SliceImageCache) {
   for (const entry of cache.values()) entry.revoke();
   cache.clear();
+}
+
+/**
+ * Builds the "Volume overlay" slice composite as an object URL, off the
+ * synchronous render path. The pixel-compositing + canvas.toBlob() encode
+ * both run in an effect (after paint) instead of inside a useMemo (which
+ * ran during render and blocked it) -- see buildVolumeSliceOverlayObjectUrl
+ * in volume-color-utils.ts for the async toBlob() encode itself.
+ */
+function useSliceOverlayObjectUrl(
+  enabled: boolean,
+  data: VolumeRenderData | null,
+  regions: VolumeRegionLabels | null | undefined,
+  axis: "x" | "y" | "z",
+  sourceIndex: number,
+  sourceDims: { x: number; y: number; z: number },
+  colorMode: VolumeColorMode,
+  level: number,
+  opacity: number,
+  colormap: string,
+): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const reqIdRef = useRef(0);
+
+  useEffect(() => {
+    const reqId = ++reqIdRef.current;
+
+    if (!enabled || !data) {
+      const previous = urlRef.current;
+      urlRef.current = null;
+      setUrl(null);
+      if (previous) URL.revokeObjectURL(previous);
+      return;
+    }
+
+    let cancelled = false;
+
+    buildVolumeSliceOverlayObjectUrl({
+      data,
+      regions,
+      axis,
+      sourceIndex,
+      sourceDims,
+      colorMode,
+      level,
+      opacity,
+      colormap,
+    }).then((nextUrl) => {
+      if (cancelled || reqIdRef.current !== reqId) {
+        if (nextUrl) URL.revokeObjectURL(nextUrl);
+        return;
+      }
+
+      const previous = urlRef.current;
+      urlRef.current = nextUrl;
+      setUrl(nextUrl);
+      if (previous) URL.revokeObjectURL(previous);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    enabled,
+    data,
+    regions,
+    axis,
+    sourceIndex,
+    sourceDims,
+    colorMode,
+    level,
+    opacity,
+    colormap,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      }
+    };
+  }, []);
+
+  return url;
 }
 
 function useVolumeSliceImage({
