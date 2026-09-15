@@ -3570,8 +3570,13 @@ export async function fetchMetadataImageCellObjectUrl(
     { size, applyTransform, inline, format, rowId, sortBy, asc },
   );
 
+  // Opt into browser HTTP caching (fetchWithAuth defaults to no-store):
+  // the backend now caches + ETags this render, so a revisit (scrolled
+  // back into view, remount, etc.) can revalidate instead of always doing
+  // a full round trip and re-render.
   const res = await fetchWithAuth(baseUrl, {
     method: "GET",
+    cache: "default",
     signal,
   });
   if (!res.ok) {
