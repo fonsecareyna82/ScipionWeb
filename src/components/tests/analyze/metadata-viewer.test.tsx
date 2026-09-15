@@ -1159,7 +1159,12 @@ describe("MetadataViewer", () => {
         fireEvent.doubleClick(thumb);
 
         const dialog = await screen.findByRole("dialog");
-        expect(within(dialog).getByText(/Row 1/)).toBeInTheDocument();
+
+        const rowLabel = within(dialog).getByText("Row");
+
+        expect(rowLabel).toHaveTextContent(
+            /^Row\s*1$/,
+        );
 
         const preview = await within(dialog).findByRole("img");
         expect(preview).toHaveAttribute("src", "blob:preview-large");
@@ -1241,7 +1246,12 @@ describe("MetadataViewer", () => {
         fireEvent.doubleClick(firstCard);
 
         const dialog = await screen.findByRole("dialog");
-        expect(within(dialog).getByText(/Row 1/)).toBeInTheDocument();
+
+        const rowLabel = within(dialog).getByText("Row");
+
+        expect(rowLabel).toHaveTextContent(
+            /^Row\s*1$/,
+        );
     });
 
     it(

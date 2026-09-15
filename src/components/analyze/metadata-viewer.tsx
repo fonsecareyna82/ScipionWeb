@@ -58,6 +58,8 @@ import {
   Search,
   Sigma,
   Bookmark,
+  Image as ImageIcon,
+  Maximize2,
   LineChart as PlotterIcon,
 } from "lucide-react";
 import type {
@@ -2599,99 +2601,497 @@ function MetadataImagePreviewDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="lg"
+      maxWidth={false}
       fullWidth
+      slotProps={{
+        backdrop: {
+          sx: {
+            backgroundColor: "rgba(15,23,42,0.46)",
+            backdropFilter: "blur(5px)",
+          },
+        },
+      }}
       PaperProps={{
         sx: {
-          borderRadius: 3,
+          width: "min(1220px, calc(100vw - 48px))",
+          height: "min(900px, calc(100vh - 48px))",
+          maxWidth: "none",
+          maxHeight: "none",
+          m: 0,
+          display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
-          border: "1px solid rgba(15,23,42,0.08)",
-          boxShadow: "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
+          borderRadius: "18px",
+          border: "1px solid rgba(148,163,184,0.35)",
+          background:
+            "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+          boxShadow:
+            "0 32px 90px rgba(15,23,42,0.28), 0 10px 30px rgba(15,23,42,0.14)",
         },
       }}
     >
       <DialogTitle
         sx={{
-          px: 2,
-          py: 1.4,
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
-          color: "#e2e8f0",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          p: 0,
+          background:
+            "linear-gradient(135deg, #ffffff 0%, #f8fafc 58%, #eef2ff 100%)",
+          borderBottom: "1px solid rgba(148,163,184,0.28)",
         }}
       >
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography
-            variant="subtitle1"
-            sx={{ fontWeight: 700, lineHeight: 1.15, color: "#f8fafc" }}
-            noWrap
-          >
-            {state
-              ? `${state.columnAlias} — Row ${state.rowIndexInTable + 1}${state.rowId != null ? ` (id ${state.rowId})` : ""}`
-              : ""}
-          </Typography>
-          {state && (
-            <Typography
-              variant="caption"
-              sx={{ color: "rgba(226,232,240,0.82)", display: "block", mt: 0.25 }}
-              noWrap
-            >
-              {state.path}
-            </Typography>
-          )}
-        </Box>
-
-        <IconButton
-          size="small"
-          onClick={onClose}
-          aria-label="Close image preview"
+        <Box
           sx={{
-            color: "#e2e8f0",
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: "rgba(255,255,255,0.06)",
-            "&:hover": {
-              background: "rgba(255,255,255,0.12)",
-              borderColor: "rgba(255,255,255,0.28)",
-            },
+            px: 2.5,
+            py: 2,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.75,
           }}
         >
-          <CloseIcon fontSize="small" />
-        </IconButton>
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: "13px",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#4338ca",
+              background:
+                "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
+              border: "1px solid rgba(99,102,241,0.22)",
+              boxShadow: "0 5px 14px rgba(79,70,229,0.12)",
+            }}
+          >
+            <ImageIcon size={21} strokeWidth={1.9} />
+          </Box>
+
+          <Box
+            sx={{
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                minWidth: 0,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: "1rem",
+                  fontWeight: 750,
+                  letterSpacing: "-0.01em",
+                  color: "#0f172a",
+                }}
+              >
+                {state?.columnAlias || "Image preview"}
+              </Typography>
+
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.35,
+                  flexShrink: 0,
+                  borderRadius: "999px",
+                  fontSize: "0.68rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.02em",
+                  color: "#4338ca",
+                  backgroundColor: "#eef2ff",
+                  border: "1px solid #c7d2fe",
+                }}
+              >
+                HIGH RES
+              </Box>
+            </Box>
+
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.35,
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "#64748b",
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                fontSize: "0.7rem",
+              }}
+            >
+              {state?.path || ""}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.8,
+              flexShrink: 0,
+            }}
+          >
+            <Box
+              sx={{
+                display: {
+                  xs: "none",
+                  md: "flex",
+                },
+                alignItems: "center",
+                gap: 0.7,
+                px: 1.1,
+                py: 0.65,
+                borderRadius: "10px",
+                color: "#475569",
+                backgroundColor: "rgba(255,255,255,0.78)",
+                border: "1px solid rgba(148,163,184,0.28)",
+              }}
+            >
+              <Maximize2 size={14} />
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 650,
+                  color: "inherit",
+                }}
+              >
+                {METADATA_IMAGE_PREVIEW_SIZE}px
+              </Typography>
+            </Box>
+
+            <IconButton
+              size="small"
+              onClick={onClose}
+              aria-label="Close image preview"
+              sx={{
+                width: 36,
+                height: 36,
+                color: "#475569",
+                border: "1px solid rgba(148,163,184,0.32)",
+                backgroundColor: "rgba(255,255,255,0.86)",
+                transition:
+                  "background-color 140ms ease, border-color 140ms ease, transform 140ms ease",
+                "&:hover": {
+                  color: "#0f172a",
+                  backgroundColor: "#ffffff",
+                  borderColor: "rgba(100,116,139,0.5)",
+                  transform: "translateY(-1px)",
+                },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
       </DialogTitle>
 
       <DialogContent
-        dividers
         sx={{
-          px: 2,
-          py: 2,
-          minHeight: 320,
+          p: 0,
+          flex: 1,
+          minHeight: 0,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#0b1220",
+          flexDirection: "column",
+          backgroundColor: "#e2e8f0",
         }}
       >
-        {loading && <CircularProgress size={28} sx={{ color: "#94a3b8" }} />}
-
-        {!loading && error && (
-          <Typography variant="body2" sx={{ color: "#fca5a5" }}>
-            {error}
-          </Typography>
-        )}
-
-        {!loading && !error && previewUrl && (
-          <img
-            src={previewUrl}
-            alt={state?.path ?? ""}
-            style={{
-              maxWidth: "100%",
-              maxHeight: "75vh",
-              objectFit: "contain",
-              borderRadius: 4,
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            p: {
+              xs: 2,
+              sm: 3,
+            },
+            background: `
+              radial-gradient(
+                circle at 50% 38%,
+                rgba(255,255,255,0.98) 0%,
+                rgba(248,250,252,0.96) 38%,
+                rgba(226,232,240,0.96) 100%
+              )
+            `,
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(148,163,184,0.22)",
+          }}
+        >
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: 0.32,
+              backgroundImage: `
+                linear-gradient(
+                  45deg,
+                  rgba(148,163,184,0.09) 25%,
+                  transparent 25%
+                ),
+                linear-gradient(
+                  -45deg,
+                  rgba(148,163,184,0.09) 25%,
+                  transparent 25%
+                ),
+                linear-gradient(
+                  45deg,
+                  transparent 75%,
+                  rgba(148,163,184,0.09) 75%
+                ),
+                linear-gradient(
+                  -45deg,
+                  transparent 75%,
+                  rgba(148,163,184,0.09) 75%
+                )
+              `,
+              backgroundSize: "22px 22px",
+              backgroundPosition:
+                "0 0, 0 11px, 11px -11px, -11px 0px",
             }}
           />
+
+          {loading && (
+            <Box
+              sx={{
+                position: "relative",
+                zIndex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 1.5,
+                px: 3,
+                py: 2.5,
+                borderRadius: "16px",
+                backgroundColor: "rgba(255,255,255,0.82)",
+                border: "1px solid rgba(148,163,184,0.25)",
+                boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <CircularProgress
+                size={30}
+                thickness={4}
+                sx={{
+                  color: "#4f46e5",
+                }}
+              />
+
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "#64748b",
+                  fontWeight: 600,
+                }}
+              >
+                Loading high-resolution preview…
+              </Typography>
+            </Box>
+          )}
+
+          {!loading && error && (
+            <Box
+              sx={{
+                position: "relative",
+                zIndex: 1,
+                maxWidth: 520,
+                px: 3,
+                py: 2.5,
+                borderRadius: "16px",
+                textAlign: "center",
+                backgroundColor: "#fff7ed",
+                border: "1px solid #fed7aa",
+                boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+              }}
+            >
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  mb: 0.5,
+                  color: "#9a3412",
+                  fontWeight: 750,
+                }}
+              >
+                Image preview unavailable
+              </Typography>
+
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "#c2410c",
+                }}
+              >
+                {error}
+              </Typography>
+            </Box>
+          )}
+
+          {!loading && !error && previewUrl && (
+            <Box
+              sx={{
+                position: "relative",
+                zIndex: 1,
+                maxWidth: "100%",
+                maxHeight: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "10px",
+                overflow: "hidden",
+                backgroundColor: "#020617",
+                border: "1px solid rgba(15,23,42,0.32)",
+                boxShadow:
+                  "0 22px 55px rgba(15,23,42,0.26), 0 4px 12px rgba(15,23,42,0.12)",
+              }}
+            >
+              <img
+                src={previewUrl}
+                alt={state?.path ?? ""}
+                style={{
+                  display: "block",
+                  maxWidth: "100%",
+                  maxHeight: "calc(100vh - 220px)",
+                  width: "auto",
+                  height: "auto",
+                  objectFit: "contain",
+                }}
+              />
+            </Box>
+          )}
+        </Box>
+
+        {state && (
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.25,
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 0.9,
+              backgroundColor: "#ffffff",
+              borderTop: "1px solid rgba(148,163,184,0.24)",
+            }}
+          >
+            <Box
+              sx={{
+                px: 1.15,
+                py: 0.55,
+                borderRadius: "9px",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "#64748b",
+                }}
+              >
+                Row{" "}
+                <Box
+                  component="span"
+                  sx={{
+                    color: "#0f172a",
+                    fontWeight: 750,
+                  }}
+                >
+                  {state.rowIndexInTable + 1}
+                </Box>
+              </Typography>
+            </Box>
+
+            {state.rowId != null && (
+              <Box
+                sx={{
+                  px: 1.15,
+                  py: 0.55,
+                  borderRadius: "9px",
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "#64748b",
+                  }}
+                >
+                  ID{" "}
+                  <Box
+                    component="span"
+                    sx={{
+                      color: "#0f172a",
+                      fontWeight: 750,
+                    }}
+                  >
+                    {state.rowId}
+                  </Box>
+                </Typography>
+              </Box>
+            )}
+
+            <Box
+              sx={{
+                px: 1.15,
+                py: 0.55,
+                borderRadius: "9px",
+                backgroundColor: "#eef2ff",
+                border: "1px solid #c7d2fe",
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "#4338ca",
+                }}
+              >
+                Column{" "}
+                <Box
+                  component="span"
+                  sx={{
+                    fontWeight: 750,
+                  }}
+                >
+                  {state.columnName}
+                </Box>
+              </Typography>
+            </Box>
+
+            <Box
+              sx={{
+                ml: {
+                  xs: 0,
+                  sm: "auto",
+                },
+                color: "#94a3b8",
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: "0.68rem",
+                  fontWeight: 600,
+                  letterSpacing: "0.025em",
+                }}
+              >
+                Double-click preview · {METADATA_IMAGE_PREVIEW_SIZE}px render
+              </Typography>
+            </Box>
+          </Box>
         )}
       </DialogContent>
     </Dialog>
