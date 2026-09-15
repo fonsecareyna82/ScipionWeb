@@ -7,6 +7,7 @@ import {
   useState,
   type MutableRefObject,
   type MouseEvent as ReactMouseEvent,
+  type WheelEvent as ReactWheelEvent,
   type ReactNode,
   type UIEventHandler,
 } from "react";
@@ -30,6 +31,7 @@ import {
   Divider,
   Paper,
   Select,
+  Slider,
   TextField,
   type SelectChangeEvent,
   Table,
@@ -61,6 +63,12 @@ import {
   Image as ImageIcon,
   Maximize2,
   LineChart as PlotterIcon,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RotateCcw,
+  Sun,
+  Contrast as ContrastIcon,
 } from "lucide-react";
 import type {
   MetadataCell,
@@ -2517,11 +2525,30 @@ function MetadataImagePreviewDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // View adjustments -- local to whatever cell is currently open, reset
+  // every time the dialog opens on a (possibly different) cell below.
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [brightness, setBrightness] = useState(0);
+  const [contrast, setContrast] = useState(1);
+
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setRotation(0);
+    setPanX(0);
+    setPanY(0);
+    setBrightness(0);
+    setContrast(1);
+  }, []);
+
   useEffect(() => {
     if (!state) {
       setPreviewUrl(null);
       setError(null);
       setLoading(false);
+      resetView();
       return;
     }
 
@@ -2532,6 +2559,7 @@ function MetadataImagePreviewDialog({
     setPreviewUrl(null);
     setError(null);
     setLoading(true);
+    resetView();
 
     const baseOptions = {
       rowId: state.rowId ?? undefined,
@@ -2593,9 +2621,78 @@ function MetadataImagePreviewDialog({
       abortController.abort();
       revokeCurrent?.();
     };
-  }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, svcRef]);
+  }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, svcRef, resetView]);
 
   const open = !!state;
+
+  const zoomIn = useCallback(() => {
+    setZoom((z) => Math.min(8, Number((z * 1.25).toFixed(3))));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((z) => Math.max(0.25, Number((z / 1.25).toFixed(3))));
+  }, []);
+
+  const rotateLeft = useCallback(() => {
+    setRotation((r) => (r - 90 + 360) % 360);
+  }, []);
+
+  const rotateRight = useCallback(() => {
+    setRotation((r) => (r + 90) % 360);
+  }, []);
+
+  const handleWheelZoom = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!previewUrl) return;
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setZoom((z) => Math.min(8, Math.max(0.25, Number((z * factor).toFixed(3)))));
+  }, [previewUrl]);
+
+  const dragStateRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    originPanX: number;
+    originPanY: number;
+  }>({ active: false, startX: 0, startY: 0, originPanX: 0, originPanY: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+
+  const handlePanStart = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!previewUrl || zoom <= 1) return;
+      dragStateRef.current = {
+        active: true,
+        startX: event.clientX,
+        startY: event.clientY,
+        originPanX: panX,
+        originPanY: panY,
+      };
+      setIsPanning(true);
+    },
+    [previewUrl, zoom, panX, panY],
+  );
+
+  useEffect(() => {
+    const handleMove = (event: MouseEvent) => {
+      if (!dragStateRef.current.active) return;
+      setPanX(dragStateRef.current.originPanX + (event.clientX - dragStateRef.current.startX));
+      setPanY(dragStateRef.current.originPanY + (event.clientY - dragStateRef.current.startY));
+    };
+
+    const handleUp = () => {
+      if (!dragStateRef.current.active) return;
+      dragStateRef.current.active = false;
+      setIsPanning(false);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   return (
     <Dialog
@@ -2805,7 +2902,132 @@ function MetadataImagePreviewDialog({
           backgroundColor: "#e2e8f0",
         }}
       >
+        {state && (
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 1.5,
+              backgroundColor: "#ffffff",
+              borderBottom: "1px solid rgba(148,163,184,0.24)",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+              <Tooltip title="Zoom out">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!previewUrl}
+                    onClick={zoomOut}
+                    aria-label="Zoom out"
+                  >
+                    <ZoomOut size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Typography
+                data-testid="preview-zoom-level"
+                variant="caption"
+                sx={{ minWidth: 40, textAlign: "center", color: "#475569", fontWeight: 650 }}
+              >
+                {Math.round(zoom * 100)}%
+              </Typography>
+              <Tooltip title="Zoom in">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!previewUrl}
+                    onClick={zoomIn}
+                    aria-label="Zoom in"
+                  >
+                    <ZoomIn size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+
+            <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+              <Tooltip title="Rotate left">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!previewUrl}
+                    onClick={rotateLeft}
+                    aria-label="Rotate left"
+                  >
+                    <RotateCcw size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Rotate right">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!previewUrl}
+                    onClick={rotateRight}
+                    aria-label="Rotate right"
+                  >
+                    <RotateCw size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+
+            <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
+              <Sun size={15} color="#64748b" />
+              <Slider
+                size="small"
+                value={brightness}
+                min={-1}
+                max={1}
+                step={0.02}
+                disabled={!previewUrl}
+                onChange={(_, v) => setBrightness(v as number)}
+                aria-label="Brightness"
+                valueLabelDisplay="auto"
+                valueLabelFormat={(v) => `${Math.round((1 + (v as number)) * 100)}%`}
+                sx={{ width: 90 }}
+              />
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
+              <ContrastIcon size={15} color="#64748b" />
+              <Slider
+                size="small"
+                value={contrast}
+                min={0.5}
+                max={2}
+                step={0.02}
+                disabled={!previewUrl}
+                onChange={(_, v) => setContrast(v as number)}
+                aria-label="Contrast"
+                valueLabelDisplay="auto"
+                valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
+                sx={{ width: 90 }}
+              />
+            </Box>
+
+            <Button
+              size="small"
+              disabled={!previewUrl}
+              onClick={resetView}
+              sx={{ ml: "auto", textTransform: "none", fontWeight: 650, color: "#475569" }}
+            >
+              Reset
+            </Button>
+          </Box>
+        )}
+
         <Box
+          onWheel={handleWheelZoom}
+          onMouseDown={handlePanStart}
           sx={{
             flex: 1,
             minHeight: 0,
@@ -2814,6 +3036,7 @@ function MetadataImagePreviewDialog({
             alignItems: "center",
             justifyContent: "center",
             overflow: "hidden",
+            cursor: !previewUrl ? "default" : zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
             p: {
               xs: 2,
               sm: 3,
@@ -2957,11 +3180,15 @@ function MetadataImagePreviewDialog({
               <img
                 src={previewUrl}
                 alt={state?.path ?? ""}
+                draggable={false}
                 style={{
                   display: "block",
                   width: "100%",
                   height: "100%",
                   objectFit: "contain",
+                  transform: `translate(${zoom > 1 ? panX : 0}px, ${zoom > 1 ? panY : 0}px) scale(${zoom}) rotate(${rotation}deg)`,
+                  filter: `brightness(${1 + brightness}) contrast(${contrast})`,
+                  transition: isPanning ? "none" : "transform 120ms ease-out",
                 }}
               />
             </Box>

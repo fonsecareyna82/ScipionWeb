@@ -1181,6 +1181,94 @@ describe("MetadataViewer", () => {
         });
     });
 
+    it("adjusts zoom, rotation, brightness and contrast in the preview dialog, and resets them", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [{ rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] }],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(tableName as "particles" | "classes");
+            },
+        );
+
+        renderViewer();
+
+        const thumb = await screen.findByAltText("/img/1.png");
+        fireEvent.doubleClick(thumb);
+
+        const dialog = await screen.findByRole("dialog");
+        const preview = await within(dialog).findByRole("img");
+
+        const zoomLevel = within(dialog).getByTestId("preview-zoom-level");
+        expect(zoomLevel).toHaveTextContent("100%");
+        expect(preview).toHaveStyle({ filter: "brightness(1) contrast(1)" });
+
+        fireEvent.click(within(dialog).getByRole("button", { name: "Zoom in" }));
+        expect(zoomLevel).toHaveTextContent("125%");
+        expect(preview.style.transform).toContain("scale(1.25)");
+
+        fireEvent.click(within(dialog).getByRole("button", { name: "Rotate right" }));
+        expect(preview.style.transform).toContain("rotate(90deg)");
+
+        const brightnessSlider = within(dialog).getByRole("slider", { name: "Brightness" });
+        fireEvent.keyDown(brightnessSlider, { key: "ArrowRight" });
+
+        await waitFor(() => {
+            expect(brightnessSlider.getAttribute("aria-valuenow")).not.toBe("0");
+        });
+        expect(preview.style.filter).not.toBe("brightness(1) contrast(1)");
+
+        fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+        await waitFor(() => {
+            expect(zoomLevel).toHaveTextContent("100%");
+        });
+        expect(preview.style.transform).toContain("scale(1)");
+        expect(preview.style.transform).toContain("rotate(0deg)");
+        expect(preview).toHaveStyle({ filter: "brightness(1) contrast(1)" });
+    });
+
     it("opens the preview dialog on double-click in gallery mode too", async () => {
         serviceMocks.fetchMetadataTableSchema.mockImplementation(
             async (_p: number, _r: number, _o: string, tableName: string) => {
