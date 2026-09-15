@@ -3627,6 +3627,97 @@ export function getMetadataImageCellUrl(
   )}/image?${params.toString()}`;
 }
 
+export async function fetchMetadataImageCellsBatch(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  opts: {
+    items: Array<{ rowId?: number | string; rowIndex?: number; columnName: string }>;
+    size?: number;
+    applyTransform?: boolean;
+    inline?: boolean;
+    format?: string;
+    sortBy?: string;
+    asc?: boolean;
+    signal?: AbortSignal;
+  },
+): Promise<{
+  tableName: string;
+  fmt: string;
+  items: Array<{
+    rowId: number | string | null;
+    rowIndex: number | null;
+    columnName: string;
+    contentType?: string | null;
+    dataUrl: string;
+  }>;
+  errors: Array<{ rowId: number | string | null; rowIndex: number | null; columnName: string; error: string }>;
+}> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/image/batch`;
+
+  const body = {
+    items: Array.isArray(opts.items)
+      ? opts.items.map((item) => ({
+        rowId: item.rowId,
+        rowIndex: item.rowIndex,
+        columnName: item.columnName,
+      }))
+      : [],
+    size: opts.size ?? 256,
+    applyTransform: opts.applyTransform ?? false,
+    inline: opts.inline ?? true,
+    fmt: opts.format ?? "png",
+    sortBy: opts.sortBy ?? "id",
+    asc: opts.asc ?? true,
+  };
+
+  const res = await fetchWithAuth(base, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    signal: opts.signal,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) throw await toApiError(res, "Failed to fetch metadata image cell batch");
+
+  const raw = await safeJson<any>(res);
+
+  const items = Array.isArray(raw?.items)
+    ? raw.items
+      .map((item: any) => ({
+        rowId: item?.rowId ?? null,
+        rowIndex: item?.rowIndex != null ? Number(item.rowIndex) : null,
+        columnName: String(item?.columnName ?? ""),
+        contentType: item?.contentType ?? null,
+        dataUrl: String(item?.dataUrl ?? ""),
+      }))
+      .filter((item: any) => item.columnName && item.dataUrl)
+    : [];
+
+  const errors = Array.isArray(raw?.errors)
+    ? raw.errors
+      .map((item: any) => ({
+        rowId: item?.rowId ?? null,
+        rowIndex: item?.rowIndex != null ? Number(item.rowIndex) : null,
+        columnName: String(item?.columnName ?? ""),
+        error: String(item?.error ?? ""),
+      }))
+      .filter((item: any) => item.columnName && item.error)
+    : [];
+
+  return {
+    tableName: String(raw?.tableName ?? tableName),
+    fmt: String(raw?.fmt ?? body.fmt),
+    items,
+    errors,
+  };
+}
+
 export interface MetadataWindow {
   offset?: number;
   limit?: number;

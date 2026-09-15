@@ -726,6 +726,21 @@ const defaultService: ProjectService = {
       opts,
     ),
 
+  fetchMetadataImageCellsBatch: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts,
+  ) =>
+    api.fetchMetadataImageCellsBatch(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      opts,
+    ),
+
   getMetadataImageCellUrl: (
     projectId: Id,
     protocolId: Id,

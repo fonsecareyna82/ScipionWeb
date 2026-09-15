@@ -2083,6 +2083,35 @@ export interface ProjectService<
     }
   ): Promise<{ url: string; revoke: () => void }>;
 
+  /** Render several metadata image cells in one request, for populating a freshly-scrolled screenful of gallery thumbnails. */
+  fetchMetadataImageCellsBatch(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts: {
+      items: Array<{ rowId?: number | string; rowIndex?: number; columnName: string }>;
+      size?: number;
+      applyTransform?: boolean;
+      inline?: boolean;
+      format?: string;
+      sortBy?: string;
+      asc?: boolean;
+      signal?: AbortSignal;
+    }
+  ): Promise<{
+    tableName: string;
+    fmt: string;
+    items: Array<{
+      rowId: number | string | null;
+      rowIndex: number | null;
+      columnName: string;
+      contentType?: string | null;
+      dataUrl: string;
+    }>;
+    errors: Array<{ rowId: number | string | null; rowIndex: number | null; columnName: string; error: string }>;
+  }>;
+
   getMetadataImageCellUrl(
     projectId: Id,
     protocolId: Id,

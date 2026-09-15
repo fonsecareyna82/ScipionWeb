@@ -6,6 +6,7 @@ const serviceMocks = vi.hoisted(() => ({
     fetchMetadataTableSchema: vi.fn(),
     fetchMetadataTableWindow: vi.fn(),
     fetchMetadataImageCellObjectUrl: vi.fn(),
+    fetchMetadataImageCellsBatch: vi.fn(),
     runMetadataTableAction: vi.fn(),
     fetchMetadataRowPosition: vi.fn(),
 }));
@@ -236,6 +237,17 @@ describe("MetadataViewer", () => {
         serviceMocks.fetchMetadataImageCellObjectUrl.mockResolvedValue({
             url: "blob:image-1",
             revoke: vi.fn(),
+        });
+
+        // Empty by default (no items matched) -- every cell falls back to
+        // fetchMetadataImageCellObjectUrl exactly like before batching
+        // existed, so this default doesn't change any other test's
+        // assertions. Individual tests override it to exercise batching.
+        serviceMocks.fetchMetadataImageCellsBatch.mockResolvedValue({
+            tableName: "particles",
+            fmt: "png",
+            items: [],
+            errors: [],
         });
 
         serviceMocks.runMetadataTableAction.mockResolvedValue({ success: true });
@@ -890,6 +902,195 @@ describe("MetadataViewer", () => {
         expect(secondCard).toHaveFocus();
         fireEvent.keyDown(secondCard, { key: "Enter" });
         expect(secondCard).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("collapses simultaneously visible image cells into a single batch request", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [
+                            { rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] },
+                            { rowId: 2, values: [2, { kind: "image", path: "/img/2.png" }] },
+                        ],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataImageCellsBatch.mockResolvedValue({
+            tableName: "particles",
+            fmt: "png",
+            items: [
+                { rowId: 1, rowIndex: 0, columnName: "preview", contentType: "image/png", dataUrl: "data:image/png;base64,row1" },
+                { rowId: 2, rowIndex: 1, columnName: "preview", contentType: "image/png", dataUrl: "data:image/png;base64,row2" },
+            ],
+            errors: [],
+        });
+
+        renderViewer();
+
+        expect(await screen.findByAltText("/img/1.png")).toHaveAttribute(
+            "src",
+            "data:image/png;base64,row1",
+        );
+        expect(screen.getByAltText("/img/2.png")).toHaveAttribute(
+            "src",
+            "data:image/png;base64,row2",
+        );
+
+        expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.fetchMetadataImageCellsBatch.mock.calls[0][4].items).toEqual([
+            { rowId: 1, rowIndex: 0, columnName: "preview" },
+            { rowId: 2, rowIndex: 1, columnName: "preview" },
+        ]);
+        expect(serviceMocks.fetchMetadataImageCellObjectUrl).not.toHaveBeenCalled();
+    });
+
+    it("falls back to individual fetches for cells the batch response didn't include", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        name: "particles",
+                        alias: "Particles",
+                        hasColumnId: true,
+                        columns: [
+                            {
+                                name: "id",
+                                alias: "Id",
+                                index: 0,
+                                sortable: true,
+                                visible: true,
+                                rendererType: "int",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                            {
+                                name: "preview",
+                                alias: "Preview",
+                                index: 1,
+                                sortable: false,
+                                visible: true,
+                                rendererType: "image",
+                                decimals: 0,
+                                hasTransformation: false,
+                            },
+                        ],
+                        actions: [],
+                    };
+                }
+
+                return makeSchema(tableName as "particles" | "classes");
+            },
+        );
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                tableName: string,
+            ) => {
+                if (tableName === "particles") {
+                    return {
+                        rows: [
+                            { rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] },
+                            { rowId: 2, values: [2, { kind: "image", path: "/img/2.png" }] },
+                        ],
+                        offset: 0,
+                    };
+                }
+
+                return makeWindowRows(tableName as "particles" | "classes");
+            },
+        );
+
+        // Row 1 comes back fine; row 2 is missing from the batch response
+        // entirely (e.g. it individually errored server-side).
+        serviceMocks.fetchMetadataImageCellsBatch.mockResolvedValue({
+            tableName: "particles",
+            fmt: "png",
+            items: [
+                { rowId: 1, rowIndex: 0, columnName: "preview", contentType: "image/png", dataUrl: "data:image/png;base64,row1" },
+            ],
+            errors: [
+                { rowId: 2, rowIndex: 1, columnName: "preview", error: "boom" },
+            ],
+        });
+
+        serviceMocks.fetchMetadataImageCellObjectUrl.mockResolvedValue({
+            url: "blob:fallback-row2",
+            revoke: vi.fn(),
+        });
+
+        renderViewer();
+
+        expect(await screen.findByAltText("/img/1.png")).toHaveAttribute(
+            "src",
+            "data:image/png;base64,row1",
+        );
+        await waitFor(() => {
+            expect(screen.getByAltText("/img/2.png")).toHaveAttribute("src", "blob:fallback-row2");
+        });
+
+        expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(1);
     });
 
     it(

@@ -69,6 +69,7 @@ import type {
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
 import { useProjectService } from "@/ProjectServiceContext";
+import type { ProjectService } from "@/services/ProjectService";
 import { MetadataPlotterDialog } from "./metadata-plotter-dialog";
 import { useMetadataGalleryRows, getGalleryLayout } from "./use-metadata-gallery";
 import { metadataScanWindows } from "./metadata-scan-windows";
@@ -105,8 +106,29 @@ type MetadataWindowResponse = MetadataRow[] | { rows?: MetadataRow[]; offset?: n
 
 type ImageJobResult = { url: string; revoke: () => void };
 
+// Lets compatible jobs (same project/protocol/output/table/size/sort, still
+// pending at the same time) be collapsed into a single
+// fetchMetadataImageCellsBatch request instead of one HTTP round trip per
+// cell -- see runImageJobBatch below. A job without this context (or one
+// whose batch-mates all fail) simply falls back to its own run().
+type ImageJobBatchContext = {
+  groupKey: string;
+  svc: { fetchMetadataImageCellsBatch: ProjectService["fetchMetadataImageCellsBatch"] };
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  tableName: string;
+  size: number;
+  sortBy?: string;
+  asc?: boolean;
+  rowId: RowId | null;
+  rowIndex: number;
+  columnName: string;
+};
+
 interface ImageJob {
   run: () => Promise<ImageJobResult>;
+  batch?: ImageJobBatchContext;
   onSuccess: (result: ImageJobResult) => void;
   onError: (error: unknown) => void;
   isCancelled: () => boolean;
@@ -364,6 +386,9 @@ const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
 const MAX_CONCURRENT_PRELOAD_IMAGE_REQUESTS = 3;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
 const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
+// Cap on how many compatible cells one fetchMetadataImageCellsBatch request
+// bundles together -- keep comfortably under the backend's own 64-item cap.
+const IMAGE_BATCH_MAX_ITEMS = 32;
 
 const METADATA_IMAGE_PRIMARY_FORMAT = "webp";
 const METADATA_IMAGE_FALLBACK_FORMAT = "png";
@@ -445,6 +470,23 @@ function getImageJobPriority(
 const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
 let activePreloadImageJobs = 0;
+let imageScheduleFlushQueued = false;
+
+// Defers the actual scheduling decision to a microtask so every cell that
+// becomes visible in the same React commit (e.g. mounting a screenful of
+// gallery rows, or a whole burst of cells crossing into view on scroll) has
+// finished calling enqueueImageJob and landed in imageJobQueue *before*
+// scheduleNextImageJob decides how to group them into batches. Without this,
+// each cell's synchronous effect would enqueue-and-dispatch one at a time,
+// and nothing would ever end up queued together to batch.
+function requestImageScheduleFlush() {
+  if (imageScheduleFlushQueued) return;
+  imageScheduleFlushQueued = true;
+  queueMicrotask(() => {
+    imageScheduleFlushQueued = false;
+    scheduleNextImageJob();
+  });
+}
 
 function pruneCancelledImageJobs() {
   for (let i = imageJobQueue.length - 1; i >= 0; i -= 1) {
@@ -479,17 +521,50 @@ function scheduleNextImageJob() {
       return;
     }
 
-    const [job] = imageJobQueue.splice(jobIndex, 1);
+    const anchor = imageJobQueue[jobIndex];
 
-    if (!job) {
+    if (!anchor) {
       return;
     }
 
-    if (job.isCancelled()) {
+    if (anchor.isCancelled()) {
+      imageJobQueue.splice(jobIndex, 1);
       continue;
     }
 
-    const startedAsPreload = job.getPriority() === 1;
+    const startedAsPreload = anchor.getPriority() === 1;
+
+    // Pull every other still-pending job that's compatible with the anchor
+    // (same batch group, same priority tier) into the same network request,
+    // up to IMAGE_BATCH_MAX_ITEMS -- this is what collapses a freshly
+    // scrolled screenful of thumbnails into ~1 request instead of one per
+    // cell. A job with no batch context (or a lone job) just runs on its own.
+    const batch: ImageJob[] = [anchor];
+
+    if (anchor.batch) {
+      const remaining: ImageJob[] = [];
+
+      for (const candidate of imageJobQueue) {
+        if (candidate === anchor) continue;
+
+        if (
+          batch.length < IMAGE_BATCH_MAX_ITEMS &&
+          !candidate.isCancelled() &&
+          candidate.batch &&
+          candidate.batch.groupKey === anchor.batch.groupKey &&
+          candidate.getPriority() === anchor.getPriority()
+        ) {
+          batch.push(candidate);
+        } else {
+          remaining.push(candidate);
+        }
+      }
+
+      imageJobQueue.length = 0;
+      imageJobQueue.push(...remaining);
+    } else {
+      imageJobQueue.splice(jobIndex, 1);
+    }
 
     activeImageJobs += 1;
 
@@ -497,42 +572,105 @@ function scheduleNextImageJob() {
       activePreloadImageJobs += 1;
     }
 
-    void (async () => {
-      try {
-        const result = await job.run();
+    void runImageJobBatch(batch).finally(() => {
+      activeImageJobs = Math.max(
+        0,
+        activeImageJobs - 1,
+      );
 
-        if (!job.isCancelled()) {
-          job.onSuccess(result);
-        } else {
-          result.revoke();
-        }
-      } catch (error) {
-        if (!job.isCancelled()) {
-          job.onError(error);
-        }
-      } finally {
-        activeImageJobs = Math.max(
+      if (startedAsPreload) {
+        activePreloadImageJobs = Math.max(
           0,
-          activeImageJobs - 1,
+          activePreloadImageJobs - 1,
         );
+      }
 
-        if (startedAsPreload) {
-          activePreloadImageJobs = Math.max(
-            0,
-            activePreloadImageJobs - 1,
-          );
+      scheduleNextImageJob();
+    });
+  }
+}
+
+async function runSingleImageJob(job: ImageJob) {
+  try {
+    const result = await job.run();
+
+    if (!job.isCancelled()) {
+      job.onSuccess(result);
+    } else {
+      result.revoke();
+    }
+  } catch (error) {
+    if (!job.isCancelled()) {
+      job.onError(error);
+    }
+  }
+}
+
+// Tries one fetchMetadataImageCellsBatch call for the whole batch; any item
+// missing from the response (individually errored, or the whole request
+// failing) falls back to that job's own run() -- same primary/fallback
+// per-cell fetch used before batching existed. Batching can only ever help,
+// never regress correctness.
+async function runImageJobBatch(batch: ImageJob[]) {
+  const ctx = batch[0]?.batch;
+
+  if (batch.length < 2 || !ctx) {
+    await Promise.all(batch.map((job) => runSingleImageJob(job)));
+    return;
+  }
+
+  try {
+    const result = await ctx.svc.fetchMetadataImageCellsBatch(
+      ctx.projectId,
+      ctx.protocolId,
+      ctx.outputName,
+      ctx.tableName,
+      {
+        items: batch.map((job) => ({
+          rowId: job.batch!.rowId ?? undefined,
+          rowIndex: job.batch!.rowIndex,
+          columnName: job.batch!.columnName,
+        })),
+        size: ctx.size,
+        applyTransform: false,
+        inline: true,
+        format: METADATA_IMAGE_PRIMARY_FORMAT,
+        sortBy: ctx.sortBy,
+        asc: ctx.asc,
+      },
+    );
+
+    const byKey = new Map(
+      (result?.items ?? []).map((item) => [
+        `${item.rowId ?? ""}|${item.rowIndex ?? ""}|${item.columnName}`,
+        item,
+      ]),
+    );
+
+    await Promise.all(
+      batch.map(async (job) => {
+        const key = `${job.batch!.rowId ?? ""}|${job.batch!.rowIndex ?? ""}|${job.batch!.columnName}`;
+        const found = byKey.get(key);
+
+        if (found?.dataUrl) {
+          const dataUrl = found.dataUrl;
+          if (job.isCancelled()) return;
+          job.onSuccess({ url: dataUrl, revoke: () => { } });
+          return;
         }
 
-        scheduleNextImageJob();
-      }
-    })();
+        await runSingleImageJob(job);
+      }),
+    );
+  } catch {
+    await Promise.all(batch.map((job) => runSingleImageJob(job)));
   }
 }
 
 function enqueueImageJob(job: ImageJob) {
   pruneCancelledImageJobs();
   imageJobQueue.push(job);
-  scheduleNextImageJob();
+  requestImageScheduleFlush();
 }
 
 /* ======================= Generic helpers ======================= */
@@ -2178,6 +2316,21 @@ function MetadataImageCell({
           rootRef.current,
           scrollRootRef.current,
         ),
+
+      batch: {
+        groupKey: [projectId, protocolId, outputName, tableName, size, sortBy ?? "", sortAsc].join("|"),
+        svc: svcRef.current,
+        projectId,
+        protocolId,
+        outputName,
+        tableName,
+        size,
+        sortBy: sortBy ?? undefined,
+        asc: sortBy ? sortAsc : undefined,
+        rowId: rowId ?? null,
+        rowIndex: rowIndexInTable,
+        columnName,
+      },
 
       run: async () => {
         const baseOptions = {
