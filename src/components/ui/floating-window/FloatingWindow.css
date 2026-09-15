@@ -402,3 +402,29 @@ body.sfw-active .MuiPopper-root {
 body.sfw-active #projectpage-portal-root .pp-dialogContent {
     z-index: 1000000 !important;
 }
+
+.sfw-window.metadata-image-preview-window .sfw-header {
+    background:
+        linear-gradient(
+            135deg,
+            #1d4ed8 0%,
+            #4f46e5 52%,
+            #7c3aed 100%
+        );
+
+    border-bottom:
+        1px solid rgba(
+            255,
+            255,
+            255,
+            0.18
+        );
+
+    box-shadow:
+        0 6px 18px rgba(
+            79,
+            70,
+            229,
+            0.20
+        );
+}

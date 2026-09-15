@@ -68,6 +68,8 @@ type ExternalWindowPortalProps = {
 
     subtitle?: string;
 
+    className?: string;
+
     badge?: string;
 
     darkMode?: boolean;
@@ -629,6 +631,7 @@ function ExternalWindowPortal({
     darkMode = false,
     headerContent,
     headerActions,
+    className,
     returnAriaLabel =
     "Return viewer to ScipionWeb",
     returnTitle =
@@ -1065,6 +1068,8 @@ function ExternalWindowPortal({
             className={[
                 "projectpage-widget-root",
                 "sew-root",
+
+                className ?? "",
 
                 darkMode
                     ? "dark"

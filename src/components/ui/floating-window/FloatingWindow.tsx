@@ -78,6 +78,8 @@ type FloatingWindowProps = {
 
     headerActions?: ReactNode;
 
+    className?: string;
+
     ariaLabel?: string;
 
     closeAriaLabel?: string;
@@ -188,6 +190,7 @@ function FloatingWindow({
     title,
     children,
     headerActions,
+    className,
     ariaLabel = "Floating window",
     closeAriaLabel = "Close window",
     initialWidth = "70vw",
@@ -1042,6 +1045,8 @@ function FloatingWindow({
             }
             className={[
                 "sfw-window",
+
+                className ?? "",
 
                 isMaximized
                     ? "sfw-window--maximized"

@@ -11,6 +11,11 @@ const serviceMocks = vi.hoisted(() => ({
     fetchMetadataRowPosition: vi.fn(),
 }));
 
+const externalWindowMocks = vi.hoisted(() => ({
+    openExternalWindow: vi.fn(),
+}));
+
+
 vi.mock("@/ProjectServiceContext", () => ({
     useProjectService: () => serviceMocks,
 }));
@@ -51,6 +56,25 @@ vi.mock("../../analyze/metadata-plotter-dialog", () => ({
     }) =>
         open ? <div>Mock MetadataPlotterDialog {selectedTable}</div> : null,
 }));
+
+vi.mock(
+    "@/components/ui/external-window/ExternalWindowPortal",
+    async () => {
+        const actual =
+            await vi.importActual<
+                typeof import("@/components/ui/external-window/ExternalWindowPortal")
+            >(
+                "@/components/ui/external-window/ExternalWindowPortal",
+            );
+
+        return {
+            ...actual,
+            openExternalWindow:
+                externalWindowMocks.openExternalWindow,
+        };
+    },
+);
+
 
 import { MetadataViewer } from "../../analyze/metadata-viewer";
 
@@ -258,6 +282,11 @@ describe("MetadataViewer", () => {
                 rowId: 2,
                 index: 1,
             });
+
+        externalWindowMocks
+            .openExternalWindow
+            .mockReturnValue(null);
+
     });
 
     it("shows the loading state while metadata tables are pending", async () => {
@@ -1093,9 +1122,14 @@ describe("MetadataViewer", () => {
         expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(1);
     });
 
-    it("opens a larger preview dialog on double-click and requests a bigger image", async () => {
+    it("opens a floating image preview and exposes external-window launch", async () => {
         serviceMocks.fetchMetadataTableSchema.mockImplementation(
-            async (_p: number, _r: number, _o: string, tableName: string) => {
+            async (
+                _p: number,
+                _r: number,
+                _o: string,
+                tableName: string,
+            ) => {
                 if (tableName === "particles") {
                     return {
                         name: "particles",
@@ -1127,57 +1161,194 @@ describe("MetadataViewer", () => {
                     };
                 }
 
-                return makeSchema(tableName as "particles" | "classes");
+                return makeSchema(
+                    tableName as
+                    | "particles"
+                    | "classes",
+                );
             },
         );
 
         serviceMocks.fetchMetadataTableWindow.mockImplementation(
-            async (_p: number, _r: number, _o: string, tableName: string) => {
+            async (
+                _p: number,
+                _r: number,
+                _o: string,
+                tableName: string,
+            ) => {
                 if (tableName === "particles") {
                     return {
-                        rows: [{ rowId: 1, values: [1, { kind: "image", path: "/img/1.png" }] }],
+                        rows: [
+                            {
+                                rowId: 1,
+                                values: [
+                                    1,
+                                    {
+                                        kind: "image",
+                                        path: "/img/1.png",
+                                    },
+                                ],
+                            },
+                        ],
                         offset: 0,
                     };
                 }
 
-                return makeWindowRows(tableName as "particles" | "classes");
+                return makeWindowRows(
+                    tableName as
+                    | "particles"
+                    | "classes",
+                );
             },
         );
 
-        serviceMocks.fetchMetadataImageCellObjectUrl.mockImplementation(
-            async (_p, _r, _o, _t, _rowIndex, _col, opts) => ({
-                url: opts.size === 1024 ? "blob:preview-large" : "blob:thumb-small",
-                revoke: vi.fn(),
-            }),
-        );
+        serviceMocks
+            .fetchMetadataImageCellObjectUrl
+            .mockImplementation(
+                async (
+                    _p,
+                    _r,
+                    _o,
+                    _t,
+                    _rowIndex,
+                    _col,
+                    opts,
+                ) => ({
+                    url:
+                        opts.size === 1024
+                            ? "blob:preview-large"
+                            : "blob:thumb-small",
+
+                    revoke: vi.fn(),
+                }),
+            );
 
         renderViewer();
 
-        const thumb = await screen.findByAltText("/img/1.png");
-        expect(thumb).toHaveAttribute("src", "blob:thumb-small");
+        const thumb =
+            await screen.findByAltText(
+                "/img/1.png",
+            );
 
-        fireEvent.doubleClick(thumb);
+        expect(
+            thumb,
+        ).toHaveAttribute(
+            "src",
+            "blob:thumb-small",
+        );
 
-        const dialog = await screen.findByRole("dialog");
+        fireEvent.doubleClick(
+            thumb,
+        );
 
-        const rowLabel = within(dialog).getByText("Row");
+        const dialog =
+            await screen.findByRole(
+                "dialog",
+                {
+                    name:
+                        "Metadata image preview",
+                },
+            );
 
-        expect(rowLabel).toHaveTextContent(
+        expect(
+            dialog,
+        ).toHaveClass(
+            "metadata-image-preview-window",
+        );
+
+        expect(
+            within(dialog)
+                .queryByText(
+                    "HIGH RES",
+                ),
+        ).not.toBeInTheDocument();
+
+        const rowLabel =
+            within(dialog)
+                .getByText(
+                    "Row",
+                );
+
+        expect(
+            rowLabel,
+        ).toHaveTextContent(
             /^Row\s*1$/,
         );
 
-        const preview = await within(dialog).findByRole("img");
-        expect(preview).toHaveAttribute("src", "blob:preview-large");
+        const preview =
+            await within(dialog)
+                .findByRole(
+                    "img",
+                );
 
-        const lastCall = serviceMocks.fetchMetadataImageCellObjectUrl.mock.calls[
-            serviceMocks.fetchMetadataImageCellObjectUrl.mock.calls.length - 1
-        ];
-        expect(lastCall[6]).toMatchObject({ size: 1024, format: "webp" });
+        expect(
+            preview,
+        ).toHaveAttribute(
+            "src",
+            "blob:preview-large",
+        );
 
-        fireEvent.click(within(dialog).getByRole("button", { name: "Close image preview" }));
+        const lastCall =
+            serviceMocks
+                .fetchMetadataImageCellObjectUrl
+                .mock.calls[
+            serviceMocks
+                .fetchMetadataImageCellObjectUrl
+                .mock.calls.length - 1
+            ];
+
+        expect(
+            lastCall[6],
+        ).toMatchObject({
+            size: 1024,
+            format: "webp",
+        });
+
+        const externalButton =
+            within(dialog)
+                .getByRole(
+                    "button",
+                    {
+                        name:
+                            "Open image preview in external window",
+                    },
+                );
+
+        fireEvent.click(
+            externalButton,
+        );
+
+        expect(
+            externalWindowMocks
+                .openExternalWindow,
+        ).toHaveBeenCalledWith({
+            title:
+                "ScipionWeb - Preview",
+            width: 1240,
+            height: 900,
+        });
+
+        fireEvent.click(
+            within(dialog)
+                .getByRole(
+                    "button",
+                    {
+                        name:
+                            "Close image preview",
+                    },
+                ),
+        );
 
         await waitFor(() => {
-            expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+            expect(
+                screen.queryByRole(
+                    "dialog",
+                    {
+                        name:
+                            "Metadata image preview",
+                    },
+                ),
+            ).not.toBeInTheDocument();
         });
     });
 

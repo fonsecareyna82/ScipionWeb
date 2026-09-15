@@ -284,3 +284,29 @@
 .sew-root.dark .sew-content {
     background: #0f172a;
 }
+
+.sew-root.metadata-image-preview-window .sew-header {
+    background:
+        linear-gradient(
+            135deg,
+            #1d4ed8 0%,
+            #4f46e5 52%,
+            #7c3aed 100%
+        );
+
+    border-bottom:
+        1px solid rgba(
+            255,
+            255,
+            255,
+            0.18
+        );
+
+    box-shadow:
+        0 6px 18px rgba(
+            79,
+            70,
+            229,
+            0.20
+        );
+}

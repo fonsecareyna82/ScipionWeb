@@ -61,7 +61,7 @@ import {
   Sigma,
   Bookmark,
   Image as ImageIcon,
-  Maximize2,
+  ExternalLink,
   LineChart as PlotterIcon,
   ZoomIn,
   ZoomOut,
@@ -83,6 +83,17 @@ import type { ProjectService } from "@/services/ProjectService";
 import { MetadataPlotterDialog } from "./metadata-plotter-dialog";
 import { useMetadataGalleryRows, getGalleryLayout } from "./use-metadata-gallery";
 import { metadataScanWindows } from "./metadata-scan-windows";
+import toast from "react-hot-toast";
+
+import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
+
+import ExternalWindowPortal, {
+  DetachableContentMount,
+  PersistentContentPortal,
+  openExternalWindow,
+} from "@/components/ui/external-window/ExternalWindowPortal";
+
+
 type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
@@ -2525,6 +2536,42 @@ function MetadataImagePreviewDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const externalWindowRef = useRef<Window | null>(null);
+
+  const externalWindowActionRef = useRef<
+    "return" | "close" | null
+  >(null);
+
+  const [
+    externalWindow,
+    setExternalWindow,
+  ] = useState<Window | null>(null);
+
+  const previewContentHost = useMemo(() => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+
+    const host = document.createElement("div");
+
+    host.setAttribute(
+      "data-metadata-image-preview-host",
+      "true",
+    );
+
+    host.style.cssText = `
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      display: flex;
+      overflow: hidden;
+    `;
+
+    return host;
+  }, []);
+
   // View adjustments -- local to whatever cell is currently open, reset
   // every time the dialog opens on a (possibly different) cell below.
   const [zoom, setZoom] = useState(1);
@@ -2625,6 +2672,167 @@ function MetadataImagePreviewDialog({
 
   const open = !!state;
 
+  const handleOpenExternal = useCallback(() => {
+    const existing =
+      externalWindowRef.current;
+
+    if (
+      existing &&
+      !existing.closed
+    ) {
+      existing.focus();
+      return;
+    }
+
+    const popup =
+      openExternalWindow({
+        title:
+          `ScipionWeb - ${state?.columnAlias || "Image preview"}`,
+
+        width: 1240,
+        height: 900,
+      });
+
+    if (!popup) {
+      toast.error(
+        "The browser blocked the image preview window. Allow pop-ups for ScipionWeb and try again.",
+      );
+
+      return;
+    }
+
+    externalWindowActionRef.current =
+      null;
+
+    externalWindowRef.current =
+      popup;
+
+    setExternalWindow(
+      popup,
+    );
+  }, [
+    state?.columnAlias,
+  ]);
+
+
+  const handleExternalWindowClosed =
+    useCallback(() => {
+      const action =
+        externalWindowActionRef.current;
+
+      externalWindowActionRef.current =
+        null;
+
+      externalWindowRef.current =
+        null;
+
+      setExternalWindow(
+        null,
+      );
+
+      if (action === null) {
+        onClose();
+      }
+    }, [
+      onClose,
+    ]);
+
+
+  const handleReturnToFloating =
+    useCallback(() => {
+      const popup =
+        externalWindowRef.current;
+
+      externalWindowActionRef.current =
+        "return";
+
+      externalWindowRef.current =
+        null;
+
+      setExternalWindow(
+        null,
+      );
+
+      if (
+        popup &&
+        !popup.closed
+      ) {
+        popup.close();
+      }
+    }, []);
+
+
+  const handleClosePreview =
+    useCallback(() => {
+      const popup =
+        externalWindowRef.current;
+
+      externalWindowActionRef.current =
+        "close";
+
+      externalWindowRef.current =
+        null;
+
+      setExternalWindow(
+        null,
+      );
+
+      if (
+        popup &&
+        !popup.closed
+      ) {
+        popup.close();
+      }
+
+      onClose();
+    }, [
+      onClose,
+    ]);
+
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    const popup =
+      externalWindowRef.current;
+
+    externalWindowRef.current =
+      null;
+
+    if (
+      popup &&
+      !popup.closed
+    ) {
+      popup.close();
+    }
+
+    setExternalWindow(
+      null,
+    );
+  }, [
+    open,
+  ]);
+
+
+  useEffect(() => {
+    return () => {
+      const popup =
+        externalWindowRef.current;
+
+      externalWindowRef.current =
+        null;
+
+      if (
+        popup &&
+        !popup.closed
+      ) {
+        popup.close();
+      }
+    };
+  }, []);
+
   const zoomIn = useCallback(() => {
     setZoom((z) => Math.min(8, Number((z * 1.25).toFixed(3))));
   }, []);
@@ -2694,354 +2902,230 @@ function MetadataImagePreviewDialog({
     };
   }, []);
 
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth={false}
-      fullWidth
-      slotProps={{
-        backdrop: {
-          sx: {
-            backgroundColor: "rgba(15,23,42,0.46)",
-            backdropFilter: "blur(5px)",
-          },
-        },
-      }}
-      PaperProps={{
-        sx: {
-          width: "min(1220px, calc(100vw - 48px))",
-          height: "min(900px, calc(100vh - 48px))",
-          maxWidth: "none",
-          maxHeight: "none",
-          m: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          borderRadius: "18px",
-          border: "1px solid rgba(148,163,184,0.35)",
-          background:
-            "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-          boxShadow:
-            "0 32px 90px rgba(15,23,42,0.28), 0 10px 30px rgba(15,23,42,0.14)",
-        },
+
+  const previewTitle = (
+    <Box
+      sx={{
+        minWidth: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 1.1,
+        color: "inherit",
       }}
     >
-      <DialogTitle
+      <ImageIcon
+        size={20}
+        strokeWidth={1.9}
+      />
+
+      <Box
         sx={{
-          p: 0,
-          background:
-            "linear-gradient(135deg, #ffffff 0%, #f8fafc 58%, #eef2ff 100%)",
-          borderBottom: "1px solid rgba(148,163,184,0.28)",
-        }}
-      >
-        <Box
-          sx={{
-            px: 2.5,
-            py: 2,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.75,
-          }}
-        >
-          <Box
-            sx={{
-              width: 44,
-              height: 44,
-              borderRadius: "13px",
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#4338ca",
-              background:
-                "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
-              border: "1px solid rgba(99,102,241,0.22)",
-              boxShadow: "0 5px 14px rgba(79,70,229,0.12)",
-            }}
-          >
-            <ImageIcon size={21} strokeWidth={1.9} />
-          </Box>
-
-          <Box
-            sx={{
-              minWidth: 0,
-              flex: 1,
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                minWidth: 0,
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontSize: "1rem",
-                  fontWeight: 750,
-                  letterSpacing: "-0.01em",
-                  color: "#0f172a",
-                }}
-              >
-                {state?.columnAlias || "Image preview"}
-              </Typography>
-
-              <Box
-                sx={{
-                  px: 1,
-                  py: 0.35,
-                  flexShrink: 0,
-                  borderRadius: "999px",
-                  fontSize: "0.68rem",
-                  fontWeight: 700,
-                  letterSpacing: "0.02em",
-                  color: "#4338ca",
-                  backgroundColor: "#eef2ff",
-                  border: "1px solid #c7d2fe",
-                }}
-              >
-                HIGH RES
-              </Box>
-            </Box>
-
-            <Typography
-              variant="caption"
-              sx={{
-                display: "block",
-                mt: 0.35,
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                color: "#64748b",
-                fontFamily:
-                  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-                fontSize: "0.7rem",
-              }}
-            >
-              {state?.path || ""}
-            </Typography>
-          </Box>
-
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 0.8,
-              flexShrink: 0,
-            }}
-          >
-            <Box
-              sx={{
-                display: {
-                  xs: "none",
-                  md: "flex",
-                },
-                alignItems: "center",
-                gap: 0.7,
-                px: 1.1,
-                py: 0.65,
-                borderRadius: "10px",
-                color: "#475569",
-                backgroundColor: "rgba(255,255,255,0.78)",
-                border: "1px solid rgba(148,163,184,0.28)",
-              }}
-            >
-              <Maximize2 size={14} />
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 650,
-                  color: "inherit",
-                }}
-              >
-                {METADATA_IMAGE_PREVIEW_SIZE}px
-              </Typography>
-            </Box>
-
-            <IconButton
-              size="small"
-              onClick={onClose}
-              aria-label="Close image preview"
-              sx={{
-                width: 36,
-                height: 36,
-                color: "#475569",
-                border: "1px solid rgba(148,163,184,0.32)",
-                backgroundColor: "rgba(255,255,255,0.86)",
-                transition:
-                  "background-color 140ms ease, border-color 140ms ease, transform 140ms ease",
-                "&:hover": {
-                  color: "#0f172a",
-                  backgroundColor: "#ffffff",
-                  borderColor: "rgba(100,116,139,0.5)",
-                  transform: "translateY(-1px)",
-                },
-              }}
-            >
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        </Box>
-      </DialogTitle>
-
-      <DialogContent
-        sx={{
-          p: 0,
-          flex: 1,
-          minHeight: 0,
+          minWidth: 0,
           display: "flex",
           flexDirection: "column",
-          backgroundColor: "#e2e8f0",
+          gap: 0.1,
         }}
       >
-        {state && (
-          <Box
+        <Typography
+          component="div"
+          variant="subtitle2"
+          sx={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "inherit",
+            fontWeight: 750,
+            lineHeight: 1.2,
+          }}
+        >
+          {state?.columnAlias || "Image preview"}
+        </Typography>
+
+        {state?.path ? (
+          <Typography
+            component="div"
+            variant="caption"
             sx={{
-              px: 2,
-              py: 1,
-              display: "flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 1.5,
-              backgroundColor: "#ffffff",
-              borderBottom: "1px solid rgba(148,163,184,0.24)",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              color: "rgba(255,255,255,0.78)",
+              fontSize: "0.68rem",
+              lineHeight: 1.2,
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-              <Tooltip title="Zoom out">
-                <span>
-                  <IconButton
-                    size="small"
-                    disabled={!previewUrl}
-                    onClick={zoomOut}
-                    aria-label="Zoom out"
-                  >
-                    <ZoomOut size={16} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Typography
-                data-testid="preview-zoom-level"
-                variant="caption"
-                sx={{ minWidth: 40, textAlign: "center", color: "#475569", fontWeight: 650 }}
+            {state.path}
+          </Typography>
+        ) : null}
+      </Box>
+    </Box>
+  );
+
+
+  return (
+    <>
+      {open &&
+        previewContentHost ? (
+        <PersistentContentPortal
+          host={
+            previewContentHost
+          }
+        >
+          <DialogContent
+            sx={{
+              p: 0,
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              backgroundColor: "#e2e8f0",
+            }}
+          >
+
+            {state && (
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 1.5,
+                  backgroundColor: "#ffffff",
+                  borderBottom: "1px solid rgba(148,163,184,0.24)",
+                }}
               >
-                {Math.round(zoom * 100)}%
-              </Typography>
-              <Tooltip title="Zoom in">
-                <span>
-                  <IconButton
-                    size="small"
-                    disabled={!previewUrl}
-                    onClick={zoomIn}
-                    aria-label="Zoom in"
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                  <Tooltip title="Zoom out">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!previewUrl}
+                        onClick={zoomOut}
+                        aria-label="Zoom out"
+                      >
+                        <ZoomOut size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Typography
+                    data-testid="preview-zoom-level"
+                    variant="caption"
+                    sx={{ minWidth: 40, textAlign: "center", color: "#475569", fontWeight: 650 }}
                   >
-                    <ZoomIn size={16} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
+                    {Math.round(zoom * 100)}%
+                  </Typography>
+                  <Tooltip title="Zoom in">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!previewUrl}
+                        onClick={zoomIn}
+                        aria-label="Zoom in"
+                      >
+                        <ZoomIn size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Box>
 
-            <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+                <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-              <Tooltip title="Rotate left">
-                <span>
-                  <IconButton
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                  <Tooltip title="Rotate left">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!previewUrl}
+                        onClick={rotateLeft}
+                        aria-label="Rotate left"
+                      >
+                        <RotateCcw size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Rotate right">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!previewUrl}
+                        onClick={rotateRight}
+                        aria-label="Rotate right"
+                      >
+                        <RotateCw size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Box>
+
+                <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
+                  <Sun size={15} color="#64748b" />
+                  <Slider
                     size="small"
+                    value={brightness}
+                    min={-1}
+                    max={1}
+                    step={0.02}
                     disabled={!previewUrl}
-                    onClick={rotateLeft}
-                    aria-label="Rotate left"
-                  >
-                    <RotateCcw size={16} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title="Rotate right">
-                <span>
-                  <IconButton
+                    onChange={(_, v) => setBrightness(v as number)}
+                    aria-label="Brightness"
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(v) => `${Math.round((1 + (v as number)) * 100)}%`}
+                    sx={{ width: 90 }}
+                  />
+                </Box>
+
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
+                  <ContrastIcon size={15} color="#64748b" />
+                  <Slider
                     size="small"
+                    value={contrast}
+                    min={0.5}
+                    max={2}
+                    step={0.02}
                     disabled={!previewUrl}
-                    onClick={rotateRight}
-                    aria-label="Rotate right"
-                  >
-                    <RotateCw size={16} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
+                    onChange={(_, v) => setContrast(v as number)}
+                    aria-label="Contrast"
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
+                    sx={{ width: 90 }}
+                  />
+                </Box>
 
-            <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+                <Button
+                  size="small"
+                  disabled={!previewUrl}
+                  onClick={resetView}
+                  sx={{ ml: "auto", textTransform: "none", fontWeight: 650, color: "#475569" }}
+                >
+                  Reset
+                </Button>
+              </Box>
+            )}
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
-              <Sun size={15} color="#64748b" />
-              <Slider
-                size="small"
-                value={brightness}
-                min={-1}
-                max={1}
-                step={0.02}
-                disabled={!previewUrl}
-                onChange={(_, v) => setBrightness(v as number)}
-                aria-label="Brightness"
-                valueLabelDisplay="auto"
-                valueLabelFormat={(v) => `${Math.round((1 + (v as number)) * 100)}%`}
-                sx={{ width: 90 }}
-              />
-            </Box>
-
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
-              <ContrastIcon size={15} color="#64748b" />
-              <Slider
-                size="small"
-                value={contrast}
-                min={0.5}
-                max={2}
-                step={0.02}
-                disabled={!previewUrl}
-                onChange={(_, v) => setContrast(v as number)}
-                aria-label="Contrast"
-                valueLabelDisplay="auto"
-                valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
-                sx={{ width: 90 }}
-              />
-            </Box>
-
-            <Button
-              size="small"
-              disabled={!previewUrl}
-              onClick={resetView}
-              sx={{ ml: "auto", textTransform: "none", fontWeight: 650, color: "#475569" }}
-            >
-              Reset
-            </Button>
-          </Box>
-        )}
-
-        <Box
-          onWheel={handleWheelZoom}
-          onMouseDown={handlePanStart}
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
-            cursor: !previewUrl ? "default" : zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
-            p: {
-              xs: 2,
-              sm: 3,
-            },
-            background: `
+            <Box
+              onWheel={handleWheelZoom}
+              onMouseDown={handlePanStart}
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                cursor: !previewUrl ? "default" : zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
+                p: {
+                  xs: 2,
+                  sm: 3,
+                },
+                background: `
               radial-gradient(
                 circle at 50% 38%,
                 rgba(255,255,255,0.98) 0%,
@@ -3049,17 +3133,17 @@ function MetadataImagePreviewDialog({
                 rgba(226,232,240,0.96) 100%
               )
             `,
-            boxShadow:
-              "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(148,163,184,0.22)",
-          }}
-        >
-          <Box
-            sx={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              opacity: 0.32,
-              backgroundImage: `
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(148,163,184,0.22)",
+              }}
+            >
+              <Box
+                sx={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  opacity: 0.32,
+                  backgroundImage: `
                 linear-gradient(
                   45deg,
                   rgba(148,163,184,0.09) 25%,
@@ -3081,243 +3165,330 @@ function MetadataImagePreviewDialog({
                   rgba(148,163,184,0.09) 75%
                 )
               `,
-              backgroundSize: "22px 22px",
-              backgroundPosition:
-                "0 0, 0 11px, 11px -11px, -11px 0px",
-            }}
-          />
-
-          {loading && (
-            <Box
-              sx={{
-                position: "relative",
-                zIndex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 1.5,
-                px: 3,
-                py: 2.5,
-                borderRadius: "16px",
-                backgroundColor: "rgba(255,255,255,0.82)",
-                border: "1px solid rgba(148,163,184,0.25)",
-                boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
-                backdropFilter: "blur(8px)",
-              }}
-            >
-              <CircularProgress
-                size={30}
-                thickness={4}
-                sx={{
-                  color: "#4f46e5",
+                  backgroundSize: "22px 22px",
+                  backgroundPosition:
+                    "0 0, 0 11px, 11px -11px, -11px 0px",
                 }}
               />
 
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#64748b",
-                  fontWeight: 600,
-                }}
-              >
-                Loading high-resolution preview…
-              </Typography>
-            </Box>
-          )}
-
-          {!loading && error && (
-            <Box
-              sx={{
-                position: "relative",
-                zIndex: 1,
-                maxWidth: 520,
-                px: 3,
-                py: 2.5,
-                borderRadius: "16px",
-                textAlign: "center",
-                backgroundColor: "#fff7ed",
-                border: "1px solid #fed7aa",
-                boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
-              }}
-            >
-              <Typography
-                variant="subtitle2"
-                sx={{
-                  mb: 0.5,
-                  color: "#9a3412",
-                  fontWeight: 750,
-                }}
-              >
-                Image preview unavailable
-              </Typography>
-
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#c2410c",
-                }}
-              >
-                {error}
-              </Typography>
-            </Box>
-          )}
-
-          {!loading && !error && previewUrl && (
-            <Box
-              sx={{
-                position: "relative",
-                zIndex: 1,
-                width: "min(1024px, 100%)",
-                height: "min(1024px, calc(100vh - 220px))",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "10px",
-                overflow: "hidden",
-                
-              }}
-            >
-              <img
-                src={previewUrl}
-                alt={state?.path ?? ""}
-                draggable={false}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  transform: `translate(${zoom > 1 ? panX : 0}px, ${zoom > 1 ? panY : 0}px) scale(${zoom}) rotate(${rotation}deg)`,
-                  filter: `brightness(${1 + brightness}) contrast(${contrast})`,
-                  transition: isPanning ? "none" : "transform 120ms ease-out",
-                }}
-              />
-            </Box>
-          )}
-        </Box>
-
-        {state && (
-          <Box
-            sx={{
-              px: 2.5,
-              py: 1.25,
-              display: "flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 0.9,
-              backgroundColor: "#ffffff",
-              borderTop: "1px solid rgba(148,163,184,0.24)",
-            }}
-          >
-            <Box
-              sx={{
-                px: 1.15,
-                py: 0.55,
-                borderRadius: "9px",
-                backgroundColor: "#f8fafc",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#64748b",
-                }}
-              >
-                Row{" "}
+              {loading && (
                 <Box
-                  component="span"
                   sx={{
-                    color: "#0f172a",
-                    fontWeight: 750,
+                    position: "relative",
+                    zIndex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1.5,
+                    px: 3,
+                    py: 2.5,
+                    borderRadius: "16px",
+                    backgroundColor: "rgba(255,255,255,0.82)",
+                    border: "1px solid rgba(148,163,184,0.25)",
+                    boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+                    backdropFilter: "blur(8px)",
                   }}
                 >
-                  {state.rowIndexInTable + 1}
-                </Box>
-              </Typography>
-            </Box>
-
-            {state.rowId != null && (
-              <Box
-                sx={{
-                  px: 1.15,
-                  py: 0.55,
-                  borderRadius: "9px",
-                  backgroundColor: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "#64748b",
-                  }}
-                >
-                  ID{" "}
-                  <Box
-                    component="span"
+                  <CircularProgress
+                    size={30}
+                    thickness={4}
                     sx={{
-                      color: "#0f172a",
+                      color: "#4f46e5",
+                    }}
+                  />
+
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "#64748b",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Loading image preview…
+                  </Typography>
+                </Box>
+              )}
+
+              {!loading && error && (
+                <Box
+                  sx={{
+                    position: "relative",
+                    zIndex: 1,
+                    maxWidth: 520,
+                    px: 3,
+                    py: 2.5,
+                    borderRadius: "16px",
+                    textAlign: "center",
+                    backgroundColor: "#fff7ed",
+                    border: "1px solid #fed7aa",
+                    boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+                  }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      mb: 0.5,
+                      color: "#9a3412",
                       fontWeight: 750,
                     }}
                   >
-                    {state.rowId}
-                  </Box>
-                </Typography>
-              </Box>
-            )}
+                    Image preview unavailable
+                  </Typography>
 
-            <Box
-              sx={{
-                px: 1.15,
-                py: 0.55,
-                borderRadius: "9px",
-                backgroundColor: "#eef2ff",
-                border: "1px solid #c7d2fe",
-              }}
-            >
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#4338ca",
-                }}
-              >
-                Column{" "}
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "#c2410c",
+                    }}
+                  >
+                    {error}
+                  </Typography>
+                </Box>
+              )}
+
+              {!loading && !error && previewUrl && (
                 <Box
-                  component="span"
                   sx={{
-                    fontWeight: 750,
+                    position: "relative",
+                    zIndex: 1,
+                    width: "min(1024px, 100%)",
+                    height: "min(1024px, calc(100vh - 220px))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "10px",
+                    overflow: "hidden",
+
                   }}
                 >
-                  {state.columnName}
+                  <img
+                    src={previewUrl}
+                    alt={state?.path ?? ""}
+                    draggable={false}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      transform: `translate(${zoom > 1 ? panX : 0}px, ${zoom > 1 ? panY : 0}px) scale(${zoom}) rotate(${rotation}deg)`,
+                      filter: `brightness(${1 + brightness}) contrast(${contrast})`,
+                      transition: isPanning ? "none" : "transform 120ms ease-out",
+                    }}
+                  />
                 </Box>
-              </Typography>
+              )}
             </Box>
 
-            <Box
-              sx={{
-                ml: {
-                  xs: 0,
-                  sm: "auto",
-                },
-                color: "#94a3b8",
-              }}
-            >
-              <Typography
-                variant="caption"
+            {state && (
+              <Box
                 sx={{
-                  fontSize: "0.68rem",
-                  fontWeight: 600,
-                  letterSpacing: "0.025em",
+                  px: 2.5,
+                  py: 1.25,
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 0.9,
+                  backgroundColor: "#ffffff",
+                  borderTop: "1px solid rgba(148,163,184,0.24)",
                 }}
               >
-                Double-click preview · {METADATA_IMAGE_PREVIEW_SIZE}px render
-              </Typography>
-            </Box>
-          </Box>
-        )}
-      </DialogContent>
-    </Dialog>
+                <Box
+                  sx={{
+                    px: 1.15,
+                    py: 0.55,
+                    borderRadius: "9px",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "#64748b",
+                    }}
+                  >
+                    Row{" "}
+                    <Box
+                      component="span"
+                      sx={{
+                        color: "#0f172a",
+                        fontWeight: 750,
+                      }}
+                    >
+                      {state.rowIndexInTable + 1}
+                    </Box>
+                  </Typography>
+                </Box>
+
+                {state.rowId != null && (
+                  <Box
+                    sx={{
+                      px: 1.15,
+                      py: 0.55,
+                      borderRadius: "9px",
+                      backgroundColor: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "#64748b",
+                      }}
+                    >
+                      ID{" "}
+                      <Box
+                        component="span"
+                        sx={{
+                          color: "#0f172a",
+                          fontWeight: 750,
+                        }}
+                      >
+                        {state.rowId}
+                      </Box>
+                    </Typography>
+                  </Box>
+                )}
+
+                <Box
+                  sx={{
+                    px: 1.15,
+                    py: 0.55,
+                    borderRadius: "9px",
+                    backgroundColor: "#eef2ff",
+                    border: "1px solid #c7d2fe",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "#4338ca",
+                    }}
+                  >
+                    Column{" "}
+                    <Box
+                      component="span"
+                      sx={{
+                        fontWeight: 750,
+                      }}
+                    >
+                      {state.columnName}
+                    </Box>
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{
+                    ml: {
+                      xs: 0,
+                      sm: "auto",
+                    },
+                    color: "#94a3b8",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: "0.68rem",
+                      fontWeight: 600,
+                      letterSpacing: "0.025em",
+                    }}
+                  >
+                    Double-click preview · {METADATA_IMAGE_PREVIEW_SIZE}px render
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+          </DialogContent>
+        </PersistentContentPortal>
+      ) : null}
+
+
+      {open &&
+        externalWindow &&
+        !externalWindow.closed &&
+        previewContentHost ? (
+        <ExternalWindowPortal
+          popupWindow={
+            externalWindow
+          }
+          contentHost={
+            previewContentHost
+          }
+          className="metadata-image-preview-window"
+          title={
+            state?.columnAlias ||
+            "Image preview"
+          }
+          subtitle={
+            state?.path ||
+            undefined
+          }
+          headerContent={
+            previewTitle
+          }
+          returnAriaLabel="Return image preview to ScipionWeb"
+          returnTitle="Return to ScipionWeb"
+          closeAriaLabel="Close image preview"
+          closeTitle="Close image preview"
+          onReturn={
+            handleReturnToFloating
+          }
+          onClose={
+            handleClosePreview
+          }
+          onWindowClosed={
+            handleExternalWindowClosed
+          }
+        />
+      ) : (
+        <FloatingWindow
+          open={
+            open
+          }
+          onClose={
+            handleClosePreview
+          }
+          className="metadata-image-preview-window"
+          ariaLabel="Metadata image preview"
+          closeAriaLabel="Close image preview"
+          initialWidth="82vw"
+          initialHeight="86vh"
+          minWidth={
+            760
+          }
+          minHeight={
+            560
+          }
+          headerActions={
+            <button
+              type="button"
+              className="sfw-controlButton"
+              aria-label="Open image preview in external window"
+              title="Open in external window"
+              onClick={
+                handleOpenExternal
+              }
+            >
+              <ExternalLink />
+            </button>
+          }
+          title={
+            previewTitle
+          }
+        >
+          {previewContentHost ? (
+            <DetachableContentMount
+              host={
+                previewContentHost
+              }
+            />
+          ) : null}
+        </FloatingWindow>
+      )}
+    </>
   );
+
 }
 
 const MetadataTablePanel = memo(function MetadataTablePanel({
