@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { VolumeAxis, VolumeClipBounds, VolumeSliceVisibility } from "./volume-3d-types";
+import {
+  clearCachedEntries,
+  storeCachedEntry,
+  touchCachedEntry,
+} from "./lru-object-cache";
 
 export type ClippingSliceImages = Record<VolumeAxis, [HTMLImageElement | null, HTMLImageElement | null]>;
 const AXES: VolumeAxis[] = ["x", "y", "z"];
@@ -40,7 +45,7 @@ export function useClippingSliceImages({ enabled, projectId, protocolId, outputN
   const [retry, setRetry] = useState(0);
   const [failure, setFailure] = useState<{ scope: object; key: string; message: string } | null>(null);
   const cache = useMemo(() => new Map<string, { image: HTMLImageElement; revoke: () => void }>(), [projectId, protocolId, outputName, volumeId, dims.x, dims.y, dims.z, colormap, windowMin, windowMax, sourceVersion]);
-  useEffect(() => () => { cache.forEach(entry => entry.revoke()); cache.clear(); }, [cache]);
+  useEffect(() => () => clearCachedEntries(cache), [cache]);
 
   const indices = AXES.map(axis => bounds[axis].map(value => Math.round(value * Math.max(0, dims[axis] - 1))));
   const keys = AXES.map((axis, a) => indices[a].map(index => visibility[axis] ? `${axis}:${index}` : ""));
@@ -54,10 +59,7 @@ export function useClippingSliceImages({ enabled, projectId, protocolId, outputN
   useEffect(() => {
     if (!enabled || volumeId == null || !requests.length) return;
     const missing = requests.filter(request => !cache.has(request.key));
-    requests.forEach(({ key }) => {
-      const hit = cache.get(key);
-      if (hit) { cache.delete(key); cache.set(key, hit); }
-    });
+    requests.forEach(({ key }) => touchCachedEntry(cache, key));
     if (!missing.length) return;
     const controller = new AbortController();
     let next = 0;
@@ -72,12 +74,14 @@ export function useClippingSliceImages({ enabled, projectId, protocolId, outputN
             if (controller.signal.aborted) { revoke(); return; }
             const image = await decodeClippingImage(result.url, controller.signal);
             if (controller.signal.aborted) { revoke(); return; }
-            cache.set(request.key, { image, revoke });
+            storeCachedEntry(
+              cache,
+              request.key,
+              { image, revoke },
+              MAX_IMAGES,
+              new Set(requests.map(r => r.key)),
+            );
             revoke = undefined;
-            for (const key of cache.keys()) {
-              if (cache.size <= MAX_IMAGES) break;
-              if (!requests.some(request => request.key === key)) { cache.get(key)?.revoke(); cache.delete(key); }
-            }
             setVersion(value => value + 1);
           } catch (reason) {
             revoke?.();

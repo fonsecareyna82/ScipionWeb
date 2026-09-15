@@ -32,6 +32,11 @@ import {
   type VolumeRegionLabels,
   type VolumeRenderData,
 } from "./volume-color-utils";
+import {
+  clearCachedEntries,
+  storeCachedEntry,
+  touchCachedEntry,
+} from "./lru-object-cache";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
@@ -459,7 +464,7 @@ export default function VolumeViewer({
       volumeAbortRef.current?.abort();
       volumeAbortRef.current = null;
 
-      clearSliceImageCache(sliceImageCacheRef.current);
+      clearCachedEntries(sliceImageCacheRef.current);
     };
   }, []);
 
@@ -4228,37 +4233,6 @@ async function decodeSliceObjectUrl(
   }
 }
 
-function getCachedSliceImage(cache: SliceImageCache, key: string): SliceImageCacheEntry | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-
-  cache.delete(key);
-  cache.set(key, entry);
-  return entry;
-}
-
-function storeCachedSliceImage(cache: SliceImageCache, key: string, entry: SliceImageCacheEntry) {
-  const previous = cache.get(key);
-  if (previous && previous !== entry) previous.revoke();
-
-  cache.delete(key);
-  cache.set(key, entry);
-
-  while (cache.size > SLICE_IMAGE_CACHE_MAX_ITEMS) {
-    const oldestKey = cache.keys().next().value as string | undefined;
-    if (!oldestKey) break;
-
-    const oldest = cache.get(oldestKey);
-    cache.delete(oldestKey);
-    oldest?.revoke();
-  }
-}
-
-function clearSliceImageCache(cache: SliceImageCache) {
-  for (const entry of cache.values()) entry.revoke();
-  cache.clear();
-}
-
 /**
  * Builds the "Volume overlay" slice composite as an object URL, off the
  * synchronous render path. The pixel-compositing + canvas.toBlob() encode
@@ -4456,16 +4430,18 @@ function useVolumeSliceImage({
           return;
         }
 
-        const cachedAfterFetch = getCachedSliceImage(cacheRef.current, job.cacheKey);
+        const cachedAfterFetch = touchCachedEntry(cacheRef.current, job.cacheKey);
 
         if (cachedAfterFetch) {
           result?.revoke?.();
           setUrl(cachedAfterFetch.url);
         } else if (result?.url && result?.revoke) {
-          storeCachedSliceImage(cacheRef.current, job.cacheKey, {
-            url: result.url,
-            revoke: result.revoke,
-          });
+          storeCachedEntry(
+            cacheRef.current,
+            job.cacheKey,
+            { url: result.url, revoke: result.revoke },
+            SLICE_IMAGE_CACHE_MAX_ITEMS,
+          );
           setUrl(result.url);
         } else {
           setUrl(result?.url ?? null);
@@ -4539,7 +4515,7 @@ function useVolumeSliceImage({
     }
 
     const cacheKey = `${requestKey}|${clampedIndex}`;
-    const cached = getCachedSliceImage(cacheRef.current, cacheKey);
+    const cached = touchCachedEntry(cacheRef.current, cacheKey);
 
     if (cached) {
       controllerRef.current?.abort();
@@ -4659,10 +4635,12 @@ function useVolumeSliceImage({
             const itemCacheKey = `${requestKey}|${item.index}`;
             if (cacheRef.current.has(itemCacheKey)) continue;
 
-            storeCachedSliceImage(cacheRef.current, itemCacheKey, {
-              url: item.dataUrl,
-              revoke: () => {},
-            });
+            storeCachedEntry(
+              cacheRef.current,
+              itemCacheKey,
+              { url: item.dataUrl, revoke: () => {} },
+              SLICE_IMAGE_CACHE_MAX_ITEMS,
+            );
           }
         })
         .catch(() => {
