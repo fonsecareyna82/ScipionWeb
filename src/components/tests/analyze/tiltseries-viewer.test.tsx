@@ -788,6 +788,112 @@ describe("TiltSeriesViewer", () => {
         ).toBe(false);
     });
 
+    it("coalesces rapid slider drag ticks into a single chase fetch instead of one per tick", async () => {
+        serviceMocks.fetchTiltSeriesFrames.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                seriesId: string,
+            ) => makeFramesPayloadWithCount(String(seriesId), 6),
+        );
+
+        const firstFetchGate = createDeferred<void>();
+
+        // Gate by the REQUESTED FRAME INDEX, not by call order -- the very
+        // first call is actually the auto-select-on-mount fetch for the
+        // center default (index 2), fired before any drag starts and never
+        // gated by the scrub-busy ref (isScrubbing is false at that point).
+        // The call we want to hold open is the first *manual tick* (index 3).
+        let callCount = 0;
+        serviceMocks.fetchTiltSeriesViewImageObjectUrl.mockImplementation(
+            async (..._args: unknown[]) => {
+                callCount += 1;
+                const frameIndex = Number(_args[4]);
+                if (frameIndex === 3) {
+                    await firstFetchGate.promise;
+                }
+                return { url: `blob:preview-${callCount}`, revoke: vi.fn() };
+            },
+        );
+
+        renderViewer();
+
+        // 6 frames defaults to the CENTER index (2, i.e. "View 3 of 6") --
+        // see the closestIncludedIndex/centerIndex logic that picks the
+        // initial selectedRowIndex when frames load.
+        expect(await screen.findByText("View 3 of 6")).toBeInTheDocument();
+        await flushMicrotasks();
+
+        // The mount-time auto-select fetch (center default, index 2) has
+        // already fired and resolved by now -- it is not gated.
+        await waitFor(() => {
+            expect(serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.length).toBe(1);
+        });
+
+        const sliders = screen.getAllByRole("slider");
+        const tiltSlider = sliders[sliders.length - 1];
+
+        // A real drag (mousedown + mousemove ticks, no mouseup yet) is the
+        // only way to reach MUI's pointer-drag path, which calls onChange
+        // per tick and defers onChangeCommitted to mouseup. fireEvent.change
+        // on the hidden range input instead fires onChange+onChangeCommitted
+        // together (that's how a native <input type="range"> behaves), which
+        // would end the "scrubbing" state after every single tick and can't
+        // exercise the coalescing behavior under test here.
+        const sliderRoot = tiltSlider.closest(".MuiSlider-root") as HTMLElement;
+        sliderRoot.getBoundingClientRect = () =>
+            ({
+                left: 0,
+                right: 100,
+                width: 100,
+                top: 0,
+                bottom: 10,
+                height: 10,
+                x: 0,
+                y: 0,
+                toJSON: () => ({}),
+            }) as DOMRect;
+
+        // min=0, max=5 (sliceSliderMax for 6 frames), step=1, root width=100
+        // -> clientX 60/80/100 map to values 3/4/5.
+        // First tick: nothing in flight for the scrub-fetch busy ref yet, so
+        // this fetch starts for real (and immediately gets stuck on
+        // firstFetchGate, since it targets index 3).
+        fireEvent.mouseDown(sliderRoot, { button: 0, clientX: 60, clientY: 5 });
+        await flushMicrotasks();
+
+        // Simulates the rest of a fast drag: several more ticks fired while
+        // that first tick's fetch is still pending. Mouse-move ticks are
+        // dispatched on the document, matching where MUI attaches its
+        // drag-tracking listeners.
+        // buttons: 1 (primary button still held) matters here -- MUI treats
+        // a mousemove with buttons === 0 as a stray/missed mouseup and ends
+        // the drag right there instead of tracking it.
+        fireEvent.mouseMove(document, { clientX: 80, clientY: 5, buttons: 1 });
+        fireEvent.mouseMove(document, { clientX: 100, clientY: 5, buttons: 1 });
+        await flushMicrotasks();
+
+        // The slider handle itself must still track the drag live...
+        expect(await screen.findByText("View 6 of 6")).toBeInTheDocument();
+        // ...but only the mount fetch (index 2) and the first tick (index 3)
+        // should have actually reached the network -- ticks for 4/5 were
+        // coalesced, not each firing (or aborting) their own request.
+        expect(serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.length).toBe(2);
+
+        firstFetchGate.resolve();
+        await flushMicrotasks();
+
+        // Once the in-flight fetch settles, it chases straight to the
+        // LATEST position (5, the last tick) -- never 4 along the way.
+        await waitFor(() => {
+            expect(serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls.length).toBe(3);
+        });
+
+        const chaseCallArgs = serviceMocks.fetchTiltSeriesViewImageObjectUrl.mock.calls[2];
+        expect(Number(chaseCallArgs[4])).toBe(5);
+    });
+
     it("stops autoplay when switching to metadata", async () => {
         renderViewer();
 

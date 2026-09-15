@@ -203,6 +203,16 @@ export default function TiltSeriesViewer({
   // trackPreviewLoadingStateInARefToUseItSafelyInsideIntervals
   const previewLoadingRef = useRef(false);
 
+  // Decouples "what the slider shows" (selectedRowIndex, always live) from
+  // "what the preview-loading effect fetches" (fetchRowIndex) so a fast
+  // drag doesn't abort-and-restart a network request on every index it
+  // passes through -- see handleSliceSliderChange and the preview-loading
+  // effect below for how these three combine to chase the latest position
+  // without ever queuing/replaying the ones passed through mid-drag.
+  const [fetchRowIndex, setFetchRowIndex] = useState<number | null>(null);
+  const scrubTargetIndexRef = useRef<number | null>(null);
+  const scrubFetchBusyRef = useRef(false);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const autoplayRef = useRef<number | null>(null);
@@ -273,6 +283,20 @@ export default function TiltSeriesViewer({
   useEffect(() => {
     previewLoadingRef.current = previewLoading;
   }, [previewLoading]);
+
+  // mirrorSelectedRowIndexIntoFetchTargetExceptWhileActivelyScrubbing
+  //
+  // Outside of an active drag, fetchRowIndex must track selectedRowIndex
+  // immediately and unconditionally -- this is what still makes row
+  // clicks, prev/next, autoplay, and (importantly) releasing the slider
+  // resolve to the exact right frame with no throttling at all. Only
+  // handleSliceSliderChange, while isScrubbing is true, is allowed to
+  // leave fetchRowIndex lagging behind selectedRowIndex on purpose.
+  useEffect(() => {
+    if (isScrubbing) return;
+    scrubTargetIndexRef.current = selectedRowIndex;
+    setFetchRowIndex(selectedRowIndex);
+  }, [selectedRowIndex, isScrubbing]);
 
   // syncSeriesExcludedStateIntoRefForFastReadsDuringFrameLoads
   useEffect(() => {
@@ -535,13 +559,6 @@ export default function TiltSeriesViewer({
     return idx >= 0 ? idx : null;
   }, [selectedRowIndex, framesData, filteredFrames]);
 
-  // selectedFrameObjectForCurrentSeriesIndex
-  const selectedFrame: TiltViewRow | null = useMemo(() => {
-    if (selectedRowIndex == null || !framesData?.frames || !framesData.frames.length) {
-      return null;
-    }
-    return framesData.frames[selectedRowIndex] ?? null;
-  }, [framesData, selectedRowIndex]);
 
   // toggleExcludeAtFrameIndexAndSyncSeriesExcludedFlag
   const toggleExcludeAtIndex = (frameIndex: number) => {
@@ -982,6 +999,12 @@ export default function TiltSeriesViewer({
   ]);
 
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
+  //
+  // Driven by fetchRowIndex, NOT selectedRowIndex directly -- see the
+  // mirror effect above and handleSliceSliderChange. This is what lets a
+  // fast slider drag update the slider handle instantly every tick while
+  // only actually fetching once the previous fetch has settled, always
+  // for the latest position (never a queue of the ones passed through).
   useEffect(() => {
 
     if (mainMode === "metadata") {
@@ -990,7 +1013,9 @@ export default function TiltSeriesViewer({
       return;
     }
 
-    if (selectedSeriesId == null || selectedRowIndex == null || !selectedFrame) {
+    const fetchFrame = fetchRowIndex != null ? framesData?.frames?.[fetchRowIndex] ?? null : null;
+
+    if (selectedSeriesId == null || fetchRowIndex == null || !fetchFrame) {
       previewAbortRef.current?.abort();
       setPreviewUrl(null);
       setPreviewError(null);
@@ -998,7 +1023,7 @@ export default function TiltSeriesViewer({
       return;
     }
 
-    const frameIndex = getPreviewFrameIndex(selectedFrame, selectedRowIndex);
+    const frameIndex = getPreviewFrameIndex(fetchFrame, fetchRowIndex);
 
     const shouldBypassPreviewCache =
       previewReloadToken !== consumedPreviewReloadTokenRef.current;
@@ -1050,6 +1075,11 @@ export default function TiltSeriesViewer({
     const controller = new AbortController();
     previewAbortRef.current = controller;
     const reqId = ++previewReqIdRef.current;
+    const rowIndexForThisFetch = fetchRowIndex;
+
+    if (isScrubbing) {
+      scrubFetchBusyRef.current = true;
+    }
 
     (async () => {
       try {
@@ -1106,11 +1136,32 @@ export default function TiltSeriesViewer({
         if (!controller.signal.aborted && previewReqIdRef.current === reqId) {
           setPreviewLoading(false);
         }
+
+        if (isScrubbing) {
+          scrubFetchBusyRef.current = false;
+
+          const latestTarget = scrubTargetIndexRef.current;
+
+          if (latestTarget != null && latestTarget !== rowIndexForThisFetch) {
+            // The slider moved on while this fetch was in flight -- chase
+            // it by kicking off a fetch for wherever it is NOW, skipping
+            // whatever intermediate positions were passed through. This
+            // is what keeps the image tracking a fast drag instead of
+            // either queuing every frame or freezing until it stops.
+            setFetchRowIndex(latestTarget);
+          }
+        }
       }
     })();
 
     return () => {
       controller.abort();
+      // Defensive only: in the normal scrub-chase flow this is already
+      // false by the time cleanup runs (cleared in the finally above).
+      // This covers the effect being torn down for an unrelated reason
+      // (series switch, leaving the viewer) while a fetch is genuinely
+      // still in flight, so the busy flag never gets stuck permanently.
+      scrubFetchBusyRef.current = false;
 
       if (previewReqIdRef.current === reqId) {
         previewReqIdRef.current += 1;
@@ -1119,8 +1170,8 @@ export default function TiltSeriesViewer({
   }, [
     mainMode,
     selectedSeriesId,
-    selectedRowIndex,
-    selectedFrame,
+    fetchRowIndex,
+    framesData?.frames,
     projectId,
     protocolId,
     outputName,
@@ -1264,9 +1315,22 @@ export default function TiltSeriesViewer({
 
     if (!Number.isFinite(nextIndex) || totalFrames <= 0) return;
 
+    const clamped = Math.min(Math.max(nextIndex, 0), totalFrames - 1);
+
     setIsPlaying(false);
     setIsScrubbing(true);
-    setSelectedRowIndex(Math.min(Math.max(nextIndex, 0), totalFrames - 1));
+    setSelectedRowIndex(clamped);
+
+    // Always remember the latest position (cheap), but only actually
+    // trigger a fetch for it if nothing is in flight yet -- if a fetch IS
+    // busy, its own completion handler will pick this up and chase it
+    // once it finishes. This is what stops a fast drag from cancelling a
+    // fetch every single tick before any of them get a chance to land.
+    scrubTargetIndexRef.current = clamped;
+
+    if (!scrubFetchBusyRef.current) {
+      setFetchRowIndex(clamped);
+    }
   };
 
   const handleSliceSliderCommitted = (_: any, value: number | number[]) => {
