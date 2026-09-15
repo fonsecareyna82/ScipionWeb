@@ -321,7 +321,7 @@ function getSvgLocalPoint(
   return { x: p.x, y: p.y };
 }
 
-function getSlicePlaneDims(
+export function getSlicePlaneDims(
   dims: [number, number, number] | null,
   axis: SliceAxis,
 ): [number, number] | null {
@@ -331,6 +331,60 @@ function getSlicePlaneDims(
   if (axis === "z") return [dimX, dimY];
   if (axis === "x") return [dimY, dimZ];
   return [dimX, dimZ];
+}
+
+// Same (u, v) mapping as computeSlicePointsSvg's per-axis cx/cy, and the
+// same coordinate space the <image> tags use for their width/height (see
+// getSlicePlaneDims) -- kept in sync so a point's on-screen circle and its
+// live gallery-crop preview (see cropSliceImageToDataUrl) always agree.
+export function getSlicePlaneCoords(
+  point: { x: number; y: number; z: number },
+  axis: SliceAxis,
+): [number, number] {
+  if (axis === "z") return [point.x, point.y];
+  if (axis === "x") return [point.y, point.z];
+  return [point.x, point.z];
+}
+
+/**
+ * Crops a small square region around (centerU, centerV) -- in the same
+ * tomogram-unit coordinate space as getSlicePlaneDims/getSlicePlaneCoords --
+ * out of an already-decoded slice image, entirely client-side. Used to give
+ * the particle gallery a live preview of the point currently being dragged,
+ * without a network round trip: the relevant slice image is already loaded
+ * for on-screen display (see sliceImageUrl/sliceXImageUrl/sliceYImageUrl),
+ * and the dragged axis stays fixed during a drag, so that image's plane is
+ * guaranteed to still be correct for the live position.
+ */
+export function cropSliceImageToDataUrl(
+  image: HTMLImageElement,
+  planeWidthUnits: number,
+  planeHeightUnits: number,
+  centerU: number,
+  centerV: number,
+  cropSizeUnits: number,
+  outputSize: number,
+): string | null {
+  if (!image.naturalWidth || !image.naturalHeight) return null;
+  if (planeWidthUnits <= 0 || planeHeightUnits <= 0) return null;
+
+  const scaleX = image.naturalWidth / planeWidthUnits;
+  const scaleY = image.naturalHeight / planeHeightUnits;
+
+  const srcW = Math.max(1, cropSizeUnits * scaleX);
+  const srcH = Math.max(1, cropSizeUnits * scaleY);
+  const srcX = centerU * scaleX - srcW / 2;
+  const srcY = centerV * scaleY - srcH / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(image, srcX, srcY, srcW, srcH, 0, 0, outputSize, outputSize);
+  return canvas.toDataURL("image/webp", 0.85);
 }
 
 function computeSlicePointsSvg(
@@ -497,6 +551,7 @@ export default function Coords3dViewer({
   // per paint instead of once per raw pointermove event.
   const [liveDragPoint, setLiveDragPoint] = useState<{
     pointId: string;
+    axis: "x" | "y" | "z";
     x: number;
     y: number;
     z: number;
@@ -505,9 +560,22 @@ export default function Coords3dViewer({
   const dragRafRef = useRef<number | null>(null);
   const pendingDragPatchRef = useRef<{
     pointId: string;
+    axis: "x" | "y" | "z";
     x: number;
     y: number;
     z: number;
+  } | null>(null);
+
+  // Decoded copies of the already-loaded slice images, kept per axis so the
+  // gallery's live drag-preview crop (see liveGalleryOverrideTile below)
+  // doesn't re-decode the image on every drag tick -- only when the
+  // underlying slice image URL itself changes.
+  const decodedSliceImageZRef = useRef<HTMLImageElement | null>(null);
+  const decodedSliceImageXRef = useRef<HTMLImageElement | null>(null);
+  const decodedSliceImageYRef = useRef<HTMLImageElement | null>(null);
+  const [liveGalleryOverrideTile, setLiveGalleryOverrideTile] = useState<{
+    pointId: string;
+    dataUrl: string;
   } | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
@@ -1161,6 +1229,91 @@ export default function Coords3dViewer({
 
     return clampInt(Number(pointWithRadius?.radius ?? 64), 16, 256);
   }, [coordsDraft.length, selectedTomoId]);
+
+  // Decode each already-loaded slice image once per URL change (not once
+  // per drag tick) -- see decodedSliceImageZRef & friends above.
+  useEffect(() => {
+    if (!sliceImageUrl) {
+      decodedSliceImageZRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      decodedSliceImageZRef.current = img;
+    };
+    img.src = sliceImageUrl;
+  }, [sliceImageUrl]);
+
+  useEffect(() => {
+    if (!sliceXImageUrl) {
+      decodedSliceImageXRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      decodedSliceImageXRef.current = img;
+    };
+    img.src = sliceXImageUrl;
+  }, [sliceXImageUrl]);
+
+  useEffect(() => {
+    if (!sliceYImageUrl) {
+      decodedSliceImageYRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      decodedSliceImageYRef.current = img;
+    };
+    img.src = sliceYImageUrl;
+  }, [sliceYImageUrl]);
+
+  // Live crop preview for the particle gallery's tile of the point
+  // currently being dragged -- entirely client-side (no network round
+  // trip), cropped from whichever slice image is already loaded for the
+  // axis being dragged (that axis stays fixed during the drag, so its
+  // plane is guaranteed to still match). This is only a preview: the real,
+  // server-rendered tile takes over once the drag settles and the gallery's
+  // own debounced fetch (keyed on the committed position) resolves.
+  useEffect(() => {
+    if (!liveDragPoint || !tomoDims) {
+      setLiveGalleryOverrideTile(null);
+      return;
+    }
+
+    const decodedImage =
+      liveDragPoint.axis === "z"
+        ? decodedSliceImageZRef.current
+        : liveDragPoint.axis === "x"
+          ? decodedSliceImageXRef.current
+          : decodedSliceImageYRef.current;
+
+    if (!decodedImage) {
+      setLiveGalleryOverrideTile(null);
+      return;
+    }
+
+    const planeDims = getSlicePlaneDims(tomoDims, liveDragPoint.axis);
+    if (!planeDims) {
+      setLiveGalleryOverrideTile(null);
+      return;
+    }
+
+    const [planeWidth, planeHeight] = planeDims;
+    const [centerU, centerV] = getSlicePlaneCoords(liveDragPoint, liveDragPoint.axis);
+
+    const dataUrl = cropSliceImageToDataUrl(
+      decodedImage,
+      planeWidth,
+      planeHeight,
+      centerU,
+      centerV,
+      galleryBoxSize,
+      96,
+    );
+
+    setLiveGalleryOverrideTile(dataUrl ? { pointId: liveDragPoint.pointId, dataUrl } : null);
+  }, [liveDragPoint, tomoDims, galleryBoxSize]);
 
   const effectiveTomoId: Id | null = useMemo(() => {
     if (
@@ -2098,7 +2251,7 @@ export default function Coords3dViewer({
       // animation frame instead of once per raw pointermove event -- and
       // note this only touches liveDragPoint/pickedPoint3d, never
       // coordsDraft (that commit happens once, on pointerup).
-      pendingDragPatchRef.current = { pointId, ...patch };
+      pendingDragPatchRef.current = { pointId, axis, ...patch };
 
       if (dragRafRef.current == null) {
         dragRafRef.current = requestAnimationFrame(() => {
@@ -3932,6 +4085,7 @@ export default function Coords3dViewer({
         outputName={outputName}
         tomogramId={effectiveTomoId}
         points={renderPoints}
+        liveOverrideTile={liveGalleryOverrideTile}
         selectedPointId={pickedPointKey}
         selectedPointIds={selectedPointIds}
         boxSize={galleryBoxSize}

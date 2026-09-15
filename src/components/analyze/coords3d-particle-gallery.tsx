@@ -28,6 +28,13 @@ type Coords3dParticleGalleryProps = {
     outputName: string;
     tomogramId: Id;
     points: GalleryPoint[];
+    /**
+     * A client-side-cropped live preview for the tile of the point
+     * currently being dragged in the slice view, shown instead of (and
+     * without disturbing) its cached/fetched tile. Cleared once the drag
+     * ends, letting the normal fetch-and-cache flow take back over.
+     */
+    liveOverrideTile?: { pointId: string; dataUrl: string } | null;
     selectedPointId: string | null;
     selectedPointIds: ReadonlySet<string>;
     boxSize: number;
@@ -108,6 +115,7 @@ export default function Coords3dParticleGallery({
     outputName,
     tomogramId,
     points,
+    liveOverrideTile,
     selectedPointId,
     selectedPointIds,
     boxSize,
@@ -659,7 +667,10 @@ export default function Coords3dParticleGallery({
                         {visibleTiles.map((tile) => {
                             const primary = tile.pointId === selectedPointId;
                             const selected = selectedPointIds.has(tile.pointId);
-                            const imageUrl = cacheRef.current.get(tile.signature);
+                            const imageUrl =
+                                liveOverrideTile && liveOverrideTile.pointId === tile.pointId
+                                    ? liveOverrideTile.dataUrl
+                                    : cacheRef.current.get(tile.signature);
 
                             return (
                                 <Box
