@@ -3252,6 +3252,17 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   const [subsetName, setSubsetName] = useState(DEFAULT_SUBSET_NAME);
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const [actionDialogError, setActionDialogError] = useState<string | null>(null);
+  // Progress for the resolveSelectedRowIds scan that handleAcceptAction runs
+  // when the selection is index-based (e.g. after "Select all") -- same
+  // idea as selectionProgress above, for the criteria/freeze scans.
+  const [actionScanProgress, setActionScanProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  // True only while the cancellable scan itself is running -- separate from
+  // actionScanProgress (which stays null until the first page resolves) so
+  // the dialog's Stop button is enabled immediately, before any progress
+  // has been reported, same as selectionBusy above.
+  const [actionScanBusy, setActionScanBusy] = useState(false);
 
   const [sortInProgress, setSortInProgress] = useState(false);
   const [plotterOpen, setPlotterOpen] = useState(false);
@@ -3986,6 +3997,24 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     actionSubmittingRef.current = actionSubmitting;
   }, [actionSubmitting]);
 
+  // Same "abort + reset" pattern as cancelSelectionWork above, for the
+  // resolveSelectedRowIds scan handleAcceptAction runs before submitting
+  // the action -- lets the dialog's Cancel button double as a Stop button
+  // while that scan is in flight, instead of being stuck until it finishes.
+  const actionScanControllerRef = useRef<AbortController | null>(null);
+  const cancelActionScan = useCallback(() => {
+    actionScanControllerRef.current?.abort();
+    actionScanControllerRef.current = null;
+    actionSubmittingRef.current = false;
+    setActionSubmitting(false);
+    setActionScanProgress(null);
+    setActionScanBusy(false);
+  }, []);
+
+  useEffect(() => {
+    return () => { actionScanControllerRef.current?.abort(); };
+  }, []);
+
   useEffect(() => {
     const prev = prevViewModeRef.current;
     if (prev === viewMode) return;
@@ -4255,8 +4284,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     [],
   );
 
-  const resolveSelectedRowIds = useCallback(async (): Promise<Array<string | number>> => {
+  const resolveSelectedRowIds = useCallback(async (
+    options: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {},
+  ): Promise<Array<string | number>> => {
     // resolveSelectedRowIds
+    const { signal, onProgress } = options;
+
     if (selectionMode === "ids") {
       return Array.from(selectedRowIdValuesRef.current.values());
     }
@@ -4270,8 +4303,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     }
 
     const rowIds: Array<string | number> = [];
+    let done = 0;
+    onProgress?.(done, selectedCountByIndex);
 
     for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+
       const response = (await svcRef.current.fetchMetadataTableWindow(
         projectId,
         protocolId,
@@ -4280,11 +4319,16 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         {
           offset,
           limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
+          signal,
           selectionOnly: false,
           sortBy: sortBy ?? undefined,
           asc: sortBy ? sortAsc : undefined,
         },
       )) as MetadataWindowResponse;
+
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
 
       const parsed = parseWindowResponse(response);
       const actualOffset = parsed.offset ?? offset;
@@ -4299,8 +4343,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         const rowId = resolveMetadataRowId(schema, parsed.rows[rowIndex]);
         if (rowId != null) {
           rowIds.push(rowId);
+          done += 1;
         }
       }
+
+      onProgress?.(done, selectedCountByIndex);
     }
 
     return rowIds;
@@ -4357,11 +4404,33 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
     const safeSubsetName = subsetName.trim() || DEFAULT_SUBSET_NAME;
 
+    // Lets the dialog's Cancel button abort mid-scan (see cancelActionScan)
+    // instead of being stuck until resolveSelectedRowIds finishes walking
+    // the whole table for an index-based selection (e.g. after "Select
+    // all"). The final invokeMetadataAction call itself is a real mutation
+    // and stays non-cancelable once it starts.
+    const controller = new AbortController();
+    actionScanControllerRef.current = controller;
+
     try {
       setActionSubmitting(true);
       setActionDialogError(null);
+      setActionScanProgress(null);
+      setActionScanBusy(true);
 
-      const rowIds = await resolveSelectedRowIds();
+      const rowIds = await resolveSelectedRowIds({
+        signal: controller.signal,
+        onProgress: (done, total) => setActionScanProgress({ done, total }),
+      });
+
+      if (controller.signal.aborted) return;
+
+      // The scan is done; from here on invokeMetadataAction is a real,
+      // non-cancelable mutation, so the Cancel button must stop offering
+      // to "Stop" (which would only abort the already-finished scan and
+      // give a false impression that the action itself was cancelled).
+      setActionScanProgress(null);
+      setActionScanBusy(false);
 
       if (rowIds.length === 0) {
         throw new Error("No selected rows with valid ids were found");
@@ -4393,10 +4462,16 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       setSubsetName(DEFAULT_SUBSET_NAME);
       setActionDialogError(null);
     } catch (error) {
+      if (controller.signal.aborted) return;
       setActionDialogError(getErrorMessage(error, "Failed to execute action"));
     } finally {
-      if (isMountedRef.current) {
-        setActionSubmitting(false);
+      if (actionScanControllerRef.current === controller) {
+        actionScanControllerRef.current = null;
+        if (isMountedRef.current) {
+          setActionSubmitting(false);
+          setActionScanProgress(null);
+          setActionScanBusy(false);
+        }
       }
     }
   }, [
@@ -6179,6 +6254,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
               }}
             />
 
+            {actionScanProgress && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                Resolving selected rows… {actionScanProgress.done.toLocaleString()}/{actionScanProgress.total.toLocaleString()}
+              </Typography>
+            )}
+
             {actionDialogError && (
               <Box
                 sx={{
@@ -6217,8 +6298,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             <Button
               variant="outlined"
               startIcon={<CloseIcon />}
-              onClick={closeActionDialog}
-              disabled={actionSubmitting}
+              onClick={actionScanBusy ? cancelActionScan : closeActionDialog}
+              disabled={actionSubmitting && !actionScanBusy}
               sx={{
                 textTransform: "none",
                 borderRadius: 2,
@@ -6231,7 +6312,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
                 },
               }}
             >
-              Cancel
+              {actionScanBusy ? "Stop" : "Cancel"}
             </Button>
 
             <Button

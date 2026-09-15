@@ -1061,6 +1061,39 @@ describe("MetadataViewer", () => {
         expect(screen.getByText("0.91").closest("tr")).not.toHaveAttribute("aria-selected", "true");
     });
 
+    it("cancels the create-subset row scan without invoking the action on partial results", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                const schema = makeSchema(tableName as "particles" | "classes");
+                return tableName === "particles" ? { ...schema, actions: ["Create subset"] } : schema;
+            },
+        );
+
+        renderViewer();
+        await screen.findByText("0.91");
+
+        fireEvent.contextMenu(screen.getByText("0.91").closest("tr")!);
+        fireEvent.click(await screen.findByText("All"));
+
+        fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
+        expect(await screen.findByText("Create subset from selected rows")).toBeInTheDocument();
+
+        const pending = createDeferred<ReturnType<typeof makeWindowRows>>();
+        serviceMocks.fetchMetadataTableWindow.mockImplementationOnce(() => pending.promise);
+
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Accept" }));
+        const signal = serviceMocks.fetchMetadataTableWindow.mock.calls[serviceMocks.fetchMetadataTableWindow.mock.calls.length - 1]?.[4].signal;
+
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Stop" }));
+        expect(signal.aborted).toBe(true);
+
+        await act(async () => pending.resolve(makeWindowRows("particles")));
+
+        expect(serviceMocks.runMetadataTableAction).not.toHaveBeenCalled();
+        expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" })).toBeEnabled();
+        expect(screen.getByText("Create subset from selected rows")).toBeInTheDocument();
+    });
+
     it("supports range selection with shift-click", async () => {
         renderViewer();
 
