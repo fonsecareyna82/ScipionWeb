@@ -487,6 +487,29 @@ export default function Coords3dViewer({
     dirtyBefore: boolean;
   } | null>(null);
 
+  // Live position of the point currently being dragged in the slice view,
+  // kept OUT of coordsDraft until pointerup. coordsDraft feeds classOptions/
+  // scoreMinMax/filteredPoints (class+score based, never position based) --
+  // pushing every drag tick into it forced those to recompute over the
+  // full point set on every pointermove for no reason. This is applied to
+  // the render-only point list (see renderPoints below) and rAF-throttled
+  // so the (still O(n)) slice-circle geometry recompute runs at most once
+  // per paint instead of once per raw pointermove event.
+  const [liveDragPoint, setLiveDragPoint] = useState<{
+    pointId: string;
+    x: number;
+    y: number;
+    z: number;
+  } | null>(null);
+  const liveDragPointRef = useRef<typeof liveDragPoint>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragPatchRef = useRef<{
+    pointId: string;
+    x: number;
+    y: number;
+    z: number;
+  } | null>(null);
+
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
   const [sliceLayoutMode, setSliceLayoutMode] = useState<SliceLayoutMode>("single");
 
@@ -1099,19 +1122,32 @@ export default function Coords3dViewer({
   const overlaySliceIndexX = sliceXImageUrl ? displayedSliceIndexX : sliceIndexX;
   const overlaySliceIndexY = sliceYImageUrl ? displayedSliceIndexY : sliceIndexY;
 
+  // Overlays the actively-dragged point's live position onto filteredPoints
+  // for rendering only -- filteredPoints itself (and classOptions/
+  // scoreMinMax, which feed off coordsDraft) stays untouched during a drag,
+  // see updatePointFromSlice/onPointPointerUp.
+  const renderPoints = useMemo(() => {
+    if (!liveDragPoint) return filteredPoints;
+    return filteredPoints.map((p: any) =>
+      String(p?.id) === liveDragPoint.pointId
+        ? { ...p, x: liveDragPoint.x, y: liveDragPoint.y, z: liveDragPoint.z }
+        : p,
+    );
+  }, [filteredPoints, liveDragPoint]);
+
   const slicePointsSvgZ = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "z", overlaySliceIndexZ, tomoDims),
-    [filteredPoints, overlaySliceIndexZ, tomoDims],
+    () => computeSlicePointsSvg(renderPoints, "z", overlaySliceIndexZ, tomoDims),
+    [renderPoints, overlaySliceIndexZ, tomoDims],
   );
 
   const slicePointsSvgX = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "x", overlaySliceIndexX, tomoDims),
-    [filteredPoints, overlaySliceIndexX, tomoDims],
+    () => computeSlicePointsSvg(renderPoints, "x", overlaySliceIndexX, tomoDims),
+    [renderPoints, overlaySliceIndexX, tomoDims],
   );
 
   const slicePointsSvgY = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "y", overlaySliceIndexY, tomoDims),
-    [filteredPoints, overlaySliceIndexY, tomoDims],
+    () => computeSlicePointsSvg(renderPoints, "y", overlaySliceIndexY, tomoDims),
+    [renderPoints, overlaySliceIndexY, tomoDims],
   );
 
   const totalCoords = coordsDraft.length;
@@ -2031,7 +2067,7 @@ export default function Coords3dViewer({
 
       const [dimX, dimY, dimZ] = tomoDims;
 
-      let patch: Partial<Coords3dPointExt> | null = null;
+      let patch: { x: number; y: number; z: number } | null = null;
 
       if (axis === "z") {
         if (sliceIndex == null) return;
@@ -2058,21 +2094,30 @@ export default function Coords3dViewer({
 
       if (!patch) return;
 
-      setCoordsDraft((prev) => {
-        const next = prev.map((p: any) => (String(p?.id) === String(pointId) ? { ...p, ...patch } : p));
-        coordsDraftRef.current = next;
-        return next;
-      });
-      coordsDirtyRef.current = true;
-      setCoordsDirty(true);
+      // Coalesce to the latest pointer position, applied at most once per
+      // animation frame instead of once per raw pointermove event -- and
+      // note this only touches liveDragPoint/pickedPoint3d, never
+      // coordsDraft (that commit happens once, on pointerup).
+      pendingDragPatchRef.current = { pointId, ...patch };
 
-      setPickedPoint3d((prev) => {
-        if (!prev) return prev;
-        if (String((prev as any).id) !== String(pointId)) return prev;
-        const next = { ...(prev as any), ...patch } as any;
-        pickedPoint3dRef.current = next;
-        return next;
-      });
+      if (dragRafRef.current == null) {
+        dragRafRef.current = requestAnimationFrame(() => {
+          dragRafRef.current = null;
+          const pending = pendingDragPatchRef.current;
+          if (!pending) return;
+
+          liveDragPointRef.current = pending;
+          setLiveDragPoint(pending);
+
+          setPickedPoint3d((prev) => {
+            if (!prev) return prev;
+            if (String((prev as any).id) !== String(pending.pointId)) return prev;
+            const next = { ...(prev as any), x: pending.x, y: pending.y, z: pending.z } as any;
+            pickedPoint3dRef.current = next;
+            return next;
+          });
+        });
+      }
     },
     [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY],
   );
@@ -2321,15 +2366,45 @@ export default function Coords3dViewer({
 
     dragRef.current = null;
 
-    const afterIndex = coordsDraftRef.current.findIndex((point) => getCoords3dPointId(point) === drag.pointId);
-    const after = coordsDraftRef.current[afterIndex];
+    if (dragRafRef.current != null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+
+    // The last pointer position may not have made it into liveDragPoint
+    // yet (its animation frame could still be pending) -- pendingDragPatchRef
+    // always holds the truly latest one, so commit from that.
+    const finalPatch = pendingDragPatchRef.current;
+    pendingDragPatchRef.current = null;
+    liveDragPointRef.current = null;
+    setLiveDragPoint(null);
+
+    const after: Coords3dPointExt | null =
+      finalPatch && finalPatch.pointId === drag.pointId
+        ? ({ ...(drag.before as any), x: finalPatch.x, y: finalPatch.y, z: finalPatch.z } as Coords3dPointExt)
+        : null;
+
+    // .map() preserves order/length, so the dragged point's index cannot
+    // have changed between pointerdown and this single, pointerup-time
+    // commit -- drag.beforeIndex is still its correct index.
+    const afterIndex = drag.beforeIndex;
+
+    if (after) {
+      setCoordsDraft((prev) => {
+        const next = prev.map((p: any) => (String(p?.id) === String(drag.pointId) ? { ...p, ...after } : p));
+        coordsDraftRef.current = next;
+        return next;
+      });
+      coordsDirtyRef.current = true;
+      setCoordsDirty(true);
+    }
 
     if (after && !pointsMatch(drag.before, after)) {
       pushEditHistory({
         changes: [{
           pointId: drag.pointId,
           before: drag.before,
-          after: { ...(after as any) } as Coords3dPointExt,
+          after,
           beforeIndex: drag.beforeIndex,
           afterIndex,
         }],
