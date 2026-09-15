@@ -39,7 +39,6 @@ type ProjectRow = {
 type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
 
 const PIN_STORAGE_KEY = "scipion.home.pins.v1";
-const LAST_OPEN_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
 const DISMISSED_UPDATE_STORAGE_KEY = "scipion.home.dismissedUpdateVersion.v1";
 const RELEASE_NOTES_ROUTE = "/release-notes";
 
@@ -92,26 +91,6 @@ function writePinnedIds(ids: string[]): void {
   // writePinnedIds
   try {
     localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // ignore
-  }
-}
-
-function readLastOpenedProjectId(): string | null {
-  // readLastOpenedProjectId
-  try {
-    const raw = localStorage.getItem(LAST_OPEN_STORAGE_KEY);
-    const id = String(raw ?? "").trim();
-    return id ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLastOpenedProjectId(id: string): void {
-  // writeLastOpenedProjectId
-  try {
-    localStorage.setItem(LAST_OPEN_STORAGE_KEY, String(id));
   } catch {
     // ignore
   }
@@ -485,7 +464,6 @@ export default function Home() {
   const openProject = useCallback(
     (projectId: string) => {
       // openProject
-      writeLastOpenedProjectId(projectId);
       navigate(`/project/load/${encodeURIComponent(String(projectId))}`);
     },
     [navigate],
@@ -542,13 +520,7 @@ export default function Home() {
   }, [filteredProjects, pinnedIds]);
 
 
-  const lastOpenedId = useMemo(() => readLastOpenedProjectId(), []);
-  const lastProjectId = useMemo(() => {
-    // lastProjectId
-    const exists = lastOpenedId && projects.some((p) => String(p.id) === String(lastOpenedId));
-    if (exists) return String(lastOpenedId);
-    return projects[0]?.id;
-  }, [lastOpenedId, projects]);
+  const lastProjectId = projects[0]?.id;
 
   const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion);
   const latestVersion = displayVersion(updateStatus?.latestVersion);
