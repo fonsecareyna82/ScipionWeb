@@ -3931,7 +3931,7 @@ export default function Coords3dViewer({
         protocolId={protocolId}
         outputName={outputName}
         tomogramId={effectiveTomoId}
-        points={filteredPoints}
+        points={renderPoints}
         selectedPointId={pickedPointKey}
         selectedPointIds={selectedPointIds}
         boxSize={galleryBoxSize}
