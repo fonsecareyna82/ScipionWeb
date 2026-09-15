@@ -1554,9 +1554,16 @@ function Coords2dViewer({
   useEffect(() => {
     if (!selectedMicKey || loadingCoordinates) return;
 
+    // Deliberately NOT re-fitting when boxSize changes: getBounds() pads
+    // maxX/maxY by boxSize (so an oversized circle near the image edge
+    // stays fully paintable), and re-fitting to that changed bounds on
+    // every slider move made the whole image appear to grow/shrink as a
+    // side effect of resizing the pick circles -- the image itself never
+    // changes size, only the fit-to-view zoom was reacting to boxSize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
     setTransform(computeFitTransform(nextBounds, size));
-  }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, boxSize, loadingCoordinates]);
+  }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, loadingCoordinates]);
 
   const worldToScreen = useCallback(
     (x: number, y: number) => ({
