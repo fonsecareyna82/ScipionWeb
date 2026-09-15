@@ -143,6 +143,25 @@ type MicrographImageCacheEntry = ObjectUrlResult & {
   usedAt: number;
 };
 
+// Shared by the main image-load effect and the neighbor-prefetch effect --
+// both write into the same LRU-capped imageObjectUrlCacheRef and must evict
+// consistently, so the eviction rule lives in one place.
+function evictOldestCacheEntries<T extends { usedAt: number; revoke?: () => void }>(
+  cache: Record<string, T>,
+  limit: number,
+): void {
+  const entries = Object.entries(cache);
+  if (entries.length <= limit) return;
+
+  entries
+    .sort(([, first], [, second]) => first.usedAt - second.usedAt)
+    .slice(0, entries.length - limit)
+    .forEach(([key, entry]) => {
+      entry.revoke?.();
+      delete cache[key];
+    });
+}
+
 type PendingPointMove = {
   micKey: string;
   pointId: string;
@@ -698,6 +717,7 @@ function Coords2dViewer({
 
   const imageCacheSourceKeyRef = useRef("");
   const imageObjectUrlCacheRef = useRef<Record<string, MicrographImageCacheEntry>>({});
+  const pointsByMicIdRef = useRef<Record<string, ViewerPoint[]>>({});
 
   const [micrographs, setMicrographs] = useState<Coords2dMicrograph[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
@@ -807,6 +827,10 @@ function Coords2dViewer({
   useEffect(() => {
     previewHiddenPointIdsRef.current = previewHiddenPointIds;
   }, [previewHiddenPointIds]);
+
+  useEffect(() => {
+    pointsByMicIdRef.current = pointsByMicId;
+  }, [pointsByMicId]);
 
   useEffect(() => {
     thumbnailUrlsRef.current = thumbnailUrls;
@@ -1251,17 +1275,7 @@ function Coords2dViewer({
 
           storedInCache = true;
 
-          const entries = Object.entries(cache);
-
-          if (entries.length > MICROGRAPH_IMAGE_CACHE_LIMIT) {
-            entries
-              .sort(([, first], [, second]) => first.usedAt - second.usedAt)
-              .slice(0, entries.length - MICROGRAPH_IMAGE_CACHE_LIMIT)
-              .forEach(([key, entry]) => {
-                entry.revoke?.();
-                delete cache[key];
-              });
-          }
+          evictOldestCacheEntries(cache, MICROGRAPH_IMAGE_CACHE_LIMIT);
 
           setImageUrl(objectUrl.url);
           setImageOriginalSize(
@@ -1328,6 +1342,146 @@ function Coords2dViewer({
       previewObjectUrl?.revoke?.();
     };
   }, [service, projectId, protocolId, outputName, selectedMicId]);
+
+  // Warms the image + coordinates cache for the micrograph immediately
+  // before/after the selected one in the list, so the common case --
+  // paging through micrographs sequentially -- hits the same "already
+  // cached" instant path the LRU cache already gives a re-visited
+  // micrograph, instead of a cold fetch every time. Best-effort and
+  // silent: a failed/slow prefetch never surfaces an error, the normal
+  // on-select load effect above still runs (and reports real errors) once
+  // the user actually navigates there.
+  useEffect(() => {
+    if (!selectedMicKey || selectedMicId === null || selectedMicId === undefined) return;
+    if (micrographs.length < 2) return;
+
+    const currentIndex = micrographs.findIndex(
+      (micrograph) => toStringId(micrograph.id) === selectedMicKey,
+    );
+
+    if (currentIndex === -1) return;
+
+    const neighborIds = [
+      micrographs[currentIndex + 1]?.id,
+      micrographs[currentIndex - 1]?.id,
+    ].filter((id): id is Id => id !== null && id !== undefined);
+
+    if (!neighborIds.length) return;
+
+    let cancelled = false;
+
+    async function prefetchImage(micId: Id, micKey: string) {
+      if (imageObjectUrlCacheRef.current[micKey]) return;
+
+      let objectUrl: ObjectUrlResult | null = null;
+
+      try {
+        objectUrl = normalizeObjectUrl(
+          await service.fetchCoords2dMicrographImageObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            micId,
+            { size: MICROGRAPH_IMAGE_SIZE, format: "png" },
+          ),
+        );
+      } catch {
+        return;
+      }
+
+      if (!objectUrl || cancelled) {
+        objectUrl?.revoke?.();
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+
+        img.onload = () => {
+          const cache = imageObjectUrlCacheRef.current;
+
+          if (cancelled || cache[micKey]) {
+            objectUrl?.revoke?.();
+            resolve();
+            return;
+          }
+
+          cache[micKey] = {
+            ...(objectUrl as ObjectUrlResult),
+            image: img,
+            usedAt: Date.now(),
+          };
+
+          evictOldestCacheEntries(cache, MICROGRAPH_IMAGE_CACHE_LIMIT);
+          resolve();
+        };
+
+        img.onerror = () => {
+          objectUrl?.revoke?.();
+          resolve();
+        };
+
+        img.src = (objectUrl as ObjectUrlResult).url;
+      });
+    }
+
+    async function prefetchCoordinates(micId: Id, micKey: string) {
+      if (pointsByMicIdRef.current[micKey]) return;
+
+      try {
+        const points = await service.fetchCoords2dForMicrograph(
+          projectId,
+          protocolId,
+          outputName,
+          micId,
+        );
+
+        if (cancelled) return;
+
+        const normalizedPoints = (points ?? []).map((point, index) => ({
+          ...point,
+          id: point.id ?? `${micKey}:${index}`,
+          micId: point.micId ?? micId,
+          x: Number(point.x),
+          y: Number(point.y),
+        }));
+
+        setPointsByMicId((current) =>
+          current[micKey] ? current : { ...current, [micKey]: normalizedPoints },
+        );
+
+        setOriginalPointsByMicId((current) =>
+          current[micKey]
+            ? current
+            : { ...current, [micKey]: normalizedPoints.map((point) => ({ ...point })) },
+        );
+      } catch {
+        // Best-effort -- ignore, see comment above the effect.
+      }
+    }
+
+    async function prefetchNeighbors() {
+      // Sequential, not Promise.all: this is background warming, not a
+      // user-blocking load -- no reason to compete for bandwidth with the
+      // currently-selected micrograph's own fetch above.
+      for (const micId of neighborIds) {
+        if (cancelled) return;
+
+        const micKey = toStringId(micId);
+        if (!micKey) continue;
+
+        await prefetchImage(micId, micKey);
+        if (cancelled) return;
+        await prefetchCoordinates(micId, micKey);
+      }
+    }
+
+    void prefetchNeighbors();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [service, projectId, protocolId, outputName, selectedMicId, selectedMicKey, micrographs]);
 
   useEffect(() => {
     const node = canvasWrapRef.current;
