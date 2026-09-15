@@ -130,6 +130,16 @@ const SLICE_DRAG_PREVIEW_QUALITY = 70;
 type SliceImageCacheEntry = { url: string; revoke: () => void };
 const SLICE_IMAGE_CACHE_MAX_ITEMS = 96;
 
+// Debounced warm-up of the slices just ahead of / behind the current one on
+// each axis, once it's settled (never while actively dragging -- that's
+// already covered by the coalesce-to-latest fetch above). No batch endpoint
+// exists for coords3d tomogram slices, so this fires individual requests
+// into the same sliceImageCacheRef the main fetch effects already use --
+// still avoids a real network round trip the next time the user pauses on
+// an index that was already passed through.
+const SLICE_NEIGHBOR_PREFETCH_OFFSETS = [-2, -1, 1, 2];
+const SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS = 150;
+
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
   y: "#22c55e",
@@ -623,6 +633,16 @@ export default function Coords3dViewer({
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
   const sliceImageCacheRef = useRef<Map<string, SliceImageCacheEntry>>(new Map());
+  // Neighbor-slice prefetch bookkeeping (see the effects near the main
+  // fetch effects below): one AbortController + in-flight key set per
+  // axis, so a superseded prefetch batch doesn't keep firing once the
+  // user has moved past it.
+  const prefetchAbortZRef = useRef<AbortController | null>(null);
+  const prefetchAbortXRef = useRef<AbortController | null>(null);
+  const prefetchAbortYRef = useRef<AbortController | null>(null);
+  const prefetchInFlightZRef = useRef<Set<string>>(new Set());
+  const prefetchInFlightXRef = useRef<Set<string>>(new Set());
+  const prefetchInFlightYRef = useRef<Set<string>>(new Set());
 
   const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
     null,
@@ -1771,6 +1791,235 @@ export default function Coords3dViewer({
     svc,
   ]);
 
+  // neighborSlicePrefetchZ -- warms sliceImageCacheRef with the full-res
+  // slices just ahead of/behind the current one, once settled (never while
+  // isDraggingZ -- that's the coalesce-to-latest fetch above). Debounced so
+  // a fast scrub doesn't fire a prefetch per tick, only once it pauses.
+  useEffect(() => {
+    if (isDraggingZ) return;
+    if (fetchSliceIndexZ == null || maxSliceZ == null || maxSliceZ < 0) return;
+    if (effectiveTomoId == null) return;
+    if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
+
+    const clamped = Math.max(0, Math.min(fetchSliceIndexZ, maxSliceZ));
+
+    const timer = window.setTimeout(() => {
+      const cacheKeyFor = (index: number) =>
+        `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|z|${tomogramColormap}|full|${index}`;
+
+      const missing = Array.from(
+        new Set(
+          SLICE_NEIGHBOR_PREFETCH_OFFSETS
+            .map((offset) => clamped + offset)
+            .filter((index) => index >= 0 && index <= maxSliceZ && index !== clamped),
+        ),
+      ).filter((index) => {
+        const key = cacheKeyFor(index);
+        return !sliceImageCacheRef.current.has(key) && !prefetchInFlightZRef.current.has(key);
+      });
+
+      if (!missing.length) return;
+
+      prefetchAbortZRef.current?.abort();
+      const controller = new AbortController();
+      prefetchAbortZRef.current = controller;
+
+      for (const index of missing) {
+        const key = cacheKeyFor(index);
+        prefetchInFlightZRef.current.add(key);
+
+        void (svc as any)
+          .fetchCoords3dTomogramSliceObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            effectiveTomoId,
+            index,
+            buildSliceFetchOptions("z", false, controller.signal),
+          )
+          .then((result: any) => {
+            if (controller.signal.aborted) {
+              result?.revoke?.();
+              return;
+            }
+            if (result?.url && result?.revoke) {
+              storeCachedEntry(sliceImageCacheRef.current, key, { url: result.url, revoke: result.revoke }, SLICE_IMAGE_CACHE_MAX_ITEMS);
+            }
+          })
+          .catch(() => {
+            // Background prefetch errors are non-fatal -- the main fetch
+            // effect will simply do a real request if the user lands here.
+          })
+          .finally(() => {
+            prefetchInFlightZRef.current.delete(key);
+          });
+      }
+    }, SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    isDraggingZ,
+    fetchSliceIndexZ,
+    maxSliceZ,
+    effectiveTomoId,
+    projectId,
+    protocolId,
+    outputName,
+    tomogramColormap,
+    svc,
+    buildSliceFetchOptions,
+  ]);
+
+  // neighborSlicePrefetchX -- same as Z, for the X axis.
+  useEffect(() => {
+    if (isDraggingX) return;
+    if (fetchSliceIndexX == null || maxSliceX == null || maxSliceX < 0) return;
+    if (effectiveTomoId == null) return;
+    if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
+
+    const clamped = Math.max(0, Math.min(fetchSliceIndexX, maxSliceX));
+
+    const timer = window.setTimeout(() => {
+      const cacheKeyFor = (index: number) =>
+        `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|x|${tomogramColormap}|full|${index}`;
+
+      const missing = Array.from(
+        new Set(
+          SLICE_NEIGHBOR_PREFETCH_OFFSETS
+            .map((offset) => clamped + offset)
+            .filter((index) => index >= 0 && index <= maxSliceX && index !== clamped),
+        ),
+      ).filter((index) => {
+        const key = cacheKeyFor(index);
+        return !sliceImageCacheRef.current.has(key) && !prefetchInFlightXRef.current.has(key);
+      });
+
+      if (!missing.length) return;
+
+      prefetchAbortXRef.current?.abort();
+      const controller = new AbortController();
+      prefetchAbortXRef.current = controller;
+
+      for (const index of missing) {
+        const key = cacheKeyFor(index);
+        prefetchInFlightXRef.current.add(key);
+
+        void (svc as any)
+          .fetchCoords3dTomogramSliceObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            effectiveTomoId,
+            index,
+            buildSliceFetchOptions("x", false, controller.signal),
+          )
+          .then((result: any) => {
+            if (controller.signal.aborted) {
+              result?.revoke?.();
+              return;
+            }
+            if (result?.url && result?.revoke) {
+              storeCachedEntry(sliceImageCacheRef.current, key, { url: result.url, revoke: result.revoke }, SLICE_IMAGE_CACHE_MAX_ITEMS);
+            }
+          })
+          .catch(() => {
+            // ignore -- non-fatal background prefetch
+          })
+          .finally(() => {
+            prefetchInFlightXRef.current.delete(key);
+          });
+      }
+    }, SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    isDraggingX,
+    fetchSliceIndexX,
+    maxSliceX,
+    effectiveTomoId,
+    projectId,
+    protocolId,
+    outputName,
+    tomogramColormap,
+    svc,
+    buildSliceFetchOptions,
+  ]);
+
+  // neighborSlicePrefetchY -- same as Z, for the Y axis.
+  useEffect(() => {
+    if (isDraggingY) return;
+    if (fetchSliceIndexY == null || maxSliceY == null || maxSliceY < 0) return;
+    if (effectiveTomoId == null) return;
+    if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
+
+    const clamped = Math.max(0, Math.min(fetchSliceIndexY, maxSliceY));
+
+    const timer = window.setTimeout(() => {
+      const cacheKeyFor = (index: number) =>
+        `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|y|${tomogramColormap}|full|${index}`;
+
+      const missing = Array.from(
+        new Set(
+          SLICE_NEIGHBOR_PREFETCH_OFFSETS
+            .map((offset) => clamped + offset)
+            .filter((index) => index >= 0 && index <= maxSliceY && index !== clamped),
+        ),
+      ).filter((index) => {
+        const key = cacheKeyFor(index);
+        return !sliceImageCacheRef.current.has(key) && !prefetchInFlightYRef.current.has(key);
+      });
+
+      if (!missing.length) return;
+
+      prefetchAbortYRef.current?.abort();
+      const controller = new AbortController();
+      prefetchAbortYRef.current = controller;
+
+      for (const index of missing) {
+        const key = cacheKeyFor(index);
+        prefetchInFlightYRef.current.add(key);
+
+        void (svc as any)
+          .fetchCoords3dTomogramSliceObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            effectiveTomoId,
+            index,
+            buildSliceFetchOptions("y", false, controller.signal),
+          )
+          .then((result: any) => {
+            if (controller.signal.aborted) {
+              result?.revoke?.();
+              return;
+            }
+            if (result?.url && result?.revoke) {
+              storeCachedEntry(sliceImageCacheRef.current, key, { url: result.url, revoke: result.revoke }, SLICE_IMAGE_CACHE_MAX_ITEMS);
+            }
+          })
+          .catch(() => {
+            // ignore -- non-fatal background prefetch
+          })
+          .finally(() => {
+            prefetchInFlightYRef.current.delete(key);
+          });
+      }
+    }, SLICE_NEIGHBOR_PREFETCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    isDraggingY,
+    fetchSliceIndexY,
+    maxSliceY,
+    effectiveTomoId,
+    projectId,
+    protocolId,
+    outputName,
+    tomogramColormap,
+    svc,
+    buildSliceFetchOptions,
+  ]);
+
   // revokeSliceObjectUrlsOnUnmount -- all three axes' object URLs live in
   // sliceImageCacheRef (see the effects above), which normally only
   // revokes entries once evicted past SLICE_IMAGE_CACHE_MAX_ITEMS; on
@@ -1778,6 +2027,9 @@ export default function Coords3dViewer({
   // still held here.
   useEffect(() => {
     return () => {
+      prefetchAbortZRef.current?.abort();
+      prefetchAbortXRef.current?.abort();
+      prefetchAbortYRef.current?.abort();
       clearCachedEntries(sliceImageCacheRef.current);
     };
   }, []);

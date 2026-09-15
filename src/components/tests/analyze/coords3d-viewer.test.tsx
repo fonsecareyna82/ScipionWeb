@@ -998,11 +998,22 @@ describe("Coords3dViewer", () => {
         const firstRevoke = await serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock
             .results[0].value.then((result: { revoke: () => void }) => result.revoke);
 
+        // Filtered by the specific index rather than a raw total call
+        // count -- the neighbor-slice prefetch (see below) legitimately
+        // adds background calls for OTHER nearby indices, which this test
+        // isn't about.
+        const callsForIndex = (index: number) =>
+            serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.filter(
+                (call) => call[5]?.axis === "z" && Number(call[4]) === index,
+            ).length;
+
+        expect(callsForIndex(30)).toBe(1);
+
         const sliders = screen.getAllByRole("slider");
         fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+            expect(callsForIndex(31)).toBe(1);
         });
 
         // Move back to the original index, already cached from the first
@@ -1012,8 +1023,54 @@ describe("Coords3dViewer", () => {
 
         await new Promise((resolve) => window.setTimeout(resolve, 30));
 
-        expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(2);
+        expect(callsForIndex(30)).toBe(1);
         expect(firstRevoke).not.toHaveBeenCalled();
+    });
+
+    it("prefetches neighboring Z slices in the background and reuses them without a real fetch", async () => {
+        renderViewer();
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledTimes(1);
+        });
+
+        // The prefetch is debounced -- wait for it to actually fire.
+        await waitFor(() => {
+            expect(
+                serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.some(
+                    (call) => call[5]?.axis === "z" && Number(call[4]) === 28,
+                ),
+            ).toBe(true);
+        });
+
+        const zIndicesFetched = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls
+            .filter((call) => call[5]?.axis === "z")
+            .map((call) => Number(call[4]))
+            .sort((a, b) => a - b);
+
+        // Default Z index for t1 (dims [100,80,60], round(59/2)) is 30 --
+        // neighbors -2/-1/1/2 -> 28/29/31/32, plus the initial mount fetch
+        // for 30 itself.
+        expect(zIndicesFetched).toEqual([28, 29, 30, 31, 32]);
+
+        serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockClear();
+
+        const sliders = screen.getAllByRole("slider");
+        fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
+
+        await waitFor(() => {
+            expect(sliders[0]).toHaveAttribute("aria-valuenow", "31");
+        });
+
+        // Give any (incorrect) real fetch a chance to fire before asserting
+        // it never did -- index 31 was already warmed by the prefetch above.
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+        expect(
+            serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.some(
+                (call) => call[5]?.axis === "z" && Number(call[4]) === 31,
+            ),
+        ).toBe(false);
     });
 
     it("revokes every cached slice object URL on unmount", async () => {
