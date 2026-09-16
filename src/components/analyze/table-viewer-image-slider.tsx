@@ -22,6 +22,8 @@ export type TableViewerImageSliderContent = {
   /** Single-axis payload (base64 PNG strings, without data: prefix). */
   slices?: Record<string, string>;
   sliderPrefix?: string;
+  /** Added to the stack index when showing slider labels (e.g. 1 → first slice shows as 1). */
+  sliceLabelOffset?: number;
   /** Multi-axis payload keyed by x/y/z. */
   axes?: Record<string, ImageSliderAxisContent>;
   initialSlice?: string | number;
@@ -34,6 +36,12 @@ export type TableViewerImageSliderContent = {
 
 function sortedSliceKeys(slices: Record<string, string>): string[] {
   return Object.keys(slices).sort((left, right) => Number(left) - Number(right));
+}
+
+function sliceLabelForKey(key: string, offset = 0): string {
+  const index = Number(key);
+  if (!Number.isFinite(index)) return key;
+  return String(index + offset);
 }
 
 function defaultSliderIndex(keys: string[], initialSlice?: string | number): number {
@@ -281,10 +289,12 @@ function ImageSliderPanel({
   compactTop = false,
   maxImageHeight,
   displaySize,
+  sliceLabelOffset = 0,
 }: {
   label?: string;
   slices: Record<string, string>;
   sliderPrefix?: string;
+  sliceLabelOffset?: number;
   initialSlice?: string | number;
   sliderOnTop?: boolean;
   coordinates?: VolumeCoordinates;
@@ -320,6 +330,7 @@ function ImageSliderPanel({
 
   const activeKey = keys[Math.min(Math.max(index, 0), keys.length - 1)];
   const sliceIndex = Number(activeKey);
+  const sliceLabel = sliceLabelForKey(activeKey, sliceLabelOffset);
   const imageBase64 = slices[activeKey];
   const imageWidth = displaySize ? Math.round(displaySize.width) : undefined;
 
@@ -385,7 +396,7 @@ function ImageSliderPanel({
       >
         <SliceImage
           imageBase64={imageBase64}
-          alt={`${sliderPrefix}${activeKey}`}
+          alt={`${sliderPrefix}${sliceLabel}`}
           coordinates={coordinates}
           sliceIndex={sliceIndex}
           volumeAxis={volumeAxis}
@@ -400,7 +411,7 @@ function ImageSliderPanel({
       {!compactTop ? (
         <Typography variant="caption" color="text.secondary" align="right" sx={{ flexShrink: 0 }}>
           {sliderPrefix}
-          {activeKey}
+          {sliceLabel}
         </Typography>
       ) : null}
     </Box>
@@ -819,6 +830,7 @@ export default function TableViewerImageSlider({
             label={axisEntries.length > 1 ? `${axis.toUpperCase()} axis` : undefined}
             slices={axisContent.slices}
             sliderPrefix={axisContent.sliderPrefix}
+            sliceLabelOffset={content.sliceLabelOffset ?? 0}
             initialSlice={content.initialSlice}
           />
         ))
