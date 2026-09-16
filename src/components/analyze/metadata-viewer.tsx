@@ -5098,49 +5098,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     sortAsc,
   ]);
 
-  const ensureStableSelectionBeforeSort = useCallback(async () => {
-    // ensureStableSelectionBeforeSort
-    if (selectionMode === "ids") return;
-    if (selectedCountByIndex <= 0) return;
-
-    const ok = await materializeSingleIndexSelectionToIds();
-    if (ok) return;
-  }, [materializeSingleIndexSelectionToIds, selectedCountByIndex, selectionMode]);
-
-  const applyToggleSort = useCallback((column: MetadataColumnWithVisibility) => {
-    // applyToggleSort
-    if (!column.sortable) return;
-
-    setSortState((prev) => {
-      if (prev.columnName !== column.name) {
-        return { columnName: column.name, direction: "asc" };
-      }
-      return {
-        columnName: column.name,
-        direction: prev.direction === "asc" ? "desc" : "asc",
-      };
-    });
-  }, []);
-
-  const toggleSortForColumn = useCallback(
-    (column: MetadataColumnWithVisibility) => {
-      // toggleSortForColumn
-      if (!column.sortable) return;
-      if (sortInProgress) return;
-
-      void (async () => {
-        setSortInProgress(true);
-        try {
-          await ensureStableSelectionBeforeSort();
-          applyToggleSort(column);
-        } finally {
-          setSortInProgress(false);
-        }
-      })();
-    },
-    [applyToggleSort, ensureStableSelectionBeforeSort, sortInProgress],
-  );
-
   useEffect(() => {
     // keepSortValid
     if (!sortBy) return;
@@ -5689,11 +5646,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     isMountedRef,
   ]);
 
-  const materializeIndexSelectionToIds = useCallback(async () => {
+  const materializeIndexSelectionToIds = useCallback(async (): Promise<boolean> => {
     // materializeIndexSelectionToIds
-    if (selectionBusyRef.current || selectionMode === "ids") return;
-    if (!schema || !selectedTable || totalRows <= 0) return;
-    if (selectedCountByIndex <= 0) return;
+    if (selectionMode === "ids") return true;
+    if (selectionBusyRef.current) return false;
+    if (!schema || !selectedTable || totalRows <= 0) return false;
+    if (selectedCountByIndex <= 0) return false;
 
     const controller = new AbortController();
     selectionControllerRef.current = controller;
@@ -5708,7 +5666,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
     try {
       for (const { offset, limit } of metadataScanWindows(selectionStateToSelectedRanges(selectionState, totalRows), SELECTION_IDS_SCAN_PAGE_SIZE)) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return false;
         const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
@@ -5724,7 +5682,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           },
         )) as MetadataWindowResponse;
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return false;
         const parsed = parseWindowResponse(response);
         const actualOffset = parsed.offset ?? offset;
 
@@ -5753,8 +5711,10 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       clearSelection();
       setSelectedRowIndex(null);
       setSelectedImageCell(null);
+      return true;
     } catch (error) {
       if (!controller.signal.aborted) setSelectionDialogError(getErrorMessage(error, "Failed to freeze selection"));
+      return false;
     } finally {
       if (selectionControllerRef.current === controller) {
         selectionControllerRef.current = null;
@@ -5781,6 +5741,75 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     clearSelection,
     isMountedRef,
   ]);
+
+  const ensureStableSelectionBeforeSort = useCallback(async (): Promise<boolean> => {
+    // ensureStableSelectionBeforeSort -- an index-based selection (a range,
+    // several ranges, or "all except these rows") points at whatever rows
+    // happen to sit at those positions RIGHT NOW. Sorting reorders every
+    // row, so the same indices would silently end up pointing at different
+    // (wrong) rows once the sort applies -- unless the selection is first
+    // "frozen" into row ids, which stay correct regardless of row order.
+    if (selectionMode === "ids") return true;
+    if (selectedCountByIndex <= 0) return true;
+
+    // A pure "select all" with no exclusions is already order-independent
+    // -- every row is selected either way, nothing to freeze.
+    if (selectionState.baseMode === "all" && selectionState.ranges.length === 0) {
+      return true;
+    }
+
+    if (await materializeSingleIndexSelectionToIds()) return true;
+
+    return materializeIndexSelectionToIds();
+  }, [
+    selectionMode,
+    selectedCountByIndex,
+    selectionState,
+    materializeSingleIndexSelectionToIds,
+    materializeIndexSelectionToIds,
+  ]);
+
+  const applyToggleSort = useCallback((column: MetadataColumnWithVisibility) => {
+    // applyToggleSort
+    if (!column.sortable) return;
+
+    setSortState((prev) => {
+      if (prev.columnName !== column.name) {
+        return { columnName: column.name, direction: "asc" };
+      }
+      return {
+        columnName: column.name,
+        direction: prev.direction === "asc" ? "desc" : "asc",
+      };
+    });
+  }, []);
+
+  const toggleSortForColumn = useCallback(
+    (column: MetadataColumnWithVisibility) => {
+      // toggleSortForColumn
+      if (!column.sortable) return;
+      if (sortInProgress) return;
+
+      void (async () => {
+        setSortInProgress(true);
+        try {
+          const stable = await ensureStableSelectionBeforeSort();
+          if (!stable) {
+            // Couldn't confirm which rows the selection still points to
+            // (the freeze was cancelled or failed) -- keeping it would
+            // silently apply to the WRONG rows once the sort reorders
+            // everything, so drop it rather than risk that.
+            clearSelection();
+            setSelectionMode("index");
+          }
+          applyToggleSort(column);
+        } finally {
+          setSortInProgress(false);
+        }
+      })();
+    },
+    [applyToggleSort, clearSelection, ensureStableSelectionBeforeSort, sortInProgress],
+  );
 
   const runColumnCriteriaSelection = useCallback(async () => {
     // runColumnCriteriaSelection

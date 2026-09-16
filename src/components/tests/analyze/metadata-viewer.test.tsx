@@ -1615,6 +1615,78 @@ describe("MetadataViewer", () => {
         ).toBeInTheDocument();
     });
 
+    it("keeps a multi-row (range) selection pinned to the same particles, not the same positions, after sorting", async () => {
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValue([
+            { name: "particles", alias: "Particles", rowCount: 3 },
+            { name: "classes", alias: "Classes", rowCount: 1 },
+        ]);
+
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string, options: any) => {
+                if (tableName !== "particles") {
+                    return makeWindowRows(tableName as "particles" | "classes");
+                }
+
+                if (options?.sortBy === "score") {
+                    // Ascending by score: id3 (0.75), id2 (0.82), id1 (0.91) --
+                    // a real reorder, not just the identity permutation.
+                    return {
+                        rows: [
+                            { rowId: 3, values: [3, 0.75] },
+                            { rowId: 2, values: [2, 0.82] },
+                            { rowId: 1, values: [1, 0.91] },
+                        ],
+                        offset: 0,
+                    };
+                }
+
+                return {
+                    rows: [
+                        { rowId: 1, values: [1, 0.91] },
+                        { rowId: 2, values: [2, 0.82] },
+                        { rowId: 3, values: [3, 0.75] },
+                    ],
+                    offset: 0,
+                };
+            },
+        );
+
+        renderViewer();
+
+        expect(await screen.findByText("0.91")).toBeInTheDocument();
+
+        // Select rows 1 and 2 (id1, id2) by index range, leaving id3 (0.75)
+        // unselected.
+        fireEvent.click(screen.getByText("0.91"));
+        fireEvent.click(screen.getByText("0.82"), { shiftKey: true });
+
+        expect(
+            screen.getByText((_, node) => node?.textContent === "Selected: 2"),
+        ).toBeInTheDocument();
+
+        const scoreHeader = screen.getAllByText("Score")[0].closest("th");
+        fireEvent.click(scoreHeader as HTMLTableCellElement);
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenLastCalledWith(
+                1, 2, "metadataOutput", "particles",
+                expect.objectContaining({ sortBy: "score", asc: true }),
+            );
+        });
+
+        await screen.findByText("0.75");
+
+        // The selection must still be exactly {id1, id2} -- NOT "whatever
+        // now sits at index 0-1" (id3, id2), which is what a stale
+        // index-based selection would show after this reorder.
+        expect(screen.getByText("0.75").closest("tr")).toHaveAttribute("aria-selected", "false");
+        expect(screen.getByText("0.82").closest("tr")).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByText("0.91").closest("tr")).toHaveAttribute("aria-selected", "true");
+        expect(
+            screen.getByText((_, node) => node?.textContent === "Selected: 2"),
+        ).toBeInTheDocument();
+    });
+
     it("opens the plotter dialog for the currently selected table", async () => {
         renderViewer();
 
