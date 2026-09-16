@@ -538,6 +538,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
               }
             >
               <Box
+                onDoubleClick={(event) => event.stopPropagation()}
                 sx={{
                   minWidth:
                     0,

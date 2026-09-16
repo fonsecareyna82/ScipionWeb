@@ -573,4 +573,24 @@ describe("AnalyzeOutputDialog", () => {
 
         expect(onClose).toHaveBeenCalledTimes(1);
     });
+
+    it("does not propagate viewer double-clicks outside the analyze dialog", () => {
+        const onDoubleClick = vi.fn();
+
+        render(
+            <div onDoubleClick={onDoubleClick}>
+                <AnalyzeOutputDialog
+                    {...makeProps({
+                        outputRaw: {
+                            _class: "SetOfParticles",
+                        },
+                    })}
+                />
+            </div>,
+        );
+
+        fireEvent.doubleClick(screen.getByText("Mock MetadataViewer"));
+
+        expect(onDoubleClick).not.toHaveBeenCalled();
+    });
 });
