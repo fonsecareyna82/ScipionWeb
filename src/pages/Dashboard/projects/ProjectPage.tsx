@@ -121,6 +121,7 @@ interface StatusNodeData {
   | null;
 
   tick?: number;
+  elapsedSnapshotAtMs?: number;
   numberOfSteps?: number;
   stepsDone?: number;
 
@@ -249,6 +250,43 @@ function toElapsedSeconds(value: unknown): number {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
 }
 
+function projectElapsedSeconds(
+  backendElapsed: unknown,
+  snapshotAtMs: unknown,
+  nowMs: number,
+): number {
+  const elapsed =
+    toElapsedSeconds(
+      backendElapsed
+    );
+
+  const snapshotAt =
+    Number(
+      snapshotAtMs
+    );
+
+  if (
+    !Number.isFinite(
+      snapshotAt
+    )
+  ) {
+    return elapsed;
+  }
+
+  return (
+    elapsed
+    +
+    Math.max(
+      0,
+      (
+        nowMs
+        - snapshotAt
+      )
+      / 1000,
+    )
+  );
+}
+
 function mergeNodeElapsedTick(
   freshNode: Node<StatusNodeData>,
   currentNode?: Node<StatusNodeData>,
@@ -256,16 +294,22 @@ function mergeNodeElapsedTick(
   const freshStatus =
     freshNode.data?.status;
 
-  const backendElapsed = toElapsedSeconds(
-    freshNode.data?.elapsedTime,
-  );
+  const backendElapsed =
+    toElapsedSeconds(
+      freshNode.data?.elapsedTime,
+    );
 
   const nextData = {
     ...freshNode.data,
   };
 
-  if (!isElapsedTimerStatus(freshStatus)) {
+  if (
+    !isElapsedTimerStatus(
+      freshStatus
+    )
+  ) {
     delete nextData.tick;
+    delete nextData.elapsedSnapshotAtMs;
 
     return {
       ...freshNode,
@@ -285,21 +329,43 @@ function mergeNodeElapsedTick(
         ?.elapsedSessionId,
     );
 
-  const currentElapsed = toElapsedSeconds(
-    currentNode?.data?.tick ??
-    currentNode?.data?.elapsedTime,
-  );
+  const currentBackendElapsed =
+    toElapsedSeconds(
+      currentNode
+        ?.data
+        ?.elapsedTime,
+    );
+
+  const currentSnapshotAtMs =
+    Number(
+      currentNode
+        ?.data
+        ?.elapsedSnapshotAtMs,
+    );
+
+  const keepCurrentSnapshot =
+    continuesActiveSession
+    &&
+    currentBackendElapsed
+    === backendElapsed
+    &&
+    Number.isFinite(
+      currentSnapshotAtMs
+    );
 
   return {
     ...freshNode,
     data: {
       ...nextData,
-      tick: continuesActiveSession
-        ? Math.max(
-          currentElapsed,
-          backendElapsed,
-        )
-        : backendElapsed,
+
+      // The backend elapsed value is the authoritative snapshot.
+      // The local timer only projects forward from this snapshot.
+      tick: backendElapsed,
+
+      elapsedSnapshotAtMs:
+        keepCurrentSnapshot
+          ? currentSnapshotAtMs
+          : Date.now(),
     },
   };
 }
@@ -309,9 +375,10 @@ function mergeTableElapsedTick(
   currentRow?: any,
   currentNode?: Node<StatusNodeData>,
 ): any {
-  const backendElapsed = toElapsedSeconds(
-    freshRow?.elapsedTime,
-  );
+  const backendElapsed =
+    toElapsedSeconds(
+      freshRow?.elapsedTime,
+    );
 
   if (
     !isElapsedTimerStatus(
@@ -323,6 +390,7 @@ function mergeTableElapsedTick(
     };
 
     delete nextRow.tick;
+    delete nextRow.elapsedSnapshotAtMs;
 
     return nextRow;
   }
@@ -345,34 +413,56 @@ function mergeTableElapsedTick(
       freshRow?.elapsedSessionId,
     );
 
-  const currentElapsed = Math.max(
+  const currentBackendElapsed =
     currentRowContinues
       ? toElapsedSeconds(
-        currentRow?.tick ??
         currentRow?.elapsedTime,
       )
-      : 0,
+      : currentNodeContinues
+        ? toElapsedSeconds(
+          currentNode
+            ?.data
+            ?.elapsedTime,
+        )
+        : 0;
 
-    currentNodeContinues
-      ? toElapsedSeconds(
-        currentNode?.data?.tick ??
-        currentNode?.data?.elapsedTime,
+  const currentSnapshotAtMs =
+    currentRowContinues
+      ? Number(
+        currentRow?.elapsedSnapshotAtMs,
       )
-      : 0,
-  );
+      : currentNodeContinues
+        ? Number(
+          currentNode
+            ?.data
+            ?.elapsedSnapshotAtMs,
+        )
+        : NaN;
 
-  const continuesActiveSession =
-    currentRowContinues ||
-    currentNodeContinues;
+  const keepCurrentSnapshot =
+    (
+      currentRowContinues
+      ||
+      currentNodeContinues
+    )
+    &&
+    currentBackendElapsed
+    === backendElapsed
+    &&
+    Number.isFinite(
+      currentSnapshotAtMs
+    );
 
   return {
     ...freshRow,
-    tick: continuesActiveSession
-      ? Math.max(
-        currentElapsed,
-        backendElapsed,
-      )
-      : backendElapsed,
+
+    // Same rule as graph nodes: backend value is the snapshot.
+    tick: backendElapsed,
+
+    elapsedSnapshotAtMs:
+      keepCurrentSnapshot
+        ? currentSnapshotAtMs
+        : Date.now(),
   };
 }
 
@@ -5210,12 +5300,6 @@ export default function ProjectPage() {
                 return node;
               }
 
-              const currentElapsed =
-                toElapsedSeconds(
-                  node.data?.tick ??
-                  node.data?.elapsedTime
-                );
-
               changed = true;
 
               return {
@@ -5223,7 +5307,11 @@ export default function ProjectPage() {
                 data: {
                   ...node.data,
                   tick:
-                    currentElapsed + 1,
+                    projectElapsedSeconds(
+                      node.data?.elapsedTime,
+                      node.data?.elapsedSnapshotAtMs,
+                      Date.now(),
+                    ),
                 },
               };
             });
@@ -5251,10 +5339,11 @@ export default function ProjectPage() {
               return {
                 ...row,
                 tick:
-                  toElapsedSeconds(
-                    row.tick ??
-                    row.elapsedTime
-                  ) + 1,
+                  projectElapsedSeconds(
+                    row.elapsedTime,
+                    row.elapsedSnapshotAtMs,
+                    Date.now(),
+                  ),
               };
             });
 
