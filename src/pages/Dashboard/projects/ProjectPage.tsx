@@ -121,7 +121,6 @@ interface StatusNodeData {
   | null;
 
   tick?: number;
-  elapsedSnapshotAtMs?: number;
   numberOfSteps?: number;
   stepsDone?: number;
 
@@ -250,42 +249,7 @@ function toElapsedSeconds(value: unknown): number {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
 }
 
-function projectElapsedSeconds(
-  backendElapsed: unknown,
-  snapshotAtMs: unknown,
-  nowMs: number,
-): number {
-  const elapsed =
-    toElapsedSeconds(
-      backendElapsed
-    );
 
-  const snapshotAt =
-    Number(
-      snapshotAtMs
-    );
-
-  if (
-    !Number.isFinite(
-      snapshotAt
-    )
-  ) {
-    return elapsed;
-  }
-
-  return (
-    elapsed
-    +
-    Math.max(
-      0,
-      (
-        nowMs
-        - snapshotAt
-      )
-      / 1000,
-    )
-  );
-}
 
 function mergeNodeElapsedTick(
   freshNode: Node<StatusNodeData>,
@@ -295,25 +259,46 @@ function mergeNodeElapsedTick(
     freshNode.data?.status;
 
   const backendElapsed =
-    toElapsedSeconds(
-      freshNode.data?.elapsedTime,
+    Math.floor(
+      toElapsedSeconds(
+        freshNode.data?.elapsedTime,
+      )
     );
 
   const nextData = {
     ...freshNode.data,
   };
 
+  const hasCurrentNode =
+    currentNode != null;
+
+  const currentElapsed =
+    hasCurrentNode
+      ? Math.floor(
+        toElapsedSeconds(
+          currentNode?.data?.tick ??
+          currentNode?.data?.elapsedTime,
+        )
+      )
+      : backendElapsed;
+
   if (
     !isElapsedTimerStatus(
       freshStatus
     )
   ) {
-    delete nextData.tick;
-    delete nextData.elapsedSnapshotAtMs;
-
     return {
       ...freshNode,
-      data: nextData,
+      data: {
+        ...nextData,
+
+        // Do not jump directly to the final backend value.
+        // The ticker will advance one second at a time.
+        tick: Math.min(
+          currentElapsed,
+          backendElapsed,
+        ),
+      },
     };
   }
 
@@ -329,43 +314,20 @@ function mergeNodeElapsedTick(
         ?.elapsedSessionId,
     );
 
-  const currentBackendElapsed =
-    toElapsedSeconds(
-      currentNode
-        ?.data
-        ?.elapsedTime,
-    );
-
-  const currentSnapshotAtMs =
-    Number(
-      currentNode
-        ?.data
-        ?.elapsedSnapshotAtMs,
-    );
-
-  const keepCurrentSnapshot =
-    continuesActiveSession
-    &&
-    currentBackendElapsed
-    === backendElapsed
-    &&
-    Number.isFinite(
-      currentSnapshotAtMs
-    );
-
   return {
     ...freshNode,
     data: {
       ...nextData,
 
-      // The backend elapsed value is the authoritative snapshot.
-      // The local timer only projects forward from this snapshot.
-      tick: backendElapsed,
-
-      elapsedSnapshotAtMs:
-        keepCurrentSnapshot
-          ? currentSnapshotAtMs
-          : Date.now(),
+      // elapsedTime is the authoritative backend target.
+      // tick is only the displayed value.
+      tick:
+        continuesActiveSession
+          ? Math.min(
+            currentElapsed,
+            backendElapsed,
+          )
+          : backendElapsed,
     },
   };
 }
@@ -376,24 +338,11 @@ function mergeTableElapsedTick(
   currentNode?: Node<StatusNodeData>,
 ): any {
   const backendElapsed =
-    toElapsedSeconds(
-      freshRow?.elapsedTime,
+    Math.floor(
+      toElapsedSeconds(
+        freshRow?.elapsedTime,
+      )
     );
-
-  if (
-    !isElapsedTimerStatus(
-      freshRow?.status,
-    )
-  ) {
-    const nextRow = {
-      ...freshRow,
-    };
-
-    delete nextRow.tick;
-    delete nextRow.elapsedSnapshotAtMs;
-
-    return nextRow;
-  }
 
   const currentRowContinues =
     continuesElapsedTimerSession(
@@ -413,59 +362,66 @@ function mergeTableElapsedTick(
       freshRow?.elapsedSessionId,
     );
 
-  const currentBackendElapsed =
-    currentRowContinues
-      ? toElapsedSeconds(
-        currentRow?.elapsedTime,
-      )
-      : currentNodeContinues
-        ? toElapsedSeconds(
-          currentNode
-            ?.data
-            ?.elapsedTime,
+  const currentRowElapsed =
+    currentRow != null
+      ? Math.floor(
+        toElapsedSeconds(
+          currentRow?.tick ??
+          currentRow?.elapsedTime,
         )
-        : 0;
-
-  const currentSnapshotAtMs =
-    currentRowContinues
-      ? Number(
-        currentRow?.elapsedSnapshotAtMs,
       )
-      : currentNodeContinues
-        ? Number(
-          currentNode
-            ?.data
-            ?.elapsedSnapshotAtMs,
-        )
-        : NaN;
+      : 0;
 
-  const keepCurrentSnapshot =
-    (
-      currentRowContinues
-      ||
-      currentNodeContinues
-    )
-    &&
-    currentBackendElapsed
-    === backendElapsed
-    &&
-    Number.isFinite(
-      currentSnapshotAtMs
+  const currentNodeElapsed =
+    currentNode != null
+      ? Math.floor(
+        toElapsedSeconds(
+          currentNode?.data?.tick ??
+          currentNode?.data?.elapsedTime,
+        )
+      )
+      : 0;
+
+  const currentElapsed =
+    Math.max(
+      currentRowElapsed,
+      currentNodeElapsed,
     );
+
+  if (
+    !isElapsedTimerStatus(
+      freshRow?.status,
+    )
+  ) {
+    return {
+      ...freshRow,
+
+      // Keep the current displayed value.
+      // The ticker catches up smoothly to elapsedTime.
+      tick: Math.min(
+        currentElapsed || backendElapsed,
+        backendElapsed,
+      ),
+    };
+  }
+
+  const continuesActiveSession =
+    currentRowContinues
+    ||
+    currentNodeContinues;
 
   return {
     ...freshRow,
 
-    // Same rule as graph nodes: backend value is the snapshot.
-    tick: backendElapsed,
-
-    elapsedSnapshotAtMs:
-      keepCurrentSnapshot
-        ? currentSnapshotAtMs
-        : Date.now(),
+    tick:
+      continuesActiveSession
+        ? Math.min(
+          currentElapsed,
+          backendElapsed,
+        )
+        : backendElapsed,
   };
 }
-
 interface ContextMenuState {
   visible: boolean;
   x: number; // pane-relative
@@ -4768,7 +4724,10 @@ export default function ProjectPage() {
       number | null = null;
 
     const delay =
-      refreshSeconds
+      Math.min(
+        refreshSeconds,
+        1,
+      )
       * 1000;
 
 
@@ -5292,10 +5251,23 @@ export default function ProjectPage() {
 
           const nextNodes =
             currentNodes.map((node) => {
+              const targetElapsed =
+                Math.floor(
+                  toElapsedSeconds(
+                    node.data?.elapsedTime
+                  )
+                );
+
+              const currentElapsed =
+                Math.floor(
+                  toElapsedSeconds(
+                    node.data?.tick
+                  )
+                );
+
               if (
-                !isElapsedTimerStatus(
-                  node.data?.status
-                )
+                currentElapsed
+                >= targetElapsed
               ) {
                 return node;
               }
@@ -5306,12 +5278,13 @@ export default function ProjectPage() {
                 ...node,
                 data: {
                   ...node.data,
-                  tick:
-                    projectElapsedSeconds(
-                      node.data?.elapsedTime,
-                      node.data?.elapsedSnapshotAtMs,
-                      Date.now(),
-                    ),
+
+                  // Advance exactly one second.
+                  // Never jump directly to the backend target.
+                  tick: Math.min(
+                    currentElapsed + 1,
+                    targetElapsed,
+                  ),
                 },
               };
             });
@@ -5326,10 +5299,23 @@ export default function ProjectPage() {
 
           const nextRows =
             currentRows.map((row) => {
+              const targetElapsed =
+                Math.floor(
+                  toElapsedSeconds(
+                    row.elapsedTime
+                  )
+                );
+
+              const currentElapsed =
+                Math.floor(
+                  toElapsedSeconds(
+                    row.tick
+                  )
+                );
+
               if (
-                !isElapsedTimerStatus(
-                  row.status
-                )
+                currentElapsed
+                >= targetElapsed
               ) {
                 return row;
               }
@@ -5338,12 +5324,13 @@ export default function ProjectPage() {
 
               return {
                 ...row,
-                tick:
-                  projectElapsedSeconds(
-                    row.elapsedTime,
-                    row.elapsedSnapshotAtMs,
-                    Date.now(),
-                  ),
+
+                // Same behavior in table:
+                // always one second at a time.
+                tick: Math.min(
+                  currentElapsed + 1,
+                  targetElapsed,
+                ),
               };
             });
 
@@ -5354,7 +5341,9 @@ export default function ProjectPage() {
       }, 1000);
 
     return () =>
-      window.clearInterval(interval);
+      window.clearInterval(
+        interval
+      );
   }, [setNodes]);
 
   /* ------------------------ Layout change effect ------------------------ */
