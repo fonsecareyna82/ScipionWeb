@@ -279,9 +279,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchEnvironmentVariables", "fetchEnvironmentVariables", "getEnvironmentVariables");
   mapFn("patchEnvironmentVariables", "patchEnvironmentVariables", "updateEnvironmentVariables");
   mapFn(
-  "resetEnvironmentVariable",
-  "resetEnvironmentVariable",
-);
+    "resetEnvironmentVariable",
+    "resetEnvironmentVariable",
+  );
   mapFn("fetchHostSettings", "fetchHostSettings", "getHostSettings");
   mapFn("putHostSettings", "putHostSettings", "updateHostSettings");
   mapFn("patchHostSettings", "patchHostSettings");
@@ -327,9 +327,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("exportMetadataTable", "exportMetadataTable");
   mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
   mapFn(
-  "fetchMetadataRowPosition",
-  "fetchMetadataRowPosition",
-);
+    "fetchMetadataRowPosition",
+    "fetchMetadataRowPosition",
+  );
   mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");
@@ -352,6 +352,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("shareProject", "shareProject");
   mapFn("listProjectShares", "listProjectShares");
   mapFn("revokeProjectShare", "revokeProjectShare");
+  mapFn(
+    "resolveProtocolRelationCandidates",
+    "resolveProtocolRelationCandidates",
+  );
   mapFn("executeProtocolWizard", "executeProtocolWizard");
   mapFn("exportProtocols", "exportProtocols");
   mapFn("writeRemoteFile", "writeRemoteFile");

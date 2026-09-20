@@ -101,13 +101,25 @@ export function renderPointerParamRow({
   onOpenFind,
   wizardUi,
 }: PointerRendererProps): JSX.Element {
+  const liveParamClass = String(
+    protocolDetails.params?.[stateKey]?.paramClass ??
+    defResolved?.paramClass ??
+    def?.paramClass ??
+    "PointerParam",
+  );
+
+  const isRelationParam =
+    liveParamClass === "RelationParam";
+
   const liveDef = {
     ...defResolved,
     ...(protocolDetails.params?.[stateKey] || {}),
-    paramClass: "PointerParam",
+    paramClass: liveParamClass,
   };
 
-  const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
+  const isReadOnly =
+    isRelationParam ||
+    coerceReadOnlyFlag(def?.readOnly);
 
   const field = (
     <TextField
@@ -161,14 +173,18 @@ export function renderPointerParamRow({
               minWidth: 0,
             }}
           >
-            <WrapWithDrop
-              control={field}
-              def={liveDef}
-              paramKey={stateKey}
-              setProtocolDetails={setProtocolDetails}
-              setDragOverKey={setDragOverKey}
-              dragOverKey={dragOverKey}
-            />
+            {isRelationParam ? (
+              field
+            ) : (
+              <WrapWithDrop
+                control={field}
+                def={liveDef}
+                paramKey={stateKey}
+                setProtocolDetails={setProtocolDetails}
+                setDragOverKey={setDragOverKey}
+                dragOverKey={dragOverKey}
+              />
+            )}
           </Box>
         </Box>
       }

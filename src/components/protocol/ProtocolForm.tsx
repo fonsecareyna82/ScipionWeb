@@ -1058,7 +1058,10 @@ export default function ProtocolForm({
       );
     }
 
-    if (cls === "PointerParam") {
+    if (
+      cls === "PointerParam" ||
+      cls === "RelationParam"
+    ) {
       const token =
         normalizePointerToken(
           state.editableValue ??
@@ -1329,14 +1332,22 @@ export default function ProtocolForm({
       }
 
 
-      if (cls === "PointerParam") {
-        const token = normalizePointerToken(rawFromApi);
+      if (
+        cls === "PointerParam" ||
+        cls === "RelationParam"
+      ) {
+        const token =
+          normalizePointerToken(
+            rawFromApi
+          );
+
         params[key] = {
           ...defResolved,
-          paramClass: "PointerParam",
+          paramClass: cls,
           value: token,
           editableValue: token,
         };
+
         return;
       }
 
@@ -1872,7 +1883,9 @@ export default function ProtocolForm({
     }
 
     const isParamMeta = (s: string) =>
-      /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+      /pointerparam$/i.test(s) ||
+      /multipointerparam$/i.test(s) ||
+      /relationparam$/i.test(s);
 
     const filtered = flat.filter((s) => !isParamMeta(s));
 
@@ -1968,7 +1981,10 @@ export default function ProtocolForm({
         return;
       }
 
-      if (cls === "PointerParam") {
+      if (
+        cls === "PointerParam" ||
+        cls === "RelationParam"
+      ) {
         const editable = p.editableValue ?? "";
         let normalized = "";
 
@@ -2042,7 +2058,10 @@ export default function ProtocolForm({
             const boolValue = coerceBooleanValue(rawValue);
             nextParam.value = boolValue;
             nextParam.editableValue = boolValue;
-          } else if (cls === "PointerParam") {
+          } else if (
+            cls === "PointerParam" ||
+            cls === "RelationParam"
+          ) {
             const token = normalizePointerToken(rawValue);
             nextParam.value = token;
             nextParam.editableValue = token;
@@ -2615,19 +2634,94 @@ export default function ProtocolForm({
         return null;
       }
 
-      const handleOpenFind = (targetKey: string) => {
-        const liveParam = protocolDetails.params?.[targetKey];
-        const expected = getExpectedClass(liveParam);
+      const handleOpenFind = async (
+        targetKey: string,
+      ) => {
+        const liveParam =
+          protocolDetails.params?.[
+          targetKey
+          ];
 
-        setExpectedClass(expected);
+        const expected =
+          getExpectedClass(
+            liveParam
+          );
+
+        let availableOutputs =
+          getFilteredOutputsForKey(
+            targetKey
+          );
+
+        if (
+          resolveParamClass(
+            liveParam
+          ) === "RelationParam"
+        ) {
+          try {
+            const result =
+              await svc
+                .resolveProtocolRelationCandidates(
+                  projectId,
+                  {
+                    protocolClassName,
+                    paramName:
+                      getParamNameFromStateKey(
+                        targetKey
+                      ),
+                    formValues:
+                      getSerializedParams(),
+                  },
+                );
+
+            const allowedValues =
+              new Set(
+                (
+                  result?.values ??
+                  []
+                )
+                  .map(
+                    normalizePointerToken
+                  )
+                  .filter(Boolean)
+              );
+
+            availableOutputs =
+              availableOutputs.filter(
+                (output) =>
+                  allowedValues.has(
+                    getRelationOutputReference(
+                      output
+                    )
+                  )
+              );
+
+          } catch (error: any) {
+            toast.error(
+              error?.message ||
+              "Could not resolve related outputs."
+            );
+
+            return;
+          }
+        }
+
+        setExpectedClass(
+          expected
+        );
+
         setSelectorTarget({
           key: targetKey,
           def: liveParam,
           expectedClass: expected,
         });
 
-        setAllOutputs(getFilteredOutputsForKey(targetKey));
-        setOpenSelector(true);
+        setAllOutputs(
+          availableOutputs
+        );
+
+        setOpenSelector(
+          true
+        );
       };
 
       // MultiPointerParam (requires stateKey)
@@ -2718,8 +2812,11 @@ export default function ProtocolForm({
         );
       }
 
-      // PointerParam (requires stateKey)
-      if (defClass === "PointerParam") {
+      // PointerParam / RelationParam
+      if (
+        defClass === "PointerParam" ||
+        defClass === "RelationParam"
+      ) {
         if (!stateKey) return null;
 
         return renderPointerParamRow({
@@ -3115,7 +3212,10 @@ export default function ProtocolForm({
       return ids;
     }
 
-    if (cls === "PointerParam") {
+    if (
+      cls === "PointerParam" ||
+      cls === "RelationParam"
+    ) {
       const id = getOutputStableIdentity({
         value: paramState?.value ?? paramState?.editableValue ?? "",
         key: paramState?.key ?? "",
@@ -3138,6 +3238,34 @@ export default function ProtocolForm({
     }
 
     return ids;
+  };
+
+  const getRelationOutputReference = (
+    item: any,
+  ): string => {
+    const protocolToken = String(
+      item?.protocolId ??
+      item?.parentId ??
+      ""
+    ).trim();
+
+    const outputToken = String(
+      item?.key ??
+      item?.outputName ??
+      ""
+    ).trim();
+
+    if (
+      !protocolToken ||
+      !outputToken
+    ) {
+      return "";
+    }
+
+    return (
+      `${protocolToken}.` +
+      `${outputToken}`
+    );
   };
 
   // Filter outputs for a given paramKey, excluding self and descendants
@@ -3200,6 +3328,14 @@ export default function ProtocolForm({
 
       return true;
     });
+
+    if (
+      resolveParamClass(
+        liveParam
+      ) === "RelationParam"
+    ) {
+      return pool;
+    }
 
     const norm = (s: any) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
 

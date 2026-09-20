@@ -5,6 +5,7 @@ import ProtocolForm from "@/components/protocol/ProtocolForm";
 
 const mockSaveProtocol = vi.fn();
 const mockExecuteProtocol = vi.fn();
+const mockResolveProtocolRelationCandidates = vi.fn();
 
 const mockGetBackendPayloadFromError = vi.fn((error: any): any => error?.payload ?? error ?? null);
 const mockGetHttpStatusFromError = vi.fn((error: any): number | null => error?.status ?? null);
@@ -18,6 +19,7 @@ const mockProjectService = {
     listRemoteDirectory: vi.fn(),
     previewRemoteEntry: vi.fn(),
     buildProtocolDownloadUrl: vi.fn(),
+    resolveProtocolRelationCandidates: mockResolveProtocolRelationCandidates,
 };
 
 const mockToastSuccess = vi.fn();
@@ -97,7 +99,24 @@ vi.mock("@/utils/protocolform.utils", () => ({
 }));
 
 vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
-    renderPointerParamRow: ({ label }: any) => <div>{label}</div>,
+    renderPointerParamRow: ({
+        label,
+        stateKey,
+        onOpenFind,
+    }: any) => (
+        <div>
+            <span>{label}</span>
+
+            <button
+                aria-label={`Find ${label}`}
+                onClick={() =>
+                    onOpenFind(stateKey)
+                }
+            >
+                Find
+            </button>
+        </div>
+    ),
     renderPathParamRow: ({ label }: any) => <div>{label}</div>,
     renderEnumParamRow: ({ label }: any) => <div>{label}</div>,
     renderBooleanParamRow: ({ label, wizardUi }: any) => (
@@ -156,8 +175,25 @@ vi.mock("@/components/files/RemoteFileDialog", () => ({
 }));
 
 vi.mock("@/components/protocol/outputSelectorDialog", () => ({
-    default: ({ open }: { open: boolean }) =>
-        open ? <div data-testid="output-selector-dialog">Output selector dialog</div> : null,
+    default: ({
+        open,
+        allOutputs = [],
+    }: any) =>
+        open ? (
+            <div data-testid="output-selector-dialog">
+                {allOutputs.map(
+                    (output: any) => (
+                        <span
+                            key={
+                                `${output.protocolId}.${output.key}`
+                            }
+                        >
+                            {`${output.protocolId}.${output.key}`}
+                        </span>
+                    )
+                )}
+            </div>
+        ) : null,
 }));
 
 vi.mock("@/components/protocol/ExecuteModeButton", () => ({
@@ -404,7 +440,251 @@ describe("ProtocolForm", () => {
         mockGetHttpStatusFromError.mockImplementation((error) => error?.status ?? null);
         mockGetErrorsFromBackendPayload.mockReturnValue([]);
         mockFormatErrorsForDialog.mockImplementation((errors) => errors.join("\n"));
+        mockResolveProtocolRelationCandidates
+            .mockResolvedValue({
+                paramName:
+                    "ctfRelations",
+                relationName:
+                    "relation_ctf",
+                values: [],
+            });
     });
+
+    it("filters RelationParam outputs using backend relation candidates", async () => {
+        const data: any =
+            createData();
+
+        data.info.protocolClassName =
+            "XmippProtExtractParticles";
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputCoordinates",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input coordinates",
+                            pointerClass:
+                                "SetOfCoordinates",
+                        },
+                    },
+                    {
+                        paramName:
+                            "ctfRelations",
+                        paramDef: {
+                            paramClass:
+                                "RelationParam",
+                            label:
+                                "CTF estimation",
+                            condition:
+                                "inputCoordinates is not None",
+                            relationName:
+                                "relation_ctf",
+                            attributeName:
+                                "getInputMicrographs",
+                            direction: 0,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputCoordinates:
+                "12.outputCoordinates",
+            ctfRelations:
+                "",
+        };
+
+        mockResolveProtocolRelationCandidates
+            .mockResolvedValueOnce({
+                paramName:
+                    "ctfRelations",
+                relationName:
+                    "relation_ctf",
+                values: [
+                    "21.outputCTF",
+                    "44.outputCTF",
+                ],
+            });
+
+        const projectProtocols = [
+            {
+                id: 21,
+                label: "CTF 21",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputCTF",
+                        pointerClass:
+                            "SetOfCTF",
+                        value:
+                            "whatever.outputCTF",
+                    },
+                ],
+            },
+            {
+                id: 44,
+                label: "CTF 44",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputCTF",
+                        pointerClass:
+                            "SetOfCTF",
+                        value:
+                            "another.outputCTF",
+                    },
+                ],
+            },
+            {
+                id: 55,
+                label: "CTF 55",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputCTF",
+                        pointerClass:
+                            "SetOfCTF",
+                        value:
+                            "not-related.outputCTF",
+                    },
+                ],
+            },
+        ];
+
+        renderComponent({
+            data,
+            projectProtocols,
+        });
+
+        expect(
+            await screen.findByText(
+                "CTF estimation"
+            )
+        ).toBeInTheDocument();
+
+        fireEvent.click(
+            screen.getByRole(
+                "button",
+                {
+                    name:
+                        "Find CTF estimation",
+                },
+            )
+        );
+
+        await waitFor(() => {
+            expect(
+                mockResolveProtocolRelationCandidates
+            ).toHaveBeenCalledWith(
+                1,
+                {
+                    protocolClassName:
+                        "XmippProtExtractParticles",
+                    paramName:
+                        "ctfRelations",
+                    formValues:
+                        expect.objectContaining({
+                            inputCoordinates:
+                                "12.outputCoordinates",
+                        }),
+                },
+            );
+        });
+
+        expect(
+            await screen.findByText(
+                "21.outputCTF"
+            )
+        ).toBeInTheDocument();
+
+        expect(
+            screen.getByText(
+                "44.outputCTF"
+            )
+        ).toBeInTheDocument();
+
+        expect(
+            screen.queryByText(
+                "55.outputCTF"
+            )
+        ).not.toBeInTheDocument();
+    });
+
+    it("hides RelationParam when its is not None condition is false", async () => {
+        const data: any =
+            createData();
+
+        data.info.protocolClassName =
+            "XmippProtExtractParticles";
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputCoordinates",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input coordinates",
+                            pointerClass:
+                                "SetOfCoordinates",
+                        },
+                    },
+                    {
+                        paramName:
+                            "ctfRelations",
+                        paramDef: {
+                            paramClass:
+                                "RelationParam",
+                            label:
+                                "CTF estimation",
+                            condition:
+                                "inputCoordinates is not None",
+                            relationName:
+                                "relation_ctf",
+                            attributeName:
+                                "getInputMicrographs",
+                            direction: 0,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputCoordinates: "",
+            ctfRelations: "",
+        };
+
+        renderComponent({
+            data,
+        });
+
+        expect(
+            screen.queryByText(
+                "CTF estimation"
+            )
+        ).not.toBeInTheDocument();
+
+        expect(
+            mockResolveProtocolRelationCandidates
+        ).not.toHaveBeenCalled();
+    });
+
+
 
     it("renders parameters with a literal True condition", async () => {
         const data: any = createData();

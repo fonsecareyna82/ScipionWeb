@@ -72,6 +72,8 @@ import type {
   Coordinates3dGalleryResult,
   WorkflowFileInspection,
   WorkflowFileImportResult,
+  ProtocolRelationCandidatesPayload,
+  ProtocolRelationCandidatesResult,
 
 } from "@/services/ProjectService";
 
@@ -1057,6 +1059,17 @@ const defaultService: ProjectService = {
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy> =>
     api.getContextMenuVisibilityPolicy(toId(projectId)),
+
+  // ──────────────────────────── RelationParam support ────────────────────────────
+
+  resolveProtocolRelationCandidates: (
+    projectId: Id,
+    payload: ProtocolRelationCandidatesPayload,
+  ): Promise<ProtocolRelationCandidatesResult> =>
+    api.resolveProtocolRelationCandidates(
+      toId(projectId),
+      payload,
+    ),
 
   // ──────────────────────────── Wizards support ────────────────────────────
 

@@ -68,6 +68,8 @@ import {
   Coordinates3dGalleryResult,
   WorkflowFileInspection,
   WorkflowFileImportResult,
+  ProtocolRelationCandidatesPayload,
+  ProtocolRelationCandidatesResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -4329,6 +4331,57 @@ export async function fetchBlobObjectUrl(
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
+
+export async function resolveProtocolRelationCandidates(
+  projectId: Id,
+  payload: ProtocolRelationCandidatesPayload,
+): Promise<ProtocolRelationCandidatesResult> {
+  const url = `${BASE_URL}/projects/${projectId}/relations/candidates`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      protocolClassName: payload.protocolClassName,
+      paramName: payload.paramName,
+      formValues: payload.formValues ?? {},
+    }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to resolve protocol relation candidates",
+    );
+  }
+
+  const raw = await safeJson<any>(
+    response
+  );
+
+  return {
+    paramName: String(
+      raw?.paramName ??
+      payload.paramName
+    ),
+    relationName: String(
+      raw?.relationName ??
+      ""
+    ),
+    values: Array.isArray(
+      raw?.values
+    )
+      ? raw.values
+          .map((value: any) =>
+            String(value ?? "").trim()
+          )
+          .filter(Boolean)
+      : [],
+  };
+}
+
 
 export async function executeProtocolWizard(
   projectId: Id,

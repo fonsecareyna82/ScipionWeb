@@ -981,6 +981,12 @@ function normalizeServiceAPI(
     "getProjectEffectiveSettings",
   );
 
+  // relation params
+  mapFn(
+    "resolveProtocolRelationCandidates",
+    "resolveProtocolRelationCandidates",
+  );
+
   // wizards
   mapFn("executeProtocolWizard", "executeProtocolWizard");
 

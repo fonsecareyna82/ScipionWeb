@@ -44,7 +44,7 @@ const mockNormalizeEnumSelection = vi.fn(
 
 vi.mock("@/utils/protocolform.state", () => ({
   setScalarParamValue: (prev: any, key: any, value: any) =>
-  mockSetScalarParamValue(prev, key, value),
+    mockSetScalarParamValue(prev, key, value),
   clearParamValue: (prev: any, key: any) => mockClearParamValue(prev, key),
   setParamEditableValue: (prev: any, key: any, value: any) =>
     mockSetParamEditableValue(prev, key, value),
@@ -328,54 +328,110 @@ describe("ProtocolFormRenderers", () => {
   });
 
   it("renderDefaultParamRow supports scalar values and pointers", () => {
-  const prev = { params: {} };
-  const setProtocolDetails = vi.fn((updater) => updater(prev));
-  const onOpenFind = vi.fn();
+    const prev = { params: {} };
+    const setProtocolDetails = vi.fn((updater) => updater(prev));
+    const onOpenFind = vi.fn();
 
-  render(
-    renderDefaultParamRow({
-      ...getCommonProps(),
-      protocolDetails: {
-        params: {
-          inputParam: {
-            paramClass: "IntParam",
-            allowsPointers: true,
-            pointerClass: "Integer",
-            pointerMode: false,
-            value: 256,
-            editableValue: 256,
+    render(
+      renderDefaultParamRow({
+        ...getCommonProps(),
+        protocolDetails: {
+          params: {
+            inputParam: {
+              paramClass: "IntParam",
+              allowsPointers: true,
+              pointerClass: "Integer",
+              pointerMode: false,
+              value: 256,
+              editableValue: 256,
+            },
           },
         },
-      },
-      setProtocolDetails,
-      def: {
-        paramClass: "IntParam",
-        allowsPointers: true,
-        pointerClass: "Integer",
-        default: 128,
-      },
-      value: 256,
-      dragOverKey: null,
-      setDragOverKey: vi.fn(),
-      onOpenFind,
-    }),
-  );
+        setProtocolDetails,
+        def: {
+          paramClass: "IntParam",
+          allowsPointers: true,
+          pointerClass: "Integer",
+          default: 128,
+        },
+        value: 256,
+        dragOverKey: null,
+        setDragOverKey: vi.fn(),
+        onOpenFind,
+      }),
+    );
 
-  expect(screen.getByTestId("wrap-with-drop")).toBeInTheDocument();
-  expect(screen.getByDisplayValue("256")).toBeInTheDocument();
+    expect(screen.getByTestId("wrap-with-drop")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("256")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Find" }));
-  expect(onOpenFind).toHaveBeenCalledWith("inputParam");
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    expect(onOpenFind).toHaveBeenCalledWith("inputParam");
 
-  fireEvent.change(screen.getByDisplayValue("256"), {
-    target: { value: "128" },
+    fireEvent.change(screen.getByDisplayValue("256"), {
+      target: { value: "128" },
+    });
+
+    expect(mockSetScalarParamValue).toHaveBeenCalledWith(
+      prev,
+      "inputParam",
+      "128",
+    );
   });
 
-  expect(mockSetScalarParamValue).toHaveBeenCalledWith(
-    prev,
-    "inputParam",
-    "128",
-  );
-});
+  it("renderPointerParamRow keeps RelationParam read-only and disables generic drop", () => {
+    const onOpenFind = vi.fn();
+
+    render(
+      renderPointerParamRow({
+        ...getCommonProps(),
+        protocolDetails: {
+          params: {
+            inputParam: {
+              paramClass: "RelationParam",
+              value: "21.outputCTF",
+              editableValue: "21.outputCTF",
+            },
+          },
+        },
+        def: {
+          paramClass: "RelationParam",
+          readOnly: false,
+          default: "",
+        },
+        defResolved: {
+          paramClass: "RelationParam",
+        },
+        dragOverKey: null,
+        setDragOverKey: vi.fn(),
+        onOpenFind,
+      }),
+    );
+
+    expect(
+      screen.queryByTestId(
+        "wrap-with-drop"
+      )
+    ).not.toBeInTheDocument();
+
+    const input = screen.getByDisplayValue(
+      "21.outputCTF"
+    );
+
+    expect(
+      input
+    ).toHaveAttribute(
+      "readonly"
+    );
+
+    fireEvent.click(
+      input
+    );
+
+    expect(
+      onOpenFind
+    ).toHaveBeenCalledWith(
+      "inputParam"
+    );
+  });
 
 });

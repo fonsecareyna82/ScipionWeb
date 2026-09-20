@@ -1187,6 +1187,18 @@ export type CreateCoords2dOutputResult = {
   message?: string;
 };
 
+export type ProtocolRelationCandidatesPayload = {
+  protocolClassName: string;
+  paramName: string;
+  formValues: Record<string, any>;
+};
+
+export type ProtocolRelationCandidatesResult = {
+  paramName: string;
+  relationName: string;
+  values: string[];
+};
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 // Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -2376,6 +2388,16 @@ export interface ProjectService<
   getContextMenuVisibilityPolicy(
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy>;
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RelationParam support
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  resolveProtocolRelationCandidates: (
+    projectId: string | number,
+    payload: ProtocolRelationCandidatesPayload,
+  ) => Promise<ProtocolRelationCandidatesResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Wizards support
