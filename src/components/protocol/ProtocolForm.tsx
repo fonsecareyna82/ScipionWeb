@@ -631,6 +631,7 @@ export default function ProtocolForm({
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
   const initializedProtocolKeyRef = useRef<string | null>(null);
+  const relationValidationGenerationRef = useRef(0);
 
   // --------------------------------------------
   // Metadata tab snapshot
@@ -2032,7 +2033,255 @@ export default function ProtocolForm({
     return out;
   }, [protocolDetails.params, protocolDetails.queueConfig]);
 
+  useEffect(() => {
+    if (
+      projectId == null ||
+      !protocolClassName
+    ) {
+      relationValidationGenerationRef.current += 1;
+      return;
+    }
 
+    const relationSelections =
+      Object.entries(
+        protocolDetails.params ??
+        {},
+      )
+        .map(
+          ([stateKey, paramState]: [
+            string,
+            any,
+          ]) => {
+            if (
+              resolveParamClass(
+                paramState
+              ) !== "RelationParam"
+            ) {
+              return null;
+            }
+
+            const reference =
+              getRelationSelectionReference(
+                paramState
+              );
+
+            if (!reference) {
+              return null;
+            }
+
+            return {
+              stateKey,
+              paramName:
+                getParamNameFromStateKey(
+                  stateKey
+                ),
+              reference,
+            };
+          },
+        )
+        .filter(Boolean) as Array<{
+          stateKey: string;
+          paramName: string;
+          reference: string;
+        }>;
+
+    if (
+      relationSelections.length === 0
+    ) {
+      relationValidationGenerationRef.current += 1;
+      return;
+    }
+
+    const generation =
+      ++relationValidationGenerationRef.current;
+
+    const timeoutId =
+      window.setTimeout(
+        async () => {
+          const formValues =
+            getSerializedParams();
+
+          const checks =
+            await Promise.allSettled(
+              relationSelections.map(
+                async (
+                  relationSelection,
+                ) => {
+                  const result =
+                    await svc
+                      .resolveProtocolRelationCandidates(
+                        projectId,
+                        {
+                          protocolClassName,
+                          paramName:
+                            relationSelection.paramName,
+                          formValues,
+                        },
+                      );
+
+                  return {
+                    relationSelection,
+                    result,
+                  };
+                },
+              ),
+            );
+
+          if (
+            generation !==
+            relationValidationGenerationRef.current
+          ) {
+            return;
+          }
+
+          const invalidSelections =
+            new Map<
+              string,
+              string
+            >();
+
+          checks.forEach(
+            (check) => {
+              if (
+                check.status !==
+                "fulfilled"
+              ) {
+                return;
+              }
+
+              const {
+                relationSelection,
+                result,
+              } =
+                check.value;
+
+              const allowedValues =
+                new Set(
+                  (
+                    result?.values ??
+                    []
+                  )
+                    .map(
+                      normalizePointerToken
+                    )
+                    .filter(Boolean),
+                );
+
+              if (
+                !allowedValues.has(
+                  relationSelection.reference
+                )
+              ) {
+                invalidSelections.set(
+                  relationSelection.stateKey,
+                  relationSelection.reference,
+                );
+              }
+            },
+          );
+
+          if (
+            invalidSelections.size === 0
+          ) {
+            return;
+          }
+
+          setProtocolDetails(
+            (prev: any) => {
+              if (
+                generation !==
+                relationValidationGenerationRef.current
+              ) {
+                return prev;
+              }
+
+              const currentParams =
+                prev?.params ??
+                {};
+
+              let nextParams =
+                currentParams;
+
+              invalidSelections.forEach(
+                (
+                  expectedReference,
+                  stateKey,
+                ) => {
+                  const currentParam =
+                    currentParams[
+                    stateKey
+                    ];
+
+                  if (
+                    resolveParamClass(
+                      currentParam
+                    ) !== "RelationParam"
+                  ) {
+                    return;
+                  }
+
+                  const currentReference =
+                    getRelationSelectionReference(
+                      currentParam
+                    );
+
+                  if (
+                    currentReference !==
+                    expectedReference
+                  ) {
+                    return;
+                  }
+
+                  if (
+                    nextParams ===
+                    currentParams
+                  ) {
+                    nextParams = {
+                      ...currentParams,
+                    };
+                  }
+
+                  nextParams[
+                    stateKey
+                  ] = {
+                    ...currentParam,
+                    value: "",
+                    editableValue: "",
+                    info: "",
+                    parentId: null,
+                  };
+                },
+              );
+
+              if (
+                nextParams ===
+                currentParams
+              ) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                params: nextParams,
+              };
+            },
+          );
+        },
+        200,
+      );
+
+    return () => {
+      window.clearTimeout(
+        timeoutId
+      );
+    };
+  }, [
+    protocolDetails.params,
+    projectId,
+    protocolClassName,
+    svc,
+    getSerializedParams,
+  ]);
 
   const applyWizardParamUpdates = useCallback(
     (paramUpdates: Record<string, any>) => {
@@ -3238,6 +3487,71 @@ export default function ProtocolForm({
     }
 
     return ids;
+  };
+
+  const getRelationSelectionReference = (
+    paramState: any,
+  ): string => {
+    const rawValue =
+      normalizePointerToken(
+        paramState?.value ??
+        paramState?.editableValue ??
+        "",
+      );
+
+    if (!rawValue) {
+      return "";
+    }
+
+    const separatorIndex =
+      rawValue.indexOf(".");
+
+    if (
+      separatorIndex <= 0 ||
+      separatorIndex >= rawValue.length - 1
+    ) {
+      return "";
+    }
+
+    const rawParentToken =
+      rawValue
+        .slice(
+          0,
+          separatorIndex,
+        )
+        .trim();
+
+    const outputName =
+      rawValue
+        .slice(
+          separatorIndex + 1,
+        )
+        .split(".")[0]
+        .trim();
+
+    const parentId =
+      String(
+        paramState?.parentId ??
+        (
+          /^\d+$/.test(
+            rawParentToken
+          )
+            ? rawParentToken
+            : ""
+        ),
+      ).trim();
+
+    if (
+      !parentId ||
+      !outputName
+    ) {
+      return "";
+    }
+
+    return (
+      `${parentId}.` +
+      `${outputName}`
+    );
   };
 
   const getRelationOutputReference = (

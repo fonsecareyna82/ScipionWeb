@@ -103,41 +103,120 @@ vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
         label,
         stateKey,
         onOpenFind,
-    }: any) => (
-        <div>
-            <span>{label}</span>
+        protocolDetails,
+        setProtocolDetails,
+        def,
+    }: any) => {
+        const current =
+            protocolDetails.params?.[
+                stateKey
+            ] ?? {};
 
-            <button
-                aria-label={`Find ${label}`}
-                onClick={() =>
-                    onOpenFind(stateKey)
-                }
-            >
-                Find
-            </button>
-        </div>
+        const isRelationParam =
+            current.paramClass ===
+                "RelationParam" ||
+            def?.paramClass ===
+                "RelationParam";
+
+        return (
+            <div>
+                <span>{label}</span>
+
+                <input
+                    aria-label={label}
+                    value={
+                        current.editableValue ??
+                        current.value ??
+                        ""
+                    }
+                    readOnly={
+                        isRelationParam
+                    }
+                    onChange={
+                        isRelationParam
+                            ? undefined
+                            : (event) =>
+                                setProtocolDetails(
+                                    (prev: any) => ({
+                                        ...prev,
+                                        params: {
+                                            ...prev.params,
+                                            [stateKey]: {
+                                                ...prev.params?.[
+                                                    stateKey
+                                                ],
+                                                value:
+                                                    event.target.value,
+                                                editableValue:
+                                                    event.target.value,
+                                            },
+                                        },
+                                    }),
+                                )
+                    }
+                />
+
+                <button
+                    aria-label={`Find ${label}`}
+                    onClick={() =>
+                        onOpenFind(
+                            stateKey
+                        )
+                    }
+                >
+                    Find
+                </button>
+            </div>
+        );
+    },
+
+    renderPathParamRow: ({
+        label,
+    }: any) => (
+        <div>{label}</div>
     ),
-    renderPathParamRow: ({ label }: any) => <div>{label}</div>,
-    renderEnumParamRow: ({ label }: any) => <div>{label}</div>,
-    renderBooleanParamRow: ({ label, wizardUi }: any) => (
+
+    renderEnumParamRow: ({
+        label,
+    }: any) => (
+        <div>{label}</div>
+    ),
+
+    renderBooleanParamRow: ({
+        label,
+        wizardUi,
+    }: any) => (
         <div>
             <span>{label}</span>
 
             {wizardUi?.hasWizard && (
                 <button
                     aria-label={`${label} wizard`}
-                    onClick={wizardUi.onOpenWizard}
-                    disabled={!wizardUi.onOpenWizard}
+                    onClick={
+                        wizardUi.onOpenWizard
+                    }
+                    disabled={
+                        !wizardUi.onOpenWizard
+                    }
                 >
                     Wizard
                 </button>
             )}
         </div>
     ),
-    renderDefaultParamRow: ({ label, value }: any) => (
+
+    renderDefaultParamRow: ({
+        label,
+        value,
+    }: any) => (
         <div>
             <span>{label}</span>
-            <input aria-label={label} value={value ?? ""} readOnly />
+
+            <input
+                aria-label={label}
+                value={value ?? ""}
+                readOnly
+            />
         </div>
     ),
 }));
@@ -685,6 +764,259 @@ describe("ProtocolForm", () => {
     });
 
 
+    it("clears a RelationParam when form changes make its selection invalid", async () => {
+        const data: any =
+            createData();
+
+        data.info.protocolClassName =
+            "XmippProtExtractParticles";
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputCoordinates",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input coordinates",
+                            pointerClass:
+                                "SetOfCoordinates",
+                        },
+                    },
+                    {
+                        paramName:
+                            "ctfRelations",
+                        paramDef: {
+                            paramClass:
+                                "RelationParam",
+                            label:
+                                "CTF estimation",
+                            condition:
+                                "inputCoordinates is not None",
+                            relationName:
+                                "relation_ctf",
+                            attributeName:
+                                "getInputMicrographs",
+                            direction: 0,
+                            parentId: 21,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputCoordinates:
+                "12.outputCoordinates",
+            ctfRelations:
+                "21.outputCTF",
+        };
+
+        mockResolveProtocolRelationCandidates
+            .mockImplementation(
+                async (
+                    _projectId: any,
+                    payload: any,
+                ) => {
+                    if (
+                        payload
+                            .formValues
+                            .inputCoordinates ===
+                        "12.outputCoordinates"
+                    ) {
+                        return {
+                            paramName:
+                                "ctfRelations",
+                            relationName:
+                                "relation_ctf",
+                            values: [
+                                "21.outputCTF",
+                            ],
+                        };
+                    }
+
+                    return {
+                        paramName:
+                            "ctfRelations",
+                        relationName:
+                            "relation_ctf",
+                        values: [
+                            "44.outputCTF",
+                        ],
+                    };
+                },
+            );
+
+        renderComponent({
+            data,
+        });
+
+        const relationInput =
+            await screen.findByLabelText(
+                "CTF estimation"
+            );
+
+        expect(
+            relationInput
+        ).toHaveValue(
+            "21.outputCTF"
+        );
+
+        await waitFor(
+            () => {
+                expect(
+                    mockResolveProtocolRelationCandidates
+                ).toHaveBeenCalled();
+            },
+        );
+
+        expect(
+            relationInput
+        ).toHaveValue(
+            "21.outputCTF"
+        );
+
+        fireEvent.change(
+            screen.getByLabelText(
+                "Input coordinates"
+            ),
+            {
+                target: {
+                    value:
+                        "13.outputCoordinates",
+                },
+            },
+        );
+
+        await waitFor(
+            () => {
+                expect(
+                    relationInput
+                ).toHaveValue("");
+            },
+        );
+
+        expect(
+            mockResolveProtocolRelationCandidates
+        ).toHaveBeenLastCalledWith(
+            1,
+            {
+                protocolClassName:
+                    "XmippProtExtractParticles",
+                paramName:
+                    "ctfRelations",
+                formValues:
+                    expect.objectContaining({
+                        inputCoordinates:
+                            "13.outputCoordinates",
+                        ctfRelations:
+                            "21.outputCTF",
+                    }),
+            },
+        );
+    });
+
+    it("keeps a RelationParam when it remains valid after form changes", async () => {
+        const data: any =
+            createData();
+
+        data.info.protocolClassName =
+            "XmippProtExtractParticles";
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputCoordinates",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input coordinates",
+                            pointerClass:
+                                "SetOfCoordinates",
+                        },
+                    },
+                    {
+                        paramName:
+                            "ctfRelations",
+                        paramDef: {
+                            paramClass:
+                                "RelationParam",
+                            label:
+                                "CTF estimation",
+                            condition:
+                                "inputCoordinates is not None",
+                            relationName:
+                                "relation_ctf",
+                            attributeName:
+                                "getInputMicrographs",
+                            direction: 0,
+                            parentId: 21,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputCoordinates:
+                "12.outputCoordinates",
+            ctfRelations:
+                "21.outputCTF",
+        };
+
+        mockResolveProtocolRelationCandidates
+            .mockResolvedValue({
+                paramName:
+                    "ctfRelations",
+                relationName:
+                    "relation_ctf",
+                values: [
+                    "21.outputCTF",
+                    "44.outputCTF",
+                ],
+            });
+
+        renderComponent({
+            data,
+        });
+
+        const relationInput =
+            await screen.findByLabelText(
+                "CTF estimation"
+            );
+
+        fireEvent.change(
+            screen.getByLabelText(
+                "Input coordinates"
+            ),
+            {
+                target: {
+                    value:
+                        "13.outputCoordinates",
+                },
+            },
+        );
+
+        await waitFor(() => {
+            expect(
+                mockResolveProtocolRelationCandidates
+            ).toHaveBeenCalled();
+        });
+
+        expect(
+            relationInput
+        ).toHaveValue(
+            "21.outputCTF"
+        );
+    });
 
     it("renders parameters with a literal True condition", async () => {
         const data: any = createData();
