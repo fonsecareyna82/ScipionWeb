@@ -54,6 +54,11 @@ import {
   ProtocolOutputThumbnailsResponse,
   AuthenticatedRequestOptions,
   IntegratedAnalyzeContext,
+  TomogramReview,
+  TomogramReviewContext,
+  TomogramReviewPatch,
+  TomogramReviewSchema,
+  TomogramReviewSchemaPut,
   ProtocolStep,
   ProtocolStepStatus,
   ProtocolWorkflowExecutionPreflight,
@@ -1331,6 +1336,77 @@ export async function fetchIntegratedAnalyzeContext(
 
   const raw = await safeJson<any>(response);
   return raw && typeof raw === "object" ? (raw as IntegratedAnalyzeContext) : null;
+}
+
+export async function fetchTomogramReviewContext(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  opts: AuthenticatedRequestOptions = {},
+): Promise<TomogramReviewContext> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/reviews`;
+
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache ?? "no-store",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch tomogram reviews");
+  }
+
+  return safeJson<TomogramReviewContext>(response);
+}
+
+export async function saveTomogramReviewSchema(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  payload: TomogramReviewSchemaPut,
+): Promise<TomogramReviewSchema> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/reviews/schema`;
+
+  const response = await fetchWithAuth(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to save tomogram review schema");
+  }
+
+  return safeJson<TomogramReviewSchema>(response);
+}
+
+export async function saveTomogramReview(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  scipionItemId: Id,
+  payload: TomogramReviewPatch,
+): Promise<TomogramReview> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}` +
+    `/tomograms/${encodeURIComponent(String(scipionItemId))}/review`;
+
+  const response = await fetchWithAuth(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to save tomogram review");
+  }
+
+  return safeJson<TomogramReview>(response);
 }
 
 /* ======================= PROTOCOL ACTIONS ======================= */

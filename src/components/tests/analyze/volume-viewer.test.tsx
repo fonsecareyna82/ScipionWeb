@@ -137,8 +137,8 @@ function createDeferred<T>(): Deferred<T> {
 
 function makeVolumes() {
     return [
-        { id: 1, label: "Vol A" },
-        { id: 2, label: "Vol B" },
+        { id: 1, scipionItemId: 31, label: "Vol A" },
+        { id: 2, scipionItemId: 32, label: "Vol B" },
     ];
 }
 
@@ -319,6 +319,115 @@ describe("VolumeViewer", () => {
             expect(screen.getByText("2.800")).toBeInTheDocument();
             expect(screen.getByText("0.700")).toBeInTheDocument();
             expect(screen.getByText("0.900")).toBeInTheDocument();
+        });
+    });
+
+    it("reports the automatically selected volume to an integrated parent", async () => {
+        const onSelectedVolumeChange = vi.fn();
+
+        render(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                onSelectedVolumeChange={onSelectedVolumeChange}
+            />,
+        );
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(onSelectedVolumeChange).toHaveBeenCalledWith({
+                id: 1,
+                scipionItemId: 31,
+                label: "Vol A",
+                name: undefined,
+                tomoId: null,
+                tsId: null,
+            });
+        });
+    });
+
+    it("filters tomograms by persistent review status", async () => {
+        render(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                reviewedScipionItemIds={[31]}
+                reviewFilter="pending"
+            />,
+        );
+
+        expect(await screen.findByText("Vol B")).toBeInTheDocument();
+        expect(screen.queryByText("Vol A")).not.toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeInfo).toHaveBeenLastCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                2,
+            );
+        });
+    });
+
+    it("marks reviewed tomograms in the unfiltered list", async () => {
+        render(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                reviewedScipionItemIds={[31]}
+                reviewFilter="all"
+            />,
+        );
+
+        expect(await screen.findByLabelText("Vol A reviewed")).toBeInTheDocument();
+        expect(screen.getByLabelText("Vol B pending")).toBeInTheDocument();
+    });
+
+    it("selects the next unreviewed tomogram on request", async () => {
+        const onSelectedVolumeChange = vi.fn();
+        const { rerender } = render(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                reviewedScipionItemIds={[31]}
+                nextUnreviewedRequest={0}
+                onSelectedVolumeChange={onSelectedVolumeChange}
+            />,
+        );
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+
+        rerender(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                reviewedScipionItemIds={[31]}
+                nextUnreviewedRequest={1}
+                onSelectedVolumeChange={onSelectedVolumeChange}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(onSelectedVolumeChange).toHaveBeenLastCalledWith(
+                expect.objectContaining({ id: 2, scipionItemId: 32 }),
+            );
+            expect(serviceMocks.getVolumeInfo).toHaveBeenLastCalledWith(
+                1,
+                2,
+                "volumeOutput",
+                2,
+            );
         });
     });
 

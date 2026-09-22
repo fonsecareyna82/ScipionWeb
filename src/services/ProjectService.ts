@@ -147,7 +147,9 @@ export type ImportProjectPayload = {
 /** Volume list item used by Analyze Results. */
 export type VolumeListItem = {
   /** Unique id for the volume (index, db id, or filename). */
-  id: string;
+  id: string | number;
+  /** Persistent Scipion item identity used by item-attached PostgreSQL state. */
+  scipionItemId?: string | number | null;
   /** Human-friendly label to display in the left panel list. */
   name: string;
 };
@@ -766,6 +768,54 @@ export type IntegratedAnalyzeContext = {
   relations?: {
     items?: IntegratedContextItemRelation[];
   };
+};
+
+export type TomogramReviewSchema = {
+  id: number;
+  setId: number;
+  version: number;
+  definition: Record<string, unknown>;
+  revision: number;
+  createdByUserId?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type TomogramReviewSchemaPut = {
+  definition: Record<string, unknown>;
+  revision: number;
+};
+
+export type TomogramReview = {
+  id: number;
+  setId: number;
+  scipionItemId: number;
+  reviewed: boolean;
+  values: Record<string, unknown>;
+  comment?: string | null;
+  schemaVersion: number;
+  revision: number;
+  reviewedByUserId?: number | null;
+  reviewedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type TomogramReviewContext = {
+  setId: number;
+  schema: TomogramReviewSchema | null;
+  progress: {
+    total: number;
+    reviewed: number;
+  };
+  reviews: Record<string, TomogramReview>;
+};
+
+export type TomogramReviewPatch = {
+  reviewed: boolean;
+  values: Record<string, unknown>;
+  comment?: string | null;
+  revision: number;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1864,6 +1914,28 @@ export interface ProjectService<
     outputName: string,
     opts?: AuthenticatedRequestOptions,
   ): Promise<IntegratedAnalyzeContext | null>;
+
+  fetchTomogramReviewContext(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<TomogramReviewContext>;
+
+  saveTomogramReviewSchema(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: TomogramReviewSchemaPut,
+  ): Promise<TomogramReviewSchema>;
+
+  saveTomogramReview(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    scipionItemId: Id,
+    payload: TomogramReviewPatch,
+  ): Promise<TomogramReview>;
 
 
   listOutputVolumes(

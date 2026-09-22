@@ -66,6 +66,11 @@ import type {
   TiltSeriesBatchPreviewOptions,
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
+  TomogramReview,
+  TomogramReviewContext,
+  TomogramReviewPatch,
+  TomogramReviewSchema,
+  TomogramReviewSchemaPut,
   InstanceResources,
   ProjectFetchOptions,
   Coordinates3dGalleryRequest,
@@ -374,6 +379,47 @@ const defaultService: ProjectService = {
       toId(protocolId),
       outputName,
       opts,
+    ),
+
+  fetchTomogramReviewContext: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<TomogramReviewContext> =>
+    api.fetchTomogramReviewContext(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      opts,
+    ),
+
+  saveTomogramReviewSchema: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: TomogramReviewSchemaPut,
+  ): Promise<TomogramReviewSchema> =>
+    api.saveTomogramReviewSchema(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      payload,
+    ),
+
+  saveTomogramReview: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    scipionItemId: Id,
+    payload: TomogramReviewPatch,
+  ): Promise<TomogramReview> =>
+    api.saveTomogramReview(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(scipionItemId),
+      payload,
     ),
 
   listExternalViewers: (

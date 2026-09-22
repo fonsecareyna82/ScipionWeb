@@ -58,12 +58,17 @@ type VolumeViewerProps = {
   pointerClass?: string;
   selectedVolumeId?: string | number | null;
   onVolumeSelect?: (volume: VolumeLite) => void;
+  onSelectedVolumeChange?: (volume: VolumeLite | null) => void;
+  reviewedScipionItemIds?: Array<string | number>;
+  reviewFilter?: "all" | "pending" | "reviewed";
+  nextUnreviewedRequest?: number;
   hideMetadataAction?: boolean;
   active?: boolean;
 };
 
-type VolumeLite = {
+export type VolumeLite = {
   id: string | number;
+  scipionItemId?: string | number | null;
   label?: string;
   name?: string;
   tomoId?: string | number | null;
@@ -125,6 +130,7 @@ const SLICE_DRAG_PREVIEW_QUALITY = 70;
 
 const SLICE_WINDOW_LOW_QUANTILE = 0.005;
 const SLICE_WINDOW_HIGH_QUANTILE = 0.995;
+const EMPTY_REVIEWED_SCIPION_ITEM_IDS: Array<string | number> = [];
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -230,6 +236,10 @@ export default function VolumeViewer({
   pointerClass,
   selectedVolumeId,
   onVolumeSelect,
+  onSelectedVolumeChange,
+  reviewedScipionItemIds = EMPTY_REVIEWED_SCIPION_ITEM_IDS,
+  reviewFilter = "all",
+  nextUnreviewedRequest = 0,
   hideMetadataAction = false,
   active = true,
 }: VolumeViewerProps) {
@@ -247,6 +257,19 @@ export default function VolumeViewer({
   const [listError, setListError] = useState<string | null>(null);
   const [volumes, setVolumes] = useState<VolumeLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
+  const handledNextUnreviewedRequest = useRef(nextUnreviewedRequest);
+  const reviewedIdSet = useMemo(
+    () => new Set(reviewedScipionItemIds.map(String)),
+    [reviewedScipionItemIds],
+  );
+  const visibleVolumes = useMemo(() => {
+    if (reviewFilter === "all") return volumes;
+
+    return volumes.filter((volume) => {
+      const reviewed = volume.scipionItemId != null && reviewedIdSet.has(String(volume.scipionItemId));
+      return reviewFilter === "reviewed" ? reviewed : !reviewed;
+    });
+  }, [reviewFilter, reviewedIdSet, volumes]);
 
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
@@ -646,6 +669,7 @@ export default function VolumeViewer({
         if (cancelled) return;
         const mapped: VolumeLite[] = (items || []).map((v: any, i: number) => ({
           id: v?.id ?? i,
+          scipionItemId: v?.scipionItemId ?? null,
           label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`,
           name: v?.name,
           tomoId: v?.tomoId ?? v?.tomogramId ?? null,
@@ -711,9 +735,9 @@ export default function VolumeViewer({
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
   useEffect(() => {
-    if (selectedVolumeId == null || volumes.length === 0) return;
+    if (selectedVolumeId == null || visibleVolumes.length === 0) return;
 
-    const match = volumes.find((v) => {
+    const match = visibleVolumes.find((v) => {
       return (
         String(v.id) === String(selectedVolumeId) ||
         String(v.tomoId) === String(selectedVolumeId) ||
@@ -726,7 +750,56 @@ export default function VolumeViewer({
     if (match && String(match.id) !== String(selectedId)) {
       setSelectedId(match.id);
     }
-  }, [selectedVolumeId, volumes, selectedId]);
+  }, [selectedVolumeId, visibleVolumes, selectedId]);
+
+  useEffect(() => {
+    if (loadingList) return;
+
+    const selectedIsVisible = visibleVolumes.some(
+      (volume) => String(volume.id) === String(selectedId),
+    );
+
+    if (!selectedIsVisible) setSelectedId(visibleVolumes[0]?.id ?? null);
+  }, [loadingList, selectedId, visibleVolumes]);
+
+  const selectedVolume = useMemo(
+    () => volumes.find((volume) => String(volume.id) === String(selectedId)) ?? null,
+    [volumes, selectedId],
+  );
+
+  useEffect(() => {
+    onSelectedVolumeChange?.(selectedVolume);
+  }, [onSelectedVolumeChange, selectedVolume]);
+
+  useEffect(() => {
+    handledNextUnreviewedRequest.current = nextUnreviewedRequest;
+  }, [projectId, protocolId, outputName]);
+
+  useEffect(() => {
+    if (
+      handledNextUnreviewedRequest.current === nextUnreviewedRequest ||
+      volumes.length === 0
+    ) {
+      return;
+    }
+
+    handledNextUnreviewedRequest.current = nextUnreviewedRequest;
+    const selectedIndex = volumes.findIndex(
+      (volume) => String(volume.id) === String(selectedId),
+    );
+
+    for (let offset = 1; offset <= volumes.length; offset += 1) {
+      const candidateIndex = (Math.max(-1, selectedIndex) + offset) % volumes.length;
+      const candidate = volumes[candidateIndex];
+      const scipionItemId = candidate.scipionItemId;
+
+      if (scipionItemId != null && !reviewedIdSet.has(String(scipionItemId))) {
+        setSelectedId(candidate.id);
+        onVolumeSelect?.(candidate);
+        return;
+      }
+    }
+  }, [nextUnreviewedRequest, onVolumeSelect, reviewedIdSet, selectedId, volumes]);
 
   useEffect(() => {
     if (!needsHistogram || selectedId == null) {
@@ -1835,7 +1908,7 @@ export default function VolumeViewer({
           <Box sx={{ p: 1.5, flexShrink: 0 }}>
             <Typography variant="subtitle2">Volumes</Typography>
             <Typography variant="caption" color="text.secondary">
-              {loadingList ? "" : `${volumes.length} item(s)`}
+              {loadingList ? "" : `${visibleVolumes.length} of ${volumes.length} item(s)`}
             </Typography>
           </Box>
           <Divider />
@@ -1859,13 +1932,24 @@ export default function VolumeViewer({
                   No volumes in this output.
                 </Typography>
               </Box>
+            ) : visibleVolumes.length === 0 ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No tomograms match this review filter.
+                </Typography>
+              </Box>
             ) : (
               <List dense disablePadding>
-                {volumes.map((v) => {
+                {visibleVolumes.map((v) => {
                   const selected = String(selectedId) === String(v.id);
+                  const label = v.label || `Volume ${String(v.id)}`;
+                  const reviewStatus = v.scipionItemId != null && reviewedIdSet.has(String(v.scipionItemId))
+                    ? "reviewed"
+                    : "pending";
                   return (
                     <ListItemButton
                       key={String(v.id)}
+                      aria-label={`${label} ${reviewStatus}`}
                       selected={selected}
                       onClick={() => {
                         setSelectedId(v.id);
@@ -1878,7 +1962,8 @@ export default function VolumeViewer({
                           variant: "body2",
                           noWrap: true,
                         }}
-                        primary={v.label || `Volume ${String(v.id)}`}
+                        primary={label}
+                        secondary={reviewStatus}
                       />
                     </ListItemButton>
                   );

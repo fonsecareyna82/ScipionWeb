@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Box, CircularProgress, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink } from "@/services/ProjectService";
+import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink, TomogramReviewContext } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
-import VolumeViewer from "./volume-viewer";
+import VolumeViewer, { type VolumeLite } from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
+import TomogramReviewPanel, { type TomogramReviewFilter } from "./tomogram-review-panel";
 
 type IntegratedTomographyViewerProps = {
   projectId: string | number;
@@ -21,6 +22,11 @@ type IntegratedSection = "tiltSeries" | "ctf" | "tomogram" | "coordinates" | "me
 type ContextKey = "tiltSeries" | "ctf" | "tomogram" | "coordinates3d";
 type ContextStatus = "source" | "linked" | "planned" | "unavailable";
 type RelationSource = "coordinates" | "tomogram" | "tiltSeries" | "ctf";
+
+type SelectedTomogramReviewTarget = {
+  id: string | number;
+  label?: string;
+};
 
 type ContextNode = {
   key: Exclude<IntegratedSection, "metadata">;
@@ -354,6 +360,10 @@ export default function IntegratedTomographyViewer({
   const [contextError, setContextError] = useState<string | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
   const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
+  const [selectedTomogram, setSelectedTomogram] = useState<SelectedTomogramReviewTarget | null>(null);
+  const [tomogramReviewContext, setTomogramReviewContext] = useState<TomogramReviewContext | null>(null);
+  const [tomogramReviewFilter, setTomogramReviewFilter] = useState<TomogramReviewFilter>("all");
+  const [nextUnreviewedRequest, setNextUnreviewedRequest] = useState(0);
   const [mountedSections, setMountedSections] = useState<Set<IntegratedSection>>(
     () => new Set([initialSection]),
   );
@@ -362,6 +372,9 @@ export default function IntegratedTomographyViewer({
   useEffect(() => {
     setSelectedRelation(null);
     setSelectedRelationSource(null);
+    setSelectedTomogram(null);
+    setTomogramReviewContext(null);
+    setTomogramReviewFilter("all");
     setMetadataTargetSection(initialSection);
     setMountedSections(new Set([initialSection]));
   }, [projectIdNum, protocolIdNum, outputName, initialSection]);
@@ -454,6 +467,29 @@ export default function IntegratedTomographyViewer({
       volume?.id,
     ]);
   };
+
+  const handleSelectedTomogramChange = useCallback((volume: VolumeLite | null) => {
+    const reviewTarget = volume?.scipionItemId == null
+      ? null
+      : {
+        id: volume.scipionItemId,
+        label: volume.label,
+      };
+
+    setSelectedTomogram((previous) => {
+      if (previous == null && reviewTarget == null) return previous;
+      if (
+        previous != null &&
+        reviewTarget != null &&
+        String(previous.id) === String(reviewTarget.id) &&
+        previous.label === reviewTarget.label
+      ) {
+        return previous;
+      }
+
+      return reviewTarget;
+    });
+  }, []);
 
   const handleTiltSeriesSelect = (series: any) => {
     selectRelationByCandidates("tiltSeries", [
@@ -747,6 +783,10 @@ export default function IntegratedTomographyViewer({
                 null
             }
             onVolumeSelect={handleVolumeSelect}
+            onSelectedVolumeChange={handleSelectedTomogramChange}
+            reviewedScipionItemIds={reviewedScipionItemIds}
+            reviewFilter={tomogramReviewFilter}
+            nextUnreviewedRequest={nextUnreviewedRequest}
             hideMetadataAction={hideMetadataAction}
             active={activeSection === "tomogram"}
           />
@@ -801,6 +841,37 @@ export default function IntegratedTomographyViewer({
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
   };
 
+  const tomogramReviewLink = getSectionLink("tomogram");
+  const tomogramReviewAvailable = isSectionAvailable("tomogram");
+  const tomogramReviewProtocolId = getLinkedProtocolId(
+    tomogramReviewLink,
+    protocolIdNum,
+  );
+  const tomogramReviewOutputName = getLinkedOutputName(
+    tomogramReviewLink,
+    outputName,
+  );
+  const reviewedScipionItemIds = useMemo(
+    () => Object.values(tomogramReviewContext?.reviews ?? {})
+      .filter((review) => review.reviewed)
+      .map((review) => review.scipionItemId),
+    [tomogramReviewContext],
+  );
+  const hasNextUnreviewed = (tomogramReviewContext?.progress.reviewed ?? 0) <
+    (tomogramReviewContext?.progress.total ?? 0);
+  const handleNextUnreviewed = useCallback(() => {
+    setTomogramReviewFilter((current) => current === "reviewed" ? "all" : current);
+    setNextUnreviewedRequest((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    setSelectedTomogram(null);
+    setTomogramReviewContext(null);
+    setTomogramReviewFilter("all");
+  }, [tomogramReviewProtocolId, tomogramReviewOutputName]);
+
+  const showTomogramReview = activeSection === "tomogram" && tomogramReviewAvailable;
+
   return (
     <Box
       sx={{
@@ -808,7 +879,9 @@ export default function IntegratedTomographyViewer({
         minHeight: 0,
         minWidth: 0,
         display: "grid",
-        gridTemplateColumns: "300px minmax(0, 1fr)",
+        gridTemplateColumns: showTomogramReview
+          ? "300px minmax(0, 1fr) 360px"
+          : "300px minmax(0, 1fr)",
         overflow: "hidden",
         bgcolor: "background.default",
       }}
@@ -1021,6 +1094,20 @@ export default function IntegratedTomographyViewer({
           </Box>
         ))}
       </Box>
+
+      {showTomogramReview ? (
+        <TomogramReviewPanel
+          projectId={projectIdNum}
+          protocolId={tomogramReviewProtocolId}
+          outputName={tomogramReviewOutputName}
+          selectedTomogram={selectedTomogram}
+          reviewFilter={tomogramReviewFilter}
+          onReviewFilterChange={setTomogramReviewFilter}
+          onContextChange={setTomogramReviewContext}
+          onNextUnreviewed={handleNextUnreviewed}
+          hasNextUnreviewed={hasNextUnreviewed}
+        />
+      ) : null}
     </Box>
   );
 }

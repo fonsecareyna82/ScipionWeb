@@ -309,6 +309,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchProtocolLogsChunk", "fetchProtocolLogsChunk", "getProtocolLogsChunk");
 
   mapFn("fetchFscRows", "fetchFscRows", "getFscRows");
+  mapFn("fetchIntegratedAnalyzeContext", "fetchIntegratedAnalyzeContext");
+  mapFn("fetchTomogramReviewContext", "fetchTomogramReviewContext");
+  mapFn("saveTomogramReviewSchema", "saveTomogramReviewSchema");
+  mapFn("saveTomogramReview", "saveTomogramReview");
   mapFn("listOutputVolumes", "listOutputVolumes");
   mapFn("getVolumeInfo", "getVolumeInfo");
   mapFn("getVolumeHistogram", "getVolumeHistogram");
@@ -416,6 +420,19 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("fetchProtocolLogChannels", async () => ({ channels: [] }));
   ensureFn("fetchProtocolLogsChunk", async () => ({ chunks: [] }));
   ensureFn("fetchFscRows", async () => []);
+  ensureFn("fetchIntegratedAnalyzeContext", async () => null);
+  ensureFn("fetchTomogramReviewContext", async () => ({
+    setId: 0,
+    schema: null,
+    progress: { total: 0, reviewed: 0 },
+    reviews: {},
+  }));
+  ensureFn("saveTomogramReviewSchema", async () => {
+    throw createMissingServiceMethodError("saveTomogramReviewSchema");
+  });
+  ensureFn("saveTomogramReview", async () => {
+    throw createMissingServiceMethodError("saveTomogramReview");
+  });
   ensureFn("listOutputVolumes", async () => []);
   ensureFn("listCoords3dTomograms", async () => []);
   ensureFn("fetchCoords3dForTomogram", async () => []);
