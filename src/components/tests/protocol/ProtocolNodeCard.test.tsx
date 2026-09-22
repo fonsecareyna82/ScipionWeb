@@ -416,7 +416,29 @@ describe("ProtocolNodeCard", () => {
     });
 
     it("sets dragged output data on drag start and clears it on drag end", () => {
-        renderComponent();
+        renderComponent({
+            data: createProtocolData({
+                outputs: [
+                    {
+                        outputName: "moviesOutput",
+                        info: "Set of movies",
+                        paramClass: "PointerParam",
+                        pointerClass: "SetOfMovies",
+                        pointerClassHierarchy: [
+                            "SetOfMovies",
+                            "SetOfMicrographsBase",
+                            "SetOfImages",
+                            "EMSet",
+                            "Set",
+                            "EMObject",
+                            "Object",
+                        ],
+                        value: "movies.sqlite",
+                        parentId: "12",
+                    },
+                ],
+            }),
+        });
 
         const pill = screen.getByText("Set of movies").closest("div") as HTMLElement;
         const setData = vi.fn();
@@ -437,27 +459,55 @@ describe("ProtocolNodeCard", () => {
             info: "Set of movies",
             parentId: "12",
             name: "moviesOutput",
+            pointerClassHierarchy: [
+                "SetOfMovies",
+                "SetOfMicrographsBase",
+                "SetOfImages",
+                "EMSet",
+                "Set",
+                "EMObject",
+                "Object",
+            ],
         });
 
-        expect(setData).toHaveBeenCalledWith(
+        expect(setData).toHaveBeenCalledTimes(1);
+
+        const [
+            mimeType,
+            serializedOutput,
+        ] = setData.mock.calls[0];
+
+        expect(mimeType).toBe(
             "application/scipion-output",
-            JSON.stringify({
-                paramClass: "PointerParam",
-                pointerClass: "SetOfMovies",
-                _expectedClass: "SetOfMovies",
-                value: "movies.sqlite",
-                info: "Set of movies",
-                parentId: "12",
-                name: "moviesOutput",
-            }),
         );
+
+        expect(
+            JSON.parse(serializedOutput),
+        ).toEqual({
+            paramClass: "PointerParam",
+            pointerClass: "SetOfMovies",
+            pointerClassHierarchy: [
+                "SetOfMovies",
+                "SetOfMicrographsBase",
+                "SetOfImages",
+                "EMSet",
+                "Set",
+                "EMObject",
+                "Object",
+            ],
+            _expectedClass: "SetOfMovies",
+            value: "movies.sqlite",
+            info: "Set of movies",
+            parentId: "12",
+            name: "moviesOutput",
+        });
 
         fireEvent.dragEnd(pill);
 
         expect(mockSetCurrentDraggedOutput).toHaveBeenLastCalledWith(null);
     });
 
-        it("shows reduced selection actions when path selection is active", () => {
+    it("shows reduced selection actions when path selection is active", () => {
         renderComponent({
             inPathSelection: true,
             pathSelectionActive: true,

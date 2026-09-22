@@ -10,6 +10,7 @@ import type {
 export type OutputSelectorTestOutput = {
   paramClass?: string;
   pointerClass?: string;
+  pointerClassHierarchy?: string[];
   _expectedClass?: string;
   value?: string;
   info?: string;

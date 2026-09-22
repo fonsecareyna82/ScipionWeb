@@ -6,7 +6,9 @@ import {
 
 import {
   mergeProtocolOutputsPreservingOrder,
+  mergeProtocolRuntimeSummary,
 } from "@/utils/protocol_outputs";
+
 
 describe(
   "protocol outputs",
@@ -188,6 +190,58 @@ describe(
           "outputA",
           "outputB",
         ]);
+      },
+    );
+
+    it(
+      "updates protocol outputs from a runtime summary even when status is unchanged",
+      () => {
+        const protocol = {
+          id: "21",
+          status: "running",
+          outputs: [
+            {
+              outputName: "outputMicrographs",
+              pointerClass: "SetOfMicrographs",
+            },
+          ],
+        };
+
+        const summary = {
+          protocolId: "21",
+          status: "running",
+          outputs: [
+            {
+              outputName: "outputMicrographs",
+              pointerClass: "SetOfMicrographs",
+              pointerClassHierarchy: [
+                "SetOfMicrographs",
+                "SetOfMicrographsBase",
+                "SetOfImages",
+                "EMSet",
+              ],
+            },
+          ],
+        };
+
+        const result =
+          mergeProtocolRuntimeSummary(
+            protocol,
+            summary,
+          ) as any;
+
+        expect(
+          result.outputs[0]
+            .pointerClassHierarchy
+        ).toContain(
+          "SetOfImages",
+        );
+
+        expect(
+          result.status
+        ).toBe(
+          "running",
+        );
       },
     );
   },

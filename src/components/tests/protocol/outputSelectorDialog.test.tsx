@@ -197,4 +197,61 @@ describe("OutputSelectorDialog", () => {
     expect(screen.getByText("Selected outputs: 0")).toBeInTheDocument();
     expect(screen.getByText("Showing 3")).toBeInTheDocument();
   });
+
+  it("includes subclass outputs when expected class is a base class", () => {
+    const inheritedOutputs = [
+      makeOutputSelectorOutput({
+        parentId: 10,
+        protocol: "Import micrographs",
+        pointerClass: "SetOfMicrographs",
+        pointerClassHierarchy: [
+          "SetOfMicrographs",
+          "SetOfMicrographsBase",
+          "SetOfImages",
+          "EMSet",
+          "Set",
+          "EMObject",
+          "Object",
+        ],
+        info: "Micrographs",
+        key: "micrographs-10",
+      }),
+      makeOutputSelectorOutput({
+        parentId: 20,
+        protocol: "CTF estimation",
+        pointerClass: "SetOfCTF",
+        pointerClassHierarchy: [
+          "SetOfCTF",
+          "EMSet",
+          "Set",
+          "EMObject",
+          "Object",
+        ],
+        info: "CTFs",
+        key: "ctf-20",
+      }),
+    ];
+
+    render(
+      <OutputSelectorDialog
+        open={true}
+        onClose={() => {}}
+        expectedClass="SetOfImages"
+        allOutputs={inheritedOutputs}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText("Import micrographs")
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByText("CTF estimation")
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.getByText("1 result")
+    ).toBeInTheDocument();
+  });
 });

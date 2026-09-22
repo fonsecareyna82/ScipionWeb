@@ -225,6 +225,7 @@ type NormalizedOutput = {
   pointerClass?: string;
   value?: string;
   parentId?: string | number;
+  pointerClassHierarchy?: string[];
 };
 
 
@@ -265,6 +266,16 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
             : undefined,
       info: typeof flatCandidate.info === "string" ? flatCandidate.info : undefined,
       paramClass: inferredParamClass,
+      pointerClassHierarchy:
+        Array.isArray(
+          flatCandidate.pointerClassHierarchy
+        )
+          ? flatCandidate.pointerClassHierarchy
+            .map((className) =>
+              String(className ?? "").trim()
+            )
+            .filter(Boolean)
+          : undefined,
       pointerClass,
       value: typeof flatCandidate.value === "string" ? flatCandidate.value : undefined,
       parentId:
@@ -300,6 +311,16 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
           name: wrappedName,
           info: typeof wrappedDef.info === "string" ? wrappedDef.info : undefined,
           paramClass: inferredParamClass,
+          pointerClassHierarchy:
+            Array.isArray(
+              wrappedDef.pointerClassHierarchy
+            )
+              ? wrappedDef.pointerClassHierarchy
+                .map((className) =>
+                  String(className ?? "").trim()
+                )
+                .filter(Boolean)
+              : undefined,
           pointerClass,
           value: typeof wrappedDef.value === "string" ? wrappedDef.value : undefined,
           parentId:
@@ -2605,6 +2626,12 @@ export default function ProtocolNodeCard({
                             return {
                               paramClass: inferredParamClass,
                               pointerClass: value.pointerClass ?? "",
+                              ...(value.pointerClassHierarchy?.length
+                                ? {
+                                  pointerClassHierarchy:
+                                    value.pointerClassHierarchy,
+                                }
+                                : {}),
                               _expectedClass: value.pointerClass ?? "",
                               value: value.value ?? "",
                               info: value.info ?? "",

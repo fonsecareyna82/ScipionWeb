@@ -229,3 +229,49 @@ export function mergeProtocolOutputsPreservingOrder(
 
   return merged;
 }
+
+export function mergeProtocolRuntimeSummary(
+  protocol: unknown,
+  summary: unknown,
+): unknown {
+  if (
+    !protocol ||
+    typeof protocol !== "object"
+  ) {
+    return protocol;
+  }
+
+  if (
+    !summary ||
+    typeof summary !== "object"
+  ) {
+    return protocol;
+  }
+
+  const current =
+    protocol as Record<string, unknown>;
+
+  const fresh =
+    summary as Record<string, unknown>;
+
+  const status =
+    String(
+      fresh.status ??
+      current.status ??
+      ""
+    );
+
+  const outputs =
+    Array.isArray(fresh.outputs)
+      ? mergeProtocolOutputsPreservingOrder(
+          current.outputs,
+          fresh.outputs,
+        )
+      : current.outputs;
+
+  return {
+    ...current,
+    status,
+    outputs,
+  };
+}

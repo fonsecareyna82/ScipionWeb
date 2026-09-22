@@ -17,6 +17,7 @@ import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_uti
 import {
   isScalarOutput,
   mergeProtocolOutputsPreservingOrder,
+  mergeProtocolRuntimeSummary,
 } from "@/utils/protocol_outputs";
 import {
   PROJECT_REFRESH_REQUESTED_EVENT,
@@ -2003,25 +2004,43 @@ export default function ProjectPage() {
         const nextProtocols = { ...protocols };
 
         for (const [protocolId, summary] of summaryByProtocolId) {
-          const currentProtocol = protocols[protocolId];
+          const currentProtocol =
+            protocols[protocolId];
 
           if (!currentProtocol) {
             continue;
           }
 
-          const status = String(summary.status ?? "");
+          const status =
+            String(
+              summary.status ?? ""
+            );
+
+          const statusChanged =
+            normalizeProtocolStatus(
+              currentProtocol.status
+            ) !==
+            normalizeProtocolStatus(
+              status
+            );
+
+          const hasRuntimeOutputs =
+            Array.isArray(
+              summary.outputs
+            );
 
           if (
-            normalizeProtocolStatus(currentProtocol.status) ===
-            normalizeProtocolStatus(status)
+            !statusChanged &&
+            !hasRuntimeOutputs
           ) {
             continue;
           }
 
-          nextProtocols[protocolId] = {
-            ...currentProtocol,
-            status,
-          };
+          nextProtocols[protocolId] =
+            mergeProtocolRuntimeSummary(
+              currentProtocol,
+              summary,
+            );
 
           changed = true;
         }

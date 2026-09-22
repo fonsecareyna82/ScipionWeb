@@ -33,9 +33,15 @@ import {
   XCircle as ClearIcon,
 } from "lucide-react";
 
+import {
+  matchesPointerClassHierarchy,
+} from "@/utils/protocolform.utils";
+
+
 interface Output {
   paramClass?: string;
   pointerClass?: string;
+  pointerClassHierarchy?: string[];
   _expectedClass?: string;
   value?: string;
   info?: string;
@@ -155,14 +161,13 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       );
 
       if (!wildcard) {
-        const expectedClasses = (Array.isArray(expectedClass) ? expectedClass : [expectedClass])
-          .flatMap((c) => splitClassList(c))
-          .map((c) => toLowerString(c));
-
-        filtered = filtered.filter((o) => {
-          const outputClasses = getPointerClasses(o).map((c) => toLowerString(c));
-          return expectedClasses.some((cls) => outputClasses.includes(cls));
-        });
+        filtered = filtered.filter(
+          (output) =>
+            matchesPointerClassHierarchy(
+              expectedClass,
+              output,
+            )
+        );
       }
     }
 
