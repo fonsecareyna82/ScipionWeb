@@ -11,6 +11,7 @@ vi.mock("@/components/protocol/DragContext", () => ({
 
 type DraggedOutput = {
   pointerClass?: string;
+  pointerClassHierarchy?: string[];
   value?: string;
   info?: string;
   parentId?: string | number | null;
@@ -155,4 +156,100 @@ describe("WrapWithDrop", () => {
 
     expect(setProtocolDetails).toHaveBeenCalledTimes(1);
   });
+
+  it(
+    "accepts a subclass output when the parameter expects a base class",
+    () => {
+      const draggedOutput = {
+        pointerClass:
+          "SetOfMicrographs",
+
+        pointerClassHierarchy: [
+          "SetOfMicrographs",
+          "SetOfMicrographsBase",
+          "SetOfImages",
+          "EMSet",
+        ],
+
+        value:
+          "micrographs.sqlite",
+
+        info:
+          "Micrographs output",
+
+        parentId: 99,
+      };
+
+      const {
+        wrapper,
+        setProtocolDetails,
+      } = renderComponent(
+        {
+          def: {
+            pointerClass:
+              "SetOfImages",
+          },
+        },
+        draggedOutput,
+      );
+
+      fireEvent.drop(
+        wrapper
+      );
+
+      expect(
+        setProtocolDetails
+      ).toHaveBeenCalledTimes(
+        1
+      );
+    },
+  );
+
+  it(
+    "rejects a sibling output that does not inherit from the expected class",
+    () => {
+      const draggedOutput = {
+        pointerClass:
+          "SetOfMovies",
+
+        pointerClassHierarchy: [
+          "SetOfMovies",
+          "SetOfMicrographsBase",
+          "SetOfImages",
+          "EMSet",
+        ],
+
+        value:
+          "movies.sqlite",
+
+        info:
+          "Movies output",
+
+        parentId: 88,
+      };
+
+      const {
+        wrapper,
+        setProtocolDetails,
+      } = renderComponent(
+        {
+          def: {
+            pointerClass:
+              "SetOfMicrographs",
+          },
+        },
+        draggedOutput,
+      );
+
+      fireEvent.drop(
+        wrapper
+      );
+
+      expect(
+        setProtocolDetails
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+
 });

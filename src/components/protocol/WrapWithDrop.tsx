@@ -2,6 +2,7 @@ import React from "react";
 import { useDrag } from "./DragContext";
 import { Box } from "@mui/material";
 import { setScalarPointerSelection } from "@/utils/protocolform.state";
+import { matchesPointerClassHierarchy, } from "@/utils/protocolform.utils";
 
 export type WrapWithDropProps = {
   control: React.ReactNode;
@@ -34,21 +35,6 @@ function normalizeClassToken(value: string): string {
     .replace(/^class\s+/i, "");
 }
 
-function expandClassToken(value: string): string[] {
-  const normalized = normalizeClassToken(value);
-  if (!normalized) return [];
-
-  const shortName = normalized.split(".").filter(Boolean).pop() ?? normalized;
-
-  return Array.from(
-    new Set([
-      normalized,
-      shortName,
-      normalized.toLowerCase(),
-      shortName.toLowerCase(),
-    ]),
-  );
-}
 
 function getExpectedClasses(def: any): string[] {
   if (!def) return [];
@@ -78,46 +64,6 @@ function getExpectedClasses(def: any): string[] {
   );
 }
 
-function getDraggedOutputClasses(output: any): string[] {
-  if (!output) return [];
-
-  const candidates = [
-    output.pointerClass,
-    output.className,
-    output.outputClassName,
-    output.objectClass,
-    output.type,
-    output._type,
-    output.class,
-    output.info?.pointerClass,
-    output.info?.className,
-    output.info?.outputClassName,
-    output.info?.objectClass,
-    output.info?.type,
-    output.info?._type,
-    output.info?.class,
-  ];
-
-  return Array.from(
-    new Set(
-      candidates
-        .flatMap(splitClassTokens)
-        .map(normalizeClassToken)
-        .filter(Boolean),
-    ),
-  );
-}
-
-function classesMatch(expectedClasses: string[], draggedClasses: string[]): boolean {
-  if (expectedClasses.length === 0) return true;
-  if (draggedClasses.length === 0) return false;
-
-  const draggedExpanded = new Set(draggedClasses.flatMap(expandClassToken));
-
-  return expectedClasses.some((expectedClass) =>
-    expandClassToken(expectedClass).some((candidate) => draggedExpanded.has(candidate)),
-  );
-}
 
 export default function WrapWithDrop({
   control,
@@ -129,9 +75,14 @@ export default function WrapWithDrop({
 }: WrapWithDropProps) {
   const { currentDraggedOutput } = useDrag();
 
-  const expectedClasses = getExpectedClasses(def);
-  const draggedClasses = getDraggedOutputClasses(currentDraggedOutput);
-  const isMatch = classesMatch(expectedClasses, draggedClasses);
+  const expectedClasses =
+    getExpectedClasses(def);
+
+  const isMatch =
+    matchesPointerClassHierarchy(
+      expectedClasses,
+      currentDraggedOutput,
+    );
   const isActive = dragOverKey === paramKey && Boolean(currentDraggedOutput);
 
   const handleDragOver = (event: React.DragEvent) => {

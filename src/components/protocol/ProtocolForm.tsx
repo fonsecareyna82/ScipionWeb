@@ -67,6 +67,7 @@ import {
   normalizeEnumSelection,
   normalizeMultiPointerValue,
   isScalarPointerParam,
+  matchesPointerClassHierarchy,
 } from "@/utils/protocolform.utils";
 import {
   evaluateScipionCondition,
@@ -1920,6 +1921,19 @@ export default function ProtocolForm({
           info: out?.info ?? "",
           paramClass: String(out?.paramClass ?? "PointerParam"),
           pointerClass: String(out?.pointerClass ?? ""),
+          pointerClassHierarchy:
+            Array.isArray(
+              out?.pointerClassHierarchy
+            )
+              ? out.pointerClassHierarchy
+                .map(
+                  (className: any) =>
+                    String(
+                      className ?? ""
+                    ).trim()
+                )
+                .filter(Boolean)
+              : [],
           value: String(out?.value ?? ""),
           protocolId: pid,
           parentId: out?.parentId ?? null,
@@ -2995,23 +3009,39 @@ export default function ProtocolForm({
           setProtocolDetails((prev: any) => removeMultiPointerItemAndPad(prev, stateKey, i));
         };
 
-        const onRowDrop = (i: number, dragged: any) => {
-          const liveParam = protocolDetails.params?.[stateKey];
-          const expected = getExpectedClass(liveParam);
-          const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
-          const draggedClass = norm(dragged.pointerClass);
+        const onRowDrop = (
+          i: number,
+          dragged: any,
+        ) => {
+          const liveParam =
+            protocolDetails.params?.[
+            stateKey
+            ];
 
-          const matches =
-            expected === null
-              ? true
-              : Array.isArray(expected)
-                ? expected.some((e) => norm(e) === draggedClass)
-                : norm(expected) === draggedClass;
+          const expected =
+            getExpectedClass(
+              liveParam
+            );
 
-          if (!matches) return;
+          if (
+            !matchesPointerClassHierarchy(
+              expected,
+              dragged,
+            )
+          ) {
+            return;
+          }
 
-          setProtocolDetails((prev: any) =>
-            replaceMultiPointerItem(prev, stateKey, i, buildPointerSelectionItem(dragged))
+          setProtocolDetails(
+            (prev: any) =>
+              replaceMultiPointerItem(
+                prev,
+                stateKey,
+                i,
+                buildPointerSelectionItem(
+                  dragged
+                ),
+              )
           );
         };
 
@@ -3666,12 +3696,13 @@ export default function ProtocolForm({
       return pool;
     }
 
-    const expectedClasses = expectedList.flatMap((item) => splitClassList(item)).map(norm);
-
-    return pool.filter((o) => {
-      const outputClasses = splitClassList(o.pointerClass).map(norm);
-      return expectedClasses.some((cls) => outputClasses.includes(cls));
-    });
+    return pool.filter(
+      (output) =>
+        matchesPointerClassHierarchy(
+          expectedList,
+          output,
+        )
+    );
   };
 
   // Handle selected output in OutputSelectorDialog

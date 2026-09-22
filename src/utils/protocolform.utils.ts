@@ -16,6 +16,125 @@ export function isNonEmptyString(v: any): boolean {
   return typeof v === "string" && v.trim().length > 0;
 }
 
+function splitPointerClassTokens(
+  value: unknown,
+): string[] {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(
+      splitPointerClassTokens,
+    );
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return value
+    .split(/[,;|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizePointerClassToken(
+  value: unknown,
+): string {
+  let token = String(
+    value ?? "",
+  ).trim();
+
+  if (!token) return "";
+
+  token = token
+    .replace(
+      /^<class\s+['"]?/i,
+      "",
+    )
+    .replace(
+      /['"]?>$/,
+      "",
+    )
+    .replace(
+      /^class\s+/i,
+      "",
+    );
+
+  const shortName =
+    token
+      .split(".")
+      .filter(Boolean)
+      .pop() ?? token;
+
+  return shortName
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+export function matchesPointerClassHierarchy(
+  expected: unknown,
+  output: any,
+): boolean {
+  const expectedClasses =
+    splitPointerClassTokens(
+      expected,
+    )
+      .map(
+        normalizePointerClassToken,
+      )
+      .filter(Boolean);
+
+  if (
+    expectedClasses.length === 0
+  ) {
+    return true;
+  }
+
+  const outputClasses =
+    [
+      output?.pointerClass,
+      output?.pointerClassHierarchy,
+      output?.className,
+      output?.outputClassName,
+      output?.objectClass,
+      output?._class,
+      output?.info?.pointerClass,
+      output?.info?.pointerClassHierarchy,
+      output?.info?.className,
+    ]
+      .flatMap(
+        splitPointerClassTokens,
+      )
+      .map(
+        normalizePointerClassToken,
+      )
+      .filter(Boolean);
+
+  if (
+    outputClasses.length === 0
+  ) {
+    return false;
+  }
+
+  const availableClasses =
+    new Set(
+      outputClasses,
+    );
+
+  return expectedClasses.some(
+    (expectedClass) =>
+      availableClasses.has(
+        expectedClass,
+      ),
+  );
+}
+
+
 export function hasPointerClass(def: any): boolean {
   return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
 }

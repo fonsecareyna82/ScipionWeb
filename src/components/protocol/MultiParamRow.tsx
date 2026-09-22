@@ -14,6 +14,9 @@ import {
 import { TrashBinIcon, FindIcon } from "../../icons";
 import { useDrag } from "./DragContext";
 import OutputSelectorDialog from "./outputSelectorDialog";
+import {
+  matchesPointerClassHierarchy,
+} from "@/utils/protocolform.utils";
 
 type MultiParamRowProps = {
   label: string;
@@ -128,23 +131,18 @@ export default function MultiParamRow({
     return all.filter((o) => !used.has(o.value));
   }, [getAvailableOutputs, display]);
 
-  const draggedPointerClass = useMemo(() => {
-    // draggedPointerClass
-    if (dragged?.pointerClass) return String(dragged.pointerClass);
-    if (dragged?._class) return String(dragged._class);
-    return "";
-  }, [dragged]);
-
-  const isDraggedCompatible = useMemo(() => {
-    // isDraggedCompatible
-    if (!expected) return true;
-
-    if (Array.isArray(expected)) {
-      return expected.includes(draggedPointerClass);
-    }
-
-    return draggedPointerClass === expected;
-  }, [expected, draggedPointerClass]);
+  const isDraggedCompatible =
+    useMemo(
+      () =>
+        matchesPointerClassHierarchy(
+          expected,
+          dragged,
+        ),
+      [
+        expected,
+        dragged,
+      ],
+    );
 
   const cellTextFieldSx = {
     "& .MuiInputBase-root": {

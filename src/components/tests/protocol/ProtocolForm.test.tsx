@@ -96,7 +96,140 @@ vi.mock("@/utils/protocolform.utils", () => ({
         def?.paramClass !== "PointerParam" &&
         def?.paramClass !== "MultiPointerParam" &&
         def?.paramClass !== "RelationParam",
+    matchesPointerClassHierarchy: (
+        expected: any,
+        output: any,
+    ) => {
+        const normalize = (
+            value: any,
+        ) =>
+            String(
+                value ?? ""
+            )
+                .replace(
+                    /\s+/g,
+                    ""
+                )
+                .toLowerCase();
+
+        const expectedClasses =
+            (
+                Array.isArray(expected)
+                    ? expected
+                    : [expected]
+            )
+                .map(normalize)
+                .filter(Boolean);
+
+        const outputClasses =
+            [
+                output?.pointerClass,
+                ...(
+                    Array.isArray(
+                        output?.pointerClassHierarchy
+                    )
+                        ? output.pointerClassHierarchy
+                        : []
+                ),
+            ]
+                .map(normalize)
+                .filter(Boolean);
+
+        return expectedClasses.some(
+            (expectedClass) =>
+                outputClasses.includes(
+                    expectedClass
+                )
+        );
+    },
+
 }));
+
+it(
+    "accepts subclass outputs dropped into a MultiPointerParam",
+    async () => {
+        const data: any =
+            createData();
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputImages",
+
+                        paramDef: {
+                            paramClass:
+                                "MultiPointerParam",
+
+                            label:
+                                "Input images",
+
+                            pointerClass:
+                                "SetOfImages",
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputImages: [],
+        };
+
+        renderComponent({
+            data,
+        });
+
+        const rows =
+            screen.getAllByRole(
+                "row"
+            );
+
+        const emptyRow =
+            rows[1];
+
+        fireEvent.drop(
+            emptyRow,
+            {
+                dataTransfer: {
+                    getData: (
+                        type: string,
+                    ) =>
+                        type ===
+                            "application/scipion-output"
+                            ? JSON.stringify({
+                                value:
+                                    "21.outputMicrographs",
+
+                                info:
+                                    "Micrographs",
+
+                                pointerClass:
+                                    "SetOfMicrographs",
+
+                                pointerClassHierarchy: [
+                                    "SetOfMicrographs",
+                                    "SetOfMicrographsBase",
+                                    "SetOfImages",
+                                    "EMSet",
+                                ],
+
+                                parentId: 21,
+                            })
+                            : "",
+                },
+            },
+        );
+
+        expect(
+            await screen.findByDisplayValue(
+                "21.outputMicrographs"
+            )
+        ).toBeInTheDocument();
+    },
+);
 
 vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
     renderPointerParamRow: ({
@@ -109,14 +242,14 @@ vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
     }: any) => {
         const current =
             protocolDetails.params?.[
-                stateKey
+            stateKey
             ] ?? {};
 
         const isRelationParam =
             current.paramClass ===
-                "RelationParam" ||
+            "RelationParam" ||
             def?.paramClass ===
-                "RelationParam";
+            "RelationParam";
 
         return (
             <div>
@@ -143,7 +276,7 @@ vi.mock("@/components/protocol/ProtocolFormRenderers", () => ({
                                             ...prev.params,
                                             [stateKey]: {
                                                 ...prev.params?.[
-                                                    stateKey
+                                                stateKey
                                                 ],
                                                 value:
                                                     event.target.value,
@@ -344,7 +477,9 @@ vi.mock("@/icons", () => ({
     CloseIcon: (props: any) => <svg data-testid="close-icon" {...props} />,
     ExecuteIcon: (props: any) => <svg data-testid="execute-icon" {...props} />,
     SaveIcon: (props: any) => <svg data-testid="save-icon" {...props} />,
+    FindIcon: (props: any) => <svg data-testid="find-icon" {...props} />,
     HelpIcon: (props: any) => <svg data-testid="help-icon" {...props} />,
+    TrashBinIcon: (props: any) => <svg data-testid="trash-bin-icon" {...props} />,
 }));
 
 function createData() {
@@ -1892,6 +2027,131 @@ describe("ProtocolForm", () => {
         expect(
             within(dialog).getByDisplayValue("16"),
         ).toBeInTheDocument();
+    });
+
+    it("includes subclass outputs when a PointerParam accepts a base class", async () => {
+        const data: any =
+            createData();
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputImages",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input images",
+                            pointerClass:
+                                "SetOfImages",
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputImages: "",
+        };
+
+        const projectProtocols = [
+            {
+                id: 21,
+                label: "Micrographs",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputMicrographs",
+                        pointerClass:
+                            "SetOfMicrographs",
+                        pointerClassHierarchy: [
+                            "SetOfMicrographs",
+                            "SetOfMicrographsBase",
+                            "SetOfImages",
+                            "EMSet",
+                        ],
+                        value:
+                            "ProtImportMovies.outputMicrographs",
+                    },
+                ],
+            },
+            {
+                id: 44,
+                label: "Particles",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputParticles",
+                        pointerClass:
+                            "SetOfParticles",
+                        pointerClassHierarchy: [
+                            "SetOfParticles",
+                            "SetOfImages",
+                            "EMSet",
+                        ],
+                        value:
+                            "ProtExtractParticles.outputParticles",
+                    },
+                ],
+            },
+            {
+                id: 55,
+                label: "CTF",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputCTF",
+                        pointerClass:
+                            "SetOfCTF",
+                        pointerClassHierarchy: [
+                            "SetOfCTF",
+                            "EMSet",
+                        ],
+                        value:
+                            "ProtCTF.outputCTF",
+                    },
+                ],
+            },
+        ];
+
+        renderComponent({
+            data,
+            projectProtocols,
+        });
+
+        fireEvent.click(
+            screen.getByRole(
+                "button",
+                {
+                    name:
+                        "Find Input images",
+                },
+            ),
+        );
+
+        expect(
+            await screen.findByText(
+                "21.outputMicrographs"
+            ),
+        ).toBeInTheDocument();
+
+        expect(
+            screen.getByText(
+                "44.outputParticles"
+            ),
+        ).toBeInTheDocument();
+
+        expect(
+            screen.queryByText(
+                "55.outputCTF"
+            ),
+        ).not.toBeInTheDocument();
     });
 
 
