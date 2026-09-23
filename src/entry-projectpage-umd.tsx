@@ -313,6 +313,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchTomogramReviewContext", "fetchTomogramReviewContext");
   mapFn("saveTomogramReviewSchema", "saveTomogramReviewSchema");
   mapFn("saveTomogramReview", "saveTomogramReview");
+  mapFn("createTomogramReviewSubset", "createTomogramReviewSubset");
   mapFn("listOutputVolumes", "listOutputVolumes");
   mapFn("getVolumeInfo", "getVolumeInfo");
   mapFn("getVolumeHistogram", "getVolumeHistogram");
@@ -432,6 +433,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
   });
   ensureFn("saveTomogramReview", async () => {
     throw createMissingServiceMethodError("saveTomogramReview");
+  });
+  ensureFn("createTomogramReviewSubset", async () => {
+    throw createMissingServiceMethodError("createTomogramReviewSubset");
   });
   ensureFn("listOutputVolumes", async () => []);
   ensureFn("listCoords3dTomograms", async () => []);

@@ -880,8 +880,8 @@ export default function IntegratedTomographyViewer({
         minWidth: 0,
         display: "grid",
         gridTemplateColumns: showTomogramReview
-          ? "300px minmax(0, 1fr) 360px"
-          : "300px minmax(0, 1fr)",
+          ? "270px minmax(0, 1fr) 280px"
+          : "270px minmax(0, 1fr)",
         overflow: "hidden",
         bgcolor: "background.default",
       }}
@@ -898,6 +898,9 @@ export default function IntegratedTomographyViewer({
           p: 1.25,
           display: "flex",
           flexDirection: "column",
+          "& .MuiTypography-body2": { fontSize: "0.78rem" },
+          "& .MuiTypography-caption": { fontSize: "0.72rem" },
+          "& .MuiTypography-overline": { fontSize: "0.68rem" },
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, mb: 0.75 }}>

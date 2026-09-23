@@ -221,6 +221,70 @@ describe("tomogram review API", () => {
     });
   });
 
+  it("creates a filtered tomogram subset through the review endpoint", async () => {
+    const createdSubset = {
+      success: true,
+      status: 0,
+      outputName: "pendingTomograms",
+      createdTomograms: 83,
+      filter: "pending",
+      postgresqlStored: true,
+    };
+    const payload = {
+      filter: "pending",
+    };
+    const api = await import("@/api/projects") as Record<string, any>;
+
+    vi.mocked(fetchWithAuth).mockResolvedValue(
+      new Response(JSON.stringify(createdSubset), { status: 200 }),
+    );
+
+    const result = await api.createTomogramReviewSubset(
+      7,
+      42,
+      "outputTomograms",
+      payload,
+    );
+
+    expect(result).toEqual(createdSubset);
+    expect(fetchWithAuth).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "/projects/7/protocols/42/outputs/outputTomograms/reviews/subset",
+      ),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  });
+
+  it("exposes subset creation through the production project service", async () => {
+    const createdSubset = {
+      success: true,
+      outputName: "reviewedTomograms",
+      createdTomograms: 37,
+      filter: "reviewed",
+      postgresqlStored: true,
+    };
+    vi.mocked(fetchWithAuth).mockResolvedValue(
+      new Response(JSON.stringify(createdSubset), { status: 200 }),
+    );
+
+    const { default: service } = await import("@/adapters/projectsAdapter");
+    const subsetService = service as unknown as Record<string, any>;
+    const result = await subsetService.createTomogramReviewSubset(
+      7,
+      42,
+      "outputTomograms",
+      {
+        filter: "reviewed",
+      },
+    );
+
+    expect(result).toEqual(createdSubset);
+  });
+
   it("exposes schema writes through the production project service", async () => {
     const definition = {
       tags: [{ key: "feature_a", label: "Feature A" }],

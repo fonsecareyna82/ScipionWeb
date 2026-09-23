@@ -71,6 +71,8 @@ import type {
   TomogramReviewPatch,
   TomogramReviewSchema,
   TomogramReviewSchemaPut,
+  TomogramReviewSubsetRequest,
+  TomogramReviewSubsetResult,
   InstanceResources,
   ProjectFetchOptions,
   Coordinates3dGalleryRequest,
@@ -421,6 +423,23 @@ const defaultService: ProjectService = {
       toId(scipionItemId),
       payload,
     ),
+
+  createTomogramReviewSubset: async (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: TomogramReviewSubsetRequest,
+  ): Promise<TomogramReviewSubsetResult> => {
+    const result = await api.createTomogramReviewSubset(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      payload,
+    );
+
+    if (result.success) requestProjectRefresh(projectId);
+    return result;
+  },
 
   listExternalViewers: (
     projectId: Id,

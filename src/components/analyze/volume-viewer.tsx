@@ -1766,7 +1766,7 @@ export default function VolumeViewer({
     setGpuError(msg);
   }, []);
 
-  const panelBasis = 340;
+  const panelBasis = 280;
 
   const histogramLevelRange = useMemo<[number, number] | null>(() => {
     const range = getHistogramDisplayRange(histogram, 0.005, 0.995);
@@ -1897,12 +1897,15 @@ export default function VolumeViewer({
       {!expanded3d && (
         <Box
           sx={{
-            width: 270,
+            width: 240,
             borderRight: "1px solid #eee",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
             overflow: "hidden",
+            "& .MuiTypography-subtitle2": { fontSize: "0.82rem" },
+            "& .MuiTypography-body2": { fontSize: "0.78rem" },
+            "& .MuiTypography-caption": { fontSize: "0.72rem" },
           }}
         >
           <Box sx={{ p: 1.5, flexShrink: 0 }}>
@@ -2372,6 +2375,16 @@ export default function VolumeViewer({
                   gap: 1,
                   minHeight: 0,
                   overflow: "hidden",
+                  "& .MuiTypography-body2": { fontSize: "0.78rem" },
+                  "& .MuiTypography-caption": { fontSize: "0.72rem" },
+                  "& .MuiButton-root, & .MuiToggleButton-root": {
+                    fontSize: "0.74rem",
+                    textTransform: "none",
+                  },
+                  "& .MuiFormControlLabel-label": { fontSize: "0.76rem" },
+                  "& .MuiInputBase-root, & .MuiInputLabel-root": {
+                    fontSize: "0.76rem",
+                  },
                 }}
               >
                 <ToggleButtonGroup
@@ -2975,7 +2988,7 @@ export default function VolumeViewer({
                                 value={renderMode3d}
                                 onChange={(_, v) => v && setRenderMode3d(v)}
                               >
-                                <ToggleButton value="volume">volume</ToggleButton>
+                               {/*  <ToggleButton value="volume">volume</ToggleButton> */}
                                 <ToggleButton value="surface">surface</ToggleButton>
                                 <ToggleButton value="mesh">mesh</ToggleButton>
                               </ToggleButtonGroup>
@@ -3333,7 +3346,7 @@ function VolumeClippingControls({
   const visibleAxes = axes.filter((axis) => sliceVisibility[axis]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1, ml: 1.5, mr: 0.5, mt: 0.5 }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
         <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
           <SectionTitle title="Clipping & slices" />

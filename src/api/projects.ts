@@ -59,6 +59,8 @@ import {
   TomogramReviewPatch,
   TomogramReviewSchema,
   TomogramReviewSchemaPut,
+  TomogramReviewSubsetRequest,
+  TomogramReviewSubsetResult,
   ProtocolStep,
   ProtocolStepStatus,
   ProtocolWorkflowExecutionPreflight,
@@ -1407,6 +1409,29 @@ export async function saveTomogramReview(
   }
 
   return safeJson<TomogramReview>(response);
+}
+
+export async function createTomogramReviewSubset(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  payload: TomogramReviewSubsetRequest,
+): Promise<TomogramReviewSubsetResult> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/reviews/subset`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to create tomogram subset");
+  }
+
+  return safeJson<TomogramReviewSubsetResult>(response);
 }
 
 /* ======================= PROTOCOL ACTIONS ======================= */

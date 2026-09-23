@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -18,13 +19,14 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { CheckCircle2, ClipboardCheck } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Plus } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   TomogramReview,
   TomogramReviewContext,
   TomogramReviewSchema,
+  TomogramReviewSubsetFilter,
 } from "@/services/ProjectService";
 
 type SelectedTomogram = {
@@ -32,7 +34,7 @@ type SelectedTomogram = {
   label?: string;
 };
 
-export type TomogramReviewFilter = "all" | "pending" | "reviewed";
+export type TomogramReviewFilter = TomogramReviewSubsetFilter;
 
 type TomogramReviewPanelProps = {
   projectId: string | number;
@@ -88,26 +90,23 @@ function tagKeyFromLabel(label: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-function tagDefinitionsFromLabels(text: string): TagDefinition[] {
-  const usedKeys = new Set<string>();
-  const usedLabels = new Set<string>();
+function appendTagDefinition(tags: TagDefinition[], rawLabel: string): TagDefinition[] {
+  const label = rawLabel.trim();
+  const normalizedLabel = label.toLocaleLowerCase();
+  if (!label || tags.some((tag) => tag.label.toLocaleLowerCase() === normalizedLabel)) {
+    return tags;
+  }
 
-  return text.split("\n").flatMap((line, index) => {
-    const label = line.trim();
-    const normalizedLabel = label.toLocaleLowerCase();
-    if (!label || usedLabels.has(normalizedLabel)) return [];
-    usedLabels.add(normalizedLabel);
+  const usedKeys = new Set(tags.map((tag) => tag.key));
+  const baseKey = tagKeyFromLabel(label) || `tag_${tags.length + 1}`;
+  let key = baseKey;
+  let suffix = 2;
+  while (usedKeys.has(key)) {
+    key = `${baseKey}_${suffix}`;
+    suffix += 1;
+  }
 
-    const baseKey = tagKeyFromLabel(label) || `tag_${index + 1}`;
-    let key = baseKey;
-    let suffix = 2;
-    while (usedKeys.has(key)) {
-      key = `${baseKey}_${suffix}`;
-      suffix += 1;
-    }
-    usedKeys.add(key);
-    return [{ key, label }];
-  });
+  return [...tags, { key, label }];
 }
 
 function conflictCurrentReview(error: unknown): TomogramReview | null {
@@ -182,8 +181,10 @@ export default function TomogramReviewPanel({
   const [baseValues, setBaseValues] = useState<Record<string, unknown>>({});
   const [revision, setRevision] = useState(0);
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
-  const [tagLabels, setTagLabels] = useState("");
+  const [tagDraft, setTagDraft] = useState<TagDefinition[]>([]);
+  const [newTagLabel, setNewTagLabel] = useState("");
   const [savingSchema, setSavingSchema] = useState(false);
+  const [creatingSubset, setCreatingSubset] = useState(false);
 
   const selectedKey = selectedTomogram == null ? null : String(selectedTomogram.id);
   const selectedReview = useMemo(
@@ -327,9 +328,15 @@ export default function TomogramReviewPanel({
   };
 
   const openTagConfiguration = () => {
-    setTagLabels(tagDefinitions.map((tag) => tag.label).join("\n"));
+    setTagDraft(tagDefinitions);
+    setNewTagLabel("");
     setNotice(null);
     setTagDialogOpen(true);
+  };
+
+  const addTagToDraft = () => {
+    setTagDraft((current) => appendTagDefinition(current, newTagLabel));
+    setNewTagLabel("");
   };
 
   const saveTagConfiguration = async () => {
@@ -339,7 +346,7 @@ export default function TomogramReviewPanel({
 
     const definition = {
       ...(context?.schema?.definition ?? {}),
-      tags: tagDefinitionsFromLabels(tagLabels),
+      tags: tagDraft,
     };
 
     try {
@@ -375,6 +382,44 @@ export default function TomogramReviewPanel({
     }
   };
 
+  const createSubset = async () => {
+    if (creatingSubset) return;
+
+    setCreatingSubset(true);
+    setNotice(null);
+
+    try {
+      const result = await svc.createTomogramReviewSubset(
+        projectId,
+        protocolId,
+        outputName,
+        {
+          filter: reviewFilter,
+        },
+      );
+
+      if (result.success) {
+        const unit = result.createdTomograms === 1 ? "tomogram" : "tomograms";
+        setNotice({
+          severity: "success",
+          message: `Subset created: ${result.outputName} (${result.createdTomograms} ${unit})`,
+        });
+      } else {
+        setNotice({
+          severity: "warning",
+          message: result.message || "No tomograms matched the active filter.",
+        });
+      }
+    } catch (error: unknown) {
+      setNotice({
+        severity: "error",
+        message: errorMessage(error, "Failed to create tomogram subset"),
+      });
+    } finally {
+      setCreatingSubset(false);
+    }
+  };
+
   const total = context?.progress.total ?? 0;
   const reviewedCount = context?.progress.reviewed ?? 0;
   const progress = total > 0 ? Math.min(100, (reviewedCount / total) * 100) : 0;
@@ -391,6 +436,16 @@ export default function TomogramReviewPanel({
         bgcolor: "background.paper",
         display: "flex",
         flexDirection: "column",
+        "& .MuiTypography-subtitle2": { fontSize: "0.82rem" },
+        "& .MuiTypography-body2": { fontSize: "0.78rem" },
+        "& .MuiTypography-caption": { fontSize: "0.72rem" },
+        "& .MuiTypography-overline": { fontSize: "0.68rem" },
+        "& .MuiButton-root, & .MuiToggleButton-root": {
+          fontSize: "0.74rem",
+          textTransform: "none",
+        },
+        "& .MuiFormControlLabel-label": { fontSize: "0.76rem" },
+        "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
       }}
     >
       <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
@@ -437,20 +492,31 @@ export default function TomogramReviewPanel({
           <ToggleButton value="pending" aria-label="Pending">Pending</ToggleButton>
           <ToggleButton value="reviewed" aria-label="Reviewed">Reviewed</ToggleButton>
         </ToggleButtonGroup>
-        <Button
-          size="small"
-          variant="text"
-          onClick={openTagConfiguration}
-          disabled={loading}
-          fullWidth
-          sx={{ mt: 0.7 }}
-        >
-          Configure tags
-        </Button>
+        <Box sx={{ display: "flex", gap: 0.75, mt: 0.7 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => void createSubset()}
+            disabled={loading || total === 0 || creatingSubset}
+            sx={{ flex: 1 }}
+          >
+            {creatingSubset ? "Creating…" : "Create subset"}
+          </Button>
+          <Button
+            size="small"
+            variant="text"
+            onClick={openTagConfiguration}
+            disabled={loading}
+            sx={{ flex: 1 }}
+          >
+            Configure tags
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ minHeight: 0, flex: 1, overflowY: "auto", p: 1.5 }}>
         {loadError ? <Alert severity="error">{loadError}</Alert> : null}
+        {notice ? <Alert severity={notice.severity} sx={{ mb: 1.25 }}>{notice.message}</Alert> : null}
 
         {!loading && !loadError && selectedTomogram == null ? (
           <Box sx={{ py: 5, px: 1.5, textAlign: "center" }}>
@@ -541,8 +607,6 @@ export default function TomogramReviewPanel({
               fullWidth
             />
 
-            {notice ? <Alert severity={notice.severity}>{notice.message}</Alert> : null}
-
             <Button
               variant="outlined"
               disabled={!hasNextUnreviewed || saving}
@@ -571,23 +635,95 @@ export default function TomogramReviewPanel({
         transitionDuration={0}
         fullWidth
         maxWidth="sm"
+        PaperProps={{ sx: { overflow: "hidden" } }}
       >
-        <DialogTitle>Configure review tags</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Enter one generic tag label per line. The configuration is shared through PostgreSQL.
+        <DialogTitle
+          sx={{
+            py: 1.25,
+            background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+            color: "#e5e7eb",
+            borderBottom: "1px solid rgba(255,255,255,0.07)",
+            fontSize: "0.95rem",
+            fontWeight: 800,
+          }}
+        >
+          Configure review tags
+        </DialogTitle>
+        <DialogContent
+          sx={{
+            pt: "20px !important",
+            "& .MuiTypography-body2": { fontSize: "0.78rem" },
+            "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
+            "& .MuiButton-root": { fontSize: "0.74rem", textTransform: "none" },
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+            Add the generic tags that reviewers can assign to any tomogram.
           </Typography>
-          <TextField
-            label="Tag labels"
-            value={tagLabels}
-            onChange={(event) => setTagLabels(event.target.value)}
-            multiline
-            minRows={6}
-            fullWidth
-            autoFocus
-          />
+          <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+            <TextField
+              label="New tag"
+              value={newTagLabel}
+              onChange={(event) => setNewTagLabel(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addTagToDraft();
+                }
+              }}
+              size="small"
+              fullWidth
+              autoFocus
+            />
+            <Button
+              variant="contained"
+              startIcon={<Plus size={15} />}
+              onClick={addTagToDraft}
+              disabled={!newTagLabel.trim()}
+              sx={{ minWidth: 88, height: 40, textTransform: "none" }}
+            >
+              Add
+            </Button>
+          </Box>
+
+          <Box
+            aria-label="Configured tags"
+            sx={{
+              mt: 1.5,
+              minHeight: 76,
+              p: 1.25,
+              display: "flex",
+              alignContent: "flex-start",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: 0.75,
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 1.5,
+              bgcolor: "action.hover",
+            }}
+          >
+            {tagDraft.length > 0 ? tagDraft.map((tag) => (
+              <Chip
+                key={tag.key}
+                label={tag.label}
+                size="small"
+                onDelete={() => setTagDraft((current) => current.filter((item) => item.key !== tag.key))}
+              />
+            )) : (
+              <Typography variant="caption" color="text.secondary">
+                No tags configured yet.
+              </Typography>
+            )}
+          </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            "& .MuiButton-root": { fontSize: "0.74rem", textTransform: "none" },
+          }}
+        >
           <Button onClick={() => setTagDialogOpen(false)} disabled={savingSchema}>
             Cancel
           </Button>

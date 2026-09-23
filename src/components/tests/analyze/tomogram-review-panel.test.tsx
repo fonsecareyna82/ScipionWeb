@@ -5,6 +5,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchTomogramReviewContext: vi.fn(),
   saveTomogramReview: vi.fn(),
   saveTomogramReviewSchema: vi.fn(),
+  createTomogramReviewSubset: vi.fn(),
 }));
 
 vi.mock("@/ProjectServiceContext", () => ({
@@ -55,6 +56,14 @@ describe("TomogramReviewPanel", () => {
     vi.clearAllMocks();
     serviceMocks.fetchTomogramReviewContext.mockResolvedValue(reviewContext);
     serviceMocks.saveTomogramReview.mockResolvedValue(storedReview);
+    serviceMocks.createTomogramReviewSubset.mockResolvedValue({
+      success: true,
+      status: 0,
+      outputName: "pendingTomograms",
+      createdTomograms: 83,
+      filter: "pending",
+      postgresqlStored: true,
+    });
   });
 
   it("loads progress even before a tomogram is selected", async () => {
@@ -200,6 +209,34 @@ describe("TomogramReviewPanel", () => {
   });
 
 
+  it("creates a subset directly from the active review filter", async () => {
+    render(
+      <TomogramReviewPanel
+        projectId={7}
+        protocolId={42}
+        outputName="outputTomograms"
+        selectedTomogram={{ id: 31, label: "Tomo 31" }}
+        reviewFilter="pending"
+      />,
+    );
+
+    expect(await screen.findByText("37 of 120 reviewed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.createTomogramReviewSubset).toHaveBeenCalledWith(
+        7,
+        42,
+        "outputTomograms",
+        {
+          filter: "pending",
+        },
+      );
+    });
+
+    expect(await screen.findByText("Subset created: pendingTomograms (83 tomograms)")).toBeInTheDocument();
+  });
+
   it("renders schema tags with global counters and saves their keys", async () => {
     const taggedContext = {
       ...reviewContext,
@@ -289,9 +326,17 @@ describe("TomogramReviewPanel", () => {
 
     expect(await screen.findByText("37 of 120 reviewed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Configure tags" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Tag labels" }), {
-      target: { value: "Feature A\nNeeds follow-up" },
+    const newTagInput = screen.getByRole("textbox", { name: "New tag" });
+    fireEvent.change(newTagInput, {
+      target: { value: "Feature A" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(newTagInput, {
+      target: { value: "Needs follow-up" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByText("Feature A")).toBeInTheDocument();
+    expect(screen.getByText("Needs follow-up")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
 
     await waitFor(() => {
@@ -332,9 +377,10 @@ describe("TomogramReviewPanel", () => {
 
     expect(await screen.findByText("37 of 120 reviewed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Configure tags" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Tag labels" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "New tag" }), {
       target: { value: "Stale tag" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
     fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
 
     expect(

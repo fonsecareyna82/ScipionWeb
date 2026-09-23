@@ -822,6 +822,23 @@ export type TomogramReviewPatch = {
 // User (sharing / collaboration)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type TomogramReviewSubsetFilter = "all" | "pending" | "reviewed";
+
+export type TomogramReviewSubsetRequest = {
+  filter: TomogramReviewSubsetFilter;
+};
+
+export type TomogramReviewSubsetResult = {
+  success: boolean;
+  status: number | "empty";
+  outputName: string;
+  createdTomograms: number;
+  filter: TomogramReviewSubsetFilter;
+  postgresqlStored: boolean;
+  postgresqlSync?: unknown;
+  message?: string;
+};
+
 export type ShareableUser = {
   id: Id;
   name: string;
@@ -1937,6 +1954,13 @@ export interface ProjectService<
     payload: TomogramReviewPatch,
   ): Promise<TomogramReview>;
 
+
+  createTomogramReviewSubset(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: TomogramReviewSubsetRequest,
+  ): Promise<TomogramReviewSubsetResult>;
 
   listOutputVolumes(
     projectId: Id,
