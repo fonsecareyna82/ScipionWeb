@@ -384,6 +384,21 @@ describe("VolumeViewer", () => {
         });
     });
 
+    it("filters tomograms by matching advanced review criteria", async () => {
+        render(
+            <VolumeViewer
+                projectId={1}
+                protocolId={2}
+                outputName="volumeOutput"
+                pointerClass="SetOfTomograms"
+                matchingReviewScipionItemIds={[32]}
+            />,
+        );
+
+        expect(await screen.findByText("Vol B")).toBeInTheDocument();
+        expect(screen.queryByText("Vol A")).not.toBeInTheDocument();
+    });
+
     it("marks reviewed tomograms in the unfiltered list", async () => {
         render(
             <VolumeViewer

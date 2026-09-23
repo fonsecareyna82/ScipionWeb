@@ -19,15 +19,18 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { CheckCircle2, ClipboardCheck, Plus } from "lucide-react";
+import { CheckCircle2, ChevronDown, ClipboardCheck, Plus, SlidersHorizontal } from "lucide-react";
+import toast from "react-hot-toast";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   TomogramReview,
+  TomogramReviewCriteria,
   TomogramReviewContext,
   TomogramReviewSchema,
   TomogramReviewSubsetFilter,
 } from "@/services/ProjectService";
+import { hasActiveTomogramReviewCriteria } from "./tomogram-review-filters";
 
 type SelectedTomogram = {
   id: string | number;
@@ -43,6 +46,7 @@ type TomogramReviewPanelProps = {
   selectedTomogram: SelectedTomogram | null;
   reviewFilter?: TomogramReviewFilter;
   onReviewFilterChange?: (filter: TomogramReviewFilter) => void;
+  onReviewCriteriaChange?: (criteria: TomogramReviewCriteria) => void;
   onContextChange?: (context: TomogramReviewContext) => void;
   onNextUnreviewed?: () => void;
   hasNextUnreviewed?: boolean;
@@ -191,6 +195,7 @@ export default function TomogramReviewPanel({
   selectedTomogram,
   reviewFilter = "all",
   onReviewFilterChange,
+  onReviewCriteriaChange,
   onContextChange,
   onNextUnreviewed,
   hasNextUnreviewed = false,
@@ -213,6 +218,10 @@ export default function TomogramReviewPanel({
   const [newTagLabel, setNewTagLabel] = useState("");
   const [savingSchema, setSavingSchema] = useState(false);
   const [creatingSubset, setCreatingSubset] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [filterQualities, setFilterQualities] = useState<string[]>([]);
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [minimumFilterTagCounts, setMinimumFilterTagCounts] = useState<Record<string, number>>({});
 
   const selectedKey = selectedTomogram == null ? null : String(selectedTomogram.id);
   const selectedReview = useMemo(
@@ -234,6 +243,16 @@ export default function TomogramReviewPanel({
 
     return counts;
   }, [context?.reviews, tagDefinitions]);
+  const reviewCriteria = useMemo<TomogramReviewCriteria>(() => ({
+    qualities: filterQualities,
+    tags: filterTags,
+    minimumTagCounts: Object.fromEntries(
+      Object.entries(minimumFilterTagCounts).filter(([, count]) => count > 0),
+    ),
+  }), [filterQualities, filterTags, minimumFilterTagCounts]);
+  const hasAdvancedFilters = hasActiveTomogramReviewCriteria(reviewCriteria);
+  const activeAdvancedFilterCount = reviewCriteria.qualities.length + reviewCriteria.tags.length +
+    Object.keys(reviewCriteria.minimumTagCounts).length;
 
   useEffect(() => {
     const abort = new AbortController();
@@ -278,6 +297,10 @@ export default function TomogramReviewPanel({
   useEffect(() => {
     if (context) onContextChange?.(context);
   }, [context, onContextChange]);
+
+  useEffect(() => {
+    onReviewCriteriaChange?.(reviewCriteria);
+  }, [onReviewCriteriaChange, reviewCriteria]);
 
   const applyStoredReview = (stored: TomogramReview) => {
     setContext((previous) => {
@@ -346,7 +369,7 @@ export default function TomogramReviewPanel({
       );
 
       applyStoredReview(stored);
-      setNotice({ severity: "success", message: "Review saved" });
+      toast.success("Review saved");
     } catch (error: unknown) {
       const current = conflictCurrentReview(error);
 
@@ -443,15 +466,13 @@ export default function TomogramReviewPanel({
         outputName,
         {
           filter: reviewFilter,
+          ...(hasAdvancedFilters ? { criteria: reviewCriteria } : {}),
         },
       );
 
       if (result.success) {
         const unit = result.createdTomograms === 1 ? "tomogram" : "tomograms";
-        setNotice({
-          severity: "success",
-          message: `Subset created: ${result.outputName} (${result.createdTomograms} ${unit})`,
-        });
+        toast.success(`Subset created: ${result.outputName} (${result.createdTomograms} ${unit})`);
       } else {
         setNotice({
           severity: "warning",
@@ -540,6 +561,106 @@ export default function TomogramReviewPanel({
           <ToggleButton value="pending" aria-label="Pending">Pending</ToggleButton>
           <ToggleButton value="reviewed" aria-label="Reviewed">Reviewed</ToggleButton>
         </ToggleButtonGroup>
+        <Button
+          size="small"
+          variant="text"
+          fullWidth
+          startIcon={<SlidersHorizontal size={14} />}
+          endIcon={(
+            <ChevronDown
+              size={14}
+              style={{ transform: advancedFiltersOpen ? "rotate(180deg)" : "none", transition: "transform 120ms" }}
+            />
+          )}
+          aria-expanded={advancedFiltersOpen}
+          onClick={() => setAdvancedFiltersOpen((open) => !open)}
+          sx={{ mt: 0.35, justifyContent: "space-between" }}
+        >
+          {activeAdvancedFilterCount > 0 ? `Advanced filters (${activeAdvancedFilterCount})` : "Advanced filters"}
+        </Button>
+        {advancedFiltersOpen ? (
+          <Box sx={{ mt: 0.35, p: 0.8, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+              Quality
+            </Typography>
+            <Box sx={{ mt: 0.45, display: "flex", flexWrap: "wrap", gap: 0.45 }}>
+              {QUALITY_OPTIONS.map((option) => (
+                <ToggleButton
+                  key={option}
+                  value={option}
+                  selected={filterQualities.includes(option)}
+                  aria-label={`Filter quality ${option}`}
+                  onChange={() => setFilterQualities((current) => current.includes(option)
+                    ? current.filter((qualityOption) => qualityOption !== option)
+                    : [...current, option])}
+                  size="small"
+                  sx={{ m: "0 !important", px: 0.75, py: 0.3, border: "1px solid !important" }}
+                >
+                  {option}
+                </ToggleButton>
+              ))}
+            </Box>
+
+            {tagDefinitions.some((tag) => tag.mode === "toggle") ? (
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.8, fontWeight: 800 }}>
+                  Tags
+                </Typography>
+                <Box sx={{ mt: 0.45, display: "flex", flexWrap: "wrap", gap: 0.45 }}>
+                  {tagDefinitions.filter((tag) => tag.mode === "toggle").map((tag) => (
+                    <ToggleButton
+                      key={tag.key}
+                      value={tag.key}
+                      selected={filterTags.includes(tag.key)}
+                      aria-label={`Filter tag ${tag.label}`}
+                      onChange={() => setFilterTags((current) => current.includes(tag.key)
+                        ? current.filter((tagKey) => tagKey !== tag.key)
+                        : [...current, tag.key])}
+                      size="small"
+                      sx={{ m: "0 !important", px: 0.75, py: 0.3, border: "1px solid !important" }}
+                    >
+                      {tag.label}
+                    </ToggleButton>
+                  ))}
+                </Box>
+              </>
+            ) : null}
+
+            {tagDefinitions.some((tag) => tag.mode === "count") ? (
+              <Box sx={{ mt: 0.8, display: "grid", gap: 0.65 }}>
+                {tagDefinitions.filter((tag) => tag.mode === "count").map((tag) => (
+                  <TextField
+                    key={tag.key}
+                    type="number"
+                    size="small"
+                    label={`Minimum ${tag.label} count`}
+                    value={minimumFilterTagCounts[tag.key] ?? 0}
+                    onChange={(event) => {
+                      const count = Math.max(0, Math.floor(Number(event.target.value) || 0));
+                      setMinimumFilterTagCounts((current) => ({ ...current, [tag.key]: count }));
+                    }}
+                    inputProps={{ min: 0, step: 1 }}
+                  />
+                ))}
+              </Box>
+            ) : null}
+
+            {hasAdvancedFilters ? (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => {
+                  setFilterQualities([]);
+                  setFilterTags([]);
+                  setMinimumFilterTagCounts({});
+                }}
+                sx={{ mt: 0.45, px: 0 }}
+              >
+                Clear filters
+              </Button>
+            ) : null}
+          </Box>
+        ) : null}
         <Box sx={{ display: "flex", gap: 0.75, mt: 0.7 }}>
           <Button
             size="small"

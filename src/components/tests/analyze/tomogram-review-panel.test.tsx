@@ -7,9 +7,16 @@ const serviceMocks = vi.hoisted(() => ({
   saveTomogramReviewSchema: vi.fn(),
   createTomogramReviewSubset: vi.fn(),
 }));
+const toastMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+}));
 
 vi.mock("@/ProjectServiceContext", () => ({
   useProjectService: () => serviceMocks,
+}));
+
+vi.mock("react-hot-toast", () => ({
+  default: toastMocks,
 }));
 
 import TomogramReviewPanel from "../../analyze/tomogram-review-panel";
@@ -119,7 +126,10 @@ describe("TomogramReviewPanel", () => {
       );
     });
 
-    expect(await screen.findByText("Review saved")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toastMocks.success).toHaveBeenCalledWith("Review saved");
+    });
+    expect(screen.queryByText("Review saved")).not.toBeInTheDocument();
   });
 
   it("adopts the winning state when another user saved first", async () => {
@@ -234,7 +244,65 @@ describe("TomogramReviewPanel", () => {
       );
     });
 
-    expect(await screen.findByText("Subset created: pendingTomograms (83 tomograms)")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toastMocks.success).toHaveBeenCalledWith(
+        "Subset created: pendingTomograms (83 tomograms)",
+      );
+    });
+    expect(screen.queryByText("Subset created: pendingTomograms (83 tomograms)")).not.toBeInTheDocument();
+  });
+
+  it("reuses compact advanced criteria for subset creation", async () => {
+    serviceMocks.fetchTomogramReviewContext.mockResolvedValue({
+      ...reviewContext,
+      schema: {
+        id: 8,
+        setId: 47,
+        version: 3,
+        definition: {
+          tags: [
+            { key: "feature_a", label: "Feature A", mode: "toggle" },
+            { key: "mito", label: "Mito", mode: "count" },
+          ],
+        },
+        revision: 3,
+      },
+    });
+
+    render(
+      <TomogramReviewPanel
+        projectId={7}
+        protocolId={42}
+        outputName="outputTomograms"
+        selectedTomogram={{ id: 31, label: "Tomo 31" }}
+        reviewFilter="all"
+      />,
+    );
+
+    expect(await screen.findByText("37 of 120 reviewed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced filters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filter quality Good" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filter tag Feature A" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Minimum Mito count" }), {
+      target: { value: "2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.createTomogramReviewSubset).toHaveBeenCalledWith(
+        7,
+        42,
+        "outputTomograms",
+        {
+          filter: "all",
+          criteria: {
+            qualities: ["Good"],
+            tags: ["feature_a"],
+            minimumTagCounts: { mito: 2 },
+          },
+        },
+      );
+    });
   });
 
   it("renders schema tags with global counters and saves their keys", async () => {

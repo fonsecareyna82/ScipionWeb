@@ -824,8 +824,15 @@ export type TomogramReviewPatch = {
 
 export type TomogramReviewSubsetFilter = "all" | "pending" | "reviewed";
 
+export type TomogramReviewCriteria = {
+  qualities: string[];
+  tags: string[];
+  minimumTagCounts: Record<string, number>;
+};
+
 export type TomogramReviewSubsetRequest = {
   filter: TomogramReviewSubsetFilter;
+  criteria?: TomogramReviewCriteria;
 };
 
 export type TomogramReviewSubsetResult = {

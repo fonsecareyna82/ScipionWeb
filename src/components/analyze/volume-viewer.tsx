@@ -61,6 +61,7 @@ type VolumeViewerProps = {
   onSelectedVolumeChange?: (volume: VolumeLite | null) => void;
   reviewedScipionItemIds?: Array<string | number>;
   reviewFilter?: "all" | "pending" | "reviewed";
+  matchingReviewScipionItemIds?: Array<string | number>;
   nextUnreviewedRequest?: number;
   hideMetadataAction?: boolean;
   active?: boolean;
@@ -250,6 +251,7 @@ export default function VolumeViewer({
   onSelectedVolumeChange,
   reviewedScipionItemIds = EMPTY_REVIEWED_SCIPION_ITEM_IDS,
   reviewFilter = "all",
+  matchingReviewScipionItemIds,
   nextUnreviewedRequest = 0,
   hideMetadataAction = false,
   active = true,
@@ -273,14 +275,20 @@ export default function VolumeViewer({
     () => new Set(reviewedScipionItemIds.map(String)),
     [reviewedScipionItemIds],
   );
+  const matchingReviewIdSet = useMemo(
+    () => matchingReviewScipionItemIds == null ? null : new Set(matchingReviewScipionItemIds.map(String)),
+    [matchingReviewScipionItemIds],
+  );
   const visibleVolumes = useMemo(() => {
-    if (reviewFilter === "all") return volumes;
-
     return volumes.filter((volume) => {
       const reviewed = volume.scipionItemId != null && reviewedIdSet.has(String(volume.scipionItemId));
-      return reviewFilter === "reviewed" ? reviewed : !reviewed;
+      const matchesStatus = reviewFilter === "all" || (reviewFilter === "reviewed" ? reviewed : !reviewed);
+      const matchesAdvancedCriteria = matchingReviewIdSet == null || (
+        volume.scipionItemId != null && matchingReviewIdSet.has(String(volume.scipionItemId))
+      );
+      return matchesStatus && matchesAdvancedCriteria;
     });
-  }, [reviewFilter, reviewedIdSet, volumes]);
+  }, [matchingReviewIdSet, reviewFilter, reviewedIdSet, volumes]);
 
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);

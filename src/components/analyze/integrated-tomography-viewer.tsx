@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from "re
 import { Box, CircularProgress, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink, TomogramReviewContext } from "@/services/ProjectService";
+import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink, TomogramReviewContext, TomogramReviewCriteria } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer, { type VolumeLite } from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 import TomogramReviewPanel, { type TomogramReviewFilter } from "./tomogram-review-panel";
+import { EMPTY_TOMOGRAM_REVIEW_CRITERIA, hasActiveTomogramReviewCriteria, matchesTomogramReviewCriteria } from "./tomogram-review-filters";
 
 type IntegratedTomographyViewerProps = {
   projectId: string | number;
@@ -363,6 +364,7 @@ export default function IntegratedTomographyViewer({
   const [selectedTomogram, setSelectedTomogram] = useState<SelectedTomogramReviewTarget | null>(null);
   const [tomogramReviewContext, setTomogramReviewContext] = useState<TomogramReviewContext | null>(null);
   const [tomogramReviewFilter, setTomogramReviewFilter] = useState<TomogramReviewFilter>("all");
+  const [tomogramReviewCriteria, setTomogramReviewCriteria] = useState<TomogramReviewCriteria>(EMPTY_TOMOGRAM_REVIEW_CRITERIA);
   const [nextUnreviewedRequest, setNextUnreviewedRequest] = useState(0);
   const [mountedSections, setMountedSections] = useState<Set<IntegratedSection>>(
     () => new Set([initialSection]),
@@ -375,6 +377,7 @@ export default function IntegratedTomographyViewer({
     setSelectedTomogram(null);
     setTomogramReviewContext(null);
     setTomogramReviewFilter("all");
+    setTomogramReviewCriteria(EMPTY_TOMOGRAM_REVIEW_CRITERIA);
     setMetadataTargetSection(initialSection);
     setMountedSections(new Set([initialSection]));
   }, [projectIdNum, protocolIdNum, outputName, initialSection]);
@@ -786,6 +789,7 @@ export default function IntegratedTomographyViewer({
             onSelectedVolumeChange={handleSelectedTomogramChange}
             reviewedScipionItemIds={reviewedScipionItemIds}
             reviewFilter={tomogramReviewFilter}
+            matchingReviewScipionItemIds={matchingReviewScipionItemIds}
             nextUnreviewedRequest={nextUnreviewedRequest}
             hideMetadataAction={hideMetadataAction}
             active={activeSection === "tomogram"}
@@ -857,6 +861,13 @@ export default function IntegratedTomographyViewer({
       .map((review) => review.scipionItemId),
     [tomogramReviewContext],
   );
+  const matchingReviewScipionItemIds = useMemo(() => {
+    if (!hasActiveTomogramReviewCriteria(tomogramReviewCriteria)) return undefined;
+
+    return Object.values(tomogramReviewContext?.reviews ?? {})
+      .filter((review) => matchesTomogramReviewCriteria(review, tomogramReviewCriteria))
+      .map((review) => review.scipionItemId);
+  }, [tomogramReviewContext, tomogramReviewCriteria]);
   const hasNextUnreviewed = (tomogramReviewContext?.progress.reviewed ?? 0) <
     (tomogramReviewContext?.progress.total ?? 0);
   const handleNextUnreviewed = useCallback(() => {
@@ -868,6 +879,7 @@ export default function IntegratedTomographyViewer({
     setSelectedTomogram(null);
     setTomogramReviewContext(null);
     setTomogramReviewFilter("all");
+    setTomogramReviewCriteria(EMPTY_TOMOGRAM_REVIEW_CRITERIA);
   }, [tomogramReviewProtocolId, tomogramReviewOutputName]);
 
   const showTomogramReview = activeSection === "tomogram" && tomogramReviewAvailable;
@@ -1106,6 +1118,7 @@ export default function IntegratedTomographyViewer({
           selectedTomogram={selectedTomogram}
           reviewFilter={tomogramReviewFilter}
           onReviewFilterChange={setTomogramReviewFilter}
+          onReviewCriteriaChange={setTomogramReviewCriteria}
           onContextChange={setTomogramReviewContext}
           onNextUnreviewed={handleNextUnreviewed}
           hasNextUnreviewed={hasNextUnreviewed}

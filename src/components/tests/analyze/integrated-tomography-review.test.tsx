@@ -208,6 +208,78 @@ describe("IntegratedTomographyViewer reviews", () => {
     });
   });
 
+  it("shares advanced review criteria with the tomogram list", async () => {
+    mocks.fetchIntegratedAnalyzeContext.mockResolvedValue({
+      root: { outputClass: "SetOfTomograms" },
+      links: {},
+      summaries: { tomogram: { size: 3 } },
+      relations: { items: [] },
+    });
+
+    render(
+      <IntegratedTomographyViewer
+        projectId={7}
+        protocolId={42}
+        outputName="outputTomograms"
+        pointerClass="SetOfTomograms"
+      />,
+    );
+
+    await screen.findByTestId("tomogram-review-panel");
+    const reviewPanelProps = mocks.reviewPanelSpy.mock.lastCall?.[0] as {
+      onContextChange?: (context: unknown) => void;
+      onReviewCriteriaChange?: (criteria: unknown) => void;
+    };
+
+    reviewPanelProps.onContextChange?.({
+      setId: 47,
+      schema: null,
+      progress: { total: 3, reviewed: 3 },
+      reviews: {
+        "31": {
+          scipionItemId: 31,
+          reviewed: true,
+          values: {
+            quality: "Good",
+            tags: ["feature_a", "mito"],
+            tagCounts: { mito: 3 },
+          },
+        },
+        "32": {
+          scipionItemId: 32,
+          reviewed: true,
+          values: {
+            quality: "Bad",
+            tags: ["feature_a", "mito"],
+            tagCounts: { mito: 4 },
+          },
+        },
+        "33": {
+          scipionItemId: 33,
+          reviewed: true,
+          values: {
+            quality: "Good",
+            tags: ["mito"],
+            tagCounts: { mito: 5 },
+          },
+        },
+      },
+    });
+    reviewPanelProps.onReviewCriteriaChange?.({
+      qualities: ["Good"],
+      tags: ["feature_a"],
+      minimumTagCounts: { mito: 2 },
+    });
+
+    await waitFor(() => {
+      expect(mocks.volumeViewerSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          matchingReviewScipionItemIds: [31],
+        }),
+      );
+    });
+  });
+
 
   it("forwards next-unreviewed requests from the panel to the volume viewer", async () => {
     mocks.fetchIntegratedAnalyzeContext.mockResolvedValue({
