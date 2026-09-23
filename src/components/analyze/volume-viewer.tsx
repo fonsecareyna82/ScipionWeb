@@ -21,7 +21,7 @@ import {
 import { styled } from "@mui/material/styles";
 import { VolumeHistogramPlot } from "./volume-histogram-plot";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw, Ruler } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import GpuVolumeView from "./gpu-volume-view";
 import { useClippingSliceImages } from "./use-clipping-slice-images";
@@ -89,6 +89,9 @@ type MeshColorMode3d = "solid" | "density" | "components";
 type SliceLayoutMode = "single" | "triple";
 type OrthoAxis = VolumeAxis;
 type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
+type VoxelScale = Record<"x" | "y" | "z", number> & { unit: "Å" | "px" };
+type MeasurementPoint = { x: number; y: number };
+type SliceMeasurement = { start: MeasurementPoint; end: MeasurementPoint };
 
 type SliceImageState = {
   url: string | null;
@@ -295,6 +298,7 @@ export default function VolumeViewer({
   const [sliceIndexY, setSliceIndexY] = useState(0);
   const [sliceIndexX, setSliceIndexX] = useState(0);
   const [focusedOrthoAxis, setFocusedOrthoAxis] = useState<OrthoAxis | null>(null);
+  const [measurementMode, setMeasurementMode] = useState(false);
 
   const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x" | "crosshair">(null);
 
@@ -639,6 +643,10 @@ export default function VolumeViewer({
   }, [viewMode, sliceLayoutMode]);
 
   useEffect(() => {
+    if (viewMode !== "slices" || sliceLayoutMode !== "triple") setMeasurementMode(false);
+  }, [viewMode, sliceLayoutMode]);
+
+  useEffect(() => {
     setFocusedOrthoAxis(null);
   }, [selectedId]);
 
@@ -846,6 +854,7 @@ export default function VolumeViewer({
   }, [needsHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
+  const voxelScale = useMemo(() => getVoxelScale(meta), [meta]);
 
   const selectedMetaReady =
     selectedId != null &&
@@ -2071,6 +2080,22 @@ export default function VolumeViewer({
                 </Tooltip>
               )}
 
+              {viewMode === "slices" && sliceLayoutMode === "triple" && (
+                <Tooltip title={measurementMode ? "Stop measuring" : "Measure physical distance"}>
+                  <ToggleButton
+                    value="measure"
+                    selected={measurementMode}
+                    onChange={() => setMeasurementMode((enabled) => !enabled)}
+                    size="small"
+                    aria-label="Measure distance"
+                    sx={{ gap: 0.5, px: 1, textTransform: "none" }}
+                  >
+                    <Ruler size={15} />
+                    Measure
+                  </ToggleButton>
+                </Tooltip>
+              )}
+
               {viewMode === "map3d" && (
                 <Tooltip title="Reset 3D view (double-click)">
                   <IconButton
@@ -2210,6 +2235,9 @@ export default function VolumeViewer({
                     zOverlayUrl={zOverlayUrl}
                     yOverlayUrl={yOverlayUrl}
                     xOverlayUrl={xOverlayUrl}
+                    measurementMode={measurementMode}
+                    measurementResetKey={selectedId}
+                    voxelScale={voxelScale}
                     onNavigate={updateOrthoPosition}
                     onNavigateEnd={finishOrthoNavigation}
                     onStepSlice={stepOrthoSlice}
@@ -3788,6 +3816,9 @@ function OrthoSlicesGrid({
   zOverlayUrl,
   yOverlayUrl,
   xOverlayUrl,
+  measurementMode,
+  measurementResetKey,
+  voxelScale,
   onNavigate,
   onNavigateEnd,
   onStepSlice,
@@ -3806,6 +3837,9 @@ function OrthoSlicesGrid({
   zOverlayUrl?: string | null;
   yOverlayUrl?: string | null;
   xOverlayUrl?: string | null;
+  measurementMode: boolean;
+  measurementResetKey: string | number | null;
+  voxelScale: VoxelScale;
   onNavigate: (position: OrthoPosition) => void;
   onNavigateEnd: () => void;
   onStepSlice: (axis: OrthoAxis, delta: number) => void;
@@ -3851,6 +3885,11 @@ function OrthoSlicesGrid({
         imageHeight={Math.max(1, dims.z)}
         brightness={brightness}
         contrast={contrast}
+        measurementMode={measurementMode}
+        measurementResetKey={measurementResetKey}
+        measurementScaleX={voxelScale.x}
+        measurementScaleY={voxelScale.z}
+        measurementUnit={voxelScale.unit}
         crossV={{
           pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
           color: colX,
@@ -3888,6 +3927,11 @@ function OrthoSlicesGrid({
         imageHeight={Math.max(1, dims.y)}
         brightness={brightness}
         contrast={contrast}
+        measurementMode={measurementMode}
+        measurementResetKey={measurementResetKey}
+        measurementScaleX={voxelScale.x}
+        measurementScaleY={voxelScale.y}
+        measurementUnit={voxelScale.unit}
         crossV={{
           pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
           color: colX,
@@ -3926,6 +3970,11 @@ function OrthoSlicesGrid({
         brightness={brightness}
         contrast={contrast}
         rotate90
+        measurementMode={measurementMode}
+        measurementResetKey={measurementResetKey}
+        measurementScaleX={voxelScale.y}
+        measurementScaleY={voxelScale.z}
+        measurementUnit={voxelScale.unit}
         crossV={{
           pos: clampInt(sliceIndexY, 0, Math.max(0, dims.y - 1)),
           color: colY,
@@ -3962,6 +4011,11 @@ function OrthoSlicePanel({
   brightness,
   contrast,
   rotate90 = false,
+  measurementMode,
+  measurementResetKey,
+  measurementScaleX,
+  measurementScaleY,
+  measurementUnit,
   crossV,
   crossH,
   active = false,
@@ -3987,6 +4041,11 @@ function OrthoSlicePanel({
   brightness: number;
   contrast: number;
   rotate90?: boolean;
+  measurementMode: boolean;
+  measurementResetKey: string | number | null;
+  measurementScaleX: number;
+  measurementScaleY: number;
+  measurementUnit: "Å" | "px";
   crossV?: { pos: number; color: string; max: number };
   crossH?: { pos: number; color: string; max: number };
   active?: boolean;
@@ -4001,16 +4060,23 @@ function OrthoSlicePanel({
   onToggleFocus?: () => void;
 }) {
   const pointerDragRef = useRef<number | null>(null);
+  const measurementPointerRef = useRef<number | null>(null);
+  const [measurement, setMeasurement] = useState<SliceMeasurement | null>(null);
   const viewBoxW = rotate90 ? imageHeight : imageWidth;
   const viewBoxH = rotate90 ? imageWidth : imageHeight;
   const filterCss = `brightness(${1 + brightness}) contrast(${contrast})`;
   const strokeW = Math.max(1, Math.min(viewBoxW, viewBoxH) * 0.0025);
 
-  const navigateFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement) => {
-    if (!imageUrl || !onNavigate) return;
+  useEffect(() => {
+    setMeasurement(null);
+    measurementPointerRef.current = null;
+  }, [measurementResetKey, currentSlice]);
+
+  const imagePointFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement): MeasurementPoint | null => {
+    if (!imageUrl) return null;
 
     const rect = svg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0 || viewBoxW <= 0 || viewBoxH <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0 || viewBoxW <= 0 || viewBoxH <= 0) return null;
 
     const scale = Math.min(rect.width / viewBoxW, rect.height / viewBoxH);
     const renderedW = viewBoxW * scale;
@@ -4018,14 +4084,20 @@ function OrthoSlicePanel({
     const localX = clientX - rect.left - (rect.width - renderedW) / 2;
     const localY = clientY - rect.top - (rect.height - renderedH) / 2;
 
-    if (localX < 0 || localY < 0 || localX > renderedW || localY > renderedH) return;
+    if (localX < 0 || localY < 0 || localX > renderedW || localY > renderedH) return null;
 
     const u = renderedW > 0 ? localX / renderedW : 0;
     const v = renderedH > 0 ? localY / renderedH : 0;
     const imageX = rotate90 ? v * Math.max(0, imageWidth - 1) : u * Math.max(0, imageWidth - 1);
     const imageY = rotate90 ? (1 - u) * Math.max(0, imageHeight - 1) : v * Math.max(0, imageHeight - 1);
 
-    onNavigate(imageX, imageY);
+    return { x: imageX, y: imageY };
+  };
+
+  const navigateFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement) => {
+    if (!onNavigate) return;
+    const point = imagePointFromClientPoint(clientX, clientY, svg);
+    if (point) onNavigate(point.x, point.y);
   };
 
   const renderCrosshair = () => (
@@ -4067,6 +4139,51 @@ function OrthoSlicePanel({
     </>
   );
 
+  const renderMeasurement = () => {
+    if (!measurement) return null;
+
+    const { start, end } = measurement;
+    const distance = Math.hypot(
+      (end.x - start.x) * measurementScaleX,
+      (end.y - start.y) * measurementScaleY,
+    );
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    const labelOffset = Math.max(3, Math.min(imageWidth, imageHeight) * 0.025);
+    const fontSize = Math.max(3, Math.min(imageWidth, imageHeight) * 0.045);
+
+    return (
+      <g pointerEvents="none">
+        <line
+          x1={start.x}
+          y1={start.y}
+          x2={end.x}
+          y2={end.y}
+          stroke="#fbbf24"
+          strokeWidth={Math.max(strokeW * 1.6, 1.5)}
+          strokeLinecap="round"
+        />
+        <circle cx={start.x} cy={start.y} r={Math.max(strokeW * 2.2, 2)} fill="#fbbf24" stroke="#111827" strokeWidth={strokeW} />
+        <circle cx={end.x} cy={end.y} r={Math.max(strokeW * 2.2, 2)} fill="#fbbf24" stroke="#111827" strokeWidth={strokeW} />
+        <text
+          x={midX}
+          y={midY - labelOffset}
+          textAnchor="middle"
+          dominantBaseline="auto"
+          fill="#fef3c7"
+          stroke="rgba(17,24,39,0.92)"
+          strokeWidth={Math.max(strokeW * 1.8, 1.5)}
+          paintOrder="stroke"
+          fontSize={fontSize}
+          fontWeight={700}
+          transform={rotate90 ? `rotate(-90 ${midX} ${midY - labelOffset})` : undefined}
+        >
+          {distance.toFixed(1)} {measurementUnit}
+        </text>
+      </g>
+    );
+  };
+
   const renderContent = () => {
     if (loading && !imageUrl) {
       return (
@@ -4107,17 +4224,43 @@ function OrthoSlicePanel({
           if (event.button !== 0) return;
           event.preventDefault();
           event.currentTarget.focus();
+
+          if (measurementMode) {
+            const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+            if (!point) return;
+            measurementPointerRef.current = event.pointerId;
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            setMeasurement({ start: point, end: point });
+            return;
+          }
+
           pointerDragRef.current = event.pointerId;
           event.currentTarget.setPointerCapture?.(event.pointerId);
           onNavigationStart?.();
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerMove={(event) => {
+          if (measurementPointerRef.current === event.pointerId) {
+            event.preventDefault();
+            const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+            if (point) setMeasurement((current) => current ? { ...current, end: point } : null);
+            return;
+          }
+
           if (pointerDragRef.current !== event.pointerId) return;
           event.preventDefault();
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerUp={(event) => {
+          if (measurementPointerRef.current === event.pointerId) {
+            event.preventDefault();
+            const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+            if (point) setMeasurement((current) => current ? { ...current, end: point } : null);
+            measurementPointerRef.current = null;
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+            return;
+          }
+
           if (pointerDragRef.current !== event.pointerId) return;
           event.preventDefault();
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
@@ -4126,17 +4269,24 @@ function OrthoSlicePanel({
           onNavigationEnd?.();
         }}
         onPointerCancel={(event) => {
+          if (measurementPointerRef.current === event.pointerId) {
+            measurementPointerRef.current = null;
+            return;
+          }
+
           if (pointerDragRef.current !== event.pointerId) return;
           pointerDragRef.current = null;
           onNavigationEnd?.();
         }}
         onClick={(event) => {
+          if (measurementMode) return;
           onNavigationStart?.();
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
           onNavigationEnd?.();
         }}
         onDoubleClick={(event) => {
           event.preventDefault();
+          if (measurementMode) return;
           onToggleFocus?.();
         }}
         onWheel={(event) => {
@@ -4177,6 +4327,7 @@ function OrthoSlicePanel({
               />
             ) : null}
             {renderCrosshair()}
+            {renderMeasurement()}
           </g>
         ) : (
           <>
@@ -4200,6 +4351,7 @@ function OrthoSlicePanel({
               />
             ) : null}
             {renderCrosshair()}
+            {renderMeasurement()}
           </>
         )}
       </svg>
@@ -5208,6 +5360,27 @@ function getDimsZYXtoXYZ(info: any): Record<"x" | "y" | "z", number> {
     y: Number(info?.height ?? 0),
     z: Number(info?.depth ?? info?.slices ?? 0),
   };
+}
+
+function getVoxelScale(info: any): VoxelScale {
+  const raw = info?.voxelSize;
+
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    const z = Number(raw[2]);
+
+    if ([x, y, z].every((value) => Number.isFinite(value) && value > 0)) {
+      return { x, y, z, unit: "Å" };
+    }
+  }
+
+  const samplingRate = Number(info?.samplingRate ?? info?.sampling_rate ?? info?.pixelSize);
+  if (Number.isFinite(samplingRate) && samplingRate > 0) {
+    return { x: samplingRate, y: samplingRate, z: samplingRate, unit: "Å" };
+  }
+
+  return { x: 1, y: 1, z: 1, unit: "px" };
 }
 
 function dimsToStringXYZ(d: Record<"x" | "y" | "z", number>) {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
     listOutputVolumes: vi.fn(),
@@ -10,6 +10,16 @@ const serviceMocks = vi.hoisted(() => ({
     getVolumeSurfaceMesh: vi.fn(),
     getVolumeData3d: vi.fn(),
 }));
+
+beforeAll(() => {
+    if (!window.PointerEvent) {
+        Object.defineProperty(window, "PointerEvent", {
+            writable: true,
+            configurable: true,
+            value: MouseEvent,
+        });
+    }
+});
 
 function renderViewerWithInvalidMetadataIds() {
     return render(
@@ -952,6 +962,39 @@ describe("VolumeViewer", () => {
                 expect.objectContaining({ axis: "y" }),
             );
         });
+    });
+
+    it("measures physical distance on an orthogonal slice without moving the crosshair", async () => {
+        serviceMocks.getVolumeInfo.mockResolvedValue({
+            ...makeInfo(1),
+            samplingRate: 99,
+            voxelSize: [2, 3, 4],
+        });
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        const yView = screen.getByRole("application", { name: "Y (XZ) slice view" });
+        expect(yView).toHaveAttribute("aria-valuetext", "3 of 6");
+
+        vi.spyOn(zView, "getBoundingClientRect").mockReturnValue({
+            x: 0,
+            y: 0,
+            left: 0,
+            top: 0,
+            right: 700,
+            bottom: 600,
+            width: 700,
+            height: 600,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Measure distance" }));
+        fireEvent.pointerDown(zView, { button: 0, pointerId: 7, clientX: 0, clientY: 0 });
+        fireEvent.pointerMove(zView, { pointerId: 7, clientX: 350, clientY: 480 });
+        fireEvent.pointerUp(zView, { button: 0, pointerId: 7, clientX: 350, clientY: 480 });
+
+        expect(screen.getByText("13.4 Å")).toBeInTheDocument();
+        expect(yView).toHaveAttribute("aria-valuetext", "3 of 6");
     });
 
     it("focuses an orthogonal plane and restores all views with Escape", async () => {
