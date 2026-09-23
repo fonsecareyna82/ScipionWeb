@@ -997,6 +997,77 @@ describe("VolumeViewer", () => {
         expect(yView).toHaveAttribute("aria-valuetext", "3 of 6");
     });
 
+    it("synchronizes zoom and pan across orthogonal slice views", async () => {
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        const yView = screen.getByRole("application", { name: "Y (XZ) slice view" });
+        const xView = screen.getByRole("application", { name: "X (YZ) slice view" });
+        const readViewBox = (view: Element) =>
+            (view.getAttribute("viewBox") ?? "").split(/\s+/).map(Number);
+
+        expect(readViewBox(zView)).toEqual([0, 0, 7, 6]);
+        expect(readViewBox(yView)).toEqual([0, 0, 7, 5]);
+        expect(readViewBox(xView)).toEqual([0, 0, 5, 6]);
+        expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+
+        vi.spyOn(zView, "getBoundingClientRect").mockReturnValue({
+            x: 0,
+            y: 0,
+            left: 0,
+            top: 0,
+            right: 700,
+            bottom: 600,
+            width: 700,
+            height: 600,
+            toJSON: () => ({}),
+        });
+
+        fireEvent.wheel(zView, { ctrlKey: true, deltaY: -100, clientX: 350, clientY: 300 });
+
+        const zoomedZ = readViewBox(zView);
+        const zoomedY = readViewBox(yView);
+        const zoomedX = readViewBox(xView);
+        expect(zoomedZ[2]).toBeLessThan(7);
+        expect(zoomedZ[3]).toBeLessThan(6);
+        expect(zoomedY[2]).toBeLessThan(7);
+        expect(zoomedY[3]).toBeLessThan(5);
+        expect(zoomedX[2]).toBeLessThan(5);
+        expect(zoomedX[3]).toBeLessThan(6);
+        expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+
+        fireEvent.pointerDown(zView, {
+            button: 0,
+            ctrlKey: true,
+            pointerId: 9,
+            clientX: 350,
+            clientY: 300,
+        });
+        fireEvent.pointerMove(zView, {
+            ctrlKey: true,
+            pointerId: 9,
+            clientX: 420,
+            clientY: 360,
+        });
+        fireEvent.pointerUp(zView, {
+            button: 0,
+            ctrlKey: true,
+            pointerId: 9,
+            clientX: 420,
+            clientY: 360,
+        });
+
+        expect(readViewBox(zView)).not.toEqual(zoomedZ);
+        expect(readViewBox(yView)).not.toEqual(zoomedY);
+        expect(readViewBox(xView)).not.toEqual(zoomedX);
+
+        fireEvent.click(screen.getByRole("button", { name: "Reset orthogonal zoom and pan" }));
+
+        expect(readViewBox(zView)).toEqual([0, 0, 7, 6]);
+        expect(readViewBox(yView)).toEqual([0, 0, 7, 5]);
+        expect(readViewBox(xView)).toEqual([0, 0, 5, 6]);
+    });
+
     it("focuses an orthogonal plane and restores all views with Escape", async () => {
         renderViewer();
 

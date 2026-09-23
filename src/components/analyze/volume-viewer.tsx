@@ -92,6 +92,10 @@ type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
 type VoxelScale = Record<"x" | "y" | "z", number> & { unit: "Å" | "px" };
 type MeasurementPoint = { x: number; y: number };
 type SliceMeasurement = { start: MeasurementPoint; end: MeasurementPoint };
+type OrthoViewport = {
+  zoom: number;
+  center: Record<"x" | "y" | "z", number>;
+};
 
 type SliceImageState = {
   url: string | null;
@@ -107,6 +111,10 @@ type SliceImageCacheEntry = {
 type SliceImageCache = Map<string, SliceImageCacheEntry>;
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
+const DEFAULT_ORTHO_VIEWPORT: OrthoViewport = {
+  zoom: 1,
+  center: { x: 0.5, y: 0.5, z: 0.5 },
+};
 const CMAP_OPTIONS = [
   "gray",
   "viridis",
@@ -3850,10 +3858,53 @@ function OrthoSlicesGrid({
   const colY = ORTHO_AXIS_COLORS.y;
   const colZ = ORTHO_AXIS_COLORS.z;
   const [activeAxis, setActiveAxis] = useState<"x" | "y" | "z" | null>(null);
+  const [viewport, setViewport] = useState<OrthoViewport>(DEFAULT_ORTHO_VIEWPORT);
 
   const gx = Math.max(1, dims.x || 1);
   const gy = Math.max(1, dims.y || 1);
   const gz = Math.max(1, dims.z || 1);
+
+  useEffect(() => {
+    setViewport(DEFAULT_ORTHO_VIEWPORT);
+  }, [measurementResetKey, dims.x, dims.y, dims.z]);
+
+  const clampViewportCenter = (value: number, zoom: number) => {
+    const margin = 0.5 / zoom;
+    return clampFloat(value, margin, 1 - margin);
+  };
+
+  const zoomViewport = (
+    horizontalAxis: OrthoAxis,
+    verticalAxis: OrthoAxis,
+    factor: number,
+    anchorX: number,
+    anchorY: number,
+  ) => {
+    setViewport((current) => {
+      const zoom = clampFloat(current.zoom * factor, 1, 8);
+      const appliedFactor = zoom / current.zoom;
+      const center = { ...current.center };
+      center[horizontalAxis] = clampViewportCenter(anchorX + (center[horizontalAxis] - anchorX) / appliedFactor, zoom);
+      center[verticalAxis] = clampViewportCenter(anchorY + (center[verticalAxis] - anchorY) / appliedFactor, zoom);
+      return { zoom, center };
+    });
+  };
+
+  const panViewport = (
+    horizontalAxis: OrthoAxis,
+    verticalAxis: OrthoAxis,
+    deltaX: number,
+    deltaY: number,
+  ) => {
+    setViewport((current) => {
+      const center = { ...current.center };
+      center[horizontalAxis] = clampViewportCenter(center[horizontalAxis] + deltaX, current.zoom);
+      center[verticalAxis] = clampViewportCenter(center[verticalAxis] + deltaY, current.zoom);
+      return { ...current, center };
+    });
+  };
+
+  const resetViewport = () => setViewport(DEFAULT_ORTHO_VIEWPORT);
 
   return (
     <Box
@@ -3866,6 +3917,7 @@ function OrthoSlicesGrid({
         gap: 0.5,
         minWidth: 0,
         minHeight: 0,
+        position: "relative",
       }}
     >
       <OrthoSlicePanel
@@ -3890,6 +3942,9 @@ function OrthoSlicesGrid({
         measurementScaleX={voxelScale.x}
         measurementScaleY={voxelScale.z}
         measurementUnit={voxelScale.unit}
+        viewport={viewport}
+        viewportHorizontalAxis="x"
+        viewportVerticalAxis="z"
         crossV={{
           pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
           color: colX,
@@ -3906,6 +3961,14 @@ function OrthoSlicesGrid({
         onStepSlice={(delta) => {
           setActiveAxis("y");
           onStepSlice("y", delta);
+        }}
+        onViewportZoom={(factor, anchorX, anchorY) => {
+          setActiveAxis("y");
+          zoomViewport("x", "z", factor, anchorX, anchorY);
+        }}
+        onViewportPan={(deltaX, deltaY) => {
+          setActiveAxis("y");
+          panViewport("x", "z", deltaX, deltaY);
         }}
         onToggleFocus={() => onFocusedAxisChange(focusedAxis === "y" ? null : "y")}
       />
@@ -3932,6 +3995,9 @@ function OrthoSlicesGrid({
         measurementScaleX={voxelScale.x}
         measurementScaleY={voxelScale.y}
         measurementUnit={voxelScale.unit}
+        viewport={viewport}
+        viewportHorizontalAxis="x"
+        viewportVerticalAxis="y"
         crossV={{
           pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
           color: colX,
@@ -3948,6 +4014,14 @@ function OrthoSlicesGrid({
         onStepSlice={(delta) => {
           setActiveAxis("z");
           onStepSlice("z", delta);
+        }}
+        onViewportZoom={(factor, anchorX, anchorY) => {
+          setActiveAxis("z");
+          zoomViewport("x", "y", factor, anchorX, anchorY);
+        }}
+        onViewportPan={(deltaX, deltaY) => {
+          setActiveAxis("z");
+          panViewport("x", "y", deltaX, deltaY);
         }}
         onToggleFocus={() => onFocusedAxisChange(focusedAxis === "z" ? null : "z")}
       />
@@ -3975,6 +4049,9 @@ function OrthoSlicesGrid({
         measurementScaleX={voxelScale.y}
         measurementScaleY={voxelScale.z}
         measurementUnit={voxelScale.unit}
+        viewport={viewport}
+        viewportHorizontalAxis="y"
+        viewportVerticalAxis="z"
         crossV={{
           pos: clampInt(sliceIndexY, 0, Math.max(0, dims.y - 1)),
           color: colY,
@@ -3992,8 +4069,38 @@ function OrthoSlicesGrid({
           setActiveAxis("x");
           onStepSlice("x", delta);
         }}
+        onViewportZoom={(factor, anchorX, anchorY) => {
+          setActiveAxis("x");
+          zoomViewport("y", "z", factor, anchorX, anchorY);
+        }}
+        onViewportPan={(deltaX, deltaY) => {
+          setActiveAxis("x");
+          panViewport("y", "z", deltaX, deltaY);
+        }}
         onToggleFocus={() => onFocusedAxisChange(focusedAxis === "x" ? null : "x")}
       />
+
+      <Tooltip title="Reset zoom and pan">
+        <span style={{ position: "absolute", right: 7, bottom: 7, zIndex: 3 }}>
+          <IconButton
+            size="small"
+            aria-label="Reset orthogonal zoom and pan"
+            onClick={resetViewport}
+            disabled={viewport.zoom === 1 && Object.values(viewport.center).every((value) => value === 0.5)}
+            sx={{
+              width: 28,
+              height: 28,
+              color: "common.white",
+              bgcolor: "rgba(0,0,0,0.55)",
+              backdropFilter: "blur(3px)",
+              "&:hover": { bgcolor: "rgba(0,0,0,0.78)" },
+              "&.Mui-disabled": { color: "rgba(255,255,255,0.42)", bgcolor: "rgba(0,0,0,0.28)" },
+            }}
+          >
+            <RotateCcw size={15} />
+          </IconButton>
+        </span>
+      </Tooltip>
     </Box>
   );
 }
@@ -4016,6 +4123,9 @@ function OrthoSlicePanel({
   measurementScaleX,
   measurementScaleY,
   measurementUnit,
+  viewport,
+  viewportHorizontalAxis,
+  viewportVerticalAxis,
   crossV,
   crossH,
   active = false,
@@ -4027,6 +4137,8 @@ function OrthoSlicePanel({
   onNavigationStart,
   onNavigationEnd,
   onStepSlice,
+  onViewportZoom,
+  onViewportPan,
   onToggleFocus,
 }: {
   label: string;
@@ -4046,6 +4158,9 @@ function OrthoSlicePanel({
   measurementScaleX: number;
   measurementScaleY: number;
   measurementUnit: "Å" | "px";
+  viewport: OrthoViewport;
+  viewportHorizontalAxis: OrthoAxis;
+  viewportVerticalAxis: OrthoAxis;
   crossV?: { pos: number; color: string; max: number };
   crossH?: { pos: number; color: string; max: number };
   active?: boolean;
@@ -4057,13 +4172,23 @@ function OrthoSlicePanel({
   onNavigationStart?: () => void;
   onNavigationEnd?: () => void;
   onStepSlice?: (delta: number) => void;
+  onViewportZoom?: (factor: number, anchorX: number, anchorY: number) => void;
+  onViewportPan?: (deltaX: number, deltaY: number) => void;
   onToggleFocus?: () => void;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const pointerDragRef = useRef<number | null>(null);
   const measurementPointerRef = useRef<number | null>(null);
+  const panPointerRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null);
   const [measurement, setMeasurement] = useState<SliceMeasurement | null>(null);
   const viewBoxW = rotate90 ? imageHeight : imageWidth;
   const viewBoxH = rotate90 ? imageWidth : imageHeight;
+  const viewportCenterX = viewport.center[viewportHorizontalAxis];
+  const viewportCenterY = viewport.center[viewportVerticalAxis];
+  const viewportWidth = viewBoxW / viewport.zoom;
+  const viewportHeight = viewBoxH / viewport.zoom;
+  const viewportX = rotate90 ? (1 - viewportCenterY) * viewBoxW - viewportWidth / 2 : viewportCenterX * viewBoxW - viewportWidth / 2;
+  const viewportY = rotate90 ? viewportCenterX * viewBoxH - viewportHeight / 2 : viewportCenterY * viewBoxH - viewportHeight / 2;
   const filterCss = `brightness(${1 + brightness}) contrast(${contrast})`;
   const strokeW = Math.max(1, Math.min(viewBoxW, viewBoxH) * 0.0025);
 
@@ -4072,15 +4197,27 @@ function OrthoSlicePanel({
     measurementPointerRef.current = null;
   }, [measurementResetKey, currentSlice]);
 
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !imageUrl) return;
+
+    const preventBrowserWheelDefault = (event: WheelEvent) => {
+      if (event.deltaY !== 0) event.preventDefault();
+    };
+
+    svg.addEventListener("wheel", preventBrowserWheelDefault, { passive: false });
+    return () => svg.removeEventListener("wheel", preventBrowserWheelDefault);
+  }, [imageUrl]);
+
   const imagePointFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement): MeasurementPoint | null => {
     if (!imageUrl) return null;
 
     const rect = svg.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0 || viewBoxW <= 0 || viewBoxH <= 0) return null;
+    if (rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return null;
 
-    const scale = Math.min(rect.width / viewBoxW, rect.height / viewBoxH);
-    const renderedW = viewBoxW * scale;
-    const renderedH = viewBoxH * scale;
+    const scale = Math.min(rect.width / viewportWidth, rect.height / viewportHeight);
+    const renderedW = viewportWidth * scale;
+    const renderedH = viewportHeight * scale;
     const localX = clientX - rect.left - (rect.width - renderedW) / 2;
     const localY = clientY - rect.top - (rect.height - renderedH) / 2;
 
@@ -4088,10 +4225,36 @@ function OrthoSlicePanel({
 
     const u = renderedW > 0 ? localX / renderedW : 0;
     const v = renderedH > 0 ? localY / renderedH : 0;
-    const imageX = rotate90 ? v * Math.max(0, imageWidth - 1) : u * Math.max(0, imageWidth - 1);
-    const imageY = rotate90 ? (1 - u) * Math.max(0, imageHeight - 1) : v * Math.max(0, imageHeight - 1);
+    const displayX = viewportX + u * viewportWidth;
+    const displayY = viewportY + v * viewportHeight;
+    const imageX = rotate90
+      ? (displayY / viewBoxH) * Math.max(0, imageWidth - 1)
+      : (displayX / viewBoxW) * Math.max(0, imageWidth - 1);
+    const imageY = rotate90
+      ? (1 - displayX / viewBoxW) * Math.max(0, imageHeight - 1)
+      : (displayY / viewBoxH) * Math.max(0, imageHeight - 1);
 
-    return { x: imageX, y: imageY };
+    return {
+      x: clampFloat(imageX, 0, Math.max(0, imageWidth - 1)),
+      y: clampFloat(imageY, 0, Math.max(0, imageHeight - 1)),
+    };
+  };
+
+  const panViewportFromClientDelta = (clientDeltaX: number, clientDeltaY: number, svg: SVGSVGElement) => {
+    if (!onViewportPan) return;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return;
+
+    const scale = Math.min(rect.width / viewportWidth, rect.height / viewportHeight);
+    const renderedW = viewportWidth * scale;
+    const renderedH = viewportHeight * scale;
+    if (renderedW <= 0 || renderedH <= 0) return;
+
+    const displayDeltaX = clientDeltaX * viewportWidth / renderedW;
+    const displayDeltaY = clientDeltaY * viewportHeight / renderedH;
+    const deltaX = rotate90 ? -displayDeltaY / imageWidth : -displayDeltaX / imageWidth;
+    const deltaY = rotate90 ? displayDeltaX / imageHeight : -displayDeltaY / imageHeight;
+    onViewportPan(deltaX, deltaY);
   };
 
   const navigateFromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement) => {
@@ -4212,15 +4375,25 @@ function OrthoSlicePanel({
 
     return (
       <svg
+        ref={svgRef}
         role="application"
         aria-label={`${label} slice view`}
         aria-valuetext={`${currentSlice + 1} of ${maxSlice + 1}`}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
         tabIndex={0}
-        viewBox={`0 0 ${viewBoxW} ${viewBoxH}`}
+        viewBox={`${viewportX} ${viewportY} ${viewportWidth} ${viewportHeight}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ width: "100%", height: "100%", display: "block", cursor: "crosshair", touchAction: "none", outline: "none" }}
         onPointerDown={(event) => {
+          const panRequested = event.button === 1 || (event.button === 0 && (event.ctrlKey || event.metaKey));
+          if (panRequested && onViewportPan) {
+            event.preventDefault();
+            event.currentTarget.focus();
+            panPointerRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            return;
+          }
+
           if (event.button !== 0) return;
           event.preventDefault();
           event.currentTarget.focus();
@@ -4240,6 +4413,14 @@ function OrthoSlicePanel({
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerMove={(event) => {
+          if (panPointerRef.current && panPointerRef.current.pointerId === event.pointerId) {
+            event.preventDefault();
+            const previous = panPointerRef.current;
+            panPointerRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+            panViewportFromClientDelta(event.clientX - previous.clientX, event.clientY - previous.clientY, event.currentTarget);
+            return;
+          }
+
           if (measurementPointerRef.current === event.pointerId) {
             event.preventDefault();
             const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
@@ -4252,6 +4433,13 @@ function OrthoSlicePanel({
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
         }}
         onPointerUp={(event) => {
+          if (panPointerRef.current && panPointerRef.current.pointerId === event.pointerId) {
+            event.preventDefault();
+            panPointerRef.current = null;
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+            return;
+          }
+
           if (measurementPointerRef.current === event.pointerId) {
             event.preventDefault();
             const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
@@ -4269,6 +4457,11 @@ function OrthoSlicePanel({
           onNavigationEnd?.();
         }}
         onPointerCancel={(event) => {
+          if (panPointerRef.current && panPointerRef.current.pointerId === event.pointerId) {
+            panPointerRef.current = null;
+            return;
+          }
+
           if (measurementPointerRef.current === event.pointerId) {
             measurementPointerRef.current = null;
             return;
@@ -4279,7 +4472,7 @@ function OrthoSlicePanel({
           onNavigationEnd?.();
         }}
         onClick={(event) => {
-          if (measurementMode) return;
+          if (measurementMode || event.ctrlKey || event.metaKey) return;
           onNavigationStart?.();
           navigateFromClientPoint(event.clientX, event.clientY, event.currentTarget);
           onNavigationEnd?.();
@@ -4290,8 +4483,18 @@ function OrthoSlicePanel({
           onToggleFocus?.();
         }}
         onWheel={(event) => {
-          if (!imageUrl || !onStepSlice || event.deltaY === 0) return;
-          event.preventDefault();
+          if (!imageUrl || event.deltaY === 0) return;
+          if ((event.ctrlKey || event.metaKey) && onViewportZoom) {
+            event.currentTarget.focus();
+            const point = imagePointFromClientPoint(event.clientX, event.clientY, event.currentTarget);
+            if (!point) return;
+            const anchorX = point.x / Math.max(1, imageWidth - 1);
+            const anchorY = point.y / Math.max(1, imageHeight - 1);
+            onViewportZoom(Math.exp(-event.deltaY * 0.002), anchorX, anchorY);
+            return;
+          }
+
+          if (!onStepSlice) return;
           event.currentTarget.focus();
           onNavigationStart?.();
           onStepSlice((event.deltaY > 0 ? 1 : -1) * (event.shiftKey ? 10 : 1));
