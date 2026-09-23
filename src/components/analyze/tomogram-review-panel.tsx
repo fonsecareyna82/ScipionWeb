@@ -56,6 +56,7 @@ type Notice = {
 type TagDefinition = {
   key: string;
   label: string;
+  mode: "toggle" | "count";
 };
 
 const QUALITY_OPTIONS = ["Excellent", "Good", "Ambiguous", "Bad"] as const;
@@ -67,18 +68,38 @@ function schemaTags(schema: TomogramReviewSchema | null | undefined): TagDefinit
   const seen = new Set<string>();
   return rawTags.flatMap((candidate) => {
     if (!candidate || typeof candidate !== "object") return [];
-    const tag = candidate as { key?: unknown; label?: unknown };
+    const tag = candidate as { key?: unknown; label?: unknown; mode?: unknown };
     const key = typeof tag.key === "string" ? tag.key.trim() : "";
     const label = typeof tag.label === "string" ? tag.label.trim() : "";
     if (!key || !label || seen.has(key)) return [];
     seen.add(key);
-    return [{ key, label }];
+    return [{ key, label, mode: tag.mode === "count" ? "count" : "toggle" }];
   });
 }
 
 function storedTagKeys(values: Record<string, unknown>): string[] {
   if (!Array.isArray(values.tags)) return [];
   return values.tags.filter((value): value is string => typeof value === "string");
+}
+
+function storedTagCounts(values: Record<string, unknown>, tags: TagDefinition[]): Record<string, number> {
+  const rawCounts = values.tagCounts;
+  const counts = rawCounts && typeof rawCounts === "object" && !Array.isArray(rawCounts)
+    ? rawCounts as Record<string, unknown>
+    : {};
+  const presentKeys = new Set(storedTagKeys(values));
+
+  return Object.fromEntries(
+    tags
+      .filter((tag) => tag.mode === "count")
+      .map((tag) => {
+        const rawValue = counts[tag.key];
+        const value = typeof rawValue === "number" && Number.isFinite(rawValue)
+          ? Math.max(0, Math.floor(rawValue))
+          : presentKeys.has(tag.key) ? 1 : 0;
+        return [tag.key, value];
+      }),
+  );
 }
 
 function tagKeyFromLabel(label: string) {
@@ -106,7 +127,13 @@ function appendTagDefinition(tags: TagDefinition[], rawLabel: string): TagDefini
     suffix += 1;
   }
 
-  return [...tags, { key, label }];
+  return [...tags, { key, label, mode: "toggle" }];
+}
+
+function serializedTagDefinitions(tags: TagDefinition[]) {
+  return tags.map((tag) => tag.mode === "count"
+    ? { key: tag.key, label: tag.label, mode: "count" }
+    : { key: tag.key, label: tag.label });
 }
 
 function conflictCurrentReview(error: unknown): TomogramReview | null {
@@ -177,6 +204,7 @@ export default function TomogramReviewPanel({
   const [reviewed, setReviewed] = useState(false);
   const [quality, setQuality] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTagCounts, setSelectedTagCounts] = useState<Record<string, number>>({});
   const [comment, setComment] = useState("");
   const [baseValues, setBaseValues] = useState<Record<string, unknown>>({});
   const [revision, setRevision] = useState(0);
@@ -237,6 +265,7 @@ export default function TomogramReviewPanel({
     setQuality(typeof values.quality === "string" ? values.quality : "");
     const availableKeys = new Set(tagDefinitions.map((tag) => tag.key));
     setSelectedTags(storedTagKeys(values).filter((key) => availableKeys.has(key)));
+    setSelectedTagCounts(storedTagCounts(values, tagDefinitions));
     setComment(selectedReview?.comment ?? "");
     setBaseValues(values);
     setRevision(selectedReview?.revision ?? 0);
@@ -274,6 +303,7 @@ export default function TomogramReviewPanel({
     setQuality(typeof stored.values.quality === "string" ? stored.values.quality : "");
     const availableKeys = new Set(tagDefinitions.map((tag) => tag.key));
     setSelectedTags(storedTagKeys(stored.values).filter((key) => availableKeys.has(key)));
+    setSelectedTagCounts(storedTagCounts(stored.values, tagDefinitions));
     setComment(stored.comment ?? "");
     setBaseValues(stored.values);
     setRevision(stored.revision);
@@ -290,7 +320,17 @@ export default function TomogramReviewPanel({
         ...baseValues,
         quality,
       };
-      if (tagDefinitions.length > 0) values.tags = selectedTags;
+      if (tagDefinitions.length > 0) {
+        values.tags = tagDefinitions
+          .filter((tag) => tag.mode === "count" ? (selectedTagCounts[tag.key] ?? 0) > 0 : selectedTags.includes(tag.key))
+          .map((tag) => tag.key);
+      }
+      const counterTags = tagDefinitions.filter((tag) => tag.mode === "count");
+      if (counterTags.length > 0) {
+        values.tagCounts = Object.fromEntries(counterTags.map((tag) => [tag.key, selectedTagCounts[tag.key] ?? 0]));
+      } else {
+        delete values.tagCounts;
+      }
 
       const stored = await svc.saveTomogramReview(
         projectId,
@@ -339,6 +379,14 @@ export default function TomogramReviewPanel({
     setNewTagLabel("");
   };
 
+  const changeTagCount = (tag: TagDefinition, delta: number) => {
+    const count = Math.max(0, (selectedTagCounts[tag.key] ?? 0) + delta);
+    setSelectedTagCounts((current) => ({ ...current, [tag.key]: count }));
+    setSelectedTags((keys) => count > 0
+      ? keys.includes(tag.key) ? keys : [...keys, tag.key]
+      : keys.filter((key) => key !== tag.key));
+  };
+
   const saveTagConfiguration = async () => {
     if (savingSchema) return;
     setSavingSchema(true);
@@ -346,7 +394,7 @@ export default function TomogramReviewPanel({
 
     const definition = {
       ...(context?.schema?.definition ?? {}),
-      tags: tagDraft,
+      tags: serializedTagDefinitions(tagDraft),
     };
 
     try {
@@ -578,23 +626,71 @@ export default function TomogramReviewPanel({
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
                   Tags
                 </Typography>
-                <ToggleButtonGroup
-                  value={selectedTags}
-                  onChange={(_, nextTags: string[]) => setSelectedTags(nextTags)}
-                  size="small"
-                  sx={{ mt: 0.7, display: "flex", flexWrap: "wrap", gap: 0.7 }}
-                >
+                <Box sx={{ mt: 0.7, display: "flex", flexWrap: "wrap", gap: 0.7 }}>
                   {tagDefinitions.map((tag) => (
-                    <ToggleButton
-                      key={tag.key}
-                      value={tag.key}
-                      aria-label={`${tag.label} ${tagCounts.get(tag.key) ?? 0}`}
-                      sx={{ m: "0 !important", border: "1px solid !important" }}
-                    >
-                      {tag.label}&nbsp;{tagCounts.get(tag.key) ?? 0}
-                    </ToggleButton>
+                    tag.mode === "count" ? (
+                      <Box
+                        key={tag.key}
+                        role="group"
+                        aria-label={`${tag.label} counter`}
+                        sx={{
+                          minHeight: 32,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.35,
+                          pl: 1,
+                          border: "1px solid",
+                          borderColor: (selectedTagCounts[tag.key] ?? 0) > 0 ? "primary.main" : "divider",
+                          borderRadius: 1,
+                          bgcolor: (selectedTagCounts[tag.key] ?? 0) > 0 ? "action.selected" : "transparent",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 800, mr: 0.35 }}>
+                          {tag.label}
+                        </Typography>
+                        <Button
+                          size="small"
+                          aria-label={`Decrease ${tag.label} count`}
+                          disabled={(selectedTagCounts[tag.key] ?? 0) === 0}
+                          onClick={() => changeTagCount(tag, -1)}
+                          sx={{ minWidth: 28, height: 30, px: 0.5, borderRadius: 0 }}
+                        >
+                          −
+                        </Button>
+                        <Typography
+                          variant="caption"
+                          aria-label={`${tag.label} count`}
+                          sx={{ minWidth: 20, textAlign: "center", fontWeight: 900, fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {selectedTagCounts[tag.key] ?? 0}
+                        </Typography>
+                        <Button
+                          size="small"
+                          aria-label={`Increase ${tag.label} count`}
+                          onClick={() => changeTagCount(tag, 1)}
+                          sx={{ minWidth: 28, height: 30, px: 0.5, borderRadius: 0 }}
+                        >
+                          +
+                        </Button>
+                      </Box>
+                    ) : (
+                      <ToggleButton
+                        key={tag.key}
+                        value={tag.key}
+                        selected={selectedTags.includes(tag.key)}
+                        onChange={() => setSelectedTags((current) => current.includes(tag.key)
+                          ? current.filter((key) => key !== tag.key)
+                          : [...current, tag.key])}
+                        size="small"
+                        aria-label={`${tag.label} ${tagCounts.get(tag.key) ?? 0}`}
+                        sx={{ m: "0 !important", border: "1px solid !important" }}
+                      >
+                        {tag.label}&nbsp;{tagCounts.get(tag.key) ?? 0}
+                      </ToggleButton>
+                    )
                   ))}
-                </ToggleButtonGroup>
+                </Box>
               </Box>
             ) : null}
 
@@ -658,7 +754,7 @@ export default function TomogramReviewPanel({
           }}
         >
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
-            Add the generic tags that reviewers can assign to any tomogram.
+            Add review tags and choose whether each one is a simple presence flag or a counter.
           </Typography>
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
             <TextField
@@ -704,12 +800,30 @@ export default function TomogramReviewPanel({
             }}
           >
             {tagDraft.length > 0 ? tagDraft.map((tag) => (
-              <Chip
+              <Box
                 key={tag.key}
-                label={tag.label}
-                size="small"
-                onDelete={() => setTagDraft((current) => current.filter((item) => item.key !== tag.key))}
-              />
+                sx={{ width: "100%", display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <Chip
+                  label={tag.label}
+                  size="small"
+                  onDelete={() => setTagDraft((current) => current.filter((item) => item.key !== tag.key))}
+                  sx={{ minWidth: 0, flex: 1, justifyContent: "space-between" }}
+                />
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={tag.mode}
+                  aria-label={`${tag.label} mode`}
+                  onChange={(_, mode: "toggle" | "count" | null) => {
+                    if (!mode) return;
+                    setTagDraft((current) => current.map((item) => item.key === tag.key ? { ...item, mode } : item));
+                  }}
+                >
+                  <ToggleButton value="toggle">Simple</ToggleButton>
+                  <ToggleButton value="count">Counter</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
             )) : (
               <Typography variant="caption" color="text.secondary">
                 No tags configured yet.

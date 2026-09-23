@@ -307,6 +307,113 @@ describe("TomogramReviewPanel", () => {
     });
   });
 
+  it("increments counter tags and preserves their presence key", async () => {
+    const counterContext = {
+      ...reviewContext,
+      schema: {
+        id: 8,
+        setId: 47,
+        version: 3,
+        definition: {
+          tags: [
+            { key: "mito", label: "Mito", mode: "count" },
+            { key: "membrane", label: "Membrane", mode: "toggle" },
+          ],
+        },
+        revision: 3,
+      },
+      reviews: {
+        "31": {
+          ...storedReview,
+          values: {
+            ...storedReview.values,
+            tags: ["mito", "membrane"],
+            tagCounts: { mito: 2 },
+          },
+        },
+      },
+    };
+    const savedReview = {
+      ...counterContext.reviews["31"],
+      values: {
+        ...counterContext.reviews["31"].values,
+        tagCounts: { mito: 3 },
+      },
+      revision: 5,
+    };
+    serviceMocks.fetchTomogramReviewContext.mockResolvedValue(counterContext);
+    serviceMocks.saveTomogramReview.mockResolvedValue(savedReview);
+
+    renderPanel({ id: 31, label: "Tomo 31" });
+
+    expect(await screen.findByRole("group", { name: "Mito counter" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Increase Mito count" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.saveTomogramReview).toHaveBeenCalledWith(
+        7,
+        42,
+        "outputTomograms",
+        31,
+        expect.objectContaining({
+          values: {
+            quality: "Good",
+            customScore: 7,
+            tags: ["mito", "membrane"],
+            tagCounts: { mito: 3 },
+          },
+          revision: 4,
+        }),
+      );
+    });
+  });
+
+  it("configures an existing review tag as a counter", async () => {
+    const taggedContext = {
+      ...reviewContext,
+      schema: {
+        id: 8,
+        setId: 47,
+        version: 2,
+        definition: {
+          tags: [{ key: "feature_a", label: "Feature A" }],
+        },
+        revision: 2,
+      },
+    };
+    const savedSchema = {
+      ...taggedContext.schema,
+      definition: {
+        tags: [{ key: "feature_a", label: "Feature A", mode: "count" }],
+      },
+      version: 3,
+      revision: 3,
+    };
+    serviceMocks.fetchTomogramReviewContext.mockResolvedValue(taggedContext);
+    serviceMocks.saveTomogramReviewSchema.mockResolvedValue(savedSchema);
+
+    renderPanel({ id: 31, label: "Tomo 31" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Configure tags" }));
+    fireEvent.click(screen.getByRole("button", { name: "Counter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.saveTomogramReviewSchema).toHaveBeenCalledWith(
+        7,
+        42,
+        "outputTomograms",
+        {
+          definition: {
+            tags: [{ key: "feature_a", label: "Feature A", mode: "count" }],
+          },
+          revision: 2,
+        },
+      );
+    });
+  });
+
   it("creates a generic tag schema from the viewer", async () => {
     const savedSchema = {
       id: 8,
