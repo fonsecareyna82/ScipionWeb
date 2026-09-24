@@ -14,8 +14,18 @@ import {
   TextField,
   Checkbox,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  InputLabel,
   Menu,
   MenuItem,
+  Radio,
+  RadioGroup,
+  Select,
   Divider,
   Tooltip,
 } from "@mui/material";
@@ -76,6 +86,89 @@ type CTFExclusionsMap = Record<
   }
 >;
 
+type CTFViewColumnKey =
+  | "order"
+  | "tiltAngle"
+  | "excluded"
+  | "defocusU"
+  | "defocusV"
+  | "astigmatism"
+  | "resolution"
+  | "ccValue";
+
+type CTFViewColumn = {
+  key: CTFViewColumnKey;
+  label: string;
+  type: "number" | "boolean";
+};
+
+const CTF_VIEW_COLUMNS: CTFViewColumn[] = [
+  { key: "order", label: "Acq. order", type: "number" },
+  { key: "tiltAngle", label: "Tilt angle", type: "number" },
+  { key: "excluded", label: "Excl.", type: "boolean" },
+  { key: "defocusU", label: "DefocusU (Å)", type: "number" },
+  { key: "defocusV", label: "DefocusV (Å)", type: "number" },
+  { key: "astigmatism", label: "Astigmatism (Å)", type: "number" },
+  { key: "resolution", label: "Resolution (Å)", type: "number" },
+  { key: "ccValue", label: "CC value", type: "number" },
+];
+
+const NUMBER_CRITERIA = [
+  { value: "greater_than", label: "Greater than" },
+  { value: "greater_or_equal", label: "Greater than or equal to" },
+  { value: "less_than", label: "Less than" },
+  { value: "less_or_equal", label: "Less than or equal to" },
+  { value: "equal", label: "Equal to" },
+  { value: "not_equal", label: "Not equal to" },
+  { value: "between", label: "Between" },
+  { value: "outside", label: "Outside range" },
+  { value: "empty", label: "Is empty" },
+  { value: "not_empty", label: "Is not empty" },
+];
+
+const BOOLEAN_CRITERIA = [
+  { value: "included", label: "Included" },
+  { value: "excluded", label: "Excluded" },
+];
+
+function getDefaultCriterion(column: CTFViewColumn): string {
+  return column.type === "number" ? "greater_than" : "included";
+}
+
+function matchesColumnCriterion(
+  frame: CTFViewRow,
+  column: CTFViewColumn,
+  criterion: string,
+  firstValue: string,
+  secondValue: string,
+): boolean {
+  const rawValue = frame[column.key];
+  const isEmpty = rawValue == null || rawValue === "";
+
+  if (criterion === "empty") return isEmpty;
+  if (criterion === "not_empty") return !isEmpty;
+
+  if (column.type === "boolean") {
+    return criterion === "excluded" ? Boolean(rawValue) : !Boolean(rawValue);
+  }
+
+  const value = Number(rawValue);
+  const first = Number(firstValue);
+  const second = Number(secondValue);
+
+  if (!Number.isFinite(value) || !Number.isFinite(first)) return false;
+  if (criterion === "greater_than") return value > first;
+  if (criterion === "greater_or_equal") return value >= first;
+  if (criterion === "less_than") return value < first;
+  if (criterion === "less_or_equal") return value <= first;
+  if (criterion === "equal") return value === first;
+  if (criterion === "not_equal") return value !== first;
+  if (!Number.isFinite(second)) return false;
+  if (criterion === "between") return value >= Math.min(first, second) && value <= Math.max(first, second);
+  if (criterion === "outside") return value < Math.min(first, second) || value > Math.max(first, second);
+  return false;
+}
+
 function formatNumber(value: number | null | undefined, decimals = 2): string {
   if (value == null || !Number.isFinite(value)) return "";
   return value.toFixed(decimals);
@@ -119,6 +212,13 @@ export default function CTFTomoViewer({
   const exclusionsRef = useRef<CTFExclusionsMap | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
+
+  const [criterionColumn, setCriterionColumn] = useState<CTFViewColumn | null>(null);
+  const [criterionOperator, setCriterionOperator] = useState("");
+  const [criterionFirstValue, setCriterionFirstValue] = useState("");
+  const [criterionSecondValue, setCriterionSecondValue] = useState("");
+  const [criterionScope, setCriterionScope] = useState<"current" | "all">("current");
+  const [criterionBusy, setCriterionBusy] = useState(false);
 
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
 
@@ -701,6 +801,172 @@ export default function CTFTomoViewer({
           return { ...s, excluded: nextExcluded };
         }),
       );
+    }
+  };
+
+  const handleOpenCriterionDialog = (column: CTFViewColumn) => {
+    setCriterionColumn(column);
+    setCriterionOperator(getDefaultCriterion(column));
+    setCriterionFirstValue("");
+    setCriterionSecondValue("");
+    setCriterionScope("current");
+  };
+
+  const handleCloseCriterionDialog = () => {
+    if (criterionBusy) return;
+    setCriterionColumn(null);
+    setCriterionOperator("");
+  };
+
+  const getFramesForCriterion = async (seriesId: Id): Promise<CTFViewRow[]> => {
+    if (framesData && String(framesData.ctfSeriesId) === String(seriesId)) {
+      return framesData.frames;
+    }
+
+    const raw = await (svc as any).fetchCTFTomoSeriesViews(
+      projectId,
+      protocolId,
+      outputName,
+      seriesId,
+    );
+
+    if (Array.isArray(raw)) return normalizeCtfViews(raw);
+
+    const obj: any = raw ?? {};
+    return normalizeCtfViews(
+      obj.frames ?? obj.views ?? (Array.isArray(obj.items) ? obj.items : []),
+    );
+  };
+
+  const criterionOptions = criterionColumn?.type === "number"
+    ? NUMBER_CRITERIA
+    : BOOLEAN_CRITERIA;
+  const criterionNeedsValue = criterionColumn?.type !== "boolean"
+    && criterionOperator !== "empty"
+    && criterionOperator !== "not_empty";
+  const criterionNeedsSecondValue = criterionColumn?.type === "number"
+    && (criterionOperator === "between" || criterionOperator === "outside");
+  const criterionCanApply = Boolean(
+    criterionColumn
+    && (!criterionNeedsValue || criterionFirstValue.trim())
+    && (!criterionNeedsSecondValue || criterionSecondValue.trim()),
+  );
+
+  const handleApplyColumnCriterion = async () => {
+    if (!criterionColumn || !criterionCanApply || selectedSeriesId == null) return;
+
+    const targetSeries = criterionScope === "all"
+      ? series
+      : series.filter((item) => String(item.ctfSeriesId) === String(selectedSeriesId));
+
+    setCriterionBusy(true);
+
+    try {
+      const buildResult = (item: CTFTomoSeriesSummary, frames: CTFViewRow[]) => {
+        const key = String(item.ctfSeriesId);
+        const previousSet = new Set(excludedBySeriesRef.current[key] ?? []);
+        const wholeSeriesExcluded = Boolean(seriesExcludedRef.current[key]);
+
+        frames.forEach((frame, index) => {
+          if (frame.excluded || wholeSeriesExcluded) {
+            previousSet.add(getFrameIndexValue(frame, index));
+          }
+        });
+
+        const nextSet = new Set(previousSet);
+        let newlyExcluded = 0;
+
+        frames.forEach((frame, index) => {
+          const frameIndex = getFrameIndexValue(frame, index);
+          const frameForCriterion = { ...frame, excluded: nextSet.has(frameIndex) };
+
+          if (
+            matchesColumnCriterion(
+              frameForCriterion,
+              criterionColumn,
+              criterionOperator,
+              criterionFirstValue,
+              criterionSecondValue,
+            )
+            && !nextSet.has(frameIndex)
+          ) {
+            nextSet.add(frameIndex);
+            newlyExcluded += 1;
+          }
+        });
+
+        return {
+          key,
+          label: item.label,
+          nextSet,
+          newlyExcluded,
+          allExcluded: wholeSeriesExcluded || (frames.length > 0 && nextSet.size >= frames.length),
+        };
+      };
+
+      let results;
+
+      if (
+        criterionScope === "current"
+        && framesData
+        && String(framesData.ctfSeriesId) === String(selectedSeriesId)
+      ) {
+        results = targetSeries.map((item) => buildResult(item, framesData.frames));
+      } else {
+        results = await Promise.all(targetSeries.map(async (item) => {
+          const frames = await getFramesForCriterion(item.ctfSeriesId);
+          return buildResult(item, frames);
+        }));
+      }
+
+      const resultsBySeries = new Map(results.map((result) => [result.key, result]));
+
+      results.forEach((result) => {
+        excludedBySeriesRef.current[result.key] = result.nextSet;
+        seriesExcludedRef.current[result.key] = result.allExcluded;
+      });
+
+      setSeries((previous) => previous.map((item) => {
+        const result = resultsBySeries.get(String(item.ctfSeriesId));
+        return result ? { ...item, excluded: result.allExcluded } : item;
+      }));
+
+      setFramesData((previous) => {
+        if (!previous) return previous;
+        const result = resultsBySeries.get(String(previous.ctfSeriesId));
+        if (!result) return previous;
+
+        return {
+          ...previous,
+          frames: previous.frames.map((frame, index) => ({
+            ...frame,
+            excluded: result.nextSet.has(getFrameIndexValue(frame, index)),
+          })),
+        };
+      });
+
+      const totalExcluded = results.reduce((total, result) => total + result.newlyExcluded, 0);
+      const affectedSeries = results.filter((result) => result.newlyExcluded > 0).length;
+
+      if (criterionScope === "current") {
+        const label = results[0]?.label ?? "the current CTF tomo series";
+        toast.success(
+          totalExcluded === 1
+            ? `Excluded 1 CTF view in ${label}.`
+            : `Excluded ${totalExcluded} CTF views in ${label}.`,
+        );
+      } else {
+        toast.success(
+          `Excluded ${totalExcluded} CTF view${totalExcluded === 1 ? "" : "s"} across ${affectedSeries} CTF tomo series.`,
+        );
+      }
+
+      setCriterionColumn(null);
+      setCriterionOperator("");
+    } catch (error) {
+      toast.error(getErrorMsg(error));
+    } finally {
+      setCriterionBusy(false);
     }
   };
 
@@ -1528,28 +1794,84 @@ export default function CTFTomoViewer({
                                 >
                                   <TableHead>
                                     <TableRow>
-                                      <TableCell sx={columnWidths.order}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.order, cursor: "context-menu" }}
+                                        title="Right-click to exclude by Acq. order"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[0]);
+                                        }}
+                                      >
                                         Acq. order
                                       </TableCell>
-                                      <TableCell sx={columnWidths.angle}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.angle, cursor: "context-menu" }}
+                                        title="Right-click to exclude by Tilt angle"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[1]);
+                                        }}
+                                      >
                                         Tilt angle
                                       </TableCell>
-                                      <TableCell sx={columnWidths.excluded}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.excluded, cursor: "context-menu" }}
+                                        title="Right-click to exclude by exclusion state"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[2]);
+                                        }}
+                                      >
                                         Excl.
                                       </TableCell>
-                                      <TableCell sx={columnWidths.defocusU}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.defocusU, cursor: "context-menu" }}
+                                        title="Right-click to exclude by DefocusU"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[3]);
+                                        }}
+                                      >
                                         DefocusU (Å)
                                       </TableCell>
-                                      <TableCell sx={columnWidths.defocusV}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.defocusV, cursor: "context-menu" }}
+                                        title="Right-click to exclude by DefocusV"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[4]);
+                                        }}
+                                      >
                                         DefocusV (Å)
                                       </TableCell>
-                                      <TableCell sx={columnWidths.astigmatism}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.astigmatism, cursor: "context-menu" }}
+                                        title="Right-click to exclude by Astigmatism"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[5]);
+                                        }}
+                                      >
                                         Astigmatism (Å)
                                       </TableCell>
-                                      <TableCell sx={columnWidths.resolution}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.resolution, cursor: "context-menu" }}
+                                        title="Right-click to exclude by Resolution"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[6]);
+                                        }}
+                                      >
                                         Resolution (Å)
                                       </TableCell>
-                                      <TableCell sx={columnWidths.ccValue}>
+                                      <TableCell
+                                        sx={{ ...columnWidths.ccValue, cursor: "context-menu" }}
+                                        title="Right-click to exclude by CC value"
+                                        onContextMenu={(event) => {
+                                          event.preventDefault();
+                                          handleOpenCriterionDialog(CTF_VIEW_COLUMNS[7]);
+                                        }}
+                                      >
                                         CC value
                                       </TableCell>
                                     </TableRow>
@@ -1800,6 +2122,186 @@ export default function CTFTomoViewer({
           </Paper>
         </Box>
       </Box>
+
+      {criterionColumn && (
+        <Dialog
+          open
+          onClose={handleCloseCriterionDialog}
+          fullWidth
+          maxWidth="sm"
+          aria-labelledby="ctf-column-exclusion-title"
+          PaperProps={{
+            sx: {
+              width: "min(520px, calc(100vw - 32px))",
+              overflow: "hidden",
+              borderRadius: "16px",
+              border: "1px solid",
+              borderColor: "divider",
+              backgroundImage: "none",
+              boxShadow: "0 24px 64px rgba(15, 23, 42, 0.26), 0 8px 20px rgba(15, 23, 42, 0.12)",
+            },
+          }}
+        >
+          <DialogTitle
+            id="ctf-column-exclusion-title"
+            sx={{
+              px: 2.5,
+              py: 1.35,
+              background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+              color: "#e5e7eb",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              fontSize: "0.95rem",
+              fontWeight: 800,
+              letterSpacing: 0.15,
+            }}
+          >
+            Exclude CTF views by {criterionColumn.label}
+          </DialogTitle>
+
+          <DialogContent
+            sx={{
+              px: 2.5,
+              pt: "20px !important",
+              pb: 2.25,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1.75,
+              "& .MuiTypography-body2": { fontSize: "0.78rem", lineHeight: 1.55 },
+              "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
+              "& .MuiOutlinedInput-root": { borderRadius: "10px" },
+              "& .MuiFormControlLabel-label": { fontSize: "0.76rem" },
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Matching CTF views will be added to the current exclusion draft. Changes are only
+              used when you generate the subsets.
+            </Typography>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id="ctf-column-criterion-label">Criterion</InputLabel>
+              <Select
+                labelId="ctf-column-criterion-label"
+                label="Criterion"
+                value={criterionOperator}
+                onChange={(event) => setCriterionOperator(event.target.value)}
+                sx={{ fontSize: "0.76rem", borderRadius: "10px" }}
+                SelectDisplayProps={{ style: { fontSize: "0.76rem" } }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      mt: 0.5,
+                      overflow: "hidden",
+                      borderRadius: "12px",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      boxShadow: "0 14px 34px rgba(15, 23, 42, 0.18)",
+                    },
+                  },
+                  MenuListProps: {
+                    sx: {
+                      py: 0.5,
+                      "& .MuiMenuItem-root": {
+                        mx: 0.5,
+                        minHeight: "34px",
+                        borderRadius: "8px",
+                        fontSize: "0.76rem",
+                      },
+                    },
+                  },
+                }}
+              >
+                {criterionOptions.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    value={option.value}
+                    style={{ minHeight: "34px", fontSize: "0.76rem" }}
+                    sx={{ mx: 0.5, borderRadius: "8px" }}
+                  >
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {criterionNeedsValue && (
+              <Box sx={{ display: "flex", gap: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Value"
+                  type="number"
+                  value={criterionFirstValue}
+                  onChange={(event) => setCriterionFirstValue(event.target.value)}
+                  autoFocus
+                />
+
+                {criterionNeedsSecondValue && (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Second value"
+                    type="number"
+                    value={criterionSecondValue}
+                    onChange={(event) => setCriterionSecondValue(event.target.value)}
+                  />
+                )}
+              </Box>
+            )}
+
+            <FormControl component="fieldset">
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                Apply to
+              </Typography>
+              <RadioGroup
+                row
+                value={criterionScope}
+                onChange={(event) => setCriterionScope(event.target.value as "current" | "all")}
+              >
+                <FormControlLabel
+                  value="current"
+                  control={<Radio size="small" />}
+                  label="Current CTF tomo series"
+                />
+                <FormControlLabel
+                  value="all"
+                  control={<Radio size="small" />}
+                  label="All CTF tomo series"
+                />
+              </RadioGroup>
+            </FormControl>
+          </DialogContent>
+
+          <DialogActions
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              gap: 0.75,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              bgcolor: "action.hover",
+              "& .MuiButton-root": {
+                minWidth: 92,
+                height: 34,
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+                fontWeight: 700,
+                textTransform: "none",
+              },
+            }}
+          >
+            <Button onClick={handleCloseCriterionDialog} disabled={criterionBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleApplyColumnCriterion}
+              disabled={criterionBusy || !criterionCanApply}
+            >
+              {criterionBusy ? "Excluding…" : "Exclude"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       <Menu
         open={Boolean(chartMenuPos)}

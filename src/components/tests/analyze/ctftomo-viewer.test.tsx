@@ -395,6 +395,132 @@ describe("CTFTomoViewer", () => {
         expect(screen.getByText("18000.00")).toBeInTheDocument();
     });
 
+    it("excludes current-series CTF views matching a numeric column criterion", async () => {
+        renderViewer();
+
+        await expandFirstSeries();
+
+        fireEvent.contextMenu(
+            screen.getByRole("columnheader", { name: "Resolution (Å)" }),
+        );
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude CTF views by Resolution (Å)",
+        });
+
+        expect(within(dialog).getByLabelText("Criterion")).toHaveTextContent(
+            "Greater than",
+        );
+
+        fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Value" }), {
+            target: { value: "8" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Exclude" }));
+
+        const firstRow = screen.getByText("9.20").closest("tr");
+        const secondRow = screen.getByText("7.40").closest("tr");
+
+        expect(firstRow).not.toBeNull();
+        expect(secondRow).not.toBeNull();
+        expect(within(firstRow as HTMLElement).getByRole("checkbox")).toBeChecked();
+        expect(within(secondRow as HTMLElement).getByRole("checkbox")).not.toBeChecked();
+        expect(toastMocks.success).toHaveBeenCalledWith(
+            "Excluded 1 CTF view in CTF Series 1.",
+        );
+    });
+
+    it("applies a column exclusion criterion to every CTF tomo series", async () => {
+        renderViewer();
+
+        await expandFirstSeries();
+
+        fireEvent.contextMenu(
+            screen.getByRole("columnheader", { name: "Resolution (Å)" }),
+        );
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude CTF views by Resolution (Å)",
+        });
+
+        fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Value" }), {
+            target: { value: "8" },
+        });
+        fireEvent.click(
+            within(dialog).getByRole("radio", { name: "All CTF tomo series" }),
+        );
+        fireEvent.click(within(dialog).getByRole("button", { name: "Exclude" }));
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchCTFTomoSeriesViews).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                "CTF2",
+            );
+        });
+
+        expect(toastMocks.success).toHaveBeenCalledWith(
+            "Excluded 2 CTF views across 2 CTF tomo series.",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Generate subsets" }));
+        expect(await screen.findByText("Generate CTF tomo subsets")).toBeInTheDocument();
+
+        const generateButtons = screen.getAllByRole("button", {
+            name: "Generate subsets",
+        });
+        fireEvent.click(generateButtons[1]);
+
+        await waitFor(() => {
+            expect(serviceMocks.createNewSetOfCTFTomoSeries).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                {
+                    CTF1: {
+                        excluded: false,
+                        tiltimages: [0],
+                    },
+                    CTF2: {
+                        excluded: true,
+                        tiltimages: [0],
+                    },
+                },
+            );
+        });
+    });
+
+    it("uses compact analyze-output styling in the CTF column exclusion dialog", async () => {
+        renderViewer();
+
+        await expandFirstSeries();
+
+        fireEvent.contextMenu(
+            screen.getByRole("columnheader", { name: "Resolution (Å)" }),
+        );
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude CTF views by Resolution (Å)",
+        });
+        const title = within(dialog).getByRole("heading", {
+            name: "Exclude CTF views by Resolution (Å)",
+        });
+
+        expect(dialog).toHaveStyle({ borderRadius: "16px", overflow: "hidden" });
+        expect(title).toHaveStyle({
+            background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+            fontSize: "0.95rem",
+        });
+
+        const criterion = within(dialog).getByRole("combobox", { name: "Criterion" });
+        expect(criterion).toHaveStyle({ fontSize: "0.76rem" });
+
+        fireEvent.mouseDown(criterion);
+
+        const firstOption = await screen.findByRole("option", { name: "Greater than" });
+        expect(firstOption).toHaveStyle({ fontSize: "0.76rem", minHeight: "34px" });
+    });
+
     it("switches to metadata mode", async () => {
         renderViewer();
 
