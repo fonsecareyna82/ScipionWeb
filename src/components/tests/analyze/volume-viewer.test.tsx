@@ -1024,7 +1024,9 @@ describe("VolumeViewer", () => {
         expect(readViewBox(zView)).toEqual([0, 0, 7, 6]);
         expect(readViewBox(yView)).toEqual([0, 0, 7, 5]);
         expect(readViewBox(xView)).toEqual([0, 0, 5, 6]);
-        expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        await waitFor(() => {
+            expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
+        });
 
         vi.spyOn(zView, "getBoundingClientRect").mockReturnValue({
             x: 0,

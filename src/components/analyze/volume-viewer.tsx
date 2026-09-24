@@ -3032,7 +3032,7 @@ export default function VolumeViewer({
                                 value={renderMode3d}
                                 onChange={(_, v) => v && setRenderMode3d(v)}
                               >
-                               {/*  <ToggleButton value="volume">volume</ToggleButton> */}
+                                 <ToggleButton value="volume">volume</ToggleButton> 
                                 <ToggleButton value="surface">surface</ToggleButton>
                                 <ToggleButton value="mesh">mesh</ToggleButton>
                               </ToggleButtonGroup>
