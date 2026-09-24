@@ -293,12 +293,9 @@ function mergeNodeElapsedTick(
       data: {
         ...nextData,
 
-        // Do not jump directly to the final backend value.
-        // The ticker will advance one second at a time.
-        tick: Math.min(
-          currentElapsed,
-          backendElapsed,
-        ),
+        // Terminal protocols must display the authoritative
+        // final elapsed value immediately and remain stopped.
+        tick: backendElapsed,
       },
     };
   }
@@ -324,7 +321,7 @@ function mergeNodeElapsedTick(
       // tick is only the displayed value.
       tick:
         continuesActiveSession
-          ? Math.min(
+          ? Math.max(
             currentElapsed,
             backendElapsed,
           )
@@ -397,12 +394,9 @@ function mergeTableElapsedTick(
     return {
       ...freshRow,
 
-      // Keep the current displayed value.
-      // The ticker catches up smoothly to elapsedTime.
-      tick: Math.min(
-        currentElapsed || backendElapsed,
-        backendElapsed,
-      ),
+      // Terminal protocols must display the authoritative
+      // final elapsed value immediately and remain stopped.
+      tick: backendElapsed,
     };
   }
 
@@ -416,7 +410,7 @@ function mergeTableElapsedTick(
 
     tick:
       continuesActiveSession
-        ? Math.min(
+        ? Math.max(
           currentElapsed,
           backendElapsed,
         )
@@ -5270,12 +5264,13 @@ export default function ProjectPage() {
 
           const nextNodes =
             currentNodes.map((node) => {
-              const targetElapsed =
-                Math.floor(
-                  toElapsedSeconds(
-                    node.data?.elapsedTime
-                  )
-                );
+              if (
+                !isElapsedTimerStatus(
+                  node.data?.status
+                )
+              ) {
+                return node;
+              }
 
               const currentElapsed =
                 Math.floor(
@@ -5284,13 +5279,6 @@ export default function ProjectPage() {
                   )
                 );
 
-              if (
-                currentElapsed
-                >= targetElapsed
-              ) {
-                return node;
-              }
-
               changed = true;
 
               return {
@@ -5298,12 +5286,9 @@ export default function ProjectPage() {
                 data: {
                   ...node.data,
 
-                  // Advance exactly one second.
-                  // Never jump directly to the backend target.
-                  tick: Math.min(
-                    currentElapsed + 1,
-                    targetElapsed,
-                  ),
+                  // Active protocol time advances locally.
+                  // Backend refreshes reconcile without moving it backwards.
+                  tick: currentElapsed + 1,
                 },
               };
             });
@@ -5318,12 +5303,13 @@ export default function ProjectPage() {
 
           const nextRows =
             currentRows.map((row) => {
-              const targetElapsed =
-                Math.floor(
-                  toElapsedSeconds(
-                    row.elapsedTime
-                  )
-                );
+              if (
+                !isElapsedTimerStatus(
+                  row.status
+                )
+              ) {
+                return row;
+              }
 
               const currentElapsed =
                 Math.floor(
@@ -5332,24 +5318,13 @@ export default function ProjectPage() {
                   )
                 );
 
-              if (
-                currentElapsed
-                >= targetElapsed
-              ) {
-                return row;
-              }
-
               changed = true;
 
               return {
                 ...row,
 
-                // Same behavior in table:
-                // always one second at a time.
-                tick: Math.min(
-                  currentElapsed + 1,
-                  targetElapsed,
-                ),
+                // Keep table elapsed behavior aligned with graph nodes.
+                tick: currentElapsed + 1,
               };
             });
 
