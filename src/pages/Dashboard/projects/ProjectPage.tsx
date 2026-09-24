@@ -135,8 +135,10 @@ interface StatusNodeData {
   tagIds?: string[];
 }
 
+// "launched" is intentionally excluded: the elapsed clock should only
+// tick while the protocol is actually executing, not while it's queued
+// (e.g. waiting on a cluster scheduler like SLURM).
 const ELAPSED_TIMER_STATUSES = new Set([
-  "launched",
   "running",
 ]);
 
