@@ -32,6 +32,7 @@ import {
     Activity,
     Cpu,
     History,
+    Puzzle,
     Server,
     Play,
     RefreshCw,
@@ -48,6 +49,7 @@ import {
 import type {
     ActiveProtocolJob,
     JobMonitoringOverview,
+    NodeCapabilitiesList,
     RecentProtocolJob,
 } from "@/services/ProjectService";
 
@@ -182,6 +184,30 @@ function formatDuration(
 }
 
 
+function formatBytes(
+    value: unknown,
+): string {
+    const bytes = Number(value);
+
+    if (
+        !Number.isFinite(bytes)
+        || bytes <= 0
+    ) {
+        return "—";
+    }
+
+    const gib = bytes / (1024 ** 3);
+
+    if (gib >= 1) {
+        return `${gib.toFixed(gib >= 100 ? 0 : 1)} GiB`;
+    }
+
+    const mib = bytes / (1024 ** 2);
+
+    return `${mib.toFixed(0)} MiB`;
+}
+
+
 function formatDate(
     value: string | null | undefined,
 ): string {
@@ -290,6 +316,18 @@ export default function JobsSettingsPanel() {
     const [error, setError] =
         useState<string | null>(null);
 
+    const [nodeCapabilities, setNodeCapabilities] =
+        useState<NodeCapabilitiesList | null>(null);
+
+    const [nodeCapabilitiesLoading, setNodeCapabilitiesLoading] =
+        useState(false);
+
+    const [nodeCapabilitiesError, setNodeCapabilitiesError] =
+        useState<string | null>(null);
+
+    const nodeCapabilitiesInFlightRef =
+        useRef(false);
+
     const [workerAction, setWorkerAction] =
         useState<string | null>(null);
 
@@ -349,6 +387,47 @@ export default function JobsSettingsPanel() {
                     false;
 
                 setLoading(false);
+            }
+        },
+        [svc],
+    );
+
+
+    const loadNodeCapabilities = useCallback(
+        async () => {
+            if (nodeCapabilitiesInFlightRef.current) {
+                return;
+            }
+
+            nodeCapabilitiesInFlightRef.current = true;
+            setNodeCapabilitiesLoading(true);
+            setNodeCapabilitiesError(null);
+
+            try {
+                const result =
+                    await svc.fetchJobNodeCapabilities();
+
+                setNodeCapabilities(result);
+
+            } catch (requestError: any) {
+                const status =
+                    requestError?.status
+                    ?? requestError?.response?.status;
+
+                if (status === 403) {
+                    setNodeCapabilities(null);
+                    return;
+                }
+
+                setNodeCapabilitiesError(
+                    getErrorMessage(requestError),
+                );
+
+            } finally {
+                nodeCapabilitiesInFlightRef.current =
+                    false;
+
+                setNodeCapabilitiesLoading(false);
             }
         },
         [svc],
@@ -450,6 +529,21 @@ export default function JobsSettingsPanel() {
     }, [
         available,
         loadJobs,
+    ]);
+
+
+    useEffect(() => {
+        if (!available) {
+            return;
+        }
+
+        // Node capabilities broadcast to every node (nvidia-smi + plugin
+        // listing per host), so this is loaded once on mount and via the
+        // manual "Refresh nodes" button rather than the 3s job-status poll.
+        void loadNodeCapabilities();
+    }, [
+        available,
+        loadNodeCapabilities,
     ]);
 
 
@@ -790,6 +884,231 @@ export default function JobsSettingsPanel() {
                     ),
                 )}
             </Box>
+
+            <Stack spacing={1}>
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    justifyContent="space-between"
+                >
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                    >
+                        <Server size={18} />
+
+                        <Typography
+                            variant="subtitle1"
+                            sx={{ fontWeight: 800 }}
+                        >
+                            Node capabilities
+                        </Typography>
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            GPUs and installed plugins reported by each node
+                        </Typography>
+                    </Stack>
+
+                    <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<RefreshCw size={15} />}
+                        disabled={nodeCapabilitiesLoading}
+                        onClick={() => {
+                            void loadNodeCapabilities();
+                        }}
+                    >
+                        {nodeCapabilitiesLoading
+                            ? "Refreshing…"
+                            : "Refresh nodes"}
+                    </Button>
+                </Stack>
+
+                {nodeCapabilitiesError ? (
+                    <Alert severity="warning">
+                        {nodeCapabilitiesError}
+                    </Alert>
+                ) : null}
+
+                {!nodeCapabilitiesError
+                    && nodeCapabilities
+                    && !nodeCapabilities.available ? (
+                    <Alert severity="info">
+                        {nodeCapabilities.error
+                            || "No node capability reports were received."}
+                    </Alert>
+                ) : null}
+
+                {nodeCapabilitiesLoading
+                    && nodeCapabilities === null ? (
+                    <Box
+                        sx={{
+                            minHeight: 80,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                        }}
+                    >
+                        <CircularProgress size={22} />
+                    </Box>
+                ) : null}
+
+                {nodeCapabilities
+                    && nodeCapabilities.nodes.length > 0 ? (
+                    <Box
+                        sx={{
+                            display: "grid",
+                            gridTemplateColumns: {
+                                xs: "1fr",
+                                md: "repeat(2, 1fr)",
+                            },
+                            gap: 1.5,
+                        }}
+                    >
+                        {nodeCapabilities.nodes.map((node) => (
+                            <Card
+                                key={node.hostname}
+                                variant="outlined"
+                                sx={{ borderRadius: 2.5 }}
+                            >
+                                <CardContent>
+                                    <Stack spacing={1}>
+                                        <Stack
+                                            direction="row"
+                                            spacing={1}
+                                            alignItems="center"
+                                        >
+                                            <Server size={16} />
+
+                                            <Typography
+                                                sx={{ fontWeight: 700 }}
+                                            >
+                                                {node.hostname}
+                                            </Typography>
+                                        </Stack>
+
+                                        {node.error ? (
+                                            <Alert severity="warning" sx={{ py: 0 }}>
+                                                {node.error}
+                                            </Alert>
+                                        ) : (
+                                            <>
+                                                <Box>
+                                                    <Stack
+                                                        direction="row"
+                                                        spacing={0.75}
+                                                        alignItems="center"
+                                                        sx={{ mb: 0.5 }}
+                                                    >
+                                                        <Cpu size={14} />
+
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            GPUs ({node.gpuCount})
+                                                        </Typography>
+                                                    </Stack>
+
+                                                    {node.gpus.length > 0 ? (
+                                                        <Stack
+                                                            direction="row"
+                                                            spacing={0.75}
+                                                            useFlexGap
+                                                            flexWrap="wrap"
+                                                        >
+                                                            {node.gpus.map((gpu) => (
+                                                                <Chip
+                                                                    key={gpu.index}
+                                                                    size="small"
+                                                                    label={
+                                                                        `GPU ${gpu.index} · ${gpu.name}`
+                                                                        + (gpu.memoryTotalBytes
+                                                                            ? ` · ${formatBytes(gpu.memoryTotalBytes)}`
+                                                                            : "")
+                                                                    }
+                                                                />
+                                                            ))}
+                                                        </Stack>
+                                                    ) : (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            No NVIDIA GPUs detected
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+
+                                                <Box>
+                                                    <Stack
+                                                        direction="row"
+                                                        spacing={0.75}
+                                                        alignItems="center"
+                                                        sx={{ mb: 0.5 }}
+                                                    >
+                                                        <Puzzle size={14} />
+
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            Installed plugins ({node.plugins.length})
+                                                        </Typography>
+                                                    </Stack>
+
+                                                    {node.plugins.length > 0 ? (
+                                                        <Stack
+                                                            direction="row"
+                                                            spacing={0.75}
+                                                            useFlexGap
+                                                            flexWrap="wrap"
+                                                        >
+                                                            {node.plugins.slice(0, 10).map((plugin) => (
+                                                                <Chip
+                                                                    key={plugin.pipName ?? plugin.name}
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    label={
+                                                                        (plugin.name || plugin.pipName || "unknown")
+                                                                        + (plugin.pipVersion
+                                                                            ? ` ${plugin.pipVersion}`
+                                                                            : "")
+                                                                    }
+                                                                />
+                                                            ))}
+
+                                                            {node.plugins.length > 10 ? (
+                                                                <Chip
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    label={`+${node.plugins.length - 10} more`}
+                                                                />
+                                                            ) : null}
+                                                        </Stack>
+                                                    ) : (
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            No plugins reported
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+                                            </>
+                                        )}
+                                    </Stack>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </Box>
+                ) : null}
+            </Stack>
 
             <Paper
                 elevation={0}

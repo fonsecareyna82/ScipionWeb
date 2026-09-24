@@ -994,6 +994,26 @@ export type JobMonitoringOverview = {
   refreshedAt: string;
 };
 
+export type NodePlugin = {
+  pipName?: string | null;
+  name?: string | null;
+  pipVersion?: string | null;
+};
+
+export type NodeCapabilities = {
+  hostname: string;
+  error?: string | null;
+  gpuCount: number;
+  gpus: InstanceGpuResource[];
+  plugins: NodePlugin[];
+};
+
+export type NodeCapabilitiesList = {
+  available: boolean;
+  error?: string | null;
+  nodes: NodeCapabilities[];
+};
+
 export type EnvironmentVariable = {
   name: string;
   value: string;
@@ -2434,6 +2454,7 @@ export interface ProjectService<
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
 
   fetchJobsOverview(recentLimit?: number): Promise<JobMonitoringOverview>;
+  fetchJobNodeCapabilities(timeoutSeconds?: number): Promise<NodeCapabilitiesList>;
 
   fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
   patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;

@@ -39,6 +39,7 @@ import type {
   InstanceSettings,
   InstanceSettingsPatch,
   JobMonitoringOverview,
+  NodeCapabilitiesList,
   HostSettings,
   HostSettingsPatch,
   ProjectEffectiveSettings,
@@ -1065,6 +1066,11 @@ const defaultService: ProjectService = {
     recentLimit: number = 25,
   ): Promise<JobMonitoringOverview> =>
     settingsApi.fetchJobsOverview(recentLimit),
+
+  fetchJobNodeCapabilities: (
+    timeoutSeconds: number = 5,
+  ): Promise<NodeCapabilitiesList> =>
+    settingsApi.fetchJobNodeCapabilities(timeoutSeconds),
 
   fetchHostSettings: () => settingsApi.fetchHostSettings(),
   putHostSettings: (payload: HostSettings) => settingsApi.putHostSettings(payload),

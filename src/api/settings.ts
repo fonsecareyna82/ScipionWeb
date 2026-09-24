@@ -216,6 +216,51 @@ export async function fetchJobsOverview(
   return safeJson<JobMonitoringOverview>(res);
 }
 
+export type NodePlugin = {
+  pipName?: string | null;
+  name?: string | null;
+  pipVersion?: string | null;
+};
+
+export type NodeCapabilities = {
+  hostname: string;
+  error?: string | null;
+  gpuCount: number;
+  gpus: InstanceGpuResource[];
+  plugins: NodePlugin[];
+};
+
+export type NodeCapabilitiesList = {
+  available: boolean;
+  error?: string | null;
+  nodes: NodeCapabilities[];
+};
+
+export async function fetchJobNodeCapabilities(
+  timeoutSeconds: number = 5,
+): Promise<NodeCapabilitiesList> {
+  const timeout = Math.max(
+    0.5,
+    Math.min(30, Number(timeoutSeconds) || 5),
+  );
+
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/jobs/nodes?timeout=${timeout}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to load node capabilities",
+    );
+  }
+
+  return safeJson<NodeCapabilitiesList>(res);
+}
+
 export type JobWorkerKind =
   "plugins" | "protocols";
 
