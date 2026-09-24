@@ -331,6 +331,168 @@ describe("TiltSeriesViewer", () => {
         expect(screen.getByText("/data/second.mrc")).toBeInTheDocument();
     });
 
+    it("excludes current-series tilt images matching a numeric column criterion", async () => {
+        renderViewer();
+
+        await expandFirstTiltSeries();
+
+        fireEvent.contextMenu(screen.getByRole("columnheader", { name: "Dose" }));
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude tilt images by Dose",
+        });
+
+        expect(within(dialog).getByLabelText("Criterion")).toHaveTextContent(
+            "Greater than",
+        );
+
+        fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Value" }), {
+            target: { value: "1.5" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Exclude" }));
+
+        const firstRow = screen.getByText("/data/first.mrc").closest("tr");
+        const secondRow = screen.getByText("/data/second.mrc").closest("tr");
+
+        expect(firstRow).not.toBeNull();
+        expect(secondRow).not.toBeNull();
+        expect(within(firstRow as HTMLElement).getByRole("checkbox")).not.toBeChecked();
+        expect(within(secondRow as HTMLElement).getByRole("checkbox")).toBeChecked();
+        expect(toastMocks.success).toHaveBeenCalledWith(
+            "Excluded 1 tilt image in Series 1.",
+        );
+    });
+
+    it("uses compact analyze-output styling in the column exclusion dialog", async () => {
+        renderViewer();
+
+        await expandFirstTiltSeries();
+
+        fireEvent.contextMenu(screen.getByRole("columnheader", { name: "Dose" }));
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude tilt images by Dose",
+        });
+        const title = within(dialog).getByRole("heading", {
+            name: "Exclude tilt images by Dose",
+        });
+
+        expect(dialog).toHaveStyle({ borderRadius: "16px", overflow: "hidden" });
+        expect(title).toHaveStyle({
+            background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+            fontSize: "0.95rem",
+        });
+
+        const criterion = within(dialog).getByRole("combobox", { name: "Criterion" });
+        expect(criterion).toHaveStyle({ fontSize: "0.76rem" });
+
+        fireEvent.mouseDown(criterion);
+
+        const firstOption = await screen.findByRole("option", { name: "Greater than" });
+        expect(firstOption).toHaveStyle({ fontSize: "0.76rem", minHeight: "34px" });
+    });
+
+    it("excludes current-series tilt images matching a text column criterion", async () => {
+        renderViewer();
+
+        await expandFirstTiltSeries();
+
+        fireEvent.contextMenu(screen.getByRole("columnheader", { name: "Path" }));
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude tilt images by Path",
+        });
+
+        expect(within(dialog).getByLabelText("Criterion")).toHaveTextContent(
+            "Contains",
+        );
+
+        fireEvent.change(within(dialog).getByRole("textbox", { name: "Value" }), {
+            target: { value: "second" },
+        });
+        fireEvent.click(within(dialog).getByRole("button", { name: "Exclude" }));
+
+        const firstRow = screen.getByText("/data/first.mrc").closest("tr");
+        const secondRow = screen.getByText("/data/second.mrc").closest("tr");
+
+        expect(firstRow).not.toBeNull();
+        expect(secondRow).not.toBeNull();
+        expect(within(firstRow as HTMLElement).getByRole("checkbox")).not.toBeChecked();
+        expect(within(secondRow as HTMLElement).getByRole("checkbox")).toBeChecked();
+    });
+
+    it("applies a column exclusion criterion to every tilt series in the set", async () => {
+        serviceMocks.fetchTiltSeriesFrames.mockImplementation(
+            async (
+                _projectId: number,
+                _protocolId: number,
+                _outputName: string,
+                seriesId: string,
+            ) => {
+                const payload = makeFramesPayload(String(seriesId));
+
+                if (seriesId === "TS2") {
+                    payload.frames[0].dose = 3.3;
+                }
+
+                return payload;
+            },
+        );
+
+        renderViewer();
+
+        await expandFirstTiltSeries();
+
+        fireEvent.contextMenu(screen.getByRole("columnheader", { name: "Dose" }));
+
+        const dialog = await screen.findByRole("dialog", {
+            name: "Exclude tilt images by Dose",
+        });
+
+        fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Value" }), {
+            target: { value: "1.5" },
+        });
+        fireEvent.click(
+            within(dialog).getByRole("radio", { name: "All tilt series" }),
+        );
+        fireEvent.click(within(dialog).getByRole("button", { name: "Exclude" }));
+
+        await waitFor(() => {
+            expect(serviceMocks.fetchTiltSeriesFrames).toHaveBeenCalledWith(
+                1,
+                2,
+                "tiltOutput",
+                "TS2",
+            );
+        });
+
+        expect(toastMocks.success).toHaveBeenCalledWith(
+            "Excluded 2 tilt images across 2 tilt series.",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Yes" }));
+
+        await waitFor(() => {
+            expect(serviceMocks.createNewSetOfTiltSeries).toHaveBeenCalledWith(
+                1,
+                2,
+                "tiltOutput",
+                {
+                    TS1: {
+                        excluded: false,
+                        tiltimages: [1],
+                    },
+                    TS2: {
+                        excluded: true,
+                        tiltimages: [0],
+                    },
+                },
+                false,
+            );
+        });
+    });
+
     it("switches to metadata mode", async () => {
         renderViewer();
 

@@ -16,6 +16,17 @@ import {
   Tooltip,
   Slider,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Radio,
+  RadioGroup,
+  Select,
 } from "@mui/material";
 import {
   ArrowUpward,
@@ -135,6 +146,117 @@ type TiltExclusionsMap = Record<
   }
 >;
 
+type TiltViewColumnKey =
+  | "order"
+  | "tiltAngle"
+  | "excluded"
+  | "dose"
+  | "path"
+  | "rot"
+  | "shiftX"
+  | "shiftY";
+
+type TiltViewColumnType = "number" | "text" | "boolean";
+
+type TiltViewColumn = {
+  key: TiltViewColumnKey;
+  label: string;
+  type: TiltViewColumnType;
+};
+
+const TILT_VIEW_COLUMNS: TiltViewColumn[] = [
+  { key: "order", label: "Order", type: "number" },
+  { key: "tiltAngle", label: "Tilt angle", type: "number" },
+  { key: "excluded", label: "Excl.", type: "boolean" },
+  { key: "dose", label: "Dose", type: "number" },
+  { key: "path", label: "Path", type: "text" },
+  { key: "rot", label: "Rot", type: "number" },
+  { key: "shiftX", label: "ShiftX", type: "number" },
+  { key: "shiftY", label: "ShiftY", type: "number" },
+];
+
+const NUMBER_CRITERIA = [
+  { value: "greater_than", label: "Greater than" },
+  { value: "greater_or_equal", label: "Greater than or equal to" },
+  { value: "less_than", label: "Less than" },
+  { value: "less_or_equal", label: "Less than or equal to" },
+  { value: "equal", label: "Equal to" },
+  { value: "not_equal", label: "Not equal to" },
+  { value: "between", label: "Between" },
+  { value: "outside", label: "Outside range" },
+  { value: "empty", label: "Is empty" },
+  { value: "not_empty", label: "Is not empty" },
+];
+
+const TEXT_CRITERIA = [
+  { value: "contains", label: "Contains" },
+  { value: "not_contains", label: "Does not contain" },
+  { value: "equal", label: "Equal to" },
+  { value: "not_equal", label: "Not equal to" },
+  { value: "starts_with", label: "Starts with" },
+  { value: "ends_with", label: "Ends with" },
+  { value: "empty", label: "Is empty" },
+  { value: "not_empty", label: "Is not empty" },
+];
+
+const BOOLEAN_CRITERIA = [
+  { value: "included", label: "Included" },
+  { value: "excluded", label: "Excluded" },
+];
+
+function getDefaultCriterion(column: TiltViewColumn): string {
+  if (column.type === "number") return "greater_than";
+  if (column.type === "text") return "contains";
+  return "included";
+}
+
+function matchesColumnCriterion(
+  frame: TiltViewRow,
+  column: TiltViewColumn,
+  criterion: string,
+  firstValue: string,
+  secondValue: string,
+): boolean {
+  const rawValue = frame[column.key];
+  const isEmpty = rawValue == null || rawValue === "";
+
+  if (criterion === "empty") return isEmpty;
+  if (criterion === "not_empty") return !isEmpty;
+
+  if (column.type === "boolean") {
+    return criterion === "excluded" ? Boolean(rawValue) : !Boolean(rawValue);
+  }
+
+  if (column.type === "text") {
+    const value = String(rawValue ?? "").toLowerCase();
+    const expected = firstValue.toLowerCase();
+
+    if (criterion === "contains") return value.includes(expected);
+    if (criterion === "not_contains") return !value.includes(expected);
+    if (criterion === "equal") return value === expected;
+    if (criterion === "not_equal") return value !== expected;
+    if (criterion === "starts_with") return value.startsWith(expected);
+    if (criterion === "ends_with") return value.endsWith(expected);
+    return false;
+  }
+
+  const value = Number(rawValue);
+  const first = Number(firstValue);
+  const second = Number(secondValue);
+
+  if (!Number.isFinite(value) || !Number.isFinite(first)) return false;
+  if (criterion === "greater_than") return value > first;
+  if (criterion === "greater_or_equal") return value >= first;
+  if (criterion === "less_than") return value < first;
+  if (criterion === "less_or_equal") return value <= first;
+  if (criterion === "equal") return value === first;
+  if (criterion === "not_equal") return value !== first;
+  if (!Number.isFinite(second)) return false;
+  if (criterion === "between") return value >= Math.min(first, second) && value <= Math.max(first, second);
+  if (criterion === "outside") return value < Math.min(first, second) || value > Math.max(first, second);
+  return false;
+}
+
 // helperToTruncatePathInTheMiddleHomeImgMrc
 function truncatePathMiddle(path: string, maxLength = 40): string {
   if (path.length <= maxLength) return path;
@@ -231,6 +353,14 @@ export default function TiltSeriesViewer({
   const exclusionsRef = useRef<TiltExclusionsMap | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
+
+  // columnCriterionExclusionDialog
+  const [criterionColumn, setCriterionColumn] = useState<TiltViewColumn | null>(null);
+  const [criterionOperator, setCriterionOperator] = useState("");
+  const [criterionFirstValue, setCriterionFirstValue] = useState("");
+  const [criterionSecondValue, setCriterionSecondValue] = useState("");
+  const [criterionScope, setCriterionScope] = useState<"current" | "all">("current");
+  const [criterionBusy, setCriterionBusy] = useState(false);
 
   // persistExcludedFramesBySeriesId
   const excludedBySeriesRef = useRef<Record<string, Set<number>>>({});
@@ -643,6 +773,166 @@ export default function TiltSeriesViewer({
         });
         return nextSeries;
       });
+    }
+  };
+
+  const handleOpenCriterionDialog = (column: TiltViewColumn) => {
+    setCriterionColumn(column);
+    setCriterionOperator(getDefaultCriterion(column));
+    setCriterionFirstValue("");
+    setCriterionSecondValue("");
+    setCriterionScope("current");
+  };
+
+  const handleCloseCriterionDialog = () => {
+    if (criterionBusy) return;
+    setCriterionColumn(null);
+    setCriterionOperator("");
+  };
+
+  const getFramesForCriterion = async (seriesId: Id): Promise<TiltViewRow[]> => {
+    if (framesData && String(framesData.tiltSeriesId) === String(seriesId)) {
+      return framesData.frames;
+    }
+
+    const raw = await (svc as any).fetchTiltSeriesFrames(projectId, protocolId, outputName, seriesId);
+    if (Array.isArray(raw)) return normalizeFrames(raw);
+
+    const obj: any = raw ?? {};
+    return normalizeFrames(obj.frames ?? obj.views ?? (Array.isArray(obj.items) ? obj.items : []));
+  };
+
+  const criterionOptions = criterionColumn?.type === "number"
+    ? NUMBER_CRITERIA
+    : criterionColumn?.type === "text"
+      ? TEXT_CRITERIA
+      : BOOLEAN_CRITERIA;
+  const criterionNeedsValue = criterionColumn?.type !== "boolean"
+    && criterionOperator !== "empty"
+    && criterionOperator !== "not_empty";
+  const criterionNeedsSecondValue = criterionColumn?.type === "number"
+    && (criterionOperator === "between" || criterionOperator === "outside");
+  const criterionCanApply = Boolean(
+    criterionColumn
+    && (!criterionNeedsValue || criterionFirstValue.trim())
+    && (!criterionNeedsSecondValue || criterionSecondValue.trim()),
+  );
+
+  const handleApplyColumnCriterion = async () => {
+    if (!criterionColumn || !criterionCanApply || selectedSeriesId == null) return;
+
+    const targetSeries = criterionScope === "all"
+      ? series
+      : series.filter((item) => String(item.tiltSeriesId) === String(selectedSeriesId));
+
+    setCriterionBusy(true);
+
+    try {
+      const buildResult = (item: TiltSeriesSummary, frames: TiltViewRow[]) => {
+        const key = String(item.tiltSeriesId);
+        const previousSet = new Set(excludedBySeriesRef.current[key] ?? []);
+        const wholeSeriesExcluded = Boolean(seriesExcludedRef.current[key]);
+
+        frames.forEach((frame, index) => {
+          if (frame.excluded || wholeSeriesExcluded) {
+            previousSet.add(getFrameIndexValue(frame, index));
+          }
+        });
+
+        const nextSet = new Set(previousSet);
+        let newlyExcluded = 0;
+
+        frames.forEach((frame, index) => {
+          const frameIndex = getFrameIndexValue(frame, index);
+          const frameForCriterion = { ...frame, excluded: nextSet.has(frameIndex) };
+
+          if (
+            matchesColumnCriterion(
+              frameForCriterion,
+              criterionColumn,
+              criterionOperator,
+              criterionFirstValue,
+              criterionSecondValue,
+            )
+            && !nextSet.has(frameIndex)
+          ) {
+            nextSet.add(frameIndex);
+            newlyExcluded += 1;
+          }
+        });
+
+        return {
+          key,
+          label: item.label,
+          nextSet,
+          newlyExcluded,
+          allExcluded: wholeSeriesExcluded || (frames.length > 0 && nextSet.size >= frames.length),
+        };
+      };
+
+      let results;
+
+      if (
+        criterionScope === "current"
+        && framesData
+        && String(framesData.tiltSeriesId) === String(selectedSeriesId)
+      ) {
+        results = targetSeries.map((item) => buildResult(item, framesData.frames));
+      } else {
+        results = await Promise.all(targetSeries.map(async (item) => {
+          const frames = await getFramesForCriterion(item.tiltSeriesId);
+          return buildResult(item, frames);
+        }));
+      }
+
+      const resultsBySeries = new Map(results.map((result) => [result.key, result]));
+
+      results.forEach((result) => {
+        excludedBySeriesRef.current[result.key] = result.nextSet;
+        seriesExcludedRef.current[result.key] = result.allExcluded;
+      });
+
+      setSeries((previous) => previous.map((item) => {
+        const result = resultsBySeries.get(String(item.tiltSeriesId));
+        return result ? { ...item, excluded: result.allExcluded } : item;
+      }));
+
+      setFramesData((previous) => {
+        if (!previous) return previous;
+        const result = resultsBySeries.get(String(previous.tiltSeriesId));
+        if (!result) return previous;
+
+        return {
+          ...previous,
+          frames: previous.frames.map((frame, index) => ({
+            ...frame,
+            excluded: result.nextSet.has(getFrameIndexValue(frame, index)),
+          })),
+        };
+      });
+
+      const totalExcluded = results.reduce((total, result) => total + result.newlyExcluded, 0);
+      const affectedSeries = results.filter((result) => result.newlyExcluded > 0).length;
+
+      if (criterionScope === "current") {
+        const label = results[0]?.label ?? "the current tilt series";
+        toast.success(
+          totalExcluded === 1
+            ? `Excluded 1 tilt image in ${label}.`
+            : `Excluded ${totalExcluded} tilt images in ${label}.`,
+        );
+      } else {
+        toast.success(
+          `Excluded ${totalExcluded} tilt image${totalExcluded === 1 ? "" : "s"} across ${affectedSeries} tilt series.`,
+        );
+      }
+
+      setCriterionColumn(null);
+      setCriterionOperator("");
+    } catch (error) {
+      toast.error(getErrorMsg(error));
+    } finally {
+      setCriterionBusy(false);
     }
   };
 
@@ -1936,28 +2226,84 @@ export default function TiltSeriesViewer({
                                   >
                                     <TableHead>
                                       <TableRow>
-                                        <TableCell sx={columnWidths.order}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.order, cursor: "context-menu" }}
+                                          title="Right-click to exclude by Order"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[0]);
+                                          }}
+                                        >
                                           Order
                                         </TableCell>
-                                        <TableCell sx={columnWidths.angle}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.angle, cursor: "context-menu" }}
+                                          title="Right-click to exclude by Tilt angle"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[1]);
+                                          }}
+                                        >
                                           Tilt angle
                                         </TableCell>
-                                        <TableCell sx={columnWidths.excluded}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.excluded, cursor: "context-menu" }}
+                                          title="Right-click to exclude by exclusion state"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[2]);
+                                          }}
+                                        >
                                           Excl.
                                         </TableCell>
-                                        <TableCell sx={columnWidths.dose}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.dose, cursor: "context-menu" }}
+                                          title="Right-click to exclude by Dose"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[3]);
+                                          }}
+                                        >
                                           Dose
                                         </TableCell>
-                                        <TableCell sx={columnWidths.path}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.path, cursor: "context-menu" }}
+                                          title="Right-click to exclude by Path"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[4]);
+                                          }}
+                                        >
                                           Path
                                         </TableCell>
-                                        <TableCell sx={columnWidths.rot}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.rot, cursor: "context-menu" }}
+                                          title="Right-click to exclude by Rot"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[5]);
+                                          }}
+                                        >
                                           Rot
                                         </TableCell>
-                                        <TableCell sx={columnWidths.shiftX}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.shiftX, cursor: "context-menu" }}
+                                          title="Right-click to exclude by ShiftX"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[6]);
+                                          }}
+                                        >
                                           ShiftX
                                         </TableCell>
-                                        <TableCell sx={columnWidths.shiftY}>
+                                        <TableCell
+                                          sx={{ ...columnWidths.shiftY, cursor: "context-menu" }}
+                                          title="Right-click to exclude by ShiftY"
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            handleOpenCriterionDialog(TILT_VIEW_COLUMNS[7]);
+                                          }}
+                                        >
                                           ShiftY
                                         </TableCell>
                                       </TableRow>
@@ -2409,6 +2755,189 @@ export default function TiltSeriesViewer({
           </Box>
         </Box>
       </Box>
+
+      {criterionColumn && (
+        <Dialog
+          open
+          onClose={handleCloseCriterionDialog}
+          fullWidth
+          maxWidth="sm"
+          aria-labelledby="tilt-column-exclusion-title"
+          PaperProps={{
+            sx: {
+              width: "min(520px, calc(100vw - 32px))",
+              overflow: "hidden",
+              borderRadius: "16px",
+              border: "1px solid",
+              borderColor: "divider",
+              backgroundImage: "none",
+              boxShadow: "0 24px 64px rgba(15, 23, 42, 0.26), 0 8px 20px rgba(15, 23, 42, 0.12)",
+            },
+          }}
+        >
+          <DialogTitle
+            id="tilt-column-exclusion-title"
+            sx={{
+              px: 2.5,
+              py: 1.35,
+              background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+              color: "#e5e7eb",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              fontSize: "0.95rem",
+              fontWeight: 800,
+              letterSpacing: 0.15,
+            }}
+          >
+            Exclude tilt images by {criterionColumn.label}
+          </DialogTitle>
+
+          <DialogContent
+            sx={{
+              px: 2.5,
+              pt: "20px !important",
+              pb: 2.25,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1.75,
+              "& .MuiTypography-body2": { fontSize: "0.78rem", lineHeight: 1.55 },
+              "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
+              "& .MuiOutlinedInput-root": { borderRadius: "10px" },
+              "& .MuiFormControlLabel-label": { fontSize: "0.76rem" },
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Matching tilt images will be added to the current exclusion draft. Changes are only
+              persisted when you use Save.
+            </Typography>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id="tilt-column-criterion-label">Criterion</InputLabel>
+              <Select
+                labelId="tilt-column-criterion-label"
+                label="Criterion"
+                value={criterionOperator}
+                onChange={(event) => setCriterionOperator(event.target.value)}
+                sx={{ fontSize: "0.76rem", borderRadius: "10px" }}
+                SelectDisplayProps={{ style: { fontSize: "0.76rem" } }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      mt: 0.5,
+                      overflow: "hidden",
+                      borderRadius: "12px",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      boxShadow: "0 14px 34px rgba(15, 23, 42, 0.18)",
+                    },
+                  },
+                  MenuListProps: {
+                    sx: {
+                      py: 0.5,
+                      "& .MuiMenuItem-root": {
+                        mx: 0.5,
+                        minHeight: "34px",
+                        borderRadius: "8px",
+                        fontSize: "0.76rem",
+                      },
+                    },
+                  },
+                }}
+              >
+                {criterionOptions.map((option) => (
+                  <MenuItem
+                    key={option.value}
+                    value={option.value}
+                    style={{ minHeight: "34px", fontSize: "0.76rem" }}
+                    sx={{ mx: 0.5, borderRadius: "8px" }}
+                  >
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {criterionNeedsValue && (
+              <Box sx={{ display: "flex", gap: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Value"
+                  type={criterionColumn.type === "number" ? "number" : "text"}
+                  value={criterionFirstValue}
+                  onChange={(event) => setCriterionFirstValue(event.target.value)}
+                  autoFocus
+                />
+
+                {criterionNeedsSecondValue && (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Second value"
+                    type="number"
+                    value={criterionSecondValue}
+                    onChange={(event) => setCriterionSecondValue(event.target.value)}
+                  />
+                )}
+              </Box>
+            )}
+
+            <FormControl component="fieldset">
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                Apply to
+              </Typography>
+              <RadioGroup
+                row
+                value={criterionScope}
+                onChange={(event) => setCriterionScope(event.target.value as "current" | "all")}
+              >
+                <FormControlLabel
+                  value="current"
+                  control={<Radio size="small" />}
+                  label="Current tilt series"
+                />
+                <FormControlLabel
+                  value="all"
+                  control={<Radio size="small" />}
+                  label="All tilt series"
+                />
+              </RadioGroup>
+            </FormControl>
+          </DialogContent>
+
+          <DialogActions
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              gap: 0.75,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              bgcolor: "action.hover",
+              "& .MuiButton-root": {
+                minWidth: 92,
+                height: 34,
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+                fontWeight: 700,
+                textTransform: "none",
+              },
+            }}
+          >
+            <Button
+              onClick={handleCloseCriterionDialog}
+              disabled={criterionBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleApplyColumnCriterion}
+              disabled={criterionBusy || !criterionCanApply}
+            >
+              {criterionBusy ? "Excluding…" : "Exclude"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {/* processingOverlayWhileCreatingNewSet */}
       {saveBusy && !saveDialogOpen && (
