@@ -4947,20 +4947,50 @@ export default function ProjectPage() {
     const scheduleRefresh = () => {
       timerId =
         window.setTimeout(
-          async () => {
-            await (
-              refreshLiveProtocols()
-            );
-
-            if (cancelled) {
-              return;
-            }
-
-            scheduleRefresh();
-          },
+          runRefreshCycle,
           delay,
         );
     };
+
+    async function runRefreshCycle() {
+      await (
+        refreshLiveProtocols()
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      scheduleRefresh();
+    }
+
+    // Background tabs throttle setTimeout (browsers can drop to ~1
+    // tick/minute), so a launch that flips to Running while the tab isn't
+    // focused can sit stale until the next throttled tick. Force an
+    // immediate refresh as soon as the tab regains focus instead of waiting.
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState
+        !== "visible"
+      ) {
+        return;
+      }
+
+      if (timerId != null) {
+        window.clearTimeout(
+          timerId
+        );
+
+        timerId = null;
+      }
+
+      void runRefreshCycle();
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
 
 
     scheduleRefresh();
@@ -4968,6 +4998,11 @@ export default function ProjectPage() {
 
     return () => {
       cancelled = true;
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
 
       if (timerId != null) {
         window.clearTimeout(
