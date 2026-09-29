@@ -1010,6 +1010,59 @@ function clearOutputThumbnailsFromNodes(
   return changed ? nextNodes : nodes;
 }
 
+function getStopRecoveryNotice(
+  response: unknown,
+): string | null {
+  if (
+    !response ||
+    typeof response !== "object"
+  ) {
+    return null;
+  }
+
+  const payload =
+    response as Record<string, unknown>;
+
+  const recoveredEntries = [
+    ...(
+      Array.isArray(payload.localStopped)
+        ? payload.localStopped
+        : []
+    ),
+    ...(
+      Array.isArray(payload.remoteStopped)
+        ? payload.remoteStopped
+        : []
+    ),
+  ];
+
+  const recoveredCount =
+    recoveredEntries.filter(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        (
+          entry as Record<string, unknown>
+        ).alreadyStopped === true,
+    ).length;
+
+  if (recoveredCount === 0) {
+    return null;
+  }
+
+  if (recoveredCount === 1) {
+    return (
+      "The protocol process was no longer running. " +
+      "The protocol has been marked as aborted."
+    );
+  }
+
+  return (
+    `${recoveredCount} protocol processes were no longer running. ` +
+    "The protocols have been marked as aborted."
+  );
+}
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -10496,11 +10549,20 @@ export default function ProjectPage() {
                     const res = await svc.stopProtocol(projectName, ids);
                     if (!ensureApiOk(res, "Stop failed.")) return;
 
-                    toast.success(
-                      ids.length > 1
-                        ? `Stop requested for ${ids.length} protocols.`
-                        : "Stop requested.",
-                    );
+                    const recoveryNotice =
+                      getStopRecoveryNotice(res);
+
+                    if (recoveryNotice) {
+                      toast(recoveryNotice, {
+                        icon: "⚠️",
+                      });
+                    } else {
+                      toast.success(
+                        ids.length > 1
+                          ? `Stop requested for ${ids.length} protocols.`
+                          : "Stop requested.",
+                      );
+                    }
 
                     clearAllSelectionHard();
                     setDlgStop({ open: false, ids: [] });
