@@ -25,6 +25,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import { WIDGET_BUILD_TIMESTAMP } from "./buildInfo";
+import { Toaster } from "react-hot-toast";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 
 class WidgetErrorBoundary extends React.Component<
@@ -630,6 +631,14 @@ export function mountProjectPageWidget({
                         <Route path="*" element={<Navigate to={initialPath} replace />} />
                       </Routes>
                     </DragProvider>
+                    <Toaster
+                      position="bottom-left"
+                      containerStyle={{ zIndex: 999999 }}
+                      toastOptions={{
+                        style: { width: "420px", maxWidth: "420px", whiteSpace: "normal", background: "#f5f0eeff" },
+                        duration: 5000,
+                      }}
+                    />
                   </WidgetErrorBoundary>
                 </HelmetProvider>
               </MemoryRouter>
