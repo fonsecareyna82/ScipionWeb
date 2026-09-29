@@ -198,3 +198,68 @@ export function removeMultiPointerItemAndPad(
     };
   });
 }
+
+function ensureTableEditableRows(editableValue: any): Record<string, any>[] {
+  return Array.isArray(editableValue) ? editableValue.map((row) => ({ ...row })) : [];
+}
+
+export function updateTableCell(
+  prev: ProtocolDetailsState,
+  stateKey: string,
+  rowIndex: number,
+  colName: string,
+  value: any
+): ProtocolDetailsState {
+  return updateParamState(prev, stateKey, (prevParam) => {
+    const rows = ensureTableEditableRows(prevParam?.editableValue);
+    while (rows.length <= rowIndex) {
+      rows.push({});
+    }
+
+    rows[rowIndex] = {
+      ...(rows[rowIndex] ?? {}),
+      [colName]: value,
+    };
+
+    return {
+      ...prevParam,
+      editableValue: rows,
+    };
+  });
+}
+
+export function addTableRow(
+  prev: ProtocolDetailsState,
+  stateKey: string,
+  emptyRow: Record<string, any>
+): ProtocolDetailsState {
+  return updateParamState(prev, stateKey, (prevParam) => {
+    const rows = ensureTableEditableRows(prevParam?.editableValue);
+    rows.push({ ...emptyRow });
+
+    return {
+      ...prevParam,
+      editableValue: rows,
+    };
+  });
+}
+
+export function removeTableRow(
+  prev: ProtocolDetailsState,
+  stateKey: string,
+  rowIndex: number,
+  emptyRow: Record<string, any>
+): ProtocolDetailsState {
+  return updateParamState(prev, stateKey, (prevParam) => {
+    const rows = ensureTableEditableRows(prevParam?.editableValue);
+    rows.splice(rowIndex, 1);
+    if (rows.length === 0) {
+      rows.push({ ...emptyRow });
+    }
+
+    return {
+      ...prevParam,
+      editableValue: rows,
+    };
+  });
+}

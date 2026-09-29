@@ -774,7 +774,57 @@ export type TableViewerPaneContent =
     outputName: string;
     ctfSeriesId: NonNullable<Id>;
     viewId?: NonNullable<Id>;
-  };
+  }
+  | {
+    kind: "text";
+    title?: string;
+    text: string;
+  }
+  | {
+    kind: "html";
+    title?: string;
+    html: string;
+  }
+  | {
+    kind: "iframe";
+    title?: string;
+    src: string;
+  }
+  | {
+    kind: "image";
+    title?: string;
+    src: string;
+    alt?: string;
+  }
+  | {
+    kind: "plotly";
+    title?: string;
+    figure: Record<string, unknown>;
+  }
+  | TableViewerImageSliderContent;
+
+export type TableViewerImageSliderAxis = {
+  slices: Record<string, string>;
+  sliderPrefix?: string;
+};
+
+export type TableViewerImageSliderContent = {
+  kind: "imageSlider";
+  title?: string;
+  /** Single-axis payload (base64 PNG strings, without data: prefix). */
+  slices?: Record<string, string>;
+  sliderPrefix?: string;
+  /** Added to the stack index when showing slider labels (e.g. 1 → first slice shows as 1). */
+  sliceLabelOffset?: number;
+  /** Multi-axis payload keyed by x/y/z. */
+  axes?: Record<string, TableViewerImageSliderAxis>;
+  initialSlice?: string | number;
+  dimensions?: [number, number, number];
+  /** Volume layout: four quadrants — Y (top-left), schematic (top-right), Z (bottom-left), X (bottom-right). */
+  layout?: "volume" | "stack";
+  /** Picking coordinates overlaid on the Z-axis slider. */
+  coordinates?: { x: number[]; y: number[]; z: number[] };
+};
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;

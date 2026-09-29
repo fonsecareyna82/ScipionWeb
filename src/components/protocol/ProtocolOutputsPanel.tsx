@@ -6,6 +6,7 @@ import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
 import TableViewerDialog from "@/components/analyze/table-viewer-dialog";
 import type { AnalyzeViewerResolveDecision } from "@/services/ProjectService";
+import { openExternalAnalyzeDecision } from "@/utils/analyze-viewer-decision";
 
 
 type ProtocolOutputsPanelProps = {
@@ -188,19 +189,7 @@ export default function ProtocolOutputsPanel({
                         return;
                     }
 
-                    if (res.viewer === "external") {
-                        const target = res.target ?? "_self";
-
-                        if (target === "_self") {
-                            if (res.url.startsWith("#")) {
-                                window.location.hash = res.url.slice(1);
-                            } else {
-                                window.location.assign(res.url);
-                            }
-                        } else {
-                            window.open(res.url, target);
-                        }
-
+                    if (openExternalAnalyzeDecision(res, "_self")) {
                         return;
                     }
                 }

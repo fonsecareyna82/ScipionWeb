@@ -37,6 +37,9 @@ import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 import VolumeViewer from "./volume-viewer";
+import TableViewerGenericContentView, {
+    isGenericTableViewerContent,
+} from "./table-viewer-generic-content";
 import { useProjectService } from "@/ProjectServiceContext";
 import toast from "react-hot-toast";
 
@@ -2116,6 +2119,10 @@ export default function TableViewerPane({
                                 }
                                 hideVolumeList
                                 hideMetadataAction
+                            />
+                        ) : isGenericTableViewerContent(activePane.content) ? (
+                            <TableViewerGenericContentView
+                                content={activePane.content}
                             />
                         ) : (
                             <Box
