@@ -24,6 +24,8 @@ import { DragProvider } from "./components/protocol/DragContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
+import { WIDGET_BUILD_TIMESTAMP } from "./buildInfo";
+import { Toaster } from "react-hot-toast";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 
 class WidgetErrorBoundary extends React.Component<
@@ -412,6 +414,15 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("listOutputCTFTomoSeries", async () => []);
   ensureFn("listUsers", async () => []);
   ensureFn("listProjectShares", async () => []);
+  ensureFn("resolveTableViewerAction", async () => ({
+    kind: "empty",
+    message: "No viewer configured.",
+  }));
+  ensureFn("executeTableViewerEditAction", async () => ({
+    success: false,
+    message: "Table edit actions are not configured.",
+  }));
+  ensureFn("resolveTableViewerChildren", async () => ({ columns: [], rows: [] }));
 
   if (rawListProjectTags) {
     normalized.listProjectTags = async (projectId: any) => {
@@ -620,6 +631,14 @@ export function mountProjectPageWidget({
                         <Route path="*" element={<Navigate to={initialPath} replace />} />
                       </Routes>
                     </DragProvider>
+                    <Toaster
+                      position="bottom-left"
+                      containerStyle={{ zIndex: 999999 }}
+                      toastOptions={{
+                        style: { width: "420px", maxWidth: "420px", whiteSpace: "normal", background: "#f5f0eeff" },
+                        duration: 5000,
+                      }}
+                    />
                   </WidgetErrorBoundary>
                 </HelmetProvider>
               </MemoryRouter>
@@ -642,5 +661,8 @@ if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
   (window as any).MyProjectsWidget = { ...(prev || {}), mountProjectPageWidget };
   // eslint-disable-next-line no-console
-  console.log("ProjectPageWidget: ready under window.MyProjectsWidget");
+  console.log(
+    "ProjectPageWidget: ready under window.MyProjectsWidget",
+    WIDGET_BUILD_TIMESTAMP ? `(built ${WIDGET_BUILD_TIMESTAMP})` : "",
+  );
 }

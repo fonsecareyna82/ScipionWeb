@@ -25,10 +25,18 @@ export function hasMinMax(defLike: any): boolean {
   return "min" in defLike || "max" in defLike;
 }
 
+export type TableColumnDef = {
+  name: string;
+  label: string;
+  paramClass: string;
+  default?: any;
+};
+
 export function resolveParamClass(defLike: any): string {
   const rawCls = getParamClass(defLike);
 
   if (rawCls === "PointerParam" || rawCls === "MultiPointerParam") return rawCls;
+  if (rawCls === "TableParam") return "TableParam";
   if (rawCls === "PathParam") return "PathParam";
 
   const pointerLike = hasPointerClass(defLike);
@@ -261,4 +269,170 @@ export function normalizeMultiPointerValue(raw: any) {
       parentId: item?.parentId ?? null,
     };
   });
+}
+
+function normalizeScalarParamClass(paramClass: string): string {
+  const cls = String(paramClass ?? "").trim();
+  if (cls === "BoolParam") return "BooleanParam";
+  return cls;
+}
+
+export function getTableColumns(def: any): TableColumnDef[] {
+  const raw = Array.isArray(def?.params) ? def.params : [];
+  return raw
+    .map((col: any) => {
+      const name = String(col?.name ?? "").trim();
+      if (!name) return null;
+      return {
+        name,
+        label: String(col?.label ?? name),
+        paramClass: normalizeScalarParamClass(getParamClass(col)),
+        default: col?.default,
+      };
+    })
+    .filter(Boolean) as TableColumnDef[];
+}
+
+export function buildEmptyTableRow(columns: TableColumnDef[]): Record<string, any> {
+  const row: Record<string, any> = {};
+  for (const col of columns) {
+    row[col.name] = col.default ?? "";
+  }
+  return row;
+}
+
+function tryParseJsonArray(raw: any): any[] | null {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== "string") return null;
+
+  const text = raw.trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeTableParamValue(raw: any, columns: TableColumnDef[]): Record<string, any>[] {
+  if (columns.length === 0) return [];
+
+  const parsed = parseFromJSONValue(raw);
+  const asArray = tryParseJsonArray(parsed);
+  const sourceRows = asArray ?? (Array.isArray(parsed) ? parsed : []);
+
+  const rows = sourceRows.map((item: any) => {
+    const row = buildEmptyTableRow(columns);
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      for (const col of columns) {
+        if (col.name in item) {
+          row[col.name] = item[col.name];
+        }
+      }
+    }
+    return row;
+  });
+
+  if (rows.length === 0) {
+    rows.push(buildEmptyTableRow(columns));
+  }
+
+  return rows;
+}
+
+function isTableRowEmpty(row: Record<string, any>, columns: TableColumnDef[]): boolean {
+  return columns.every((col) => {
+    const value = row[col.name];
+    if (value === null || value === undefined) return true;
+    const text = String(value).trim();
+    if (text === "") return true;
+    if (col.default !== undefined && col.default !== null && String(value) === String(col.default)) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function coerceTableCellValue(value: any, paramClass: string): any {
+  const cls = normalizeScalarParamClass(paramClass);
+  if (value === null || value === undefined) return "";
+
+  if (cls === "IntParam") {
+    const text = String(value).trim();
+    if (!text) return "";
+    const num = Number(text);
+    return Number.isFinite(num) ? Math.trunc(num) : text;
+  }
+
+  if (cls === "FloatParam") {
+    const text = String(value).trim();
+    if (!text) return "";
+    const num = Number(text);
+    return Number.isFinite(num) ? num : text;
+  }
+
+  return String(value);
+}
+
+export function serializeTableParamValue(
+  rows: Record<string, any>[],
+  columns: TableColumnDef[]
+): string {
+  const cleaned = (Array.isArray(rows) ? rows : [])
+    .filter((row) => !isTableRowEmpty(row, columns))
+    .map((row) => {
+      const next: Record<string, any> = {};
+      for (const col of columns) {
+        next[col.name] = coerceTableCellValue(row?.[col.name], col.paramClass);
+      }
+      return next;
+    });
+
+  return JSON.stringify(cleaned);
+}
+
+export function validateTableCellValue(value: any, column: TableColumnDef): string | null {
+  const cls = normalizeScalarParamClass(column.paramClass);
+  const text = value === null || value === undefined ? "" : String(value).trim();
+
+  if (!text) return null;
+
+  if (cls === "IntParam") {
+    if (!/^[-+]?\d+$/.test(text)) {
+      return "Invalid integer";
+    }
+    return null;
+  }
+
+  if (cls === "FloatParam") {
+    const num = Number(text);
+    if (!Number.isFinite(num)) {
+      return "Invalid number";
+    }
+    return null;
+  }
+
+  return null;
+}
+
+export function validateTableRows(
+  rows: Record<string, any>[],
+  columns: TableColumnDef[]
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  (Array.isArray(rows) ? rows : []).forEach((row, rowIndex) => {
+    if (isTableRowEmpty(row, columns)) return;
+
+    for (const col of columns) {
+      const cellError = validateTableCellValue(row?.[col.name], col);
+      if (cellError) {
+        errors[`${rowIndex}.${col.name}`] = cellError;
+      }
+    }
+  });
+
+  return errors;
 }

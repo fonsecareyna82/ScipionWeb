@@ -1,4 +1,5 @@
 import "./ProjectPage.css";
+import { APP_VERSION, formatWidgetBuildTimestamp, hasWidgetBuildInfo, WIDGET_BUILD_TIMESTAMP } from "@/buildInfo";
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -59,6 +60,7 @@ import {
   Square,
   ClipboardPaste,
   CheckSquare,
+  Info,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -175,6 +177,37 @@ function normalizeElapsedSessionId(
   ).trim();
 }
 
+function mergeNodeOutputs(
+  freshNode: Node<StatusNodeData>,
+  currentNode?: Node<StatusNodeData>,
+): Node<StatusNodeData> {
+  const freshOutputs = Array.isArray(freshNode.data?.outputs)
+    ? freshNode.data.outputs
+    : [];
+  const currentOutputs = Array.isArray(currentNode?.data?.outputs)
+    ? currentNode.data.outputs
+    : [];
+
+  if (!isLiveProtocolStatus(freshNode.data?.status)) {
+    return freshNode;
+  }
+
+  if (!currentOutputs.length) {
+    return freshNode;
+  }
+
+  if (freshOutputs.length >= currentOutputs.length) {
+    return freshNode;
+  }
+
+  return {
+    ...freshNode,
+    data: {
+      ...freshNode.data,
+      outputs: currentOutputs,
+    },
+  };
+}
 
 function continuesElapsedTimerSession(
   previousStatus: unknown,
@@ -1139,6 +1172,7 @@ export default function ProjectPage() {
 
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+  const [buildInfoOpen, setBuildInfoOpen] = useState(false);
 
 
   useEffect(() => {
@@ -1820,7 +1854,7 @@ export default function ProjectPage() {
 
       if (!info || typeof info !== "object") return;
 
-      const outputs = Array.isArray(info.outputs)
+      const outputs = Array.isArray(info.outputs) && info.outputs.length > 0
         ? info.outputs
         : undefined;
 
@@ -4296,13 +4330,17 @@ export default function ProjectPage() {
           nodesWithPositions.map(
             (freshNode) => {
               const mergedNode =
-                mergeNodeElapsedTick(
-                  freshNode as
-                  Node<StatusNodeData>,
+                mergeNodeOutputs(
+                  mergeNodeElapsedTick(
+                    freshNode as Node<StatusNodeData>,
 
+                    currentNodesById.get(
+                      String(freshNode.id),
+                    ),
+                  ),
                   currentNodesById.get(
                     String(freshNode.id),
-                  ),
+                  ) as Node<StatusNodeData> | undefined,
                 );
 
               return {
@@ -8781,6 +8819,18 @@ export default function ProjectPage() {
                   <FocusIcon className="pp-btnIcon" />
                 </button>
 
+                {hasWidgetBuildInfo() && (
+                  <button
+                    type="button"
+                    onClick={() => setBuildInfoOpen(true)}
+                    className="pp-flowControlBtn"
+                    title="Build info"
+                    aria-label="Build info"
+                  >
+                    <Info className="pp-btnIcon" />
+                  </button>
+                )}
+
               </div>
             </div>
 
@@ -9178,6 +9228,45 @@ export default function ProjectPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {hasWidgetBuildInfo() && (
+          <Dialog open={buildInfoOpen} onOpenChange={setBuildInfoOpen}>
+            <DialogContent
+              container={dialogContainer ?? undefined}
+              className="sm:max-w-md p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+            >
+              <DialogHeader className="border-b border-border px-5 py-4 text-left">
+                <DialogTitle className="text-base font-semibold leading-6">
+                  Build info
+                </DialogTitle>
+                <DialogDescription>Project page widget</DialogDescription>
+              </DialogHeader>
+
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 px-5 py-4 text-sm">
+                {APP_VERSION && (
+                  <>
+                    <dt className="font-medium text-muted-foreground">Version</dt>
+                    <dd>{APP_VERSION}</dd>
+                  </>
+                )}
+                {WIDGET_BUILD_TIMESTAMP && (
+                  <>
+                    <dt className="font-medium text-muted-foreground">Built</dt>
+                    <dd>{formatWidgetBuildTimestamp(WIDGET_BUILD_TIMESTAMP)}</dd>
+                    <dt className="font-medium text-muted-foreground">Build time (UTC)</dt>
+                    <dd className="break-all font-mono text-xs">{WIDGET_BUILD_TIMESTAMP}</dd>
+                  </>
+                )}
+              </dl>
+
+              <DialogFooter className="border-t border-border bg-background px-5 py-4 sm:justify-center">
+                <Button variant="outline" onClick={() => setBuildInfoOpen(false)} className="min-w-28">
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         <Dialog
           open={dlgDelete.open}
