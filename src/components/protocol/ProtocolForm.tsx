@@ -1899,28 +1899,62 @@ export default function ProtocolForm({
   const gatherAllOutputs = useCallback((): { outputs: any[]; dependencyMap: Record<string, string[]> } => {
     if (!projectProtocols) return { outputs: [], dependencyMap: {} };
 
-    const protocolsArray = Array.isArray(projectProtocols) ? projectProtocols : Object.values(projectProtocols);
+    const protocolEntries: Array<[string, any]> =
+      Array.isArray(projectProtocols)
+        ? projectProtocols.map(
+          (prot: any, index: number) => [
+            String(
+              prot?.protocolId ??
+              prot?.id ??
+              index
+            ),
+            prot,
+          ]
+        )
+        : Object.entries(projectProtocols);
 
     const outputs: any[] = [];
     const dependencyMap: Record<string, string[]> = {};
 
-    for (const prot of protocolsArray) {
-      const pid = String(prot.id);
-      dependencyMap[pid] = (prot.children ?? []).map(String);
-      if (!Array.isArray(prot.outputs)) continue;
+    for (const [protocolKey, prot] of protocolEntries) {
+      const pid = String(
+        prot?.protocolId ??
+        prot?.id ??
+        protocolKey
+      );
+
+      dependencyMap[pid] =
+        (prot?.children ?? []).map(String);
+
+      if (!Array.isArray(prot?.outputs)) continue;
 
       for (const outRaw of prot.outputs) {
-        const hasOutputName = outRaw && typeof outRaw === "object" && "outputName" in outRaw;
-        const out = hasOutputName ? (outRaw as any) : (outRaw as any);
-        const key = String(out?.outputName ?? out?._key ?? out?.name ?? "");
+        const out = outRaw as any;
+        const key = String(
+          out?.outputName ??
+          out?._key ??
+          out?.name ??
+          ""
+        );
+
         if (!key) continue;
 
         outputs.push({
-          protocol: prot.label ?? prot.protocolName ?? prot.id ?? "Unknown",
+          protocol:
+            prot?.label ??
+            prot?.protocolName ??
+            pid ??
+            "Unknown",
           key,
           info: out?.info ?? "",
-          paramClass: String(out?.paramClass ?? "PointerParam"),
-          pointerClass: String(out?.pointerClass ?? ""),
+          paramClass: String(
+            out?.paramClass ??
+            "PointerParam"
+          ),
+          pointerClass: String(
+            out?.pointerClass ??
+            ""
+          ),
           pointerClassHierarchy:
             Array.isArray(
               out?.pointerClassHierarchy
@@ -1934,9 +1968,14 @@ export default function ProtocolForm({
                 )
                 .filter(Boolean)
               : [],
-          value: String(out?.value ?? ""),
+          value: String(
+            out?.value ??
+            ""
+          ),
           protocolId: pid,
-          parentId: out?.parentId ?? null,
+          parentId:
+            out?.parentId ??
+            null,
         });
       }
     }

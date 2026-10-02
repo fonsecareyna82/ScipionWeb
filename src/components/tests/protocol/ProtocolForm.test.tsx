@@ -834,6 +834,138 @@ describe("ProtocolForm", () => {
         ).not.toBeInTheDocument();
     });
 
+
+    it("shows RelationParam candidate when project protocol id comes from the protocol map key", async () => {
+        const data: any =
+            createData();
+
+        data.info.protocolClassName =
+            "XmippProtExtractParticles";
+
+        data.form.sections = [
+            {
+                label: "Input",
+                params: [
+                    {
+                        paramName:
+                            "inputCoordinates",
+                        paramDef: {
+                            paramClass:
+                                "PointerParam",
+                            label:
+                                "Input coordinates",
+                            pointerClass:
+                                "SetOfCoordinates",
+                        },
+                    },
+                    {
+                        paramName:
+                            "ctfRelations",
+                        paramDef: {
+                            paramClass:
+                                "RelationParam",
+                            label:
+                                "CTF estimation",
+                            condition:
+                                "inputCoordinates is not None",
+                            relationName:
+                                "relation_ctf",
+                            attributeName:
+                                "getInputMicrographs",
+                            direction: 0,
+                        },
+                    },
+                ],
+            },
+        ];
+
+        data.values = {
+            inputCoordinates:
+                "3170.outputCoordinates_Full",
+            ctfRelations:
+                "",
+        };
+
+        mockResolveProtocolRelationCandidates
+            .mockResolvedValueOnce({
+                paramName:
+                    "ctfRelations",
+                relationName:
+                    "relation_ctf",
+                values: [
+                    "2640.outputCTF",
+                ],
+            });
+
+        const projectProtocols: any = {
+            "2640": {
+                label:
+                    "CTF 2640",
+                children: [],
+                outputs: [
+                    {
+                        outputName:
+                            "outputCTF",
+                        pointerClass:
+                            "SetOfCTF",
+                        pointerClassHierarchy: [
+                            "SetOfCTF",
+                            "EMSet",
+                        ],
+                        value:
+                            "2640.outputCTF",
+                    },
+                ],
+            },
+        };
+
+        renderComponent({
+            data,
+            projectProtocols,
+        });
+
+        expect(
+            await screen.findByText(
+                "CTF estimation"
+            )
+        ).toBeInTheDocument();
+
+        fireEvent.click(
+            screen.getByRole(
+                "button",
+                {
+                    name:
+                        "Find CTF estimation",
+                },
+            )
+        );
+
+        await waitFor(() => {
+            expect(
+                mockResolveProtocolRelationCandidates
+            ).toHaveBeenCalledWith(
+                1,
+                {
+                    protocolClassName:
+                        "XmippProtExtractParticles",
+                    paramName:
+                        "ctfRelations",
+                    formValues:
+                        expect.objectContaining({
+                            inputCoordinates:
+                                "3170.outputCoordinates_Full",
+                        }),
+                },
+            );
+        });
+
+        expect(
+            await screen.findByText(
+                "2640.outputCTF"
+            )
+        ).toBeInTheDocument();
+    });
+
     it("hides RelationParam when its is not None condition is false", async () => {
         const data: any =
             createData();
