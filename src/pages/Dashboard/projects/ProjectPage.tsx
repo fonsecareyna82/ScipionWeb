@@ -462,6 +462,29 @@ type OpenForm = {
   isClosing?: boolean;
 };
 
+function protocolDetailsMatchRequestedId(
+  requestedProtocolId: unknown,
+  details: any,
+): boolean {
+  const requestedId =
+    String(
+      requestedProtocolId ?? ""
+    ).trim();
+
+  const returnedId =
+    String(
+      details?.info?.protocolId ?? ""
+    ).trim();
+
+  return (
+    requestedId.length > 0
+    &&
+    returnedId.length > 0
+    &&
+    returnedId === requestedId
+  );
+}
+
 function getProtocolFormStatus(details: any): string {
   const candidates = [
     details?.info?.status,
@@ -1578,6 +1601,22 @@ export default function ProjectPage() {
 
     for (const result of results) {
       if (result.status !== "fulfilled") continue;
+
+      if (
+        !protocolDetailsMatchRequestedId(result.value.id, result.value.details)
+      ) {
+        console.error(
+          "Protocol identity mismatch during protocol form refresh",
+          {
+            requestedProtocolId: String(result.value.id),
+            returnedProtocolId:
+              String(result.value.details?.info?.protocolId ?? ""),
+          },
+        );
+
+        continue;
+      }
+
       detailsById.set(result.value.id, result.value.details);
     }
 
@@ -1861,6 +1900,24 @@ export default function ProjectPage() {
       details: any,
     ) => {
       const info = details?.info;
+
+      if (
+        !protocolDetailsMatchRequestedId(
+          protocolId,
+          details,
+        )
+      ) {
+        console.error(
+          "Protocol identity mismatch while syncing protocol details",
+          {
+            requestedProtocolId: String(protocolId),
+            returnedProtocolId:
+              String(details?.info?.protocolId ?? ""),
+          },
+        );
+
+        return;
+      }
 
       if (!info || typeof info !== "object") return;
 
@@ -3005,6 +3062,31 @@ export default function ProjectPage() {
 
       try {
         const details = await fetcher();
+
+        if (
+          !protocolDetailsMatchRequestedId(id, details)
+        ) {
+          const returnedProtocolId =
+            String(
+              details?.info?.protocolId ?? ""
+            ).trim();
+
+          console.error(
+            "Protocol identity mismatch while opening protocol form",
+            {
+              requestedProtocolId: id,
+              returnedProtocolId,
+            },
+          );
+
+          toast.error(
+            returnedProtocolId
+              ? `Could not open protocol ${id}: server returned protocol ${returnedProtocolId}.`
+              : `Could not open protocol ${id}: server response has no protocol identity.`,
+          );
+
+          return;
+        }
 
         syncProtocolDetailsToGraph(
           id,
@@ -4853,6 +4935,25 @@ export default function ProjectPage() {
 
               if (cancelled) {
                 return;
+              }
+
+              if (
+                !protocolDetailsMatchRequestedId(
+                  summary.protocolId,
+                  details,
+                )
+              ) {
+                console.error(
+                  "Protocol identity mismatch during final protocol details refresh",
+                  {
+                    requestedProtocolId:
+                      String(summary.protocolId),
+                    returnedProtocolId:
+                      String(details?.info?.protocolId ?? ""),
+                  },
+                );
+
+                continue;
               }
 
               finalDetailsByProtocolId.set(
