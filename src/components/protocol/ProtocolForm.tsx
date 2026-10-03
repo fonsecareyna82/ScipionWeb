@@ -1926,6 +1926,60 @@ export default function ProtocolForm({
       dependencyMap[pid] =
         (prot?.children ?? []).map(String);
 
+      const protocolClassNameCandidate = String(
+        prot?.protocolClassName ??
+        ""
+      ).trim();
+
+      const protocolClassHierarchy =
+        Array.isArray(
+          prot?.protocolClassHierarchy
+        )
+          ? prot.protocolClassHierarchy
+            .map(
+              (className: any) =>
+                String(
+                  className ??
+                  ""
+                ).trim()
+            )
+            .filter(Boolean)
+          : [];
+
+      if (
+        pid !== "PROJECT" &&
+        protocolClassNameCandidate
+      ) {
+        outputs.push({
+          candidateKind:
+            "protocol",
+          protocol:
+            prot?.label ??
+            prot?.protocolName ??
+            protocolClassNameCandidate ??
+            pid,
+          key: "",
+          info:
+            protocolClassNameCandidate,
+          paramClass:
+            "PointerParam",
+          pointerClass:
+            protocolClassNameCandidate,
+          pointerClassHierarchy:
+            protocolClassHierarchy.length > 0
+              ? protocolClassHierarchy
+              : [
+                protocolClassNameCandidate,
+              ],
+          value:
+            pid,
+          protocolId:
+            pid,
+          parentId:
+            pid,
+        });
+      }
+
       if (!Array.isArray(prot?.outputs)) continue;
 
       for (const outRaw of prot.outputs) {
@@ -1940,6 +1994,8 @@ export default function ProtocolForm({
         if (!key) continue;
 
         outputs.push({
+          candidateKind:
+            "output",
           protocol:
             prot?.label ??
             prot?.protocolName ??
@@ -3712,18 +3768,24 @@ export default function ProtocolForm({
       return true;
     });
 
+    const outputPool = pool.filter(
+      (candidate) =>
+        candidate?.candidateKind !==
+        "protocol"
+    );
+
     if (
       resolveParamClass(
         liveParam
       ) === "RelationParam"
     ) {
-      return pool;
+      return outputPool;
     }
 
     const norm = (s: any) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
 
     if (expected === null) {
-      return pool.filter((o) => {
+      return outputPool.filter((o) => {
         const outputClasses = splitClassList(o.pointerClass).map(norm);
         return outputClasses.some((cls) => cls.startsWith("setof"));
       });
@@ -3732,7 +3794,7 @@ export default function ProtocolForm({
     const expectedList = Array.isArray(expected) ? expected : [expected];
 
     if (expectedList.some((item) => isWildcardExpectedClass(item))) {
-      return pool;
+      return outputPool;
     }
 
     return pool.filter(

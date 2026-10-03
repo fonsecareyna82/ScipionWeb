@@ -390,6 +390,7 @@ vi.mock("@/components/protocol/outputSelectorDialog", () => ({
     default: ({
         open,
         allOutputs = [],
+        onSelect,
     }: any) =>
         open ? (
             <div data-testid="output-selector-dialog">
@@ -397,8 +398,12 @@ vi.mock("@/components/protocol/outputSelectorDialog", () => ({
                     (output: any) => (
                         <span
                             key={
-                                `${output.protocolId}.${output.key}`
+                                `${output.protocolId}.${output.key}.${output.value}`
                             }
+                            data-pointer-value={String(output.value ?? "")}
+                            data-pointer-class={String(output.pointerClass ?? "")}
+                            data-candidate-kind={String(output.candidateKind ?? "")}
+                            onClick={() => onSelect?.(output)}
                         >
                             {`${output.protocolId}.${output.key}`}
                         </span>
@@ -2286,5 +2291,278 @@ describe("ProtocolForm", () => {
         ).not.toBeInTheDocument();
     });
 
+
+
+    it(
+        "offers compatible protocols as direct PointerParam candidates and saves the protocol id",
+        async () => {
+            const data: any = createData();
+
+            data.form.sections = [
+                {
+                    label: "Input",
+                    params: [
+                        {
+                            paramName: "inputProtocol",
+                            paramDef: {
+                                paramClass: "PointerParam",
+                                label: "Input protocol",
+                                pointerClass: "ProtProcessParticles",
+                            },
+                        },
+                    ],
+                },
+            ];
+
+            data.values = {
+                inputProtocol: "",
+            };
+
+            const projectProtocols = [
+                {
+                    protocolId: "21",
+                    label: "Shift particles",
+                    protocolClassName: "XmippProtShiftParticles",
+                    protocolClassHierarchy: [
+                        "XmippProtShiftParticles",
+                        "ProtProcessParticles",
+                        "EMProtocol",
+                        "Protocol",
+                        "Object",
+                    ],
+                    children: [],
+                    outputs: [
+                        {
+                            outputName: "outputParticles",
+                            pointerClass: "SetOfParticles",
+                            pointerClassHierarchy: [
+                                "SetOfParticles",
+                                "SetOfImages",
+                                "EMSet",
+                                "Object",
+                            ],
+                            value: "21.outputParticles",
+                            parentId: "21",
+                        },
+                    ],
+                },
+                {
+                    protocolId: "44",
+                    label: "Import movies",
+                    protocolClassName: "ProtImportMovies",
+                    protocolClassHierarchy: [
+                        "ProtImportMovies",
+                        "EMProtocol",
+                        "Protocol",
+                        "Object",
+                    ],
+                    children: [],
+                    outputs: [],
+                },
+            ];
+
+            renderComponent({
+                data,
+                projectProtocols,
+            });
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name: "Find Input protocol",
+                    },
+                ),
+            );
+
+            const selector =
+                await screen.findByTestId(
+                    "output-selector-dialog",
+                );
+
+            const compatibleProtocol =
+                selector.querySelector(
+                    '[data-pointer-value="21"]',
+                );
+
+            expect(
+                compatibleProtocol,
+            ).not.toBeNull();
+
+            expect(
+                compatibleProtocol,
+            ).toHaveAttribute(
+                "data-pointer-class",
+                "XmippProtShiftParticles",
+            );
+
+            expect(
+                selector.querySelector(
+                    '[data-pointer-value="44"]',
+                ),
+            ).toBeNull();
+
+            expect(
+                selector.querySelector(
+                    '[data-pointer-value="21.outputParticles"]',
+                ),
+            ).toBeNull();
+
+            fireEvent.click(
+                compatibleProtocol as Element,
+            );
+
+            expect(
+                screen.getByLabelText(
+                    "Input protocol",
+                ),
+            ).toHaveValue("21");
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name: "Save",
+                    },
+                ),
+            );
+
+            await waitFor(() => {
+                expect(
+                    mockSaveProtocol,
+                ).toHaveBeenCalledWith(
+                    1,
+                    "7",
+                    "ProtImportMovies",
+                    expect.objectContaining({
+                        inputProtocol: "21",
+                    }),
+                );
+            });
+        },
+    );
+
+    it(
+        "offers compatible protocols as direct MultiPointerParam candidates",
+        async () => {
+            const data: any = createData();
+
+            data.form.sections = [
+                {
+                    label: "Input",
+                    params: [
+                        {
+                            paramName: "inputProtocols",
+                            paramDef: {
+                                paramClass: "MultiPointerParam",
+                                label: "Input protocols",
+                                pointerClass: "ProtProcessParticles",
+                            },
+                        },
+                    ],
+                },
+            ];
+
+            data.values = {
+                inputProtocols: [],
+            };
+
+            const projectProtocols = [
+                {
+                    protocolId: "21",
+                    label: "Shift particles",
+                    protocolClassName: "XmippProtShiftParticles",
+                    protocolClassHierarchy: [
+                        "XmippProtShiftParticles",
+                        "ProtProcessParticles",
+                        "EMProtocol",
+                        "Protocol",
+                        "Object",
+                    ],
+                    children: [],
+                    outputs: [],
+                },
+                {
+                    protocolId: "44",
+                    label: "Import movies",
+                    protocolClassName: "ProtImportMovies",
+                    protocolClassHierarchy: [
+                        "ProtImportMovies",
+                        "EMProtocol",
+                        "Protocol",
+                        "Object",
+                    ],
+                    children: [],
+                    outputs: [],
+                },
+            ];
+
+            renderComponent({
+                data,
+                projectProtocols,
+            });
+
+            const findIcon =
+                screen.getByTestId(
+                    "find-icon",
+                );
+
+            fireEvent.click(
+                findIcon.closest("button") as Element,
+            );
+
+            const selector =
+                await screen.findByTestId(
+                    "output-selector-dialog",
+                );
+
+            const compatibleProtocol =
+                selector.querySelector(
+                    '[data-pointer-value="21"]',
+                );
+
+            expect(
+                compatibleProtocol,
+            ).not.toBeNull();
+
+            expect(
+                selector.querySelector(
+                    '[data-pointer-value="44"]',
+                ),
+            ).toBeNull();
+
+            fireEvent.click(
+                compatibleProtocol as Element,
+            );
+
+            expect(
+                await screen.findByDisplayValue(
+                    "21",
+                ),
+            ).toBeInTheDocument();
+
+            fireEvent.click(
+                screen.getByRole(
+                    "button",
+                    {
+                        name: "Save",
+                    },
+                ),
+            );
+
+            await waitFor(() => {
+                expect(
+                    mockSaveProtocol,
+                ).toHaveBeenCalledWith(
+                    1,
+                    "7",
+                    "ProtImportMovies",
+                    expect.objectContaining({
+                        inputProtocols: ["21"],
+                    }),
+                );
+            });
+        },
+    );
 
 });
