@@ -126,6 +126,23 @@ describe("ProtocolNodeCardWrapper", () => {
         createNodeCardMock();
     });
 
+
+    it("uses the ReactFlow node id as the canonical protocol identity", () => {
+        renderWrapper({
+            id: "10",
+            data: {
+                id: "99",
+                label: "Protocol A",
+            },
+            resolvedProjectId: "project-7",
+        });
+
+        const props = mockProtocolNodeCard.mock.calls[0][0];
+
+        expect(props.id).toBe("10");
+        expect(props.data.id).toBe("10");
+    });
+
     it("injects projectId into data when it is missing", () => {
         renderWrapper({
             data: { label: "Protocol A" },
@@ -136,6 +153,7 @@ describe("ProtocolNodeCardWrapper", () => {
 
         expect(props.id).toBe("node-1");
         expect(props.data).toEqual({
+            id: "node-1",
             label: "Protocol A",
             projectId: "project-7",
             protocolOutputThumbnailsEnabled: false,
@@ -152,6 +170,7 @@ describe("ProtocolNodeCardWrapper", () => {
         const props = mockProtocolNodeCard.mock.calls[0][0];
 
         expect(props.data).toEqual({
+            id: "node-1",
             label: "Protocol A",
             projectId: "existing-project",
             protocolOutputThumbnailsEnabled: false,
@@ -169,6 +188,7 @@ describe("ProtocolNodeCardWrapper", () => {
 
         expect(onClick).toHaveBeenCalledWith(
             {
+                id: "node-1",
                 label: "Protocol A",
                 projectId: "project-7",
                 protocolOutputThumbnailsEnabled: false,
@@ -177,6 +197,7 @@ describe("ProtocolNodeCardWrapper", () => {
         );
 
         expect(onDoubleClick).toHaveBeenCalledWith({
+            id: "node-1",
             label: "Protocol A",
             projectId: "project-7",
             protocolOutputThumbnailsEnabled: false,

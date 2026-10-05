@@ -81,10 +81,11 @@ export const createStatusNodeWrapper = (
       const d = (data as any) ?? {};
       return {
         ...d,
+        id: String(id),
         projectId: d.projectId ?? resolvedProjectId,
         protocolOutputThumbnailsEnabled,
       };
-    }, [data, resolvedProjectId, protocolOutputThumbnailsEnabled]);
+    }, [data, id, resolvedProjectId, protocolOutputThumbnailsEnabled]);
 
     return (
       <div
