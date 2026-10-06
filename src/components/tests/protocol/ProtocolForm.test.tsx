@@ -2565,4 +2565,31 @@ describe("ProtocolForm", () => {
         },
     );
 
+
+    it(
+        "keeps label as the protocol form header when runName differs",
+        () => {
+            const data: any = createData();
+
+            data.info.protocolName = "pwem - import movies";
+            data.info.runName = "pwem - import movies (copy)";
+
+            renderComponent({
+                data,
+            });
+
+            expect(
+                screen.getByText(
+                    "pwem - import movies",
+                ),
+            ).toBeInTheDocument();
+
+            expect(
+                screen.queryByText(
+                    "pwem - import movies (copy)",
+                ),
+            ).not.toBeInTheDocument();
+        },
+    );
+
 });

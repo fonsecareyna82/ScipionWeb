@@ -758,10 +758,14 @@ export default function ProtocolNodeCard({
   const normalizeDisplayText = (value: string) =>
     String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 
+  const normalizedProtocolLabel = normalizeDisplayText(protocolLabel);
+  const normalizedProtocolRunName = normalizeDisplayText(protocolRunName);
+
   const shouldShowProtocolSubtitle =
     !isProjectNode &&
-    protocolLabel.length > 0 &&
-    normalizeDisplayText(protocolLabel) !== normalizeDisplayText(headerDisplayName);
+    normalizedProtocolLabel.length > 0 &&
+    normalizedProtocolRunName.length > 0 &&
+    !normalizedProtocolRunName.includes(normalizedProtocolLabel);
 
   const normalizedStatus = String(data.status ?? "finished").trim().toLowerCase();
   const bgColor = statusColors[normalizedStatus] ?? statusColors.root;
@@ -2105,14 +2109,14 @@ export default function ProtocolNodeCard({
                 <div className={styles.protocolTitleBlock}>
                   <div
                     className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
-                    title={data.runName}
+                    title={headerDisplayName}
                   >
-                    {truncateLabel(protocolLabel, 150)}
+                    {truncateLabel(headerDisplayName, 150)}
                   </div>
 
                   {shouldShowProtocolSubtitle ? (
-                    <div className={styles.protocolSubtitle} title={headerDisplayName}>
-                      {truncateLabel(headerDisplayName, 150)}
+                    <div className={styles.protocolSubtitle} title={protocolLabel}>
+                      {truncateLabel(protocolLabel, 150)}
                     </div>
                   ) : null}
                 </div>

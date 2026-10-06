@@ -620,4 +620,54 @@ describe("ProtocolNodeCard", () => {
         expect(onDelete).toHaveBeenCalledWith("12");
     });
 
+
+    it(
+        "shows runName as the workflow node name instead of label",
+        () => {
+            renderComponent({
+                data: createProtocolData({
+                    label: "pwem - import movies",
+                    runName: "pwem - import movies (copy)",
+                }),
+            });
+
+            expect(
+                screen.getByText(
+                    "pwem - import movies (copy)",
+                ),
+            ).toBeInTheDocument();
+
+            expect(
+                screen.queryByText(
+                    "pwem - import movies",
+                ),
+            ).not.toBeInTheDocument();
+        },
+    );
+
+
+    it(
+        "shows label as subtitle when runName does not contain it",
+        () => {
+            renderComponent({
+                data: createProtocolData({
+                    label: "pwem - import movies",
+                    runName: "Movies dataset A",
+                }),
+            });
+
+            expect(
+                screen.getByText(
+                    "Movies dataset A",
+                ),
+            ).toBeInTheDocument();
+
+            expect(
+                screen.getByText(
+                    "pwem - import movies",
+                ),
+            ).toBeInTheDocument();
+        },
+    );
+
 });
