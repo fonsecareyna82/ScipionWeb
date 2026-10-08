@@ -8075,6 +8075,9 @@ export default function ProjectPage() {
     ids: [],
   });
 
+  const [resetFromBusy, setResetFromBusy] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const renameBusyRef = useRef(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [restartAllBusy, setRestartAllBusy] = useState(false);
   const [continueAllBusy, setContinueAllBusy] = useState(false);
@@ -8148,6 +8151,8 @@ export default function ProjectPage() {
       );
     };
 
+  const copyWorkflowBusyRef = useRef(false);
+
   const copyWorkflowProtocols =
     async (
       protocolIds: string[],
@@ -8186,6 +8191,10 @@ export default function ProjectPage() {
 
         return;
       }
+
+      if (copyWorkflowBusyRef.current) return;
+      copyWorkflowBusyRef.current = true;
+      const copyToastId = toast.loading("Copying workflow...");
 
       try {
         const result =
@@ -8246,6 +8255,9 @@ export default function ProjectPage() {
             error,
           ),
         );
+      } finally {
+        copyWorkflowBusyRef.current = false;
+        toast.dismiss(copyToastId);
       }
     };
 
@@ -8256,7 +8268,10 @@ export default function ProjectPage() {
       );
     };
 
+  const pasteBusyRef = useRef(false);
+
   const handlePasteWorkflow = async () => {
+    if (pasteBusyRef.current) return;
     const currentProjectId = getProjectId();
     const clipboard = workflowClipboardMemory ?? workflowClipboard;
 
@@ -8290,6 +8305,9 @@ export default function ProjectPage() {
       reflowWholeGraph: false,
     };
 
+    pasteBusyRef.current = true;
+    const pasteToastId = toast.loading("Pasting workflow...");
+
     try {
       const result = await svc.importWorkflowProtocols(currentProjectId, {
         workflow: clipboard.workflow,
@@ -8300,25 +8318,28 @@ export default function ProjectPage() {
 
       if (!ensureApiOk(result as ApiWorkflowResponse, "Paste workflow failed.")) {
         pendingNewNodesRef.current = null;
+        toast.dismiss(pasteToastId);
         return;
       }
 
       const createdCount = Array.isArray(result.created) ? result.created.length : 0;
 
+      clearAllSelectionHard();
+      await Promise.resolve(handleRefreshRef.current?.());
       toast.success(
         createdCount > 1
           ? `${createdCount} protocols pasted.`
           : createdCount === 1
             ? "Protocol pasted."
-            : "Workflow pasted."
+            : "Workflow pasted.",
+        { id: pasteToastId },
       );
-
-      clearAllSelectionHard();
-      await Promise.resolve(handleRefreshRef.current?.());
     } catch (e) {
       console.error("paste workflow failed", e);
-      toast.error(getErrorMsg(e));
+      toast.error(getErrorMsg(e), { id: pasteToastId });
       pendingNewNodesRef.current = null;
+    } finally {
+      pasteBusyRef.current = false;
     }
   };
 
@@ -8372,8 +8393,10 @@ export default function ProjectPage() {
     return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
   };
 
+  const duplicateBusyRef = useRef(false);
+
   const duplicateNow = async (ids: string[]) => {
-    if (!projectName) return;
+    if (!projectName || duplicateBusyRef.current) return;
 
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
     if (cleanIds.length === 0) return;
@@ -8398,6 +8421,9 @@ export default function ProjectPage() {
         sourcePositionById.set(String(id), node.position);
       }
     }
+
+    duplicateBusyRef.current = true;
+    const duplicateToastId = toast.loading(cleanIds.length > 1 ? "Duplicating protocols..." : "Duplicating protocol...");
 
     pendingNewNodesRef.current = {
       beforeIds,
@@ -8439,14 +8465,15 @@ export default function ProjectPage() {
           }>,
       };
 
-      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
-
       clearAllSelectionHard();
       await Promise.resolve(handleRefreshRef.current?.());
+      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.", { id: duplicateToastId });
     } catch (e) {
       console.error(e);
-      toast.error(getErrorMsg(e));
+      toast.error(getErrorMsg(e), { id: duplicateToastId });
       pendingNewNodesRef.current = null;
+    } finally {
+      duplicateBusyRef.current = false;
     }
   };
 
@@ -8654,22 +8681,26 @@ export default function ProjectPage() {
     };
 
   const submitRename = async () => {
+    if (renameBusyRef.current) return;
     if (!projectName || !dlgRename.id) return;
 
     const id = dlgRename.id;
     const runName = dlgRename.value.trim();
     const comment = dlgRename.comment.trim();
 
-    setDlgRename(emptyRenameDialog);
-
+    renameBusyRef.current = true;
+    setRenameBusy(true);
     try {
       await svc.renameProtocol(projectName, id, { runName, comment });
-
+      setDlgRename(emptyRenameDialog);
       toast.success("Protocol annotation updated successfully.");
       await handleRefresh();
     } catch (e) {
       console.error(e);
       toast.error(getErrorMsg(e));
+    } finally {
+      renameBusyRef.current = false;
+      setRenameBusy(false);
     }
   };
 
@@ -9846,7 +9877,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgRename.open}
           onOpenChange={(open: boolean) => {
-            if (!open) setDlgRename(emptyRenameDialog);
+            if (!open && !renameBusy) setDlgRename(emptyRenameDialog);
           }}
         >
           <DialogContent
@@ -9886,6 +9917,7 @@ export default function ProjectPage() {
 
                   <input
                     id="rename"
+                    disabled={renameBusy}
                     value={dlgRename.value}
                     onChange={(e) =>
                       setDlgRename((s) => ({
@@ -9911,6 +9943,7 @@ export default function ProjectPage() {
 
                   <textarea
                     id="rename-comment"
+                    disabled={renameBusy}
                     value={dlgRename.comment}
                     onChange={(e) =>
                       setDlgRename((s) => ({
@@ -9929,6 +9962,7 @@ export default function ProjectPage() {
             <DialogFooter className="pp-annotateFooter">
               <Button
                 onClick={() => setDlgRename(emptyRenameDialog)}
+                disabled={renameBusy}
                 className="pp-dialogBtn"
               >
                 Cancel
@@ -9936,10 +9970,10 @@ export default function ProjectPage() {
 
               <Button
                 onClick={submitRename}
-                disabled={!dlgRename.id}
+                disabled={!dlgRename.id || renameBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
-                Save annotation
+                {renameBusy ? "Saving..." : "Save annotation"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -9949,7 +9983,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgResetFrom.open}
           onOpenChange={(open: boolean) => {
-            if (!open) setDlgResetFrom({ open: false, id: null });
+            if (!open && !resetFromBusy) setDlgResetFrom({ open: false, id: null });
           }}
         >
           <DialogContent
@@ -10010,6 +10044,7 @@ export default function ProjectPage() {
               <button
                 type="button"
                 onClick={() => setDlgResetFrom({ open: false, id: null })}
+                disabled={resetFromBusy}
                 className="pp-dialogBtn"
               >
                 Cancel
@@ -10018,8 +10053,9 @@ export default function ProjectPage() {
               <button
                 type="button"
                 onClick={async () => {
-                  if (!projectName || !dlgResetFrom.id) return;
+                  if (!projectName || !dlgResetFrom.id || resetFromBusy) return;
 
+                  setResetFromBusy(true);
                   try {
                     await svc.resetFrom(projectName, dlgResetFrom.id);
                     setDlgResetFrom({ open: false, id: null });
@@ -10028,11 +10064,14 @@ export default function ProjectPage() {
                   } catch (e) {
                     console.error(e);
                     toast.error(getErrorMsg(e));
+                  } finally {
+                    setResetFromBusy(false);
                   }
                 }}
+                disabled={resetFromBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
-                Reset from here
+                {resetFromBusy ? "Resetting..." : "Reset from here"}
               </button>
             </DialogFooter>
           </DialogContent>
@@ -10105,10 +10144,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgDelete.open}
           onOpenChange={(open: boolean) => {
-            if (!open) {
-              setDeleteBusy(false);
-              setDlgDelete({ open: false, ids: [] });
-            }
+            if (!open && !deleteBusy) setDlgDelete({ open: false, ids: [] });
           }}
         >
           <DialogContent
@@ -10295,10 +10331,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgRestartAll.open}
           onOpenChange={(open: boolean) => {
-            if (!open) {
-              setRestartAllBusy(false);
-              setDlgRestartAll({ open: false, id: null });
-            }
+            if (!open && !restartAllBusy) setDlgRestartAll({ open: false, id: null });
           }}
         >
           <DialogContent
@@ -10416,10 +10449,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgContinueAll.open}
           onOpenChange={(open: boolean) => {
-            if (!open) {
-              setContinueAllBusy(false);
-              setDlgContinueAll({ open: false, id: null });
-            }
+            if (!open && !continueAllBusy) setDlgContinueAll({ open: false, id: null });
           }}
         >
           <DialogContent
@@ -10536,10 +10566,7 @@ export default function ProjectPage() {
         <Dialog
           open={dlgStop.open}
           onOpenChange={(open: boolean) => {
-            if (!open) {
-              setStopBusy(false);
-              setDlgStop({ open: false, ids: [] });
-            }
+            if (!open && !stopBusy) setDlgStop({ open: false, ids: [] });
           }}
         >
           <DialogContent

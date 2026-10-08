@@ -1250,7 +1250,15 @@ export default function ProtocolForm({
 
     initializedProtocolKeyRef.current = protocolKey;
 
-    const valuesMap = values && typeof values === "object" ? values : null;
+    const valuesMap = values && typeof values === "object" ? { ...values } : null;
+    const storedComment =
+      valuesMap?.["object.comment"] ??
+      valuesMap?.object?.comment ??
+      (data as any)?.["object.comment"] ??
+      (data as any)?.object?.comment;
+    if (valuesMap && !valuesMap._objComment && storedComment != null) {
+      valuesMap._objComment = String(storedComment);
+    }
 
     const params: any = {};
     const walk = (secIdx: number, paramLike: any) => {
