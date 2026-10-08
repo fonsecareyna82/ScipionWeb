@@ -600,6 +600,10 @@ export default function ProtocolForm({
     logsError,
     logsContainerRef,
     updateStickToBottom,
+    onLoadFullLog,
+    onSearchAll,
+    onNavigateToOffset,
+    onClearLogSearch,
   } = useProtocolLogs({
     svc,
     enabled: topTab === 2,
@@ -4144,6 +4148,10 @@ export default function ProtocolForm({
                 logsError={logsError}
                 logsContainerRef={logsContainerRef}
                 updateStickToBottom={updateStickToBottom}
+                onLoadFullLog={onLoadFullLog}
+                onSearchAll={onSearchAll}
+                onNavigateToOffset={onNavigateToOffset}
+                onClearLogSearch={onClearLogSearch}
               />
             )}
 

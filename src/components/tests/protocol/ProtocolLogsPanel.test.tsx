@@ -41,6 +41,25 @@ function renderComponent(
 }
 
 describe("ProtocolLogsPanel", () => {
+
+    it("searches and highlights log text", () => {
+        renderComponent({ activeLogText: "ERROR first\nall good\nerror second" });
+        const search = screen.getByRole("textbox", { name: /search logs/i });
+        fireEvent.change(search, { target: { value: "error" } });
+        expect(screen.getAllByTestId("log-search-match")).toHaveLength(2);
+        expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    });
+
+    it("navigates between matches from the search input", () => {
+        renderComponent({ activeLogText: "failure one\ninfo\nfailure two" });
+        const search = screen.getByRole("textbox", { name: /search logs/i });
+        fireEvent.change(search, { target: { value: "failure" } });
+        fireEvent.keyDown(search, { key: "Enter" });
+        expect(screen.getByText("2 of 2")).toBeInTheDocument();
+        fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+        expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -69,6 +88,18 @@ describe("ProtocolLogsPanel", () => {
         expect(screen.getByText("00002:")).toBeInTheDocument();
         expect(screen.getByText("first line")).toBeInTheDocument();
         expect(screen.getByText("second line")).toBeInTheDocument();
+    });
+
+    it("navigates matches with toolbar arrows", () => {
+        renderComponent({ activeLogText: "ERROR first\ninfo\nERROR second" });
+        fireEvent.change(screen.getByRole("textbox", { name: /search logs/i }), {
+            target: { value: "error" },
+        });
+        expect(screen.getByText("1 of 2")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Next log match" }));
+        expect(screen.getByText("2 of 2")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Previous log match" }));
+        expect(screen.getByText("1 of 2")).toBeInTheDocument();
     });
 
     it("shows the empty state when there are no logs", () => {

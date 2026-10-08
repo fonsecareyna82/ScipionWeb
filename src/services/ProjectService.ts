@@ -1152,6 +1152,34 @@ export type ProtocolLogChunk = {
   done?: boolean;
 };
 
+export type ProtocolLogSearchMatch = { offset: number; text: string };
+export type ProtocolLogSearchResponse = {
+  matches: ProtocolLogSearchMatch[];
+  nextOffset: number;
+  sizeBytes: number;
+  done: boolean;
+};
+export type ProtocolLogSearchOptions = {
+  startOffset?: number;
+  maxMatches?: number;
+  maxScanBytes?: number;
+  signal?: AbortSignal;
+};
+
+export type ProtocolLogWindowResponse = {
+  channel: string;
+  content: string;
+  startOffset: number;
+  endOffset: number;
+  sizeBytes: number;
+};
+
+export type ProtocolLogWindowOptions = {
+  endOffset?: number;
+  maxBytes?: number;
+  signal?: AbortSignal;
+};
+
 export type ProtocolLogsChunkResponse = {
   chunks?: Record<string, ProtocolLogChunk>;
 };
@@ -2482,6 +2510,24 @@ export interface ProjectService<
     projectId: Id,
     protocolId: Id,
   ): Promise<ProtocolLogChannelsResponse>;
+
+  fetchProtocolLogSearch(
+    projectId: Id, protocolId: Id, channel: string, query: string,
+    opts?: ProtocolLogSearchOptions,
+  ): Promise<ProtocolLogSearchResponse>;
+
+  fetchProtocolLogRaw?(
+    projectId: Id,
+    protocolId: Id,
+    channel: string,
+  ): Promise<Blob>;
+
+  fetchProtocolLogWindow(
+    projectId: Id,
+    protocolId: Id,
+    channel: string,
+    opts?: ProtocolLogWindowOptions,
+  ): Promise<ProtocolLogWindowResponse>;
 
   fetchProtocolLogsChunk(
     projectId: Id,

@@ -21,6 +21,10 @@ import type {
   AnalyzeViewerResolveDecision,
   ProtocolLogChannelsResponse,
   ProtocolLogsChunkResponse,
+  ProtocolLogWindowResponse,
+  ProtocolLogSearchResponse,
+  ProtocolLogSearchOptions,
+  ProtocolLogWindowOptions,
   ProtocolLogOffsets,
   ProtocolTag,
   ProtocolTagCreatePayload,
@@ -1116,6 +1120,27 @@ const defaultService: ProjectService = {
     protocolId: Id,
   ): Promise<ProtocolLogChannelsResponse> =>
     api.fetchProtocolLogChannels(toId(projectId), toId(protocolId)),
+
+  fetchProtocolLogSearch: (
+    projectId: Id, protocolId: Id, channel: string, query: string,
+    opts?: ProtocolLogSearchOptions,
+  ): Promise<ProtocolLogSearchResponse> =>
+    api.fetchProtocolLogSearch(toId(projectId), toId(protocolId), channel, query, opts),
+
+  fetchProtocolLogRaw: (
+    projectId: Id,
+    protocolId: Id,
+    channel: string,
+  ): Promise<Blob> =>
+    api.fetchProtocolLogRaw(toId(projectId), toId(protocolId), channel),
+
+  fetchProtocolLogWindow: (
+    projectId: Id,
+    protocolId: Id,
+    channel: string,
+    opts?: ProtocolLogWindowOptions,
+  ): Promise<ProtocolLogWindowResponse> =>
+    api.fetchProtocolLogWindow(toId(projectId), toId(protocolId), channel, opts),
 
   fetchProtocolLogsChunk: (
     projectId: Id,

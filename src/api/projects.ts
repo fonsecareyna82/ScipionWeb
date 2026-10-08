@@ -1840,6 +1840,61 @@ export async function fetchProtocolLogChannels(
  * Body:
  *   { offsets: { stdout: 123, stderr: 0 }, limit?: 20000 }
  */
+export async function fetchProtocolLogSearch(
+  projectId: Id,
+  protocolId: Id,
+  channel: string,
+  query: string,
+  opts: import("@/services/ProjectService").ProtocolLogSearchOptions = {},
+): Promise<import("@/services/ProjectService").ProtocolLogSearchResponse> {
+  if (!["stdout", "stderr", "schedule"].includes(channel)) {
+    throw new Error("Invalid protocol log channel");
+  }
+  if (!query.trim()) throw new Error("Search query cannot be empty");
+  const params = new URLSearchParams({ channel, query });
+  if (opts.startOffset !== undefined) params.set("startOffset", String(opts.startOffset));
+  if (opts.maxMatches !== undefined) params.set("maxMatches", String(opts.maxMatches));
+  if (opts.maxScanBytes !== undefined) params.set("maxScanBytes", String(opts.maxScanBytes));
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/logs/search?${params}`;
+  const res = await fetchWithAuth(url, { method: "GET", signal: opts.signal });
+  if (!res.ok) throw await toApiError(res, "Failed to search protocol logs");
+  return await safeJson<import("@/services/ProjectService").ProtocolLogSearchResponse>(res);
+}
+
+export async function fetchProtocolLogRaw(
+  projectId: Id,
+  protocolId: Id,
+  channel: string,
+): Promise<Blob> {
+  if (!["stdout", "stderr", "schedule"].includes(channel)) {
+    throw new Error("Invalid protocol log channel");
+  }
+  const params = new URLSearchParams({ channel });
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/logs/raw?${params}`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to copy the full protocol log");
+  // Keep raw bytes intact, including UTF-8 characters split across stream blocks.
+  return new Blob([await res.blob()], { type: "text/plain" });
+}
+
+export async function fetchProtocolLogWindow(
+  projectId: Id,
+  protocolId: Id,
+  channel: string,
+  opts: { endOffset?: number; maxBytes?: number; signal?: AbortSignal } = {},
+): Promise<import("@/services/ProjectService").ProtocolLogWindowResponse> {
+  if (!["stdout", "stderr", "schedule"].includes(channel)) {
+    throw new Error("Invalid protocol log channel");
+  }
+  const params = new URLSearchParams({ channel });
+  if (opts.endOffset !== undefined) params.set("endOffset", String(opts.endOffset));
+  if (opts.maxBytes !== undefined) params.set("maxBytes", String(opts.maxBytes));
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/logs/window?${params}`;
+  const res = await fetchWithAuth(url, { method: "GET", signal: opts.signal });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch protocol log window");
+  return await safeJson<import("@/services/ProjectService").ProtocolLogWindowResponse>(res);
+}
+
 export async function fetchProtocolLogsChunk(
   projectId: Id,
   protocolId: Id,
