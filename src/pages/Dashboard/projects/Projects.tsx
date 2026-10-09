@@ -19,6 +19,7 @@ import ImportWorkflowDialog from "@/components/projects/ImportWorkflowDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
 const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
+const LAST_OPENED_PROJECT_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
@@ -345,6 +346,21 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         },
       ];
     });
+  }, [routeProjectName, projects]);
+
+  // Remember confirmed visits without modifying the project's updatedAt.
+  useEffect(() => {
+    if (!routeProjectName) return;
+    const openedProject = findProjectForWorkspaceName(projects, routeProjectName);
+    if (!openedProject) return;
+    try {
+      window.localStorage.setItem(
+        LAST_OPENED_PROJECT_STORAGE_KEY,
+        String(openedProject.id),
+      );
+    } catch {
+      // Storage may be unavailable.
+    }
   }, [routeProjectName, projects]);
 
   useEffect(() => {

@@ -520,7 +520,16 @@ export default function Home() {
   }, [filteredProjects, pinnedIds]);
 
 
-  const lastProjectId = projects[0]?.id;
+  // Prefer the last project actually visited in this browser.
+  // updatedAt is a modification timestamp, not an access timestamp.
+  let lastOpenedProjectId: string | null = null;
+  try {
+    lastOpenedProjectId = localStorage.getItem("scipion.home.lastOpenedProjectId.v1");
+  } catch {
+    // Storage may be unavailable (e.g. privacy restrictions).
+  }
+  const lastProjectId =
+    projects.find((p) => p.id === lastOpenedProjectId)?.id ?? projects[0]?.id;
 
   const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion);
   const latestVersion = displayVersion(updateStatus?.latestVersion);

@@ -50,7 +50,7 @@ describe("Home", () => {
     });
   });
 
-  it("opens the most recently modified project", async () => {
+  it("opens the last visited project even if another was modified later", async () => {
     localStorage.setItem(
       "scipion.home.lastOpenedProjectId.v1",
       "1",
@@ -94,8 +94,23 @@ describe("Home", () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith(
-        "/project/load/2",
+        "/project/load/1",
       );
+    });
+  });
+
+  it("falls back to the most recently updated accessible project", async () => {
+    localStorage.setItem("scipion.home.lastOpenedProjectId.v1", "999");
+    mockProjectService.fetchList.mockResolvedValue([
+      { id: 1, name: "Old", updatedAt: "2026-01-01T00:00:00Z" },
+      { id: 2, name: "Recent", updatedAt: "2026-09-01T00:00:00Z" },
+    ]);
+
+    render(<MemoryRouter><Home /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Open last project" }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/project/load/2");
     });
   });
 });

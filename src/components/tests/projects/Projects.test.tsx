@@ -489,5 +489,9 @@ describe("Projects page", () => {
     expect(
       within(workspace).getByText("|"),
     ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("scipion.home.lastOpenedProjectId.v1")).toBe("7");
+    });
   });
 });
