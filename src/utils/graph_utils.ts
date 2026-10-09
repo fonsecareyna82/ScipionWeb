@@ -1056,6 +1056,7 @@ export function buildGraphElements(
       stepsDone: prot.stepsDone,
       numberOfSteps: prot.numberOfSteps,
       elapsedTime: prot.elapsedTime,
+      elapsedSessionId: prot.elapsedSessionId,
       tick: Number(prot.elapsedTime) || 0,
 
       tags: Array.isArray(prot.tags) ? prot.tags : [],
@@ -1145,6 +1146,7 @@ export function buildGraphElements(
           parameters: prot?.parameters,
           cpuTime: prot?.cpuTime,
           elapsedTime: prot?.elapsedTime,
+          elapsedSessionId: prot?.elapsedSessionId,
           stepsDone: prot?.stepsDone,
           numberOfSteps: prot?.numberOfSteps,
           outputs: prot?.outputs,
@@ -1288,6 +1290,7 @@ export function buildGraphElements(
         parameters: prot?.parameters,
         cpuTime: prot?.cpuTime,
         elapsedTime: prot?.elapsedTime,
+        elapsedSessionId: prot?.elapsedSessionId,
         stepsDone: prot?.stepsDone,
         numberOfSteps: prot?.numberOfSteps,
         outputs: prot?.outputs,

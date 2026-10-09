@@ -188,6 +188,21 @@ function normalizeElapsedSessionId(
 }
 
 
+function isStaleScheduledSnapshot(
+  previousStatus: unknown,
+  nextStatus: unknown,
+  previousSessionId: unknown,
+  nextSessionId: unknown,
+): boolean {
+  const previousSession = normalizeElapsedSessionId(previousSessionId);
+  const nextSession = normalizeElapsedSessionId(nextSessionId);
+  return normalizeProtocolStatus(previousStatus) === "running"
+    && normalizeProtocolStatus(nextStatus) === "scheduled"
+    && previousSession.length > 0
+    && nextSession.length > 0
+    && previousSession === nextSession;
+}
+
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
@@ -284,6 +299,21 @@ function mergeNodeElapsedTick(
         )
       )
       : backendElapsed;
+
+  if (currentNode && isStaleScheduledSnapshot(
+    currentNode.data?.status, freshStatus,
+    currentNode.data?.elapsedSessionId, freshNode.data?.elapsedSessionId,
+  )) {
+    return {
+      ...freshNode,
+      data: {
+        ...nextData,
+        status: currentNode.data.status,
+        elapsedTime: currentNode.data.elapsedTime,
+        tick: currentElapsed,
+      },
+    };
+  }
 
   if (
     !isElapsedTimerStatus(
@@ -387,6 +417,24 @@ function mergeTableElapsedTick(
       currentRowElapsed,
       currentNodeElapsed,
     );
+
+  const staleRunningRow = isStaleScheduledSnapshot(
+    currentRow?.status, freshRow?.status,
+    currentRow?.elapsedSessionId, freshRow?.elapsedSessionId,
+  ) ? currentRow : undefined;
+  const staleRunningNode = isStaleScheduledSnapshot(
+    currentNode?.data?.status, freshRow?.status,
+    currentNode?.data?.elapsedSessionId, freshRow?.elapsedSessionId,
+  ) ? currentNode?.data : undefined;
+  const staleRunning = staleRunningNode ?? staleRunningRow;
+  if (staleRunning) {
+    return {
+      ...freshRow,
+      status: staleRunning.status,
+      elapsedTime: staleRunning.elapsedTime,
+      tick: currentElapsed,
+    };
+  }
 
   if (
     !isElapsedTimerStatus(
@@ -2117,36 +2165,26 @@ export default function ProjectPage() {
             continue;
           }
 
-          const status =
-            String(
-              summary.status ?? ""
-            );
+          const status = String(summary.status ?? "");
+          const nextSession = normalizeElapsedSessionId(summary.elapsedSessionId);
+          const currentSession = normalizeElapsedSessionId(currentProtocol.elapsedSessionId);
+          const staleScheduled = isStaleScheduledSnapshot(
+            currentProtocol.status, status, currentSession, nextSession,
+          );
+          const effectiveStatus = staleScheduled ? currentProtocol.status : status;
+          const statusChanged = normalizeProtocolStatus(currentProtocol.status) !==
+            normalizeProtocolStatus(effectiveStatus);
+          const sessionChanged = !!nextSession && currentSession !== nextSession;
+          const hasRuntimeOutputs = Array.isArray(summary.outputs);
 
-          const statusChanged =
-            normalizeProtocolStatus(
-              currentProtocol.status
-            ) !==
-            normalizeProtocolStatus(
-              status
-            );
-
-          const hasRuntimeOutputs =
-            Array.isArray(
-              summary.outputs
-            );
-
-          if (
-            !statusChanged &&
-            !hasRuntimeOutputs
-          ) {
+          if (!statusChanged && !hasRuntimeOutputs && !sessionChanged) {
             continue;
           }
 
-          nextProtocols[protocolId] =
-            mergeProtocolRuntimeSummary(
-              currentProtocol,
-              summary,
-            );
+          nextProtocols[protocolId] = {
+            ...(mergeProtocolRuntimeSummary(currentProtocol, { ...summary, status: effectiveStatus }) as object),
+            elapsedSessionId: nextSession || currentSession || null,
+          };
 
           changed = true;
         }
