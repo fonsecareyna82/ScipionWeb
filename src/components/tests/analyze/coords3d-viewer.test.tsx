@@ -877,17 +877,19 @@ describe("Coords3dViewer", () => {
         // of the rail maps to slice 35, distinct from the default 30.
         fireEvent.mouseDown(sliderRoot, { button: 0, clientX: 60, clientY: 5 });
 
+        // Only the Z-axis request under test counts: other slice/preload
+        // requests can finish or start concurrently, even while dragging Z.
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
-        });
-
-        const draggingCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls;
-        const draggingCall = draggingCalls[draggingCalls.length - 1];
-
-        expect(draggingCall[5]).toMatchObject({
-            thumb: 512,
-            fast: true,
-            quality: 70,
+            const zDragCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.filter(
+                (call) => call[5]?.axis === "z" && call[5]?.fast === true,
+            );
+            expect(zDragCalls.length).toBeGreaterThan(0);
+            expect(zDragCalls[zDragCalls.length - 1][5]).toMatchObject({
+                axis: "z",
+                thumb: 512,
+                fast: true,
+                quality: 70,
+            });
         });
 
         serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mockClear();
@@ -895,15 +897,15 @@ describe("Coords3dViewer", () => {
         fireEvent.mouseUp(document);
 
         await waitFor(() => {
-            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalled();
+            const zFullCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.filter(
+                (call) => call[5]?.axis === "z" && call[5]?.fast !== true,
+            );
+            expect(zFullCalls.length).toBeGreaterThan(0);
+            const settledOptions = zFullCalls[zFullCalls.length - 1][5];
+            expect(settledOptions).not.toHaveProperty("thumb");
+            expect(settledOptions).not.toHaveProperty("fast");
+            expect(settledOptions).not.toHaveProperty("quality");
         });
-
-        const settledCalls = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls;
-        const settledCall = settledCalls[settledCalls.length - 1];
-
-        expect(settledCall[5]).not.toHaveProperty("thumb");
-        expect(settledCall[5]).not.toHaveProperty("fast");
-        expect(settledCall[5]).not.toHaveProperty("quality");
     });
 
     it("coalesces rapid Z slider drag ticks into a single chase fetch instead of one per tick", async () => {
