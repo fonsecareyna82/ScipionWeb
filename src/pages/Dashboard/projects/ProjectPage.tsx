@@ -2584,7 +2584,7 @@ export default function ProjectPage() {
     const el = flowWrapperRef.current;
     if (!el) return;
 
-    // Set initial width and seed the ref to avoid a recenter on height-only changes
+    // Container changes may reflow Grid, but must not move the user's camera.
     const initialWidth = Math.max(0, Math.floor(el.clientWidth || 0));
     lastObservedWidthRef.current = initialWidth;
     setGridWidth(initialWidth);
@@ -2598,17 +2598,6 @@ export default function ProjectPage() {
 
       lastObservedWidthRef.current = nextWidth;
       setGridWidth(nextWidth);
-
-      requestAnimationFrame(() => {
-        const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-        if (!inst) return;
-
-        if (viewModeRef.current === "grid") {
-          snapViewportToTopLeft(GRID_ZOOM);
-        } else if (viewModeRef.current === "hierarchical") {
-          centerLikeButton(undefined, true, viewportRef.current.zoom);
-        }
-      });
     });
 
     ro.observe(el);
@@ -2616,7 +2605,7 @@ export default function ProjectPage() {
     return () => {
       try { ro.disconnect(); } catch { /* ignore */ }
     };
-  }, [centerLikeButton, snapViewportToTopLeft]);
+  }, []);
 
 
   /* --------------------- Keep latest layout params in refs to avoid refetch on view switch --------------------- */
@@ -4786,11 +4775,6 @@ export default function ProjectPage() {
             nodesSeedWithThumbnails,
           );
         }
-
-
-        if (viewMode === "grid") {
-          requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
-        }
       }
       void refreshOpenFormsDetails();
     } catch (err) {
@@ -5308,12 +5292,10 @@ export default function ProjectPage() {
       }
     }
 
-    requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
   }, [gridWidth,
     viewMode,
     project,
     graphDirection,
-    snapViewportToTopLeft,
     seedNodesWithSelectionAndThumbnails,
     protocolOutputThumbnailsEnabled,
     loadProtocolOutputThumbnailsForNodes,

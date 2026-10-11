@@ -39,6 +39,7 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 
 - ReactFlow node IDs are the canonical protocol identity; reject protocol detail responses that belong to another protocol.
 - Output refreshes must preserve the displayed order by output name across graph, table and form updates. Append new outputs and remove absent ones; the output panel selection follows the output name, scoped to its project and protocol, rather than its array index.
+- Container resizing and routine graph refreshes (including those triggered by closing protocol forms) must preserve viewport pan and zoom in Grid and hierarchical views. Automatic centering is reserved for initial load and explicit layout/navigation actions.
 - Restart/status refreshes must preserve correct elapsed sessions; retain the regression coverage in `src/components/tests/projects/` when changing workflow state.
 - Home opens the last accessed project when available (`scipion.home.lastOpenedProjectId.v1` in localStorage), rather than choosing solely by update time.
 - Log search and full copy must operate on the complete log through the service API, not just the currently loaded window.
