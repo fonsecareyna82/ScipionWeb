@@ -5,6 +5,7 @@ Read this before making changes here. Written for an AI coding agent, not end us
 For deeper, less-frequently-needed context, see:
 - [`.ai/tech-debt.md`](.ai/tech-debt.md) — known problem areas
 - [`.ai/roadmap.md`](.ai/roadmap.md) — planned/likely future work (draft, pending team review)
+- [`.ai/protocol-form-compatibility.md`](.ai/protocol-form-compatibility.md) — how protocol forms must mirror Scipion's form semantics (path params, conditions, expert level); read before touching `ProtocolForm`
 
 ## What this repo is
 
@@ -12,11 +13,11 @@ The new React-based frontend for Scipion, replacing both the legacy Tkinter desk
 
 ## Stack
 
-React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol workflow graphs), Axios, React Query. **`package.json`'s `name` field is still `"tailadmin-react"`** — a leftover from the admin-dashboard template this was built on. Don't take package metadata at face value; the repo is ScipionWeb.
+React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol workflow graphs), Axios, React Query. The app was originally built on the TailAdmin dashboard template, so some template leftovers remain — e.g. `src/components/ecommerce/` is not imported anywhere (and is the only user of `@react-jvectormap`). Don't treat template code as part of the Scipion app.
 
 ## Architecture map
 
-- `src/api/` — HTTP calls to ScipionAPI (`auth.ts`, `projects.ts`, `protocols.ts`, `plugins.ts`, `settings.ts`).
+- `src/api/` — HTTP calls to ScipionAPI (`auth.ts`, `projects.ts`, `protocols.ts`, `plugins.ts`, `settings.ts`, `users.ts`).
 - `src/services/ProjectService.ts` + `src/ProjectServiceContext.tsx` — the main data-fetching/state layer for project data, reads `VITE_API_URL` from `.env` (tracked in git, contains only `VITE_API_URL="http://localhost:8080/api"`, no secrets).
 - `src/adapters/`, `src/stores/` — data shaping and state management.
 - `src/components/`, `src/pages/`, `src/layout/` — UI.
@@ -31,8 +32,7 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 
 ## Known gotchas
 
-- **Two test runners are configured simultaneously**: both `jest.config.js` and `vitest.config.ts` exist, with `jest`/`babel-jest` and `vitest` both in `devDependencies`. Only vitest is actually wired to `npm test`; `jest.config.js` appears vestigial. Don't run `npx jest` expecting it to reflect the real test suite — use `npm test`.
-- `package.json`'s `name: "tailadmin-react"` (see Stack above) is cosmetic leftover, not a sign this is still template code — check `src/` for the real app structure instead of trusting the manifest name.
+- Vitest is the only test runner (Jest was removed). `@testing-library/jest-dom` is still a dependency on purpose — it provides DOM matchers for Vitest, not Jest itself.
 - This repo is standalone/HTTP-only towards Scipion — if something looks like it needs a direct Python/Scipion import, that's a sign it belongs in `ScipionAPI` instead, not here.
 
 ## Keeping this document current
