@@ -10,6 +10,7 @@ import {
     Box,
     Button,
     CircularProgress,
+    IconButton,
     MenuItem,
     Paper,
     Table,
@@ -24,6 +25,7 @@ import {
 
 import {
     ArrowBack,
+    OpenInFull,
     TableView as MetadataIcon,
 } from "@mui/icons-material";
 
@@ -37,6 +39,7 @@ import type {
 } from "@/services/ProjectService";
 
 import { MetadataViewer } from "./metadata-viewer";
+import { ImagePreviewDialog, type ImagePreviewSource } from "./image-preview-dialog";
 
 
 type CtfViewerProps = {
@@ -55,6 +58,7 @@ type PreviewPanelProps = {
     imageUrl: string | null;
     emptyText: string;
     alt: string;
+    onOpen: () => void;
 };
 
 type CtfPlotMode =
@@ -159,6 +163,7 @@ function PreviewPanel({
     imageUrl,
     emptyText,
     alt,
+    onOpen,
 }: PreviewPanelProps) {
     return (
         <Paper
@@ -168,17 +173,19 @@ function PreviewPanel({
                 minHeight: 0,
                 display: "flex",
                 flexDirection: "column",
-                border: "1px solid #e5e7eb",
-                borderRadius: 1.5,
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 2,
                 overflow: "hidden",
                 bgcolor: "background.paper",
             }}
         >
             <Box
                 sx={{
-                    px: 1,
-                    py: 0.5,
-                    borderBottom: "1px solid #e5e7eb",
+                    px: 1.25,
+                    py: 0.75,
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
@@ -189,7 +196,8 @@ function PreviewPanel({
                     variant="caption"
                     sx={{
                         fontWeight: 700,
-                        fontSize: "0.72rem",
+                        fontSize: "0.9rem",
+                        flexShrink: 0,
                     }}
                 >
                     {title}
@@ -202,23 +210,37 @@ function PreviewPanel({
                         noWrap
                         sx={{
                             minWidth: 0,
-                            fontSize: "0.68rem",
+                            fontSize: "0.85rem",
                         }}
                     >
                         {subtitle}
                     </Typography>
                 ) : null}
+
+                <Tooltip title="Open image · double-click the preview">
+                    <span>
+                        <IconButton
+                            size="small"
+                            aria-label={`Open ${title} image`}
+                            disabled={loading || !!error || !imageUrl}
+                            onClick={onOpen}
+                        >
+                            <OpenInFull sx={{ fontSize: 16 }} />
+                        </IconButton>
+                    </span>
+                </Tooltip>
             </Box>
 
             <Box
                 sx={{
                     flex: 1,
                     minHeight: 0,
-                    p: 1,
+                    p: 0.75,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     overflow: "hidden",
+                    bgcolor: "action.hover",
                 }}
             >
                 {loading ? (
@@ -233,7 +255,7 @@ function PreviewPanel({
 
                         <Typography
                             variant="body2"
-                            sx={{ fontSize: "0.8rem" }}
+                            sx={{ fontSize: "0.9rem" }}
                         >
                             Loading…
                         </Typography>
@@ -242,7 +264,7 @@ function PreviewPanel({
                     <Typography
                         variant="body2"
                         color="error"
-                        sx={{ fontSize: "0.78rem" }}
+                        sx={{ fontSize: "0.875rem" }}
                     >
                         {error}
                     </Typography>
@@ -251,10 +273,17 @@ function PreviewPanel({
                         component="img"
                         src={imageUrl}
                         alt={alt}
+                        title="Double-click to open image"
+                        draggable={false}
+                        onDoubleClick={onOpen}
                         sx={{
+                            width: "100%",
+                            height: "100%",
                             maxWidth: "100%",
                             maxHeight: "100%",
                             objectFit: "contain",
+                            borderRadius: 1,
+                            cursor: "pointer",
                         }}
                     />
                 ) : (
@@ -264,7 +293,7 @@ function PreviewPanel({
                         sx={{
                             px: 1,
                             textAlign: "center",
-                            fontSize: "0.78rem",
+                            fontSize: "0.875rem",
                         }}
                     >
                         {emptyText}
@@ -286,6 +315,11 @@ export default function CtfViewer({
 
     const [mainMode, setMainMode] =
         useState<"viewer" | "metadata">("viewer");
+
+    const [imagePreview, setImagePreview] =
+        useState<ImagePreviewSource | null>(null);
+
+    const closeImagePreview = useCallback(() => setImagePreview(null), []);
 
     const [rows, setRows] =
         useState<CtfModelListItem[]>([]);
@@ -507,6 +541,26 @@ export default function CtfViewer({
                 selectedCtfId,
             ],
         );
+
+    useEffect(() => {
+        setImagePreview(null);
+    }, [projectId, protocolId, outputName, selectedCtfId, mainMode]);
+
+    const openImagePreview = (kind: "micrograph" | "psd") => {
+        if (!selectedRow || (kind === "psd" && !selectedRow.psdFile)) return;
+        setImagePreview({
+            title: kind === "psd" ? "PSD" : "Micrograph",
+            path: kind === "psd" ? selectedRow.psdFile! : selectedRow.micrographName,
+            renderSize: 1024,
+            details: [{ label: "CTF", value: String(selectedRow.ctfId) }],
+            loadImage: (signal) => {
+                const options = { size: 1024, format: "png" as const, quality: 80, signal };
+                return kind === "psd"
+                    ? svc.fetchCTFPsdImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options)
+                    : svc.fetchCTFMicrographImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options);
+            },
+        });
+    };
 
 
     useEffect(
@@ -900,19 +954,22 @@ export default function CtfViewer({
         useMemo(
             () => ({
                 autosize: true,
+                font: { size: 14 },
                 margin: {
                     t: 25,
                     r: 72,
-                    b: 48,
-                    l: 62,
+                    b: 56,
+                    l: 70,
                 },
                 hovermode: "closest",
                 xaxis: {
+                    automargin: true,
                     title: "Mean defocus (µm)",
                     tickformat: ".3f",
                     zeroline: false,
                 },
                 yaxis: {
+                    automargin: true,
                     title: "Astigmatism (Å)",
                     tickformat: ".2f",
                     zeroline: false,
@@ -999,18 +1056,21 @@ export default function CtfViewer({
         useMemo(
             () => ({
                 autosize: true,
+                font: { size: 14 },
                 margin: {
                     t: 25,
                     r: 30,
-                    b: 48,
-                    l: 52,
+                    b: 56,
+                    l: 60,
                 },
                 bargap: 0.06,
                 xaxis: {
+                    automargin: true,
                     title: distributionLabel,
                     zeroline: false,
                 },
                 yaxis: {
+                    automargin: true,
                     title: "Count",
                     rangemode: "tozero",
                     zeroline: false,
@@ -1259,11 +1319,12 @@ export default function CtfViewer({
         useMemo(
             () => ({
                 autosize: true,
+                font: { size: 14 },
                 margin: {
-                    t: 36,
-                    r: 58,
-                    b: 44,
-                    l: 62,
+                    t: 44,
+                    r: 70,
+                    b: 52,
+                    l: 70,
                 },
                 hovermode: "closest",
                 legend: {
@@ -1272,15 +1333,18 @@ export default function CtfViewer({
                     y: 1.12,
                 },
                 xaxis: {
+                    automargin: true,
                     title: "Micrograph",
                     zeroline: false,
                 },
                 yaxis: {
+                    automargin: true,
                     title: "Defocus (Å)",
                     tickformat: ".2f",
                     zeroline: false,
                 },
                 yaxis2: {
+                    automargin: true,
                     title: "Resolution (Å)",
                     tickformat: ".2f",
                     overlaying: "y",
@@ -1418,15 +1482,14 @@ export default function CtfViewer({
 
 
     const columnWidths = {
-        micrograph: { width: "21%" },
-        defocusU: { width: "11%" },
-        defocusV: { width: "11%" },
-        astigmatism: { width: "12%" },
-        angle: { width: "10%" },
-        resolution: { width: "10%" },
+        micrograph: { width: "23%" },
+        defocusU: { width: "12%" },
+        defocusV: { width: "12%" },
+        astigmatism: { width: "13%" },
+        angle: { width: "11%" },
+        resolution: { width: "11%" },
         fitQuality: { width: "9%" },
         phaseShift: { width: "9%" },
-        status: { width: "7%" },
     } as const;
 
 
@@ -1472,6 +1535,7 @@ export default function CtfViewer({
                                 }
                                 sx={{
                                     textTransform: "none",
+                                    fontSize: "0.875rem",
                                 }}
                             >
                                 CTF viewer
@@ -1484,7 +1548,7 @@ export default function CtfViewer({
                         color="text.secondary"
                         noWrap
                         sx={{
-                            fontSize: "0.7rem",
+                            fontSize: "0.82rem",
                         }}
                     >
                         {outputName}
@@ -1527,7 +1591,7 @@ export default function CtfViewer({
             {/* CTF table */}
             <Box
                 sx={{
-                    flex: 1.45,
+                    flex: 1,
                     minWidth: 0,
                     minHeight: 0,
                     display: "flex",
@@ -1553,7 +1617,7 @@ export default function CtfViewer({
                         variant="caption"
                         color="text.secondary"
                         sx={{
-                            fontSize: "0.75rem",
+                            fontSize: "0.875rem",
                             whiteSpace: "nowrap",
                         }}
                     >
@@ -1573,10 +1637,10 @@ export default function CtfViewer({
                             maxWidth: 280,
                             "& .MuiInputBase-input": {
                                 py: 0.5,
-                                fontSize: "0.75rem",
+                                fontSize: "0.875rem",
                             },
                             "& input::placeholder": {
-                                fontSize: "0.7rem",
+                                fontSize: "0.82rem",
                             },
                         }}
                     />
@@ -1586,7 +1650,7 @@ export default function CtfViewer({
                         color="text.secondary"
                         sx={{
                             ml: "auto",
-                            fontSize: "0.72rem",
+                            fontSize: "0.85rem",
                             whiteSpace: "nowrap",
                         }}
                     >
@@ -1611,6 +1675,7 @@ export default function CtfViewer({
                                     }
                                     sx={{
                                         textTransform: "none",
+                                        fontSize: "0.875rem",
                                     }}
                                 >
                                     Metadata
@@ -1673,14 +1738,17 @@ export default function CtfViewer({
                                 width: "100%",
                                 "& th": {
                                     whiteSpace: "normal",
-                                    lineHeight: 1.15,
-                                    fontSize: "0.72rem",
-                                    fontWeight: 600,
-                                    py: 0.6,
+                                    lineHeight: 1.3,
+                                    fontSize: "0.875rem",
+                                    fontWeight: 700,
+                                    px: 1,
+                                    py: 1,
                                 },
                                 "& td": {
-                                    fontSize: "0.75rem",
-                                    py: 0.35,
+                                    fontSize: "0.9rem",
+                                    fontVariantNumeric: "tabular-nums",
+                                    px: 1,
+                                    py: 0.65,
                                 },
                             }}
                         >
@@ -1734,11 +1802,6 @@ export default function CtfViewer({
                                         Phase shift
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.status}
-                                    >
-                                        Status
-                                    </TableCell>
                                 </TableRow>
                             </TableHead>
 
@@ -1766,6 +1829,13 @@ export default function CtfViewer({
                                                 }}
                                                 hover
                                                 selected={selected}
+                                                title={
+                                                    row.failed
+                                                        ? "Failed CTF"
+                                                        : row.excluded
+                                                            ? "Excluded CTF"
+                                                            : undefined
+                                                }
                                                 onClick={() =>
                                                     handleSelectCtf(
                                                         row.ctfId,
@@ -1816,7 +1886,7 @@ export default function CtfViewer({
                                                         }
                                                         sx={{
                                                             fontSize:
-                                                                "0.75rem",
+                                                                "0.9rem",
                                                             fontWeight:
                                                                 selected
                                                                     ? 600
@@ -1907,34 +1977,6 @@ export default function CtfViewer({
                                                     )}
                                                 </TableCell>
 
-                                                <TableCell
-                                                    sx={
-                                                        columnWidths.status
-                                                    }
-                                                >
-                                                    <Typography
-                                                        variant="caption"
-                                                        sx={{
-                                                            fontSize:
-                                                                "0.68rem",
-                                                            fontWeight:
-                                                                row.failed
-                                                                    ? 700
-                                                                    : 500,
-
-                                                            color:
-                                                                row.failed
-                                                                    ? "error.main"
-                                                                    : row.excluded
-                                                                        ? "text.secondary"
-                                                                        : "success.main",
-                                                        }}
-                                                    >
-                                                        {getStatus(
-                                                            row,
-                                                        )}
-                                                    </Typography>
-                                                </TableCell>
                                             </TableRow>
                                         );
                                     },
@@ -1948,7 +1990,7 @@ export default function CtfViewer({
             {/* Plot + previews */}
             <Box
                 sx={{
-                    flex: 1,
+                    flex: 1.15,
                     minWidth: 0,
                     minHeight: 0,
                     display: "flex",
@@ -1961,12 +2003,13 @@ export default function CtfViewer({
                 <Paper
                     elevation={0}
                     sx={{
-                        flex: 1.35,
+                        flex: 1.05,
                         minHeight: 0,
                         display: "flex",
                         flexDirection: "column",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 1.5,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 2,
                         overflow: "hidden",
                         bgcolor: "background.paper",
                     }}
@@ -1996,7 +2039,7 @@ export default function CtfViewer({
                                 variant="caption"
                                 sx={{
                                     fontWeight: 700,
-                                    fontSize: "0.72rem",
+                                    fontSize: "0.85rem",
                                     whiteSpace: "nowrap",
                                 }}
                             >
@@ -2008,7 +2051,7 @@ export default function CtfViewer({
                                 color="text.secondary"
                                 noWrap
                                 sx={{
-                                    fontSize: "0.68rem",
+                                    fontSize: "0.8rem",
                                 }}
                             >
                                 {plotModeDescription}
@@ -2041,7 +2084,7 @@ export default function CtfViewer({
                                             minWidth: 0,
                                             px: 1,
                                             py: 0.25,
-                                            fontSize: "0.68rem",
+                                            fontSize: "0.8rem",
                                             lineHeight: 1.4,
                                             textTransform: "none",
                                             boxShadow: "none",
@@ -2072,13 +2115,13 @@ export default function CtfViewer({
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", fontSize: "0.64rem" }}
+                                sx={{ display: "block", fontSize: "0.78rem" }}
                             >
                                 CTFs
                             </Typography>
                             <Typography
                                 variant="caption"
-                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                                sx={{ fontWeight: 700, fontSize: "0.85rem" }}
                             >
                                 {statistics.total}
                             </Typography>
@@ -2088,7 +2131,7 @@ export default function CtfViewer({
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", fontSize: "0.64rem" }}
+                                sx={{ display: "block", fontSize: "0.78rem" }}
                             >
                                 Failed
                             </Typography>
@@ -2096,7 +2139,7 @@ export default function CtfViewer({
                                 variant="caption"
                                 sx={{
                                     fontWeight: 700,
-                                    fontSize: "0.72rem",
+                                    fontSize: "0.85rem",
                                     color:
                                         statistics.failed > 0
                                             ? "error.main"
@@ -2111,14 +2154,14 @@ export default function CtfViewer({
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", fontSize: "0.64rem" }}
+                                sx={{ display: "block", fontSize: "0.78rem" }}
                             >
                                 Median defocus
                             </Typography>
                             <Typography
                                 variant="caption"
                                 noWrap
-                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                                sx={{ fontWeight: 700, fontSize: "0.85rem" }}
                             >
                                 {statistics.medianMeanDefocus != null
                                     ? `${(statistics.medianMeanDefocus / 10000).toFixed(3)} µm`
@@ -2130,14 +2173,14 @@ export default function CtfViewer({
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", fontSize: "0.64rem" }}
+                                sx={{ display: "block", fontSize: "0.78rem" }}
                             >
                                 Median resolution
                             </Typography>
                             <Typography
                                 variant="caption"
                                 noWrap
-                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                                sx={{ fontWeight: 700, fontSize: "0.85rem" }}
                             >
                                 {statistics.medianResolution != null
                                     ? `${statistics.medianResolution.toFixed(2)} Å`
@@ -2149,14 +2192,14 @@ export default function CtfViewer({
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
-                                sx={{ display: "block", fontSize: "0.64rem" }}
+                                sx={{ display: "block", fontSize: "0.78rem" }}
                             >
                                 Median astigmatism
                             </Typography>
                             <Typography
                                 variant="caption"
                                 noWrap
-                                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                                sx={{ fontWeight: 700, fontSize: "0.85rem" }}
                             >
                                 {statistics.medianAstigmatism != null
                                     ? `${statistics.medianAstigmatism.toFixed(2)} Å`
@@ -2182,7 +2225,7 @@ export default function CtfViewer({
                                 variant="caption"
                                 color="text.secondary"
                                 sx={{
-                                    fontSize: "0.68rem",
+                                    fontSize: "0.8rem",
                                     whiteSpace: "nowrap",
                                 }}
                             >
@@ -2202,7 +2245,7 @@ export default function CtfViewer({
                                     width: 190,
                                     "& .MuiInputBase-input": {
                                         py: 0.45,
-                                        fontSize: "0.7rem",
+                                        fontSize: "0.82rem",
                                     },
                                 }}
                             >
@@ -2210,7 +2253,7 @@ export default function CtfViewer({
                                     <MenuItem
                                         key={metric.value}
                                         value={metric.value}
-                                        sx={{ fontSize: "0.75rem" }}
+                                        sx={{ fontSize: "0.875rem" }}
                                     >
                                         {metric.label}
                                     </MenuItem>
@@ -2236,7 +2279,7 @@ export default function CtfViewer({
                                 variant="body2"
                                 color="text.secondary"
                                 sx={{
-                                    fontSize: "0.8rem",
+                                    fontSize: "0.9rem",
                                 }}
                             >
                                 No CTF trend data available.
@@ -2263,7 +2306,7 @@ export default function CtfViewer({
 
                 <Box
                     sx={{
-                        flex: 0.82,
+                        flex: 1.15,
                         minHeight: 0,
                         display: "grid",
                         gridTemplateColumns:
@@ -2280,6 +2323,7 @@ export default function CtfViewer({
                         error={micrographError}
                         imageUrl={micrographImageUrl}
                         alt="Selected CTF micrograph"
+                        onOpen={() => openImagePreview("micrograph")}
                         emptyText={
                             selectedRow
                                 ? "Micrograph preview is not available."
@@ -2296,6 +2340,7 @@ export default function CtfViewer({
                         error={psdError}
                         imageUrl={psdImageUrl}
                         alt="Selected CTF PSD"
+                        onOpen={() => openImagePreview("psd")}
                         emptyText={
                             !selectedRow
                                 ? "Select a CTF to preview its PSD."
@@ -2306,6 +2351,7 @@ export default function CtfViewer({
                     />
                 </Box>
             </Box>
+            <ImagePreviewDialog image={imagePreview} onClose={closeImagePreview} />
         </Box>
     );
 }

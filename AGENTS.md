@@ -23,6 +23,7 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 - `src/components/`, `src/pages/`, `src/layout/` — UI. Project workflow state lives in `src/pages/Dashboard/projects/ProjectPage.tsx`; the home dashboard lives in `src/pages/Dashboard/homepage/Home.tsx`.
 - `src/components/protocol/` — forms, protocol actions, outputs, logs, and wizard dialogs. `src/utils/protocolform.*` implements shared form semantics.
 - `src/components/analyze/` — metadata, CTF, volume, coordinate, and tomography viewers. Changes to request cancellation and caching must preserve isolation between viewer requests.
+- `src/components/analyze/image-preview-dialog.tsx` — shared image detail window used by metadata and CTF previews (zoom, pan, rotation, brightness/contrast, external window). Callers provide an image loader; the dialog owns cancellation and object URL cleanup independently of thumbnail requests.
 - `src/hooks/useProtocolLogs.ts` + `ProtocolLogsPanel.tsx` — log windows, history loading, global search, and full log copy.
 - `src/hooks/`, `src/lib/`, `src/utils/`, `src/context/` — supporting code.
 - Multiple Vite build targets, not just one app: `build:web` (the full app) and `build:widget:{list,page,protocoldetail}` (standalone embeddable widgets, each with its own `vite.project*.config.ts`) — check which mode you're actually building/testing against before assuming "the app" means the whole thing.

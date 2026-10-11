@@ -1,8 +1,10 @@
 import {
+    act,
     fireEvent,
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 
 import {
@@ -218,8 +220,78 @@ describe(
         );
 
 
+        it.each([
+            ["micrograph", "Selected CTF micrograph", "fetchCTFMicrographImageObjectUrl"],
+            ["psd", "Selected CTF PSD", "fetchCTFPsdImageObjectUrl"],
+        ] as const)("opens the shared image viewer for the %s and releases only its own image", async (kind, alt, method) => {
+            render(<CtfViewer projectId={1} protocolId={2} outputName="outputCTF" />);
+            const thumbnail = await screen.findByAltText(alt);
+            const thumbnailUrl = thumbnail.getAttribute("src");
+            const revoke = vi.fn();
+            serviceMocks[method].mockResolvedValueOnce({ url: `blob:detail-${kind}`, revoke });
+
+            fireEvent.doubleClick(thumbnail);
+            const dialog = await screen.findByRole("dialog", { name: "Image preview" });
+            const image = await within(dialog).findByRole("img");
+            expect(image).toHaveAttribute("src", `blob:detail-${kind}`);
+            expect(serviceMocks[method]).toHaveBeenLastCalledWith(1, 2, "outputCTF", "1", expect.objectContaining({ size: 1024, signal: expect.any(AbortSignal) }));
+            expect(thumbnail).toHaveAttribute("src", thumbnailUrl);
+
+            fireEvent.click(within(dialog).getByRole("button", { name: "Zoom in" }));
+            expect(within(dialog).getByTestId("preview-zoom-level")).toHaveTextContent("125%");
+            expect(within(dialog).getByRole("slider", { name: "Brightness" })).toBeEnabled();
+            expect(within(dialog).getByRole("button", { name: "Open image preview in external window" })).toBeEnabled();
+
+            fireEvent.click(within(dialog).getByRole("button", { name: "Close image preview" }));
+            await waitFor(() => expect(screen.queryByRole("dialog", { name: "Image preview" })).not.toBeInTheDocument());
+            expect(revoke).toHaveBeenCalledTimes(1);
+            expect(thumbnail).toHaveAttribute("src", thumbnailUrl);
+        });
+
+        it("closes and cancels a pending image when selecting another CTF", async () => {
+            render(<CtfViewer projectId={1} protocolId={2} outputName="outputCTF" />);
+            const thumbnail = await screen.findByAltText("Selected CTF micrograph");
+            let resolve!: (result: { url: string; revoke: () => void }) => void;
+            serviceMocks.fetchCTFMicrographImageObjectUrl.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+
+            fireEvent.doubleClick(thumbnail);
+            await screen.findByRole("dialog", { name: "Image preview" });
+            const calls = serviceMocks.fetchCTFMicrographImageObjectUrl.mock.calls;
+            const signal = calls[calls.length - 1][4].signal as AbortSignal;
+            fireEvent.click(screen.getByText("mic_002"));
+            await waitFor(() => expect(screen.queryByRole("dialog", { name: "Image preview" })).not.toBeInTheDocument());
+            expect(signal.aborted).toBe(true);
+
+            const revoke = vi.fn();
+            await act(async () => resolve({ url: "blob:stale-detail", revoke }));
+            expect(revoke).toHaveBeenCalledTimes(1);
+            expect(screen.getByAltText("Selected CTF micrograph")).toHaveAttribute("src", "blob:micrograph-2");
+        });
+
+        it("keeps a new PSD preview when an older micrograph request finishes late", async () => {
+            render(<CtfViewer projectId={1} protocolId={2} outputName="outputCTF" />);
+            const thumbnail = await screen.findByAltText("Selected CTF micrograph");
+            let resolve!: (result: { url: string; revoke: () => void }) => void;
+            serviceMocks.fetchCTFMicrographImageObjectUrl.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+            fireEvent.doubleClick(thumbnail);
+            await screen.findByRole("dialog", { name: "Image preview" });
+            const calls = serviceMocks.fetchCTFMicrographImageObjectUrl.mock.calls;
+            const signal = calls[calls.length - 1][4].signal as AbortSignal;
+
+            serviceMocks.fetchCTFPsdImageObjectUrl.mockResolvedValueOnce({ url: "blob:detail-psd", revoke: vi.fn() });
+            fireEvent.click(screen.getByRole("button", { name: "Open PSD image" }));
+            const dialog = await screen.findByRole("dialog", { name: "Image preview" });
+            await waitFor(() => expect(within(dialog).getByRole("img")).toHaveAttribute("src", "blob:detail-psd"));
+            expect(signal.aborted).toBe(true);
+
+            const revoke = vi.fn();
+            await act(async () => resolve({ url: "blob:stale-micrograph", revoke }));
+            expect(revoke).toHaveBeenCalledTimes(1);
+            expect(within(dialog).getByRole("img")).toHaveAttribute("src", "blob:detail-psd");
+        });
+
         it(
-            "marks failed CTFs explicitly",
+            "identifies failed CTFs without a status column",
             async () => {
                 render(
                     <CtfViewer
@@ -230,10 +302,14 @@ describe(
                 );
 
                 expect(
-                    await screen.findByText(
-                        "FAILED",
+                    await screen.findByTitle(
+                        "Failed CTF",
                     ),
                 ).toBeInTheDocument();
+
+                expect(
+                    screen.queryByRole("columnheader", { name: "Status" }),
+                ).not.toBeInTheDocument();
 
                 expect(
                     screen.getByText(
