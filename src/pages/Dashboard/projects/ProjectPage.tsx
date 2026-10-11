@@ -285,6 +285,9 @@ function mergeNodeElapsedTick(
 
   const nextData = {
     ...freshNode.data,
+    ...(Array.isArray(freshNode.data?.outputs) ? {
+      outputs: mergeProtocolOutputsPreservingOrder(currentNode?.data?.outputs, freshNode.data.outputs),
+    } : {}),
   };
 
   const hasCurrentNode =
@@ -367,6 +370,13 @@ function mergeTableElapsedTick(
   currentRow?: any,
   currentNode?: Node<StatusNodeData>,
 ): any {
+  if (Array.isArray(freshRow?.outputs)) {
+    freshRow = {
+      ...freshRow,
+      outputs: mergeProtocolOutputsPreservingOrder(currentRow?.outputs ?? currentNode?.data?.outputs, freshRow.outputs),
+    };
+  }
+
   const backendElapsed =
     Math.floor(
       toElapsedSeconds(
@@ -578,11 +588,17 @@ function mergeLiveProtocolFormDetails(currentDetails: any, freshDetails: any): a
     info: {
       ...currentInfo,
       ...freshInfo,
+      ...(Array.isArray(freshInfo.outputs) ? {
+        outputs: mergeProtocolOutputsPreservingOrder(currentInfo.outputs ?? currentForm.outputs, freshInfo.outputs),
+      } : {}),
     },
 
     form: {
       ...currentForm,
       ...freshForm,
+      ...(Array.isArray(freshForm.outputs) ? {
+        outputs: mergeProtocolOutputsPreservingOrder(currentForm.outputs ?? currentInfo.outputs, freshForm.outputs),
+      } : {}),
 
       // Keep the form definition stable while the user is editing.
       sections: currentForm.sections ?? freshForm.sections,

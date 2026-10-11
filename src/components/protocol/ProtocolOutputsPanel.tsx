@@ -6,6 +6,7 @@ import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 import {
     getOutputClassName,
     isScalarOutputClass,
+    mergeProtocolOutputsPreservingOrder,
 } from "@/utils/protocol_outputs";
 
 type ProtocolOutputsPanelProps = {
@@ -34,7 +35,9 @@ export default function ProtocolOutputsPanel({
     const projectIdStr = projectId != null ? String(projectId) : "";
     const protocolIdStr = protocolId != null ? String(protocolId) : "";
 
-    const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
+    const outputScope = JSON.stringify([projectIdStr, protocolIdStr]);
+    const [selection, setSelection] = useState<{ scope: string; name: string } | null>(null);
+    const previousOutputsRef = useRef<{ scope: string; outputs: any[] } | null>(null);
 
     const [previewLoading, setPreviewLoading] = useState(false);
     const [previewError, setPreviewError] = useState<string | null>(null);
@@ -46,7 +49,11 @@ export default function ProtocolOutputsPanel({
     const [analyzeOpen, setAnalyzeOpen] = useState(false);
 
     const normalizedOutputs = useMemo<NormalizedOutput[]>(() => {
-        const arr = Array.isArray(outputsFromApi) ? outputsFromApi : [];
+        const previous = previousOutputsRef.current;
+        const arr = mergeProtocolOutputsPreservingOrder(
+            previous?.scope === outputScope ? previous.outputs : [],
+            outputsFromApi,
+        );
 
         return arr.map((entry: any, idx: number) => {
             const outputName = String(
@@ -72,31 +79,23 @@ export default function ProtocolOutputsPanel({
                 raw: entry,
             };
         });
-    }, [outputsFromApi]);
+    }, [outputsFromApi, outputScope]);
 
     const activeOutput = useMemo(() => {
-        if (
-            selectedOutputIdx == null ||
-            selectedOutputIdx < 0 ||
-            selectedOutputIdx >= normalizedOutputs.length
-        ) {
-            return null;
-        }
-        return normalizedOutputs[selectedOutputIdx];
-    }, [selectedOutputIdx, normalizedOutputs]);
+        const selected = selection?.scope === outputScope
+            ? normalizedOutputs.find((output) => output.name === selection.name)
+            : null;
+        return selected ?? normalizedOutputs[0] ?? null;
+    }, [selection, normalizedOutputs, outputScope]);
 
     useEffect(() => {
-        if (normalizedOutputs.length === 0) {
-            setSelectedOutputIdx(null);
-            return;
-        }
-
-        setSelectedOutputIdx((prev) => {
-            if (prev == null) return 0;
-            if (prev >= 0 && prev < normalizedOutputs.length) return prev;
-            return 0;
+        previousOutputsRef.current = { scope: outputScope, outputs: normalizedOutputs.map((output) => output.raw) };
+        setSelection((previous) => {
+            if (!activeOutput) return null;
+            if (previous?.scope === outputScope && previous.name === activeOutput.name) return previous;
+            return { scope: outputScope, name: activeOutput.name };
         });
-    }, [normalizedOutputs]);
+    }, [normalizedOutputs, activeOutput, outputScope]);
 
     useEffect(() => {
         setSqliteTable(null);
@@ -919,10 +918,10 @@ export default function ProtocolOutputsPanel({
                                 No outputs for this protocol.
                             </Typography>
                         ) : (
-                            normalizedOutputs.map((o, idx) => (
+                            normalizedOutputs.map((o) => (
                                 <Box
-                                    key={idx}
-                                    onClick={() => setSelectedOutputIdx(idx)}
+                                    key={o.name}
+                                    onClick={() => setSelection({ scope: outputScope, name: o.name })}
                                     sx={{
                                         cursor: "pointer",
                                         userSelect: "none",
@@ -931,11 +930,11 @@ export default function ProtocolOutputsPanel({
                                         px: 1,
                                         py: 1,
                                         mb: 1,
-                                        backgroundColor: selectedOutputIdx === idx ? "#eef2ff" : "transparent",
-                                        borderColor: selectedOutputIdx === idx ? "#6366f1" : "transparent",
+                                        backgroundColor: activeOutput?.name === o.name ? "#eef2ff" : "transparent",
+                                        borderColor: activeOutput?.name === o.name ? "#6366f1" : "transparent",
                                         "&:hover": {
-                                            backgroundColor: selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
-                                            borderColor: selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
+                                            backgroundColor: activeOutput?.name === o.name ? "#eef2ff" : "#f9fafb",
+                                            borderColor: activeOutput?.name === o.name ? "#6366f1" : "#e5e7eb",
                                         },
                                     }}
                                 >
@@ -944,7 +943,7 @@ export default function ProtocolOutputsPanel({
                                         sx={{
                                             color: "#111827",
                                             fontSize: "0.7rem",
-                                            fontWeight: selectedOutputIdx === idx ? 600 : 500,
+                                            fontWeight: activeOutput?.name === o.name ? 600 : 500,
                                             lineHeight: 1.4,
                                             wordBreak: "break-word",
                                             whiteSpace: "pre-wrap",

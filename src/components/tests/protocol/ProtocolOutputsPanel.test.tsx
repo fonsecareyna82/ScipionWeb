@@ -267,6 +267,70 @@ describe("ProtocolOutputsPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the selected output when an earlier output disappears", async () => {
+    mockFetchOutputPreview.mockImplementation(async (_project, _protocol, outputName) => ({
+      kind: "text", text: `Preview ${outputName}`,
+    }));
+    const outputs = ["outputA", "outputB", "outputC"].map((outputName) => ({ outputName, info: outputName }));
+    const { rerender } = render(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={outputs} />);
+    await screen.findByText("Preview outputA");
+    fireEvent.click(screen.getByText("outputB"));
+    await screen.findByText("Preview outputB");
+    rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={outputs.slice(1)} />);
+    await waitFor(() => expect(mockFetchOutputPreview.mock.lastCall?.[2]).toBe("outputB"));
+    expect(await screen.findByText("Preview outputB")).toBeInTheDocument();
+  });
+
+  it("keeps the displayed order when refreshed outputs arrive reversed", async () => {
+    const outputs = [
+      { outputName: "outputA", info: "Output A", pointerClass: "Integer" },
+      { outputName: "outputB", info: "Output B", pointerClass: "Integer" },
+    ];
+    const { rerender } = render(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={outputs} />);
+    rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[...outputs].reverse()} />);
+    const first = screen.getByText("outputA: Output A");
+    const second = screen.getByText("outputB: Output B");
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    { projectId: 1, protocolId: 3 },
+    { projectId: 3, protocolId: 2 },
+  ])("starts with the new output order and selection when switching scope to %j", async (scope) => {
+    mockFetchOutputPreview.mockImplementation(async (_project, _protocol, outputName) => ({
+      kind: "text", text: `Preview ${outputName}`,
+    }));
+    const outputs = ["outputA", "outputB", "outputC"].map((outputName) => ({ outputName, info: outputName }));
+    const { rerender } = render(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={outputs} />);
+    await screen.findByText("Preview outputA");
+    fireEvent.click(screen.getByText("outputB"));
+    await screen.findByText("Preview outputB");
+    rerender(<ProtocolOutputsPanel {...scope} outputsFromApi={[...outputs].reverse()} />);
+    expect(await screen.findByText("Preview outputC")).toBeInTheDocument();
+    expect(mockFetchOutputPreview.mock.lastCall?.slice(0, 3)).toEqual([
+      String(scope.projectId), String(scope.protocolId), "outputC",
+    ]);
+    expect(screen.getByText("outputC").compareDocumentPosition(screen.getByText("outputA")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("falls back to the first remaining output and clears selection on an empty list", async () => {
+    mockFetchOutputPreview.mockImplementation(async (_project, _protocol, outputName) => ({
+      kind: "text", text: `Preview ${outputName}`,
+    }));
+    const outputs = ["outputA", "outputB"].map((outputName) => ({ outputName, info: outputName }));
+    const { rerender } = render(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={outputs} />);
+    await screen.findByText("Preview outputA");
+    fireEvent.click(screen.getByText("outputB"));
+    await screen.findByText("Preview outputB");
+    rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[outputs[0]]} />);
+    await screen.findByText("Preview outputA");
+    rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[]} />);
+    expect(screen.getByText("No outputs for this protocol.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Analyze results" })).toBeDisabled();
+    rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[...outputs].reverse()} />);
+    await screen.findByText("Preview outputB");
+  });
+
   it("opens AnalyzeOutputDialog when clicking Analyze results and resolver does not handle it", async () => {
     mockFetchOutputPreview.mockResolvedValue({
       kind: "text",
