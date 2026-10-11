@@ -1508,14 +1508,11 @@ export default function ProtocolNodeCard({
   const outputThumbnailsEnabled =
     data.protocolOutputThumbnailsEnabled === true;
 
-  const hasPreviewableOutputs =
-    outputsArray.some(
-      (output) => !isScalarOutput(output)
-    );
+  const previewableOutputCount = outputsArray.filter((output) => !isScalarOutput(output)).length;
 
   const thumbnailMode =
     outputThumbnailsEnabled &&
-    hasPreviewableOutputs &&
+    previewableOutputCount > 0 &&
     !isProjectNode;
 
   const renderableOutputThumbnailCount = useMemo(() => {
@@ -1531,8 +1528,28 @@ export default function ProtocolNodeCard({
   const shouldUseOutputTiles = thumbnailMode && hasOutputs;
 
   const outputThumbnailLayoutCount = shouldUseOutputTiles
-    ? outputsArray.length
+    ? previewableOutputCount
     : renderableOutputThumbnailCount;
+
+  const outputThumbnailGridRows = useMemo(() => {
+    if (!shouldUseOutputTiles || !outputsArray.some(isScalarOutput)) return undefined;
+    const columns = Math.min(4, Math.max(1, outputThumbnailLayoutCount));
+    const rows: string[] = [];
+    let pendingPreviews = 0;
+    // Scalars span a compact row without changing the protocol's output order.
+    for (const output of outputsArray) {
+      if (isScalarOutput(output)) {
+        if (pendingPreviews) rows.push("minmax(120px, 1fr)");
+        pendingPreviews = 0;
+        rows.push("max-content");
+      } else if (++pendingPreviews === columns) {
+        rows.push("minmax(120px, 1fr)");
+        pendingPreviews = 0;
+      }
+    }
+    if (pendingPreviews) rows.push("minmax(120px, 1fr)");
+    return rows.join(" ");
+  }, [outputsArray, shouldUseOutputTiles, outputThumbnailLayoutCount]);
 
   const outputThumbnailLayoutClassName =
     outputThumbnailLayoutCount <= 1
@@ -2523,6 +2540,7 @@ export default function ProtocolNodeCard({
                           shouldUseOutputTiles ? styles.sectionContentThumbs : "",
                           shouldUseOutputTiles ? outputThumbnailLayoutClassName : "",
                         ].filter(Boolean).join(" ")}
+                        style={outputThumbnailGridRows ? { gridTemplateRows: outputThumbnailGridRows } : undefined}
                         data-has-scroll
                       >
                         {outputsArray.map((outputObj, idx) => {
@@ -2696,6 +2714,30 @@ export default function ProtocolNodeCard({
 
                             void openOutputViewer(outputName, outputObj, value);
                           };
+
+                          if (isScalar && outputThumbnailsEnabled) {
+                            return (
+                              <div
+                                key={pillKey}
+                                className={[styles.scalarOutput, isDragging ? styles.outputPillDragging : "", "nodrag"].filter(Boolean).join(" ")}
+                                draggable
+                                role="group"
+                                aria-label={labelText}
+                                title={labelText}
+                                onMouseDown={handleOutputMouseDown}
+                                onClick={(e: ReactMouseEvent<HTMLDivElement>) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  forwardClickToRFNode(e);
+                                }}
+                                onDragStart={handleOutputDragStart}
+                                onDragEnd={handleOutputDragEnd}
+                              >
+                                <span className={styles.scalarOutputName}>{scalarName || "Value"}</span>
+                                <span className={styles.scalarOutputValue}>{scalarValue || "—"}</span>
+                              </div>
+                            );
+                          }
 
                           if (shouldUseOutputTiles && !isScalar) {
                             const hasThumbnail = Boolean(thumbnailSrc);

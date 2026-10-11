@@ -310,9 +310,10 @@ describe("ProtocolNodeCard", () => {
         expect(screen.getByText("moviesOutput")).toBeInTheDocument();
     });
 
-    it("renders scalar outputs without a viewer action and keeps them draggable", () => {
+    it.each([false, true])("renders scalar outputs without a viewer action and keeps them draggable (thumbnails: %s)", (thumbnailsEnabled) => {
         renderComponent({
             data: createProtocolData({
+                protocolOutputThumbnailsEnabled: thumbnailsEnabled,
                 outputs: [
                     {
                         outputName: "boxsize",
@@ -326,9 +327,14 @@ describe("ProtocolNodeCard", () => {
             }),
         });
 
-        expect(
-            screen.getByText("boxsize: 256"),
-        ).toBeInTheDocument();
+        if (thumbnailsEnabled) {
+            expect(screen.getByRole("group", { name: "boxsize: 256" })).toBeInTheDocument();
+            expect(screen.getByText("boxsize")).toBeInTheDocument();
+            expect(screen.getByText("256")).toBeInTheDocument();
+        } else {
+            expect(screen.getByText("boxsize: 256")).toBeInTheDocument();
+            expect(screen.queryByRole("group", { name: "boxsize: 256" })).not.toBeInTheDocument();
+        }
 
         expect(
             screen.queryByRole(
@@ -337,10 +343,9 @@ describe("ProtocolNodeCard", () => {
             ),
         ).not.toBeInTheDocument();
 
-        const pill =
-            screen
-                .getByText("boxsize: 256")
-                .closest("div") as HTMLElement;
+        const pill = thumbnailsEnabled
+            ? screen.getByRole("group", { name: "boxsize: 256" })
+            : screen.getByText("boxsize: 256").closest("div") as HTMLElement;
 
         const setData = vi.fn();
         const setDragImage = vi.fn();
