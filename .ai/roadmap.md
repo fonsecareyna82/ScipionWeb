@@ -4,10 +4,13 @@
 
 ## This repo specifically
 
-- Resolve the dual jest/vitest configuration - remove whichever is actually unused (looks like jest, see `.ai/tech-debt.md`).
-- Rename `package.json`'s `"name"` from the inherited `"tailadmin-react"` to something reflecting this repo.
-- Bump `actions/checkout`/`actions/setup-node` to current major versions in CI.
 - A real JS/TS-focused tech-debt audit (TODO/FIXME markers, largest components, bundle size) hasn't been done yet - this session's audit only covered the 3 core Python repos and ScipionAPI in depth.
+
+## Completed maintenance (verified 2026-10-11)
+
+- Removed the Jest configuration and dependencies; `npm test` uses Vitest.
+- Renamed the package to `scipionweb` (currently version `4.0.0`).
+- Updated test CI to `actions/checkout@v7` and `actions/setup-node@v7`.
 
 ## Ecosystem-wide (applies to all 5 repos, not just this one)
 

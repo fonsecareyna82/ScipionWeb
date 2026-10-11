@@ -18,9 +18,12 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 ## Architecture map
 
 - `src/api/` — HTTP calls to ScipionAPI (`auth.ts`, `projects.ts`, `protocols.ts`, `plugins.ts`, `settings.ts`, `users.ts`).
-- `src/services/ProjectService.ts` + `src/ProjectServiceContext.tsx` — the main data-fetching/state layer for project data, reads `VITE_API_URL` from `.env` (tracked in git, contains only `VITE_API_URL="http://localhost:8080/api"`, no secrets).
+- `src/services/ProjectService.ts` + `src/ProjectServiceContext.tsx` — the main data-fetching/state layer for project data. HTTP API modules use `BASE_URL = "/api"` from `src/config.ts`; the tracked `.env` value alone does not establish the effective API URL.
 - `src/adapters/`, `src/stores/` — data shaping and state management.
-- `src/components/`, `src/pages/`, `src/layout/` — UI.
+- `src/components/`, `src/pages/`, `src/layout/` — UI. Project workflow state lives in `src/pages/Dashboard/projects/ProjectPage.tsx`; the home dashboard lives in `src/pages/Dashboard/homepage/Home.tsx`.
+- `src/components/protocol/` — forms, protocol actions, outputs, logs, and wizard dialogs. `src/utils/protocolform.*` implements shared form semantics.
+- `src/components/analyze/` — metadata, CTF, volume, coordinate, and tomography viewers. Changes to request cancellation and caching must preserve isolation between viewer requests.
+- `src/hooks/useProtocolLogs.ts` + `ProtocolLogsPanel.tsx` — log windows, history loading, global search, and full log copy.
 - `src/hooks/`, `src/lib/`, `src/utils/`, `src/context/` — supporting code.
 - Multiple Vite build targets, not just one app: `build:web` (the full app) and `build:widget:{list,page,protocoldetail}` (standalone embeddable widgets, each with its own `vite.project*.config.ts`) — check which mode you're actually building/testing against before assuming "the app" means the whole thing.
 
@@ -28,7 +31,17 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 
 - CI already exists: `.github/workflows/tests.yml` (Node 20.18.0, `npm ci && npm test`).
 - **Run tests with `npm test`, which uses Vitest** (`vitest --config vitest.config.ts run`) — not Jest.
+- Vitest uses `jsdom`, the `@` alias for `src`, and `src/test/setup.ts`. Tests live in `src/components/tests/`, alongside some source files, and in `src/test/`.
+- For a focused regression, use `npm test -- <test-file>`; run `npm run build:web` when validating the app build, or the appropriate widget script for widget changes.
 - `engines.node` is strictly pinned to `>=20.18.0 <21` (matches `.nvmrc`) — don't assume a newer/older Node works.
+
+## Behavior to preserve
+
+- ReactFlow node IDs are the canonical protocol identity; reject protocol detail responses that belong to another protocol.
+- Restart/status refreshes must preserve correct elapsed sessions; retain the regression coverage in `src/components/tests/projects/` when changing workflow state.
+- Home opens the last accessed project when available (`scipion.home.lastOpenedProjectId.v1` in localStorage), rather than choosing solely by update time.
+- Log search and full copy must operate on the complete log through the service API, not just the currently loaded window.
+- UI text and code comments use English.
 
 ## Known gotchas
 

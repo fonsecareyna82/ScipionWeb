@@ -5,6 +5,17 @@ ScipionWeb protocol forms must preserve the semantics defined by
 flatten, reinterpret, or approximate Scipion form structures when doing so
 changes visibility, values, layout meaning, or protocol behavior.
 
+## Implementation and validation references
+
+Verified against the frontend source on 2026-10-11:
+
+- `src/components/protocol/ProtocolForm.tsx` renders nested decorators and applies condition context and expert-level visibility.
+- `src/components/protocol/ProtocolFormRenderers.tsx` provides shared parameter renderers, including paths.
+- `src/utils/protocolform.conditions.ts` implements condition evaluation; related `protocolform.*` utilities handle form values and state.
+- Regression coverage includes `src/components/tests/protocol/ProtocolFormConditions.test.ts`, `ProtocolForm.test.tsx`, `ProtocolFormRenderers.test.tsx`, and `src/utils/protocolform.utils.test.ts`.
+
+Run focused tests with `npm test -- <test-file>`. Preserve this contract when changing either frontend rendering or the ScipionAPI form payload.
+
 ## Form structure
 
 `Group` and `Line` are semantic form decorators and their hierarchy must be
