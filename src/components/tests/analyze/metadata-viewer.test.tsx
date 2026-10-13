@@ -1921,4 +1921,223 @@ describe("MetadataViewer", () => {
         ).toBeInTheDocument();
     });
 
+
+    describe("class-average contrast mode", () => {
+        function renderClassViewer(outputClassName: string) {
+            return render(
+                <MetadataViewer
+                    projectId={1}
+                    protocolId={2}
+                    outputName="outputClasses"
+                    outputClassName={outputClassName}
+                    embedded
+                />,
+            );
+        }
+
+        function mockClassImages(count = 1) {
+            serviceMocks.fetchOutputMetadataTables.mockResolvedValue([
+                { name: "objects", alias: "Class2D", rowCount: count },
+            ]);
+            serviceMocks.fetchMetadataTableSchema.mockResolvedValue({
+                name: "objects",
+                alias: "Class2D",
+                hasColumnId: true,
+                columns: [
+                    { name: "id", alias: "Id", index: 0, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                    { name: "preview", alias: "Preview", index: 1, sortable: false, visible: true, rendererType: "image", decimals: 0, hasTransformation: false },
+                ],
+                actions: [],
+            });
+            serviceMocks.fetchMetadataTableWindow.mockResolvedValue({
+                rows: Array.from({ length: count }, (_, index) => ({
+                    rowId: index + 1,
+                    values: [index + 1, { kind: "image", path: `/classes/class-${index + 1}.mrcs` }],
+                })),
+                offset: 0,
+            });
+            serviceMocks.fetchMetadataImageCellsBatch.mockImplementation(
+                async (_p: number, _prot: number, _out: string, _tab: string, opts: { contrastMode?: string; items: Array<{ rowId?: number | string; rowIndex?: number; columnName: string }> }) => ({
+                    tableName: "objects",
+                    fmt: "png",
+                    items: opts.items.map((item) => ({
+                        rowId: item.rowId ?? null,
+                        rowIndex: item.rowIndex ?? null,
+                        columnName: item.columnName,
+                        contentType: "image/png",
+                        dataUrl: `data:image/png;base64,${opts.contrastMode ?? "missing"}-${item.rowId}`,
+                    })),
+                    errors: [],
+                }),
+            );
+        }
+
+
+        // Logical sub-tables of a SetOfClasses output contain MEMBER PARTICLES,
+        // not class averages. They must request Original to avoid expensive
+        // per-particle enhancement on potentially huge sets.
+        function mockClassAndMemberParticleTables(classCount = 1, particleCount = 1) {
+            mockClassImages(classCount);
+            serviceMocks.fetchOutputMetadataTables.mockResolvedValue([
+                { name: "objects", alias: "Class2D", rowCount: classCount },
+                { name: "Class001_Objects", alias: "Class001 objects", rowCount: particleCount },
+            ]);
+            serviceMocks.fetchMetadataTableSchema.mockImplementation(
+                async (_projectId: number, _protocolId: number, _outputName: string, tableName: string) => ({
+                    name: tableName,
+                    alias: tableName === "objects" ? "Class2D" : "Class001 objects",
+                    hasColumnId: true,
+                    columns: [
+                        { name: "id", alias: "Id", index: 0, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                        { name: "preview", alias: "Preview", index: 1, sortable: false, visible: true, rendererType: "image", decimals: 0, hasTransformation: false },
+                    ],
+                    actions: [],
+                }),
+            );
+            serviceMocks.fetchMetadataTableWindow.mockImplementation(
+                async (_projectId: number, _protocolId: number, _outputName: string, tableName: string) => ({
+                    rows: Array.from({ length: tableName === "objects" ? classCount : particleCount }, (_, index) => ({
+                        rowId: index + 1,
+                        values: [index + 1, {
+                            kind: "image",
+                            path: tableName === "objects"
+                                ? `/classes/class-${index + 1}.mrcs`
+                                : `/members/particle-${index + 1}.mrcs`,
+                        }],
+                    })),
+                    offset: 0,
+                }),
+            );
+        }
+
+        async function openClassMembersTable() {
+            fireEvent.mouseDown(screen.getByLabelText("Metadata table"));
+            fireEvent.click(await screen.findByRole("option", { name: "Class001 objects" }));
+        }
+
+        it.each(["SetOfClasses2D", "SetOfClasses3D"])(
+            "requests Original for member particles of %s after Enhanced class averages",
+            async (outputClassName) => {
+                mockClassAndMemberParticleTables();
+                renderClassViewer(outputClassName);
+
+                expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+                await waitFor(() => {
+                    expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                        1, 2, "outputClasses", "objects", 0, "preview",
+                        expect.objectContaining({ contrastMode: "enhanced" }),
+                    );
+                });
+
+                await openClassMembersTable();
+                expect(await screen.findByAltText("/members/particle-1.mrcs")).toBeInTheDocument();
+                await waitFor(() => {
+                    expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                        1, 2, "outputClasses", "Class001_Objects", 0, "preview",
+                        expect.objectContaining({ contrastMode: "original" }),
+                    );
+                });
+            },
+        );
+
+        it("requests Original in batched class-member thumbnails", async () => {
+            mockClassAndMemberParticleTables(2, 2);
+            renderClassViewer("SetOfClasses3D");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects",
+                    expect.objectContaining({ contrastMode: "enhanced" }),
+                );
+            });
+
+            await openClassMembersTable();
+            expect(await screen.findByAltText("/members/particle-1.mrcs")).toBeInTheDocument();
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "Class001_Objects",
+                    expect.objectContaining({ contrastMode: "original" }),
+                );
+            });
+        });
+
+        it("requests Original for high-resolution previews of class-member particles", async () => {
+            mockClassAndMemberParticleTables();
+            renderClassViewer("SetOfClasses2D");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            await openClassMembersTable();
+            const memberThumbnail = await screen.findByAltText("/members/particle-1.mrcs");
+            fireEvent.doubleClick(memberThumbnail);
+
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "Class001_Objects", 0, "preview",
+                    expect.objectContaining({ size: 1024, contrastMode: "original" }),
+                );
+            });
+        });
+
+        it.each(["SetOfClasses2D", "SetOfClasses3D"])(
+            "automatically enables Enhanced for %s without displaying contrast controls",
+            async (outputClassName) => {
+                mockClassImages();
+                renderClassViewer(outputClassName);
+
+                expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+                await waitFor(() => {
+                    expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                        1, 2, "outputClasses", "objects", 0, "preview",
+                        expect.objectContaining({ contrastMode: "enhanced" }),
+                    );
+                });
+                expect(screen.queryByRole("group", { name: "Class-average contrast" })).not.toBeInTheDocument();
+                expect(screen.queryByRole("button", { name: "Original" })).not.toBeInTheDocument();
+                expect(screen.queryByRole("button", { name: "Enhanced" })).not.toBeInTheDocument();
+            },
+        );
+
+        it("preserves Original rendering for non-class outputs", async () => {
+            mockClassImages();
+            renderClassViewer("SetOfParticles");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects", 0, "preview",
+                    expect.objectContaining({ contrastMode: "original" }),
+                );
+            });
+            expect(screen.queryByRole("group", { name: "Class-average contrast" })).not.toBeInTheDocument();
+        });
+
+        it("requests automatically enhanced batch thumbnails for classes", async () => {
+            mockClassImages(2);
+            renderClassViewer("SetOfClasses3D");
+
+            const first = await screen.findByAltText("/classes/class-1.mrcs");
+            await waitFor(() => {
+                expect(first).toHaveAttribute("src", "data:image/png;base64,enhanced-1");
+                expect(serviceMocks.fetchMetadataImageCellsBatch.mock.calls[0][4].contrastMode).toBe("enhanced");
+            });
+        });
+
+        it("uses automatic Enhanced for the high-resolution class preview", async () => {
+            mockClassImages();
+            renderClassViewer("SetOfClasses2D");
+
+            const thumb = await screen.findByAltText("/classes/class-1.mrcs");
+            fireEvent.doubleClick(thumb);
+
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects", 0, "preview",
+                    expect.objectContaining({ size: 1024, contrastMode: "enhanced" }),
+                );
+            });
+        });
+
+    });
+
 });

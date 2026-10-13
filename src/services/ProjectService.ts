@@ -2243,6 +2243,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      contrastMode?: "original" | "enhanced";
       signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
@@ -2259,6 +2260,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      contrastMode?: "original" | "enhanced";
       sortBy?: string;
       asc?: boolean;
       signal?: AbortSignal;
@@ -2291,6 +2293,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
+      contrastMode?: "original" | "enhanced";
     }
   ): string;
 

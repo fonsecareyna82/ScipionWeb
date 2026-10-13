@@ -502,7 +502,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
-      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} onClose={onClose} />;
+      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} outputClassName={pointerClass} onClose={onClose} />;
     }
 
     if (isSetOfFSCsKind(pointerClass)) {

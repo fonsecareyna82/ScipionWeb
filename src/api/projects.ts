@@ -3704,6 +3704,7 @@ export async function fetchMetadataImageCellObjectUrl(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
+    contrastMode?: "original" | "enhanced";
     signal?: AbortSignal;
   } = {},
 ): Promise<{ url: string; revoke: () => void }> {
@@ -3713,6 +3714,7 @@ export async function fetchMetadataImageCellObjectUrl(
     inline = true,
     format = "png",
     signal,
+    contrastMode,
     rowId,
     sortBy,
     asc,
@@ -3725,7 +3727,7 @@ export async function fetchMetadataImageCellObjectUrl(
     tableName,
     rowIndex,
     columnName,
-    { size, applyTransform, inline, format, rowId, sortBy, asc },
+    { size, applyTransform, inline, format, rowId, sortBy, asc, contrastMode },
   );
 
   // Opt into browser HTTP caching (fetchWithAuth defaults to no-store):
@@ -3763,6 +3765,7 @@ export function getMetadataImageCellUrl(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
+    contrastMode?: "original" | "enhanced";
   } = {},
 ): string {
   const { size = 256, applyTransform = false, inline = true, format = "png" } =
@@ -3779,6 +3782,7 @@ export function getMetadataImageCellUrl(
   params.set("applyTransform", String(applyTransform));
   params.set("inline", String(inline));
   params.set("fmt", format);
+  if (opts.contrastMode) params.set("contrastMode", opts.contrastMode);
 
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodeURIComponent(outputName)}/metadata/tables/${encodeURIComponent(
     tableName,
@@ -3796,6 +3800,7 @@ export async function fetchMetadataImageCellsBatch(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
+    contrastMode?: "original" | "enhanced";
     sortBy?: string;
     asc?: boolean;
     signal?: AbortSignal;
@@ -3829,6 +3834,7 @@ export async function fetchMetadataImageCellsBatch(
     applyTransform: opts.applyTransform ?? false,
     inline: opts.inline ?? true,
     fmt: opts.format ?? "png",
+    contrastMode: opts.contrastMode ?? "original",
     sortBy: opts.sortBy ?? "id",
     asc: opts.asc ?? true,
   };

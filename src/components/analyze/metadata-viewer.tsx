@@ -83,9 +83,11 @@ type MetadataViewerProps = {
   outputName: string;
   onClose?: () => void;
   embedded?: boolean;
+  outputClassName?: string;
 };
 
 type ViewMode = "table" | "gallery";
+type MetadataContrastMode = "original" | "enhanced";
 
 type SelectedImageCell = {
   rowIndexInTable: number;
@@ -131,6 +133,7 @@ type ImageJobBatchContext = {
   outputName: string;
   tableName: string;
   size: number;
+  contrastMode: MetadataContrastMode;
   sortBy?: string;
   asc?: boolean;
   rowId: RowId | null;
@@ -252,6 +255,7 @@ type MetadataImageCellProps = {
   onDoubleClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
   scrollRootRef: MutableRefObject<HTMLDivElement | null>;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+  contrastMode: MetadataContrastMode;
 };
 
 type SortDirection = "asc" | "desc";
@@ -304,6 +308,7 @@ type MetadataTablePanelProps = {
   outputName: string;
   selectedTable: string;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+  contrastMode: MetadataContrastMode;
   sortBy: string | null;
   sortAsc: boolean;
   onToggleSort: (column: MetadataColumnWithVisibility) => void;
@@ -341,6 +346,7 @@ type MetadataGalleryPanelProps = {
   outputName: string;
   selectedTable: string;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+  contrastMode: MetadataContrastMode;
   showSizeLabel: boolean;
   sizeColumn: MetadataColumnWithVisibility | null;
   imageThumbSize: number;
@@ -647,6 +653,7 @@ async function runImageJobBatch(batch: ImageJob[]) {
           columnName: job.batch!.columnName,
         })),
         size: ctx.size,
+        contrastMode: ctx.contrastMode,
         applyTransform: false,
         inline: true,
         format: METADATA_IMAGE_PRIMARY_FORMAT,
@@ -2232,6 +2239,7 @@ function MetadataImageCell({
   onDoubleClick,
   scrollRootRef,
   imageCacheRef,
+  contrastMode,
 }: MetadataImageCellProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -2252,10 +2260,12 @@ function MetadataImageCell({
         cell.path,
         rowId ?? rowIndexInTable,
         size,
+        contrastMode,
         METADATA_IMAGE_CACHE_VARIANT,
       ].join("|"),
     [
       cell.path,
+      contrastMode,
       rowId,
       rowIndexInTable,
       columnName,
@@ -2269,7 +2279,7 @@ function MetadataImageCell({
 
   useEffect(() => {
     setIsVisible(false);
-  }, [imageCacheKey]);
+  }, [projectId, protocolId, outputName, tableName, rowId, rowIndexInTable, columnName, cell.path, size]);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -2320,7 +2330,8 @@ function MetadataImageCell({
     let cancelled = false;
     const abortController = new AbortController();
 
-    setThumbUrl(null);
+    // Retain the existing IMG DOM node while fetching a different variant.
+    // It stays hidden during loading and updates when the request resolves.
     setLoading(true);
     setError(null);
 
@@ -2334,13 +2345,14 @@ function MetadataImageCell({
         ),
 
       batch: {
-        groupKey: [projectId, protocolId, outputName, tableName, size, sortBy ?? "", sortAsc].join("|"),
+        groupKey: [projectId, protocolId, outputName, tableName, size, sortBy ?? "", sortAsc, contrastMode].join("|"),
         svc: svcRef.current,
         projectId,
         protocolId,
         outputName,
         tableName,
         size,
+        contrastMode,
         sortBy: sortBy ?? undefined,
         asc: sortBy ? sortAsc : undefined,
         rowId: rowId ?? null,
@@ -2354,6 +2366,7 @@ function MetadataImageCell({
           sortBy: sortBy ?? undefined,
           asc: sortBy ? sortAsc : undefined,
           size,
+          contrastMode,
           applyTransform: false,
           inline: true,
           signal: abortController.signal,
@@ -2417,6 +2430,7 @@ function MetadataImageCell({
     };
   }, [
     columnName,
+    contrastMode,
     imageCacheKey,
     imageCacheRef,
     isVisible,
@@ -2462,27 +2476,37 @@ function MetadataImageCell({
         borderRadius: 1,
         border: `1px solid ${borderColor}`,
         overflow: "hidden",
+        position: "relative",
         bgcolor: thumbUrl ? "#111827" : "transparent",
       }}
     >
-      {loading ? (
-        <CircularProgress size={18} />
-      ) : error ? (
+      {error ? (
         <Typography variant="caption" color="error" sx={{ p: 1, textAlign: "center" }}>
           img error
         </Typography>
-      ) : thumbUrl ? (
-        <img
-          src={thumbUrl}
-          alt={cell.path}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            display: "block",
-          }}
-        />
-      ) : null}
+      ) : (
+        <>
+          {thumbUrl && (
+            <img
+              src={thumbUrl}
+              alt={cell.path}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
+                opacity: loading ? 0 : 1,
+              }}
+            />
+          )}
+          {loading && (
+            <CircularProgress
+              size={18}
+              sx={thumbUrl ? { position: "absolute" } : undefined}
+            />
+          )}
+        </>
+      )}
     </Box>
   );
 }
@@ -2502,6 +2526,7 @@ type MetadataImagePreviewDialogProps = {
   tableName: string;
   sortBy: string | null;
   sortAsc: boolean;
+  contrastMode: MetadataContrastMode;
 };
 
 function MetadataImagePreviewDialog({
@@ -2513,6 +2538,7 @@ function MetadataImagePreviewDialog({
   tableName,
   sortBy,
   sortAsc,
+  contrastMode,
 }: MetadataImagePreviewDialogProps) {
   const svcRef = useProjectServiceRef();
   const image = useMemo<ImagePreviewSource | null>(() => {
@@ -2532,6 +2558,7 @@ function MetadataImagePreviewDialog({
           sortBy: sortBy ?? undefined,
           asc: sortBy ? sortAsc : undefined,
           size: METADATA_IMAGE_PREVIEW_SIZE,
+          contrastMode,
           applyTransform: false,
           inline: true,
           signal,
@@ -2552,7 +2579,7 @@ function MetadataImagePreviewDialog({
         }
       },
     };
-  }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, svcRef]);
+  }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, contrastMode, svcRef]);
 
   return (
     <ImagePreviewDialog
@@ -2595,6 +2622,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
   outputName,
   selectedTable,
   imageCacheRef,
+  contrastMode,
   sortBy,
   sortAsc,
   onToggleSort,
@@ -2910,6 +2938,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                               }}
                               scrollRootRef={scrollRef}
                               imageCacheRef={imageCacheRef}
+                              contrastMode={contrastMode}
                             />
                           </Box>
                         </TableCell>
@@ -3067,6 +3096,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   outputName,
   selectedTable,
   imageCacheRef,
+  contrastMode,
   showSizeLabel,
   sizeColumn,
   imageThumbSize,
@@ -3254,6 +3284,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                       isSelected={isFocusedImageCell || isSelected}
                       scrollRootRef={galleryScrollRef}
                       imageCacheRef={imageCacheRef}
+                      contrastMode={contrastMode}
                     />
                   ) : (
                     <Box
@@ -3485,11 +3516,16 @@ function ColumnsDialog({
 
 /* ======================= Main component ======================= */
 
-export function MetadataViewer({ projectId, protocolId, outputName, onClose, embedded = false }: MetadataViewerProps) {
+export function MetadataViewer({ projectId, protocolId, outputName, outputClassName, onClose, embedded = false }: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
   const svcRef = useProjectServiceRef();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+
+  // The class type comes from the protocol output, not an output name.
+  const supportsClassContrast = /^(SetOfClasses2D|SetOfClasses3D)$/i.test(
+    String(outputClassName ?? "").trim(),
+  );
 
   const [sortState, setSortState] = useState<SortState>({
     columnName: null,
@@ -3563,6 +3599,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     outputName,
     isMountedRef,
   );
+
+  // Only the root `objects` table contains the 2D/3D class representatives.
+  // Nested tables (e.g. Class001_Objects) hold member particles, potentially
+  // thousands of them. Never request contrast enhancement for those images.
+  // One mode is shared by table cells, gallery batches and full-size previews.
+  const contrastMode: MetadataContrastMode =
+    supportsClassContrast && selectedTable === "objects" ? "enhanced" : "original";
 
   const { schema, setSchema, schemaLoading, schemaError, setSchemaError } = useMetadataSchema(
     projectId,
@@ -5497,6 +5540,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             outputName={outputName}
             selectedTable={selectedTable}
             imageCacheRef={imageCacheRef}
+            contrastMode={contrastMode}
             sortBy={sortBy}
             sortAsc={sortAsc}
             onToggleSort={toggleSortForColumn}
@@ -5532,6 +5576,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             outputName={outputName}
             selectedTable={selectedTable}
             imageCacheRef={imageCacheRef}
+            contrastMode={contrastMode}
             showSizeLabel={showSizeLabel}
             sizeColumn={sizeColumn}
             imageThumbSize={imageThumbSize}
@@ -6663,6 +6708,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         tableName={selectedTable}
         sortBy={sortBy}
         sortAsc={sortAsc}
+        contrastMode={contrastMode}
       />
     </Box>
   );
