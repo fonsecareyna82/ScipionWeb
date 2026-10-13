@@ -337,6 +337,74 @@ describe("ProtocolNodeCard", () => {
         expect(onEdit).toHaveBeenCalledWith("12");
     });
 
+    describe("CryoloModel viewer visibility", () => {
+        it.each(["flat", "wrapped"])(
+            "does not display a viewer eye for %s CryoloModel outputs and keeps dragging available",
+            (shape) => {
+                const details = {
+                    outputName: "outputCryoloModel",
+                    info: "Cryolo model weights",
+                    paramClass: "PointerParam",
+                    pointerClass: "CryoloModel",
+                    value: "Train Cryolo.outputCryoloModel",
+                    parentId: "12",
+                };
+
+                const output = shape === "wrapped"
+                    ? { outputCryoloModel: details }
+                    : details;
+
+                renderComponent({
+                    data: createProtocolData({ outputs: [output] }),
+                });
+
+                const label = screen.getByText("Cryolo model weights");
+                const pill = label.closest('[draggable="true"]');
+
+                expect(pill).not.toBeNull();
+                expect(screen.queryByRole("button", { name: "View output" })).not.toBeInTheDocument();
+            },
+        );
+
+        it("does not open a nonexistent viewer when clicking the CryoloModel thumbnail tile", () => {
+            renderComponent({
+                data: createProtocolData({
+                    protocolOutputThumbnailsEnabled: true,
+                    outputs: [{
+                        outputName: "outputCryoloModel",
+                        info: "Cryolo model weights",
+                        paramClass: "PointerParam",
+                        pointerClass: "CryoloModel",
+                        value: "Train Cryolo.outputCryoloModel",
+                        parentId: "12",
+                    }],
+                }),
+            });
+
+            const tile = screen.getByText("No preview");
+            fireEvent.click(tile);
+
+            expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
+        });
+
+        it("keeps the eye for a supported SetOfMovies viewer", () => {
+            renderComponent({
+                data: createProtocolData({
+                    outputs: [{
+                        outputName: "outputMovies",
+                        info: "Movies",
+                        paramClass: "PointerParam",
+                        pointerClass: "SetOfMovies",
+                        value: "Import Movies.outputMovies",
+                        parentId: "12",
+                    }],
+                }),
+            });
+
+            expect(screen.getByRole("button", { name: "View output" })).toBeEnabled();
+        });
+    });
+
     it("opens the internal analyze dialog when clicking output viewer without external resolver", async () => {
         renderComponent();
 

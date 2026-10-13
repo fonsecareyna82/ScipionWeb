@@ -67,6 +67,19 @@ export function isScalarOutputClass(
   );
 }
 
+// Output objects may exist without a useful specialized viewer.
+// Keep these draggable in protocol nodes, but do not offer a dead-end eye.
+const OUTPUT_CLASSES_WITHOUT_VIEWER = new Set([
+  "CryoloModel",
+]);
+
+export function isOutputWithoutViewerClass(
+  className: unknown,
+): boolean {
+  const name = String(className ?? "").trim();
+  return isScalarOutputClass(name) || OUTPUT_CLASSES_WITHOUT_VIEWER.has(name);
+}
+
 export function isScalarOutput(
   output: unknown,
 ): boolean {

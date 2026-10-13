@@ -86,6 +86,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import { CloseIcon } from "@/icons";
 import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import {
+  isOutputWithoutViewerClass,
   isScalarOutput,
   isScalarOutputClass,
 } from "@/utils/protocol_outputs";
@@ -2590,7 +2591,7 @@ export default function ProtocolNodeCard({
                           const isViewerEnabled =
                             canOpenViewer &&
                             !!outputName &&
-                            !isScalar;
+                            !isOutputWithoutViewerClass(value.pointerClass);
 
                           const thumbnail = outputName ? outputThumbnails[outputName] : null;
                           const thumbnailSrc =
@@ -2840,7 +2841,7 @@ export default function ProtocolNodeCard({
                               <ArrowUpRight className={styles.outputIcon} />
                               <span className={styles.outputText}>{labelText}</span>
 
-                              {!isScalar && (
+                              {!isOutputWithoutViewerClass(value.pointerClass) && (
                                 <button
                                   type="button"
                                   className={`${styles.outputActionBtn} nodrag`}
