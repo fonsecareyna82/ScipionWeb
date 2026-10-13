@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const threeState = vi.hoisted(() => ({
@@ -73,6 +73,13 @@ vi.mock("three", () => {
             return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
         }
 
+        crossVectors(a: Vector3, b: Vector3) {
+            const x = a.y * b.z - a.z * b.y;
+            const y = a.z * b.x - a.x * b.z;
+            const z = a.x * b.y - a.y * b.x;
+            return this.set(x, y, z);
+        }
+
         distanceTo(v: Vector3) {
             const dx = this.x - v.x;
             const dy = this.y - v.y;
@@ -98,6 +105,48 @@ vi.mock("three", () => {
 
         project() {
             return this;
+        }
+    }
+
+    class Quaternion {
+        x = 0;
+        y = 0;
+        z = 0;
+        w = 1;
+
+        clone() {
+            const out = new Quaternion();
+            out.x = this.x; out.y = this.y; out.z = this.z; out.w = this.w;
+            return out;
+        }
+
+        identity() {
+            this.x = 0; this.y = 0; this.z = 0; this.w = 1;
+            return this;
+        }
+
+        setFromAxisAngle(axis: Vector3, angle: number) {
+            const half = angle / 2;
+            const s = Math.sin(half);
+            this.x = axis.x * s;
+            this.y = axis.y * s;
+            this.z = axis.z * s;
+            this.w = Math.cos(half);
+            return this;
+        }
+
+        multiplyQuaternions(a: Quaternion, b: Quaternion) {
+            const ax = a.x, ay = a.y, az = a.z, aw = a.w;
+            const bx = b.x, by = b.y, bz = b.z, bw = b.w;
+            this.x = ax * bw + aw * bx + ay * bz - az * by;
+            this.y = ay * bw + aw * by + az * bx - ax * bz;
+            this.z = az * bw + aw * bz + ax * by - ay * bx;
+            this.w = aw * bw - ax * bx - ay * by - az * bz;
+            return this;
+        }
+
+        premultiply(q: Quaternion) {
+            return this.multiplyQuaternions(q, this.clone());
         }
     }
 
@@ -130,6 +179,9 @@ vi.mock("three", () => {
         }
 
         updateProjectionMatrix() { }
+        getWorldDirection(target: Vector3) {
+            return target.set(0, 0, -1);
+        }
     }
 
     class BoxGeometry {
@@ -161,6 +213,7 @@ vi.mock("three", () => {
         geometry: any;
         material: any;
         scale = new Vector3(1, 1, 1);
+        quaternion = new Quaternion();
         matrixWorld = new Matrix4();
 
         constructor(geometry: unknown, material: unknown) {
@@ -207,6 +260,7 @@ vi.mock("three", () => {
         disposed = false;
         addedEvents: string[] = [];
         removedEvents: string[] = [];
+        pixelRatio = 1;
 
         constructor() {
             this.domElement = document.createElement("canvas");
@@ -228,8 +282,17 @@ vi.mock("three", () => {
         }
 
         setClearColor() { }
-        setPixelRatio() { }
-        setSize() { }
+        setPixelRatio(value: number) { this.pixelRatio = value; }
+        setSize(width: number, height: number, updateStyle = true) {
+            // Three.js behavior: framebuffer dimensions scale with DPR;
+            // CSS dimensions update only when updateStyle !== false.
+            this.domElement.width = Math.floor(width * this.pixelRatio);
+            this.domElement.height = Math.floor(height * this.pixelRatio);
+            if (updateStyle) {
+                this.domElement.style.width = `${width}px`;
+                this.domElement.style.height = `${height}px`;
+            }
+        }
         render() { }
 
         dispose() {
@@ -245,6 +308,7 @@ vi.mock("three", () => {
 
     return {
         Vector3,
+        Quaternion,
         Matrix4,
         Scene,
         PerspectiveCamera,
@@ -998,6 +1062,135 @@ describe("GpuVolumeView", () => {
         unmount();
 
         expect(renderer.disposed).toBe(true);
+    });
+
+
+    describe("GPU volume interaction stability", () => {
+        function installFrameQueue(): FrameRequestCallback[] {
+            const frames: FrameRequestCallback[] = [];
+            vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+                frames.push(callback);
+                return frames.length;
+            }));
+            return frames;
+        }
+
+        function flushFrame(frames: FrameRequestCallback[]) {
+            const nextFrame = frames.shift();
+            if (!nextFrame) throw new Error("Expected a pending GPU render frame");
+            act(() => { nextFrame(performance.now()); });
+        }
+
+        it("keeps raycasting sample count unchanged when pressing and releasing the mouse in Volume mode", async () => {
+            const frames = installFrameQueue();
+            render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+            await waitFor(() => expect(threeState.lastMaterial).not.toBeNull());
+
+            flushFrame(frames);
+            const idleSteps = Number(threeState.lastMaterial.uniforms.uSteps.value);
+            expect(idleSteps).toBeGreaterThan(0);
+
+            fireEvent.pointerDown(threeState.lastRenderer.domElement);
+            flushFrame(frames);
+            expect(threeState.lastMaterial.uniforms.uSteps.value).toBe(idleSteps);
+
+            fireEvent.pointerUp(window);
+            flushFrame(frames);
+            expect(threeState.lastMaterial.uniforms.uSteps.value).toBe(idleSteps);
+        });
+
+        it("does not resize GPU pixel density at the start/end of a Volume drag", async () => {
+            vi.stubGlobal("devicePixelRatio", 2);
+            const frames = installFrameQueue();
+            render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+            await waitFor(() => expect(threeState.lastRenderer).not.toBeNull());
+
+            flushFrame(frames);
+            const renderer = threeState.lastRenderer;
+            const ratioSpy = vi.spyOn(renderer, "setPixelRatio");
+
+            fireEvent.pointerDown(renderer.domElement);
+            flushFrame(frames);
+            expect(ratioSpy).not.toHaveBeenCalled();
+
+            fireEvent.pointerUp(window);
+            flushFrame(frames);
+            expect(ratioSpy).not.toHaveBeenCalled();
+        });
+
+        it("preserves adaptive performance for Surface mode", async () => {
+            vi.stubGlobal("devicePixelRatio", 2);
+            const frames = installFrameQueue();
+            render(<GpuVolumeView {...makeProps({ renderMode: "surface" })} />);
+            await waitFor(() => expect(threeState.lastMaterial).not.toBeNull());
+
+            flushFrame(frames);
+            const idleSteps = Number(threeState.lastMaterial.uniforms.uSteps.value);
+            const ratioSpy = vi.spyOn(threeState.lastRenderer, "setPixelRatio");
+
+            fireEvent.pointerDown(threeState.lastRenderer.domElement);
+            flushFrame(frames);
+
+            expect(Number(threeState.lastMaterial.uniforms.uSteps.value)).toBeLessThan(idleSteps);
+            expect(ratioSpy).toHaveBeenCalledWith(1);
+        });
+    });
+
+
+    describe("GPU volume canvas centering and free rotation", () => {
+        it("keeps HiDPI canvas CSS dimensions equal to the viewer, not the device-pixel framebuffer", async () => {
+            vi.stubGlobal("devicePixelRatio", 2);
+            const previousWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+            const previousHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+            Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+                configurable: true,
+                get: () => 480,
+            });
+            Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+                configurable: true,
+                get: () => 320,
+            });
+
+            try {
+                render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+                await waitFor(() => expect(threeState.lastRenderer).not.toBeNull());
+                const canvas = threeState.lastRenderer.domElement as HTMLCanvasElement;
+                expect(canvas.width).toBe(960);
+                expect(canvas.height).toBe(640);
+                // Critical: the DOM canvas must occupy 480x320 CSS pixels,
+                // otherwise its rendered center lands to the lower right.
+                expect(canvas.style.width).toBe("480px");
+                expect(canvas.style.height).toBe("320px");
+            } finally {
+                if (previousWidth) Object.defineProperty(HTMLElement.prototype, "clientWidth", previousWidth);
+                else Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+                if (previousHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", previousHeight);
+                else Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+            }
+        });
+
+        it("rotates a Volume freely beyond the vertical pole without clamped OrbitControls rotation", async () => {
+            render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+            await waitFor(() => expect(threeState.lastControls).not.toBeNull());
+
+            // OrbitControls limits vertical rotation at the poles. We need
+            // free object rotation, as in the existing MeshVolumeView.
+            expect(threeState.lastControls.enableRotate).toBe(false);
+
+            const canvas = threeState.lastRenderer.domElement as HTMLCanvasElement;
+            const drag = (eventType: string, y: number) => {
+                canvas.dispatchEvent(new MouseEvent(eventType, {
+                    bubbles: true, button: 0, clientX: 100, clientY: y,
+                }));
+            };
+            drag("pointerdown", 100);
+            for (let y = 200; y <= 600; y += 100) drag("pointermove", y);
+            drag("pointerup", 600);
+
+            // 500 pixels x 0.0075 radians/pixel = 3.75rad (> PI).
+            // A quaternion past the half-turn has a negative w component.
+            expect(threeState.lastMesh.quaternion.w).toBeLessThan(0);
+        });
     });
 
 });

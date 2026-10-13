@@ -640,7 +640,10 @@ export default function GpuVolumeView({
     controls.zoomSpeed = 1.0;
     controls.enableZoom = false;
     controls.enablePan = true;
-    controls.enableRotate = true;
+    // Volume mode rotates the object directly, avoiding the polar-angle
+    // clamp imposed by OrbitControls on camera rotation. Surface retains its
+    // existing OrbitControls rotation behavior.
+    controls.enableRotate = renderMode !== "volume";
     controls.minDistance = 0.12;
     controls.maxDistance = 8.0;
 
@@ -734,8 +737,17 @@ export default function GpuVolumeView({
       const wheelActive =
         now - interactionState.lastWheelAt < 160;
 
-      const interactionActive =
-        interactionState.isDragging || wheelActive || controls.autoRotate;
+      // Volume raymarching depends on both the pixel grid and the number of
+      // samples along each ray. Changing either on pointerdown/pointerup makes
+      // the density appear to jump even though the camera has not moved.
+      // Keep Volume quality fixed across interaction boundaries; Surface mode
+      // keeps the adaptive-quality optimization.
+      // Read the live shader uniform rather than the initial renderMode prop:
+      // the parent can switch modes without rebuilding the WebGL renderer.
+      const isVolumeMode = material.uniforms.uIsoMode.value === 0;
+      const interactionActive = !isVolumeMode && (
+        interactionState.isDragging || wheelActive || controls.autoRotate
+      );
 
       const desiredDpr = interactionActive
         ? Math.min(baseDpr, 1)
@@ -764,6 +776,11 @@ export default function GpuVolumeView({
 
       if (w > 0 && h > 0) {
         renderer.setSize(w, h, false);
+        // The drawing buffer grows with devicePixelRatio, but setSize(false)
+        // does not update CSS sizing. Keep the canvas in the viewer's CSS
+        // coordinate space instead of letting HiDPI stretch it past the host.
+        renderer.domElement.style.width = `${w}px`;
+        renderer.domElement.style.height = `${h}px`;
       }
     };
 
@@ -809,11 +826,75 @@ export default function GpuVolumeView({
       onControlsEnd,
     );
 
-    const onPointerDown = () => {
+    // Volume mode needs unrestricted pitch, including rotations beyond
+    // the top/bottom poles. Rotate the cube, not the OrbitControls camera.
+    // Keeping the camera and controls.target untouched also prevents a jump
+    // when the drag begins or ends.
+    let volumeDrag: {
+      pointerId: number;
+      lastX: number;
+      lastY: number;
+    } | null = null;
+    const dragCameraDirection = new THREE.Vector3();
+    const dragScreenRight = new THREE.Vector3();
+    const dragScreenUp = new THREE.Vector3();
+    const dragYaw = new THREE.Quaternion();
+    const dragPitch = new THREE.Quaternion();
+    const dragRotation = new THREE.Quaternion();
+
+    const onPointerDown = (event: PointerEvent) => {
       interactionState.isDragging = true;
+      if (
+        material.uniforms.uIsoMode.value === 0 &&
+        event.button === 0 &&
+        volumeDrag === null
+      ) {
+        volumeDrag = {
+          pointerId: event.pointerId,
+          lastX: event.clientX,
+          lastY: event.clientY,
+        };
+        event.preventDefault();
+        // Keep dragging if the pointer moves outside the canvas.
+        renderer.domElement.setPointerCapture?.(event.pointerId);
+      }
       requestRender();
     };
-    const onPointerUp = () => {
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!volumeDrag || event.pointerId !== volumeDrag.pointerId) return;
+
+      const dx = event.clientX - volumeDrag.lastX;
+      const dy = event.clientY - volumeDrag.lastY;
+      volumeDrag.lastX = event.clientX;
+      volumeDrag.lastY = event.clientY;
+      if (dx === 0 && dy === 0) return;
+
+      const volume = meshRef.current;
+      if (!volume) return;
+
+      event.preventDefault();
+      camera.getWorldDirection(dragCameraDirection).normalize();
+      dragScreenRight.crossVectors(dragCameraDirection, camera.up).normalize();
+      dragScreenUp.copy(camera.up).normalize();
+
+      const dragScale = 0.0075;
+      dragYaw.setFromAxisAngle(dragScreenUp, dx * dragScale);
+      dragPitch.setFromAxisAngle(dragScreenRight, dy * dragScale);
+      dragRotation.multiplyQuaternions(dragYaw, dragPitch);
+      volume.quaternion.premultiply(dragRotation);
+      // renderFrame updates uInvModel from the rotated volume's world matrix
+      // and updates the orientation gizmo from its quaternion.
+      requestRender();
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (volumeDrag && event.pointerId === volumeDrag.pointerId) {
+        volumeDrag = null;
+        if (renderer.domElement.hasPointerCapture?.(event.pointerId)) {
+          renderer.domElement.releasePointerCapture(event.pointerId);
+        }
+      }
       interactionState.isDragging = false;
       requestRender();
     };
@@ -898,6 +979,7 @@ export default function GpuVolumeView({
 
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     renderer.domElement.addEventListener("pointerdown", onPointerDown, { capture: true });
+    renderer.domElement.addEventListener("pointermove", onPointerMove, { capture: true });
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
     renderer.domElement.addEventListener("dblclick", resetView);
@@ -1029,6 +1111,7 @@ export default function GpuVolumeView({
 
       renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       renderer.domElement.removeEventListener("dblclick", resetView);
@@ -1166,6 +1249,11 @@ export default function GpuVolumeView({
     mat.uniforms.uCmap.value = cmapId;
     mat.uniforms.uIsoMode.value =
       renderMode === "volume" ? 0 : 1;
+    // Render mode is mutable without rebuilding the WebGL renderer, so its
+    // interaction policy must follow the live mode too.
+    if (controlsRef.current) {
+      controlsRef.current.enableRotate = renderMode !== "volume";
+    }
 
     requestRenderRef.current();
   }, [
