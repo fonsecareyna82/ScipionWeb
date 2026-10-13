@@ -932,6 +932,24 @@
   width: 100%;
 }
 
+/* GPU indicator follows the same minimalist outline style as the footer clock. */
+.gpuBadge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-right: 14px;
+}
+
+.gpuIcon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  color: #6b7280;
+}
+
 .timeRow {
   margin-left: auto;
   /* hard guarantee it goes to the right */
@@ -1457,6 +1475,10 @@
 }
 
 :global(.dark) .timeRow {
+  color: #cbd5e1;
+}
+
+:global(.dark) .gpuIcon {
   color: #cbd5e1;
 }
 

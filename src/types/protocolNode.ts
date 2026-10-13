@@ -13,6 +13,7 @@ export interface ProtocolNode {
   cpuTime: string;
   elapsedTime: string;
   elapsedSessionId?: string | null;
+  gpuIndicatorEligible?: boolean;
   stepsDone: string;
   numberOfSteps: string;
   outputs: any;

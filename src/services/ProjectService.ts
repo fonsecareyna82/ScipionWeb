@@ -129,6 +129,7 @@ export type ProtocolRuntimeSummary = {
 
   stepsDone: number;
   numberOfSteps: number;
+  gpuIndicatorEligible?: boolean;
   outputs?: unknown[];
 };
 

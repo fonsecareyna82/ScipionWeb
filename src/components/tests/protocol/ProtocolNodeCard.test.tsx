@@ -280,6 +280,42 @@ describe("ProtocolNodeCard", () => {
         });
     });
 
+    describe("GPU activity footer", () => {
+        it.each(["running", "RUNNING"])(
+            "shows the GPU badge beside the running step footer (status: %s)",
+            (status) => {
+                renderComponent({
+                    data: createProtocolData({ status, gpuIndicatorEligible: true }),
+                });
+
+                const badge = screen.getByRole("status", { name: "GPU step running" });
+                // Icon-only indicator: accessible name stays, visible text is gone.
+                expect(badge.querySelector("svg")).toBeInTheDocument();
+                expect(badge).not.toHaveTextContent("GPU");
+                expect(badge.closest('[class*="footer"]')).not.toBeNull();
+            },
+        );
+
+        it("does not show a GPU badge when no running GPU step is eligible", () => {
+            renderComponent({
+                data: createProtocolData({ status: "running", gpuIndicatorEligible: false }),
+            });
+
+            expect(screen.queryByRole("status", { name: "GPU step running" })).not.toBeInTheDocument();
+        });
+
+        it.each(["finished", "failed", "aborted", "scheduled"])(
+            "does not show a stale GPU badge once the protocol is %s",
+            (status) => {
+                renderComponent({
+                    data: createProtocolData({ status, gpuIndicatorEligible: true }),
+                });
+
+                expect(screen.queryByRole("status", { name: "GPU step running" })).not.toBeInTheDocument();
+            },
+        );
+    });
+
     it("renders protocol label, id, status, formatted cpu time, outputs and tag chips", async () => {
         renderComponent();
 

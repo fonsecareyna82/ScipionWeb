@@ -134,6 +134,7 @@ type StatusNodeProps = {
     tick?: number;
     numberOfSteps?: number;
     stepsDone?: number;
+    gpuIndicatorEligible?: boolean;
     outputs?: any[];
     outputThumbnails?: Record<string, {
       exists?: boolean;
@@ -2920,6 +2921,29 @@ export default function ProtocolNodeCard({
                     </span>
 
                     <span className={styles.timeRow}>
+                      {normalizedStatus === "running" && data.gpuIndicatorEligible === true && (
+                        <span
+                          className={styles.gpuBadge}
+                          role="status"
+                          aria-label="GPU step running"
+                          title="Running step requests GPU; physical GPU utilization is not measured"
+                        >
+                          <svg
+                            className={styles.gpuIcon}
+                            aria-hidden="true"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect x="5" y="5" width="14" height="14" rx="2" />
+                            <rect x="9" y="9" width="6" height="6" rx="1" />
+                            <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
+                          </svg>
+                        </span>
+                      )}
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         className={styles.timeIcon}

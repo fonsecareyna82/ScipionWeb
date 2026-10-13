@@ -124,6 +124,7 @@ interface StatusNodeData {
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
+  gpuIndicatorEligible?: boolean;
 
   // Selection/path
   parents?: string[];
@@ -2084,6 +2085,8 @@ export default function ProjectPage() {
           const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
           const stepsDone = Number(summary.stepsDone ?? 0);
           const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+          const gpuIndicatorEligible = summary.gpuIndicatorEligible === true &&
+            normalizeProtocolStatus(status) === "running";
 
           const elapsedSessionId =
             summary.elapsedSessionId == null
@@ -2100,6 +2103,7 @@ export default function ProjectPage() {
               elapsedSessionId,
               stepsDone,
               numberOfSteps,
+              gpuIndicatorEligible,
               ...(outputs !== undefined ? { outputs } : {}),
             },
           };
@@ -2122,6 +2126,8 @@ export default function ProjectPage() {
           const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
           const stepsDone = Number(summary.stepsDone ?? 0);
           const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+          const gpuIndicatorEligible = summary.gpuIndicatorEligible === true &&
+            normalizeProtocolStatus(status) === "running";
 
           const elapsedSessionId =
             summary.elapsedSessionId == null
@@ -2136,6 +2142,7 @@ export default function ProjectPage() {
             elapsedSessionId,
             stepsDone,
             numberOfSteps,
+            gpuIndicatorEligible,
             ...(outputs !== undefined ? { outputs } : {}),
           };
 
@@ -2192,14 +2199,19 @@ export default function ProjectPage() {
             normalizeProtocolStatus(effectiveStatus);
           const sessionChanged = !!nextSession && currentSession !== nextSession;
           const hasRuntimeOutputs = Array.isArray(summary.outputs);
+          const gpuIndicatorEligible = summary.gpuIndicatorEligible === true &&
+            normalizeProtocolStatus(effectiveStatus) === "running";
+          const gpuIndicatorChanged =
+            Boolean(currentProtocol.gpuIndicatorEligible) !== gpuIndicatorEligible;
 
-          if (!statusChanged && !hasRuntimeOutputs && !sessionChanged) {
+          if (!statusChanged && !hasRuntimeOutputs && !sessionChanged && !gpuIndicatorChanged) {
             continue;
           }
 
           nextProtocols[protocolId] = {
             ...(mergeProtocolRuntimeSummary(currentProtocol, { ...summary, status: effectiveStatus }) as object),
             elapsedSessionId: nextSession || currentSession || null,
+            gpuIndicatorEligible,
           };
 
           changed = true;
