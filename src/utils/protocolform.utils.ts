@@ -135,6 +135,80 @@ export function matchesPointerClassHierarchy(
 }
 
 
+/**
+ * Classify a protocol output without mistaking its items for the output itself.
+ *
+ * A Scipion Set output is not directly assignable to a pointer expecting one
+ * of its members. In that case we can *expand* it to browse items, but only
+ * when the persisted item type is known and compatible.
+ *
+ * Keep matchesPointerClassHierarchy strictly about the output itself: it is
+ * also shared by form filtering and drag-and-drop compatibility.
+ */
+export type PointerOutputCompatibility =
+  | "direct"
+  | "expandable"
+  | "incompatible";
+
+function getPointerOutputCompatibilityWithoutParent(
+  expected: unknown,
+  output: any,
+): PointerOutputCompatibility {
+  if (!output || typeof output !== "object") {
+    return "incompatible";
+  }
+
+  if (matchesPointerClassHierarchy(expected, output)) {
+    return "direct";
+  }
+
+  // Inspect *output* ancestry to establish that this really is a Scipion Set.
+  // The Set/EMSet bases are generic; 'SetOf...' supports old, minimally
+  // described sets without introducing specific EM-object type exceptions.
+  const outputClasses = [
+    output.pointerClass,
+    output.pointerClassHierarchy,
+    output.className,
+    output.outputClassName,
+  ]
+    .flatMap(splitPointerClassTokens)
+    .map(normalizePointerClassToken)
+    .filter(Boolean);
+
+  const isSetOutput = outputClasses.some(
+    (className) =>
+      className === "set" ||
+      className === "emset" ||
+      className.startsWith("setof"),
+  );
+
+  if (!isSetOutput) {
+    return "incompatible";
+  }
+
+  // Never infer the type of the members by stripping a SetOf prefix.
+  // Trust only explicit item metadata supplied by ScipionAPI/PostgreSQL.
+  const itemClasses = [
+    output.itemClassName,
+    output.itemClassHierarchy,
+  ]
+    .flatMap(splitPointerClassTokens)
+    .map(normalizePointerClassToken)
+    .filter(Boolean);
+
+  if (itemClasses.length === 0) {
+    return "incompatible";
+  }
+
+  const itemIsCompatible = matchesPointerClassHierarchy(expected, {
+    pointerClass: output.itemClassName,
+    pointerClassHierarchy: output.itemClassHierarchy,
+  });
+
+  return itemIsCompatible ? "expandable" : "incompatible";
+}
+
+
 export function hasPointerClass(def: any): boolean {
   return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
 }
@@ -395,3 +469,40 @@ export function normalizeMultiPointerValue(raw: any) {
     };
   });
 }
+
+// GREEN75_PARENT_INHERITANCE: only borrow a producer's *item* hierarchy for
+// an explicitly identified member of that same output and concrete class.
+export function getPointerOutputCompatibility(
+  expected: Parameters<typeof getPointerOutputCompatibilityWithoutParent>[0],
+  output: Parameters<typeof getPointerOutputCompatibilityWithoutParent>[1],
+  parentOutput?: any,
+): ReturnType<typeof getPointerOutputCompatibilityWithoutParent> {
+  if (parentOutput && output?.selectionKind === "set-item") {
+    const classToken = (value: unknown) => String(value ?? "").trim().split(".").pop()!.toLowerCase();
+    const parentItemClass = classToken(parentOutput.itemClassName);
+    const memberClasses = [output?.itemClassName, output?.pointerClass].filter(
+      (value) => typeof value === "string" && value.trim() !== "",
+    );
+    const ancestry = parentOutput.itemClassHierarchy;
+    const parentId = parentOutput.parentId ?? parentOutput.protocolId;
+    const memberId = output.parentId ?? output.protocolId;
+    const parentKey = parentOutput.key ?? parentOutput.outputName;
+    const memberKey = output.key;
+    const sameProducer = parentId != null && memberId != null && String(parentId) === String(memberId);
+    const sameOutput = typeof parentKey === "string" && typeof memberKey === "string" && parentKey !== "" && parentKey === memberKey;
+    const sameClass = parentItemClass !== "" && memberClasses.length > 0 && memberClasses.every(
+      (value) => classToken(value) === parentItemClass,
+    );
+    const hasDeclaredHierarchy = Array.isArray(ancestry) && ancestry.some(
+      (value: unknown) => classToken(value) === parentItemClass,
+    );
+
+    if (sameProducer && sameOutput && sameClass && hasDeclaredHierarchy &&
+        matchesPointerClassHierarchy(expected, { pointerClass: parentOutput.itemClassName, pointerClassHierarchy: ancestry })) {
+      return "direct" as ReturnType<typeof getPointerOutputCompatibilityWithoutParent>;
+    }
+  }
+
+  return getPointerOutputCompatibilityWithoutParent(expected, output);
+}
+

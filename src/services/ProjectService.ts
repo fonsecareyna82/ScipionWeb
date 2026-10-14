@@ -155,6 +155,39 @@ export type VolumeListItem = {
   name: string;
 };
 
+/** One persisted Scipion Set member: this is NOT a resolved Pointer. */
+export type PointerSelectableSetItem = {
+  /** Scipion object ID inside the Set (never an array position). */
+  scipionItemId: number;
+  name: string;
+  enabled: boolean;
+  itemClassName: string;
+  /** Opt-in only: an executable native reference authored by ScipionAPI. */
+  value?: string;
+  /** Opt-in selection metadata; never synthesize from scipionItemId. */
+  selectionKind?: "set-item";
+  selectable?: boolean;
+  pointerClass?: string;
+  parentId?: string;
+  protocolId?: string;
+  key?: string;
+};
+
+/** Backend keyset pagination response for any persisted Set output. */
+export type PointerSelectableSetItemsPage = {
+  items: PointerSelectableSetItem[];
+  nextCursor: string | null;
+};
+
+export type PointerSelectableSetItemsOptions = {
+  /** Persisted scipionItemId cursor. Omit/null for the first page. */
+  cursor?: string | null;
+  /** Page size; ScipionAPI enforces 1..100 and defaults to 50. */
+  limit?: number;
+  /** Request server-authored native values. Omitted/false means metadata only. */
+  includePointerValues?: boolean;
+};
+
 /** Minimal volume metadata for the slice viewer. */
 export type VolumeInfo = {
   /** Total number of slices along the chosen axis (UI uses 1-based index). */
@@ -2017,6 +2050,14 @@ export interface ProjectService<
     outputName: string,
     payload: TomogramReviewSubsetRequest,
   ): Promise<TomogramReviewSubsetResult>;
+
+  /** Optional for external/embedded ProjectService implementations. */
+  listPointerSelectableSetItemsPage?(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    options?: PointerSelectableSetItemsOptions,
+  ): Promise<PointerSelectableSetItemsPage>;
 
   listOutputVolumes(
     projectId: Id,

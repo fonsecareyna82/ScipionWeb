@@ -147,7 +147,6 @@ export function setPointerSelection(
     editableValue: item.value,
     value: item.value,
     info: item.info,
-    pointerClass: item.pointerClass,
     parentId: item.parentId,
   });
 }

@@ -6,6 +6,8 @@ import type {
   ProjectService,
   ProjectPayload,
   ImportProjectPayload,
+  PointerSelectableSetItemsOptions,
+  PointerSelectableSetItemsPage,
   Id,
   NextProtocolSuggestion,
   VolumeSliceObjectUrl,
@@ -476,6 +478,19 @@ const defaultService: ProjectService = {
 
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
+
+  listPointerSelectableSetItemsPage: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    options?: PointerSelectableSetItemsOptions,
+  ): Promise<PointerSelectableSetItemsPage> =>
+    api.listPointerSelectableSetItemsPage(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      options,
+    ),
 
   listOutputVolumes: (projectId: Id, protocolId: Id, outputName: string) =>
     api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),

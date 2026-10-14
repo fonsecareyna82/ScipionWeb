@@ -4,6 +4,8 @@ import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
 import {
+  PointerSelectableSetItemsOptions,
+  PointerSelectableSetItemsPage,
   CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
@@ -2705,6 +2707,45 @@ export async function fetchFscRows(
 }
 
 /* ======================= Analyze Results: Volumes ======================= */
+/** Discover members of a persisted Scipion Set, without making item Pointers. */
+export async function listPointerSelectableSetItemsPage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  options: PointerSelectableSetItemsOptions = {},
+): Promise<PointerSelectableSetItemsPage> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${enc(String(projectId))}/protocols/${enc(
+    String(protocolId),
+  )}/outputs/${enc(outputName)}/pointer-items`;
+
+  const params = new URLSearchParams();
+  if (options.cursor != null && options.cursor !== "") {
+    params.set("cursor", options.cursor);
+  }
+  if (options.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+  // Opt-in only: legacy metadata requests must not send this parameter.
+  if (options.includePointerValues === true) {
+    params.set("includePointerValues", "true");
+  }
+  const query = params.toString();
+  const url = query ? `${base}?${query}` : base;
+
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to list Scipion Set items");
+  }
+
+  // Preserve ScipionAPI-authored IDs, cursors and optional native values
+  // verbatim. Never synthesize a Pointer from metadata in the frontend.
+  return safeJson<PointerSelectableSetItemsPage>(response);
+}
+
 export async function listOutputVolumes(
   projectId: Id,
   protocolId: Id,

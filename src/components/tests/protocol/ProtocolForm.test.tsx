@@ -6,6 +6,8 @@ import ProtocolForm from "@/components/protocol/ProtocolForm";
 const mockSaveProtocol = vi.fn();
 const mockExecuteProtocol = vi.fn();
 const mockResolveProtocolRelationCandidates = vi.fn();
+const mockOutputSelectorRender = vi.fn();
+const mockListPointerSelectableSetItemsPage = vi.fn();
 
 const mockGetBackendPayloadFromError = vi.fn((error: any): any => error?.payload ?? error ?? null);
 const mockGetHttpStatusFromError = vi.fn((error: any): number | null => error?.status ?? null);
@@ -20,6 +22,7 @@ const mockProjectService = {
     previewRemoteEntry: vi.fn(),
     buildProtocolDownloadUrl: vi.fn(),
     resolveProtocolRelationCandidates: mockResolveProtocolRelationCandidates,
+    listPointerSelectableSetItemsPage: mockListPointerSelectableSetItemsPage,
 };
 
 const mockToastSuccess = vi.fn();
@@ -68,7 +71,9 @@ vi.mock("@/hooks/useProtocolLogs", () => ({
     }),
 }));
 
-vi.mock("@/utils/protocolform.utils", () => ({
+vi.mock("@/utils/protocolform.utils", async (importOriginal) => ({
+    // Retain the actual GREEN 48 generic classifier in the component tests.
+    ...(await importOriginal<typeof import("@/utils/protocolform.utils")>()),
     getParamClass: (def: any) => def?.paramClass ?? "",
     isNonEmptyString: (value: any) =>
         typeof value === "string" && value.trim().length > 0,
@@ -387,12 +392,12 @@ vi.mock("@/components/files/RemoteFileDialog", () => ({
 }));
 
 vi.mock("@/components/protocol/outputSelectorDialog", () => ({
-    default: ({
-        open,
-        allOutputs = [],
-        onSelect,
-    }: any) =>
-        open ? (
+    default: (props: any) => {
+        // Capture the real props supplied by ProtocolForm. Existing tests
+        // keep their lightweight dialog mock; this verifies the wiring.
+        mockOutputSelectorRender(props);
+        const { open, allOutputs = [], onSelect } = props;
+        return open ? (
             <div data-testid="output-selector-dialog">
                 {allOutputs.map(
                     (output: any) => (
@@ -403,6 +408,8 @@ vi.mock("@/components/protocol/outputSelectorDialog", () => ({
                             data-pointer-value={String(output.value ?? "")}
                             data-pointer-class={String(output.pointerClass ?? "")}
                             data-candidate-kind={String(output.candidateKind ?? "")}
+                            data-item-class={String(output.itemClassName ?? "")}
+                            data-item-hierarchy={JSON.stringify(output.itemClassHierarchy ?? [])}
                             onClick={() => onSelect?.(output)}
                         >
                             {`${output.protocolId}.${output.key}`}
@@ -410,7 +417,8 @@ vi.mock("@/components/protocol/outputSelectorDialog", () => ({
                     )
                 )}
             </div>
-        ) : null,
+        ) : null;
+    },
 }));
 
 vi.mock("@/components/protocol/ExecuteModeButton", () => ({
@@ -2592,4 +2600,396 @@ describe("ProtocolForm", () => {
         },
     );
 
+});
+
+
+// RED 51: ScipionAPI exposes two *different* ancestries on persisted Sets.
+// ProtocolForm must forward both to the selector, rather than filtering the
+// Set out because its pointerClass does not match the *item* class.
+describe("ProtocolForm nested pointer candidates (RED 51)", () => {
+    const volumeHierarchy = [
+        "Volume",
+        "EMObject",
+        "Object",
+    ];
+    const setHierarchy = [
+        "SetOfVolumes",
+        "EMSet",
+        "Set",
+        "EMObject",
+        "Object",
+    ];
+
+    function fixture(expectedClass: string) {
+        const data: any = createData();
+        data.form.sections = [{
+            label: "Input",
+            params: [{
+                paramName: "inputObject",
+                paramDef: {
+                    paramClass: "PointerParam",
+                    label: "Input object",
+                    pointerClass: expectedClass,
+                },
+            }],
+        }];
+        data.values = { inputObject: "" };
+
+        const projectProtocols: any[] = [
+            {
+                id: 21,
+                label: "Single volume producer",
+                children: [],
+                outputs: [{
+                    outputName: "outputVolume",
+                    pointerClass: "Volume",
+                    pointerClassHierarchy: volumeHierarchy,
+                    value: "21.outputVolume",
+                }],
+            },
+            {
+                id: 22,
+                label: "Set of volumes producer",
+                children: [],
+                outputs: [{
+                    outputName: "outputVolumes",
+                    pointerClass: "SetOfVolumes",
+                    pointerClassHierarchy: setHierarchy,
+                    itemClassName: "Volume",
+                    itemClassHierarchy: volumeHierarchy,
+                    value: "22.outputVolumes",
+                }],
+            },
+            {
+                id: 23,
+                label: "Legacy set metadata producer",
+                children: [],
+                outputs: [{
+                    outputName: "outputLegacyVolumes",
+                    pointerClass: "SetOfVolumes",
+                    pointerClassHierarchy: setHierarchy,
+                    itemClassName: "Volume",
+                    value: "23.outputLegacyVolumes",
+                }],
+            },
+            {
+                id: 33,
+                label: "Set of particles producer",
+                children: [],
+                outputs: [{
+                    outputName: "outputParticles",
+                    pointerClass: "SetOfParticles",
+                    pointerClassHierarchy: ["SetOfParticles", "SetOfImages", "EMSet", "Set"],
+                    itemClassName: "Particle",
+                    itemClassHierarchy: ["Particle", "Image", "EMObject", "Object"],
+                    value: "33.outputParticles",
+                }],
+            },
+            {
+                id: 7,
+                label: "Current protocol",
+                children: [88],
+                outputs: [{
+                    outputName: "outputOwnVolumes",
+                    pointerClass: "SetOfVolumes",
+                    pointerClassHierarchy: setHierarchy,
+                    itemClassName: "Volume",
+                    itemClassHierarchy: volumeHierarchy,
+                    value: "7.outputOwnVolumes",
+                }],
+            },
+            {
+                id: 88,
+                label: "Downstream protocol",
+                children: [],
+                outputs: [{
+                    outputName: "outputChildVolumes",
+                    pointerClass: "SetOfVolumes",
+                    pointerClassHierarchy: setHierarchy,
+                    itemClassName: "Volume",
+                    itemClassHierarchy: volumeHierarchy,
+                    value: "88.outputChildVolumes",
+                }],
+            },
+        ];
+        return { data, projectProtocols };
+    }
+
+    async function openSelector(expectedClass: string) {
+        renderComponent(fixture(expectedClass));
+        fireEvent.click(screen.getByRole("button", { name: "Find Input object" }));
+        return screen.findByTestId("output-selector-dialog");
+    }
+
+    it("keeps directly compatible Volume outputs as candidates (baseline)", async () => {
+        const selector = await openSelector("Volume");
+        expect(
+            selector.querySelector('[data-pointer-value="21.outputVolume"]'),
+        ).not.toBeNull();
+    });
+
+    it("retains an item-compatible SetOfVolumes as a browsable candidate", async () => {
+        const selector = await openSelector("Volume");
+        expect(
+            selector.querySelector('[data-pointer-value="22.outputVolumes"]'),
+        ).not.toBeNull();
+    });
+
+    it("preserves the exact item class and hierarchy on the set candidate", async () => {
+        const selector = await openSelector("Volume");
+        const row = selector.querySelector('[data-pointer-value="22.outputVolumes"]');
+        expect(row).not.toBeNull();
+        expect(row).toHaveAttribute("data-item-class", "Volume");
+        expect(row).toHaveAttribute(
+            "data-item-hierarchy",
+            JSON.stringify(volumeHierarchy),
+        );
+        expect(row).toHaveAttribute("data-pointer-class", "SetOfVolumes");
+    });
+
+    it("accepts itemClassName even when legacy output lacks itemClassHierarchy", async () => {
+        const selector = await openSelector("Volume");
+        expect(
+            selector.querySelector('[data-pointer-value="23.outputLegacyVolumes"]'),
+        ).not.toBeNull();
+    });
+
+    it("uses item inheritance for other types without hardcoding Volume", async () => {
+        const selector = await openSelector("Image");
+        const row = selector.querySelector('[data-pointer-value="33.outputParticles"]');
+        expect(row).not.toBeNull();
+        expect(row).toHaveAttribute("data-item-class", "Particle");
+    });
+
+    it("excludes sets whose members are incompatible with the requested class", async () => {
+        const selector = await openSelector("Volume");
+        expect(
+            selector.querySelector('[data-pointer-value="33.outputParticles"]'),
+        ).toBeNull();
+    });
+
+    it("still blocks the current protocol and descendants from selection", async () => {
+        const selector = await openSelector("Volume");
+        expect(
+            selector.querySelector('[data-pointer-value="7.outputOwnVolumes"]'),
+        ).toBeNull();
+        expect(
+            selector.querySelector('[data-pointer-value="88.outputChildVolumes"]'),
+        ).toBeNull();
+    });
+});
+
+
+// RED 59: this is the consumer wiring test. The actual OutputSelectorDialog
+// handles expansion/pagination (RED 49); here we prove ProtocolForm supplies
+// an authenticated ProjectService-backed loader for exactly the producer Set.
+// The server returns only discovery metadata: no fabricated Pointer.value.
+describe("ProtocolForm generic Set item loader (RED 59)", () => {
+    // GREEN 61: RED 59 is a separate top-level describe. The existing
+    // ProtocolForm beforeEach does not apply to these six tests.
+    // Isolate both call history AND implementations between test cases.
+    beforeEach(() => {
+        mockOutputSelectorRender.mockClear();
+        mockListPointerSelectableSetItemsPage.mockReset();
+    });
+
+    const volumeHierarchy = ["Volume", "EMObject", "Object"];
+    const volumeSetHierarchy = ["SetOfVolumes", "EMSet", "Set", "Object"];
+
+    const setPage = {
+        items: [
+            {
+                scipionItemId: 34,
+                name: "Refined volume 34",
+                enabled: true,
+                itemClassName: "Volume",
+            },
+        ],
+        nextCursor: "34",
+    };
+    const lastPage = {
+        items: [
+            {
+                scipionItemId: 91,
+                name: "Refined volume 91",
+                enabled: false,
+                itemClassName: "Volume",
+            },
+        ],
+        nextCursor: null,
+    };
+
+    function openForVolume() {
+        const data: any = createData();
+        data.form.sections = [{
+            label: "Inputs",
+            params: [{
+                paramName: "inputObject",
+                paramDef: {
+                    paramClass: "PointerParam",
+                    label: "Input object",
+                    pointerClass: "Volume",
+                },
+            }],
+        }];
+        data.values = { inputObject: "" };
+
+        // protocolId is the Scipion runtime ID. `id` is a distinct internal
+        // identity, and must never be used in the /pointer-items URL.
+        const projectProtocols: any[] = [
+            {
+                id: 102,
+                protocolId: "2202",
+                label: "Volume container",
+                children: [],
+                outputs: [{
+                    outputName: "outputVolumes",
+                    value: "2202.outputVolumes",
+                    pointerClass: "SetOfVolumes",
+                    pointerClassHierarchy: volumeSetHierarchy,
+                    itemClassName: "Volume",
+                    itemClassHierarchy: volumeHierarchy,
+                }],
+            },
+            {
+                id: 103,
+                protocolId: "2101",
+                label: "Single volume",
+                children: [],
+                outputs: [{
+                    outputName: "outputVolume",
+                    value: "2101.outputVolume",
+                    pointerClass: "Volume",
+                    pointerClassHierarchy: volumeHierarchy,
+                }],
+            },
+        ];
+
+        renderComponent({ data, projectProtocols });
+        fireEvent.click(screen.getByRole("button", { name: "Find Input object" }));
+
+        const openCalls = mockOutputSelectorRender.mock.calls
+            .map(([props]: any[]) => props)
+            .filter((props: any) => props.open === true);
+        expect(openCalls.length).toBeGreaterThan(0);
+        const props = openCalls[openCalls.length - 1];
+        const setOutput = props.allOutputs.find(
+            (output: any) => output.key === "outputVolumes",
+        );
+        return { props, setOutput };
+    }
+
+    it("retains the directly assignable Volume and SetOfVolumes without fetching (baseline)", () => {
+        const { props, setOutput } = openForVolume();
+
+        expect(setOutput).toMatchObject({
+            key: "outputVolumes",
+            protocolId: "2202",
+            itemClassName: "Volume",
+        });
+        expect(props.allOutputs).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: "outputVolume", pointerClass: "Volume" }),
+            ]),
+        );
+        expect(mockListPointerSelectableSetItemsPage).not.toHaveBeenCalled();
+    });
+
+    it("provides the generic loader to the open selector when the service supports it", () => {
+        const { props } = openForVolume();
+        expect(typeof props.loadSetItems).toBe("function");
+        expect(mockListPointerSelectableSetItemsPage).not.toHaveBeenCalled();
+    });
+
+    it("passes Scipion producer ID, project ID and output name to the service", async () => {
+        mockListPointerSelectableSetItemsPage.mockResolvedValue(setPage);
+        const { props, setOutput } = openForVolume();
+
+        const result = await props.loadSetItems(setOutput, { cursor: null, limit: 50 });
+
+        expect(mockListPointerSelectableSetItemsPage).toHaveBeenCalledExactlyOnceWith(
+            1, "2202", "outputVolumes", { cursor: null, limit: 50, includePointerValues: true },
+        );
+        expect(result).toEqual(setPage);
+    });
+
+    it("forwards subsequent cursors, never replacing them with offsets", async () => {
+        mockListPointerSelectableSetItemsPage.mockImplementation(
+            async (_projectId: unknown, _protocolId: unknown, _name: unknown, options: any) =>
+                options.cursor === null ? setPage : lastPage,
+        );
+        const { props, setOutput } = openForVolume();
+        const first = await props.loadSetItems(setOutput, { cursor: null, limit: 50 });
+        const second = await props.loadSetItems(setOutput, {
+            cursor: first.nextCursor,
+            limit: 50,
+        });
+
+        expect(second).toEqual(lastPage);
+        expect(mockListPointerSelectableSetItemsPage).toHaveBeenNthCalledWith(
+            2, 1, "2202", "outputVolumes", { cursor: "34", limit: 50, includePointerValues: true },
+        );
+    });
+
+    it("preserves backend failures for the selector to show and retry", async () => {
+        mockListPointerSelectableSetItemsPage.mockRejectedValue(
+            new Error("Project access denied"),
+        );
+        const { props, setOutput } = openForVolume();
+
+        await expect(
+            props.loadSetItems(setOutput, { cursor: null, limit: 50 }),
+        ).rejects.toThrow("Project access denied");
+        expect(mockListPointerSelectableSetItemsPage).toHaveBeenCalledTimes(1);
+    });
+
+    it("RED 72: preserves directly compatible candidates and lazy loading (baseline)", () => {
+        const { props, setOutput } = openForVolume();
+        expect(setOutput).toMatchObject({ key: "outputVolumes", itemClassName: "Volume" });
+        expect(props.allOutputs).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: "outputVolume", pointerClass: "Volume" }),
+        ]));
+        expect(mockListPointerSelectableSetItemsPage).not.toHaveBeenCalled();
+    });
+
+    it("RED 72: requests native member values on the first page", async () => {
+        mockListPointerSelectableSetItemsPage.mockResolvedValue(setPage);
+        const { props, setOutput } = openForVolume();
+        const result = await props.loadSetItems(setOutput, { cursor: null, limit: 50 });
+
+        expect(result).toBe(setPage);
+        expect(mockListPointerSelectableSetItemsPage).toHaveBeenCalledWith(
+            1, "2202", "outputVolumes",
+            { cursor: null, limit: 50, includePointerValues: true },
+        );
+    });
+
+    it("RED 72: preserves cursor and requests native values on subsequent pages", async () => {
+        mockListPointerSelectableSetItemsPage.mockResolvedValue(lastPage);
+        const { props, setOutput } = openForVolume();
+        const result = await props.loadSetItems(setOutput, { cursor: "34", limit: 25 });
+
+        expect(result).toBe(lastPage);
+        expect(mockListPointerSelectableSetItemsPage).toHaveBeenCalledWith(
+            1, "2202", "outputVolumes",
+            { cursor: "34", limit: 25, includePointerValues: true },
+        );
+    });
+
+    it("returns exact metadata without inventing executable item pointers", async () => {
+        mockListPointerSelectableSetItemsPage.mockResolvedValue(setPage);
+        const { props, setOutput } = openForVolume();
+        const result = await props.loadSetItems(setOutput, { cursor: null, limit: 50 });
+
+        expect(result).toBe(setPage);
+        expect(result.items[0]).toEqual({
+            scipionItemId: 34,
+            name: "Refined volume 34",
+            enabled: true,
+            itemClassName: "Volume",
+        });
+        expect(result.items[0]).not.toHaveProperty("value");
+        expect(result.items[0]).not.toHaveProperty("pointerClass");
+        expect(screen.getByLabelText("Input object")).toHaveValue("");
+    });
 });

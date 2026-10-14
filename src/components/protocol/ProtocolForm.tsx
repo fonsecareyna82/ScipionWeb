@@ -68,6 +68,7 @@ import {
   normalizeMultiPointerValue,
   isScalarPointerParam,
   matchesPointerClassHierarchy,
+  getPointerOutputCompatibility,
 } from "@/utils/protocolform.utils";
 import {
   evaluateScipionCondition,
@@ -2036,6 +2037,20 @@ export default function ProtocolForm({
                 )
                 .filter(Boolean)
               : [],
+          // GREEN 52: keep independent set/item ancestry for nested pointer browsing.
+          // A SetOfVolumes is not a Volume; its members may nevertheless be Volume.
+          // The API exposes item metadata; do not infer it from a SetOf* name.
+          itemClassName: String(
+            out?.itemClassName ??
+            out?.persistence?.itemClassName ??
+            ""
+          ).trim(),
+          itemClassHierarchy:
+            Array.isArray(out?.itemClassHierarchy)
+              ? out.itemClassHierarchy
+                .map((className: any) => String(className ?? "").trim())
+                .filter(Boolean)
+              : [],
           value: String(
             out?.value ??
             ""
@@ -3809,12 +3824,17 @@ export default function ProtocolForm({
       return outputPool;
     }
 
+    // The strict output matcher is not sufficient here: it filters out
+    // sets whose *items* match the parameter. Retain both direct output
+    // candidates and expandable sets; the dialog enforces that a set cannot
+    // be selected directly when only its members are compatible.
+    // Keep protocol candidates in this pool (direct protocol pointers).
     return pool.filter(
       (output) =>
-        matchesPointerClassHierarchy(
+        getPointerOutputCompatibility(
           expectedList,
           output,
-        )
+        ) !== "incompatible"
     );
   };
 
@@ -4289,6 +4309,46 @@ export default function ProtocolForm({
         allOutputs={allOutputs}
         onSelect={handleSelectOutput}
         multiSelect={false}
+        // GREEN 60: browse persisted Set members using their Scipion producer ID.
+        // The response is metadata-only. The selector will not enable selection
+        // for an item without a backend-resolved executable Pointer.value.
+        loadSetItems={
+          svc.listPointerSelectableSetItemsPage
+            ? async (output, options) => {
+                // ProtocolForm gathers the producer's *Scipion* protocolId.
+                // Do NOT use a PostgreSQL PK, a positional item index, or a
+                // string parsed from a previously serialized pointer value.
+                const producerProtocolId = (
+                  output as typeof output & { protocolId?: string | number }
+                ).protocolId;
+                const outputName = String(output.key ?? "").trim();
+
+                if (
+                  projectId == null ||
+                  String(projectId).trim() === "" ||
+                  producerProtocolId == null ||
+                  String(producerProtocolId).trim() === "" ||
+                  !outputName
+                ) {
+                  throw new Error(
+                    "Cannot browse Set items without project, producer protocol and output identity",
+                  );
+                }
+
+                // Forward the same cursor and limit. Never generate a Pointer
+                // from scipionItemId or modify the server's item objects.
+                // GREEN 73: request server-authored native item references.
+                // Never build a Pointer.value in the browser: the backend
+                // authoritatively resolves the persisted producer and item IDs.
+                return svc.listPointerSelectableSetItemsPage!(
+                  projectId,
+                  producerProtocolId,
+                  outputName,
+                  { ...options, includePointerValues: true },
+                );
+              }
+            : undefined
+        }
       />
 
       {/* Workflow execution confirmation */}
