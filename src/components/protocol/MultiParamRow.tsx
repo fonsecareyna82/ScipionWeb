@@ -1,5 +1,6 @@
 // src/components/MultiParamRow.tsx
 import { useMemo, useState } from "react";
+import type { ComponentProps } from "react";
 import {
   Box,
   Table,
@@ -32,6 +33,7 @@ type MultiParamRowProps = {
 
   // Centralized OutputSelectorDialog
   getAvailableOutputs?: () => any[];
+  loadSetItems?: ComponentProps<typeof OutputSelectorDialog>["loadSetItems"];
   onPickForRow?: (rowIndex: number, picked: any) => void;
 
   // Inline edit support (optional)
@@ -95,6 +97,7 @@ export default function MultiParamRow({
   paramKey,
   def,
   getAvailableOutputs,
+  loadSetItems,
   onPickForRow,
   onRowEdit,
   readOnly,
@@ -379,6 +382,7 @@ export default function MultiParamRow({
         onClose={() => setOpenSelectorFor(null)}
         expectedClass={expected}
         allOutputs={availableOutputs}
+        loadSetItems={loadSetItems}
         multiSelect={true}
         onSelect={(selected) => {
           // handleSelectorPick

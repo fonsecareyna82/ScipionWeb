@@ -168,6 +168,8 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 
   const [filter, setFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // GREEN83: retain server-authored members across Set pagination and filters.
+  const [selectedMembers, setSelectedMembers] = useState<Array<{ id: string; output: Output }>>([]);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [expandedSetIds, setExpandedSetIds] = useState<Set<string>>(new Set());
   const [setItems, setSetItems] = useState<Record<string, LoadedSetItems>>({});
@@ -178,6 +180,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     // resetStateOnOpen
     if (open) {
       setSelectedIds(new Set());
+      setSelectedMembers([]);
       setHighlightedId(null);
       setFilter("");
       setExpandedSetIds(new Set());
@@ -293,7 +296,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       filtered = filtered.filter((output) => {
         const compatibility = getCompatibility(output);
         return compatibility === "direct" ||
-          (compatibility === "expandable" && !multiSelect && Boolean(loadSetItems));
+          (compatibility === "expandable" && Boolean(loadSetItems));
       });
     }
 
@@ -338,18 +341,32 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     });
   };
 
+  const toggleMember = (id: string, output: Output) => {
+    setSelectedMembers((previous) =>
+      previous.some((entry) => entry.id === id)
+        ? previous.filter((entry) => entry.id !== id)
+        : [...previous, { id, output }],
+    );
+  };
+
   const clearSelection = () => {
     // clearSelection
     setSelectedIds(new Set());
+    setSelectedMembers([]);
     setHighlightedId(null);
   };
 
   const handleConfirm = () => {
     // handleConfirm
     if (multiSelect) {
-      const selected = matchingOutputs.filter((o) =>
-        selectedIds.has(getOutputRowId(o)) && getCompatibility(o) === "direct"
-      );
+      const directOutputs = [...allOutputs]
+        .filter((o) => selectedIds.has(getOutputRowId(o)) && getCompatibility(o) === "direct")
+        // Preserve the selector's existing descending protocol-ID confirmation order.
+        .sort((a, b) =>
+          (parseInt(String(b.parentId ?? ""), 10) || 0) -
+          (parseInt(String(a.parentId ?? ""), 10) || 0)
+        );
+      const selected = [...directOutputs, ...selectedMembers.map((entry) => entry.output)];
       if (selected.length > 0) onSelect(selected);
     } else if (highlightedId) {
       const selected = matchingOutputs.find((o) => getOutputRowId(o) === highlightedId);
@@ -384,8 +401,9 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     return multiSelect ? selectedIds.has(id) : highlightedId === id;
   };
 
-  const hasSelection = multiSelect ? selectedIds.size > 0 : highlightedId !== null;
-  const confirmLabel = multiSelect ? `Confirm (${selectedIds.size})` : "Confirm";
+  const selectedCount = selectedIds.size + selectedMembers.length;
+  const hasSelection = multiSelect ? selectedCount > 0 : highlightedId !== null;
+  const confirmLabel = multiSelect ? `Confirm (${selectedCount})` : "Confirm";
 
   const borderColor = alpha(theme.palette.divider, 0.9);
   const softBorderColor = alpha(theme.palette.text.primary, 0.08);
@@ -478,10 +496,10 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                 }}
               />
 
-              {multiSelect && selectedIds.size > 0 && (
+              {multiSelect && selectedCount > 0 && (
                 <Chip
                   size="small"
-                  label={`${selectedIds.size} selected`}
+                  label={`${selectedCount} selected`}
                   sx={{
                     fontWeight: 700,
                     color: "#ffffff",
@@ -682,9 +700,10 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                         <TableCell sx={{ textAlign: "center" }}>
                           <Checkbox
                             checked={isSelected}
+                            disabled={compatibility !== "direct"}
                             onChange={(e) => {
                               e.stopPropagation();
-                              toggleSelect(id);
+                              if (compatibility === "direct") toggleSelect(id);
                             }}
                             size="small"
                             color="success"
@@ -712,16 +731,20 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                       <TableCell>
 <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
   {compatibility === "direct" ? (
-                            <Tooltip title="Confirm this output">
+                            <Tooltip title={multiSelect ? "Toggle this output" : "Confirm this output"}>
                               <IconButton
                                 color="success"
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onSelect(o);
-                                  onClose();
+                                  if (multiSelect) {
+                                    toggleSelect(id);
+                                  } else {
+                                    onSelect(o);
+                                    onClose();
+                                  }
                                 }}
-                                aria-label="Confirm output"
+                                aria-label={multiSelect ? "Toggle output" : "Confirm output"}
                                 sx={{
                                   border: `1px solid ${alpha(theme.palette.success.main, 0.20)}`,
                                   backgroundColor: alpha(theme.palette.success.main, 0.06),
@@ -815,6 +838,8 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                                 Boolean(String(member.value ?? "").trim()) &&
                                 member.scipionItemId !== undefined &&
                                 member.scipionItemId !== null;
+                              const memberSelectionId = `${id}::${memberKey}`;
+                              const memberSelected = selectedMembers.some((entry) => entry.id === memberSelectionId);
                               return (
                                 <Stack
                                   key={`${id}::${memberKey}`}
@@ -838,15 +863,21 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                                   <Button
                                     size="small"
                                     disabled={!selectable}
+                                    variant={multiSelect && memberSelected ? "contained" : "text"}
+                                    aria-pressed={multiSelect ? memberSelected : undefined}
                                     aria-label={`Select item ${memberName}`}
                                     onClick={() => {
                                       if (!selectable) return;
-                                      // Forward the unchanged member object. Never synthesize a pointer.
-                                      onSelect(member);
-                                      onClose();
+                                      if (multiSelect) {
+                                        // Store the unchanged API object, not a reconstructed pointer.
+                                        toggleMember(memberSelectionId, member);
+                                      } else {
+                                        onSelect(member);
+                                        onClose();
+                                      }
                                     }}
                                   >
-                                    Select
+                                    {multiSelect && memberSelected ? "Selected" : "Select"}
                                   </Button>
                                 </Stack>
                               );
@@ -913,7 +944,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
         <Stack direction="row" alignItems="center" spacing={1}>
           <Typography variant="body2" sx={{ opacity: 0.75 }}>
             {multiSelect
-              ? `Selected outputs: ${selectedIds.size}`
+              ? `Selected outputs: ${selectedCount}`
               : hasSelection
                 ? "One output selected"
                 : "No output selected"}

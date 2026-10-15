@@ -2854,6 +2854,42 @@ export default function ProtocolForm({
     }
   };
 
+  // GREEN83: both PointerParam and MultiPointerParam use the same backend-authored,
+  // lazy, cursor-paged Set member references. Do not synthesize native pointers.
+  const loadSetItemsForProject = useCallback(
+    async (
+      output: Parameters<NonNullable<React.ComponentProps<typeof OutputSelectorDialog>["loadSetItems"]>>[0],
+      options: { cursor: string | null; limit: number },
+    ) => {
+      if (!svc.listPointerSelectableSetItemsPage) {
+        throw new Error("Set member browsing is unavailable");
+      }
+      // producerProtocolId is the Scipion protocol ID, never the PostgreSQL PK.
+      const producerProtocolId = (
+        output as typeof output & { protocolId?: string | number }
+      ).protocolId;
+      const outputName = String(output.key ?? "").trim();
+      if (
+        projectId == null ||
+        String(projectId).trim() === "" ||
+        producerProtocolId == null ||
+        String(producerProtocolId).trim() === "" ||
+        !outputName
+      ) {
+        throw new Error(
+          "Cannot browse Set items without project, producer protocol and output identity",
+        );
+      }
+      return svc.listPointerSelectableSetItemsPage(
+        projectId,
+        producerProtocolId,
+        outputName,
+        { ...options, includePointerValues: true },
+      );
+    },
+    [projectId, svc],
+  );
+
   // Render a single parameter row
   const renderParam = useCallback(
     (
@@ -3198,6 +3234,7 @@ export default function ProtocolForm({
                   paramKey={stateKey}
                   def={liveDef}
                   getAvailableOutputs={() => getFilteredOutputsForKey(stateKey)}
+                  loadSetItems={svc.listPointerSelectableSetItemsPage ? loadSetItemsForProject : undefined}
                   onPickForRow={handlePickFromDialog}
                   readOnly={isReadOnly}
                   onRowEdit={onRowEdit}
@@ -3584,6 +3621,7 @@ export default function ProtocolForm({
       variant,
       protocolClassName,
       openWizardForParam,
+      loadSetItemsForProject,
     ]
   );
 
@@ -4312,43 +4350,7 @@ export default function ProtocolForm({
         // GREEN 60: browse persisted Set members using their Scipion producer ID.
         // The response is metadata-only. The selector will not enable selection
         // for an item without a backend-resolved executable Pointer.value.
-        loadSetItems={
-          svc.listPointerSelectableSetItemsPage
-            ? async (output, options) => {
-                // ProtocolForm gathers the producer's *Scipion* protocolId.
-                // Do NOT use a PostgreSQL PK, a positional item index, or a
-                // string parsed from a previously serialized pointer value.
-                const producerProtocolId = (
-                  output as typeof output & { protocolId?: string | number }
-                ).protocolId;
-                const outputName = String(output.key ?? "").trim();
-
-                if (
-                  projectId == null ||
-                  String(projectId).trim() === "" ||
-                  producerProtocolId == null ||
-                  String(producerProtocolId).trim() === "" ||
-                  !outputName
-                ) {
-                  throw new Error(
-                    "Cannot browse Set items without project, producer protocol and output identity",
-                  );
-                }
-
-                // Forward the same cursor and limit. Never generate a Pointer
-                // from scipionItemId or modify the server's item objects.
-                // GREEN 73: request server-authored native item references.
-                // Never build a Pointer.value in the browser: the backend
-                // authoritatively resolves the persisted producer and item IDs.
-                return svc.listPointerSelectableSetItemsPage!(
-                  projectId,
-                  producerProtocolId,
-                  outputName,
-                  { ...options, includePointerValues: true },
-                );
-              }
-            : undefined
-        }
+        loadSetItems={svc.listPointerSelectableSetItemsPage ? loadSetItemsForProject : undefined}
       />
 
       {/* Workflow execution confirmation */}
