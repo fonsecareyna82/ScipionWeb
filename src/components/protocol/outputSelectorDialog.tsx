@@ -814,98 +814,133 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                       )}
                     </TableRow>
                     {compatibility === "expandable" && expanded && (
-                      <TableRow>
-                        <TableCell colSpan={4} sx={{ pl: 6, py: 1.5 }}>
-                          <Stack spacing={1}>
-                            {(page?.items ?? []).map((member, itemIndex) => {
-                              const memberName = String(
-                                member.name ?? member.info ?? member.scipionItemId ?? `Item ${itemIndex + 1}`
-                              );
-                              // GREEN77_V7_PRESERVE_MEMBER_LABELS: keep real names; replace repeated API placeholders with a persistent ID.
-                              const meaningfulMemberName = [member.name, member.info]
-                                .map((value) => String(value ?? "").trim())
-                                .find((value) => value && value.toLowerCase() !== "outputset");
-                              const memberDisplayName = meaningfulMemberName || (member.scipionItemId == null
-                                ? memberName
-                                : `${String(member.itemClassName ?? member.pointerClass ?? "Item")} #${String(member.scipionItemId)}`);
-                              const memberKey = String(
-                                member.scipionItemId ?? member.value ?? itemIndex
-                              );
-                              // GREEN 73: a native item is selectable only with explicit backend approval.
-                              // Presence of an opaque value alone is NOT sufficient.
-                              const selectable = getSetMemberCompatibility(member) === "direct" &&
-                                member.enabled === true && member.selectable === true &&
-                                Boolean(String(member.value ?? "").trim()) &&
-                                member.scipionItemId !== undefined &&
-                                member.scipionItemId !== null;
-                              const memberSelectionId = `${id}::${memberKey}`;
-                              const memberSelected = selectedMembers.some((entry) => entry.id === memberSelectionId);
-                              return (
-                                <Stack
-                                  key={`${id}::${memberKey}`}
-                                  direction="row"
-                                  alignItems="center"
-                                  justifyContent="space-between"
-                                  spacing={2}
-                                >
-                                  {/* GREEN77_V5_SCOPED_MEMBER_METADATA: native ID and optional persisted details. */}
-                                  <Stack spacing={0.3} sx={{ minWidth: 0 }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 650 }}>
-                                      {memberDisplayName}
-                                    </Typography>
-                                    {(getSetMemberNumber(member, "itemsCount") !== null || getSetMemberNumber(member, "samplingRate") !== null) && (
-                                      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-                                        {getSetMemberNumber(member, "itemsCount") !== null && <Chip size="small" variant="outlined" label={`${getSetMemberNumber(member, "itemsCount")} items`} />}
-                                        {getSetMemberNumber(member, "samplingRate") !== null && <Chip size="small" variant="outlined" label={`${getSetMemberNumber(member, "samplingRate")} Å/px`} />}
-                                      </Stack>
+                      <React.Fragment>
+                        {(page?.items ?? []).map((member, itemIndex) => {
+                          const memberName = String(
+                            member.name ?? member.info ?? member.scipionItemId ?? `Item ${itemIndex + 1}`
+                          );
+                          // Preserve actual names and fall back to the persistent item identity.
+                          const meaningfulMemberName = [member.name, member.info]
+                            .map((value) => String(value ?? "").trim())
+                            .find((value) => value && value.toLowerCase() !== "outputset");
+                          const memberDisplayName = meaningfulMemberName || (member.scipionItemId == null
+                            ? memberName
+                            : `${String(member.itemClassName ?? member.pointerClass ?? "Item")} #${String(member.scipionItemId)}`);
+                          const memberKey = String(member.scipionItemId ?? member.value ?? itemIndex);
+                          // Never enable native selection without explicit ScipionAPI approval.
+                          const selectable = getSetMemberCompatibility(member) === "direct" &&
+                            member.enabled === true && member.selectable === true &&
+                            Boolean(String(member.value ?? "").trim()) &&
+                            member.scipionItemId !== undefined && member.scipionItemId !== null;
+                          const memberSelectionId = `${id}::${memberKey}`;
+                          const memberSelected = selectedMembers.some((entry) => entry.id === memberSelectionId);
+
+                          // GREEN 88: metadata belongs in the Info column, not below the name.
+                          // Never borrow the outer Set's total count for a particular class.
+                          const rawCount = getSetMemberNumber(member, "itemsCount");
+                          const count = rawCount !== null && Number.isInteger(rawCount) ? rawCount : null;
+                          const samplingRate = getSetMemberNumber(member, "samplingRate");
+                          const memberClass = String(member.itemClassName ?? member.pointerClass ?? "");
+                          const countUnit = memberClass === "Class2D" || memberClass === "Class3D"
+                            ? "particles"
+                            : "items";
+                          const memberAction = (
+                            <Button
+                              size="small"
+                              disabled={!selectable}
+                              variant={multiSelect && memberSelected ? "contained" : "text"}
+                              aria-pressed={multiSelect ? memberSelected : undefined}
+                              aria-label={`Select item ${memberName}`}
+                              onClick={() => {
+                                if (!selectable) return;
+                                if (multiSelect) {
+                                  // Keep the exact API-supplied reference across pages.
+                                  toggleMember(memberSelectionId, member);
+                                } else {
+                                  onSelect(member);
+                                  onClose();
+                                }
+                              }}
+                            >
+                              {multiSelect && memberSelected ? "Selected" : "Select"}
+                            </Button>
+                          );
+
+                          // Same four columns as the parent table in either mode:
+                          // multi: Pick | Protocol ID | Protocol | Info
+                          // single: Protocol ID | Protocol | Info | Action
+                          return (
+                            <TableRow key={`${id}::${memberKey}`} hover>
+                              {multiSelect && (
+                                <TableCell sx={{ textAlign: "center" }}>{memberAction}</TableCell>
+                              )}
+                              <TableCell sx={{ color: "text.secondary" }}>
+                                {memberClass === "Volume" ? null : (
+                                  <Typography variant="caption">{o.parentId ?? "—"}</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ pl: 3 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 650 }}>
+                                  {memberDisplayName}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                {(count !== null || samplingRate !== null) && (
+                                  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                                    {count !== null && (
+                                      <Chip
+                                        size="small"
+                                        variant="outlined"
+                                        label={`${String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ".")} ${countUnit}`}
+                                      />
+                                    )}
+                                    {samplingRate !== null && (
+                                      <Chip
+                                        size="small"
+                                        variant="outlined"
+                                        label={`${samplingRate.toFixed(2).replace(".", ",")} Å/px`}
+                                      />
                                     )}
                                   </Stack>
+                                )}
+                              </TableCell>
+                              {!multiSelect && (
+                                <TableCell sx={{ textAlign: "center" }}>{memberAction}</TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })}
+                        {(page?.loading || page?.error ||
+                          (page && !page.loading && !page.error && (page.items.length === 0 || page.nextCursor))) && (
+                          <TableRow>
+                            <TableCell colSpan={4} sx={{ pl: 6, py: 1.5 }}>
+                              <Stack spacing={1}>
+                                {page?.loading && <Typography variant="body2">Loading items...</Typography>}
+                                {page?.error && (
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Typography variant="body2" color="error">{page.error}</Typography>
+                                    <Button size="small" onClick={() => void loadSetPage(o, page.nextCursor)}>
+                                      Retry
+                                    </Button>
+                                  </Stack>
+                                )}
+                                {page && !page.loading && !page.error && page.items.length === 0 && (
+                                  <Typography variant="body2" color="text.secondary">No items found</Typography>
+                                )}
+                                {page?.nextCursor && !page.loading && !page.error && (
                                   <Button
                                     size="small"
-                                    disabled={!selectable}
-                                    variant={multiSelect && memberSelected ? "contained" : "text"}
-                                    aria-pressed={multiSelect ? memberSelected : undefined}
-                                    aria-label={`Select item ${memberName}`}
-                                    onClick={() => {
-                                      if (!selectable) return;
-                                      if (multiSelect) {
-                                        // Store the unchanged API object, not a reconstructed pointer.
-                                        toggleMember(memberSelectionId, member);
-                                      } else {
-                                        onSelect(member);
-                                        onClose();
-                                      }
-                                    }}
+                                    aria-label={`Load more items from ${o.key || o.value || "set"}`}
+                                    onClick={() => void loadSetPage(o, page.nextCursor)}
                                   >
-                                    {multiSelect && memberSelected ? "Selected" : "Select"}
+                                    Load more
                                   </Button>
-                                </Stack>
-                              );
-                            })}
-                            {page?.loading && <Typography variant="body2">Loading items...</Typography>}
-                            {page?.error && (
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography variant="body2" color="error">{page.error}</Typography>
-                                <Button size="small" onClick={() => void loadSetPage(o, page.nextCursor)}>
-                                  Retry
-                                </Button>
+                                )}
                               </Stack>
-                            )}
-                            {page && !page.loading && !page.error && page.items.length === 0 && (
-                              <Typography variant="body2" color="text.secondary">No items found</Typography>
-                            )}
-                            {page?.nextCursor && !page.loading && !page.error && (
-                              <Button
-                                size="small"
-                                aria-label={`Load more items from ${o.key || o.value || "set"}`}
-                                onClick={() => void loadSetPage(o, page.nextCursor)}
-                              >
-                                Load more
-                              </Button>
-                            )}
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
                     )}
                     </React.Fragment>
                   );

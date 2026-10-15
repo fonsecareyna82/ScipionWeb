@@ -106,6 +106,11 @@ describe("RED 76: Set rows with left-hand disclosure and truthful object metadat
     fireEvent.click(findDisclosure(getParentRow()));
     await screen.findByText(/Class2D\s*[#·-]\s*1/i);
     expect(screen.getByText(/173\s*(items|particles)/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/2\.05\s*Å\/px/i).length).toBeGreaterThanOrEqual(2);
+    // GREEN88: the parent keeps its persisted description (2.05 Å/px),
+    // while the individual member formats the sampling rate as 2,05 Å/px.
+    // Check the member's own row instead of expecting duplicate parent text.
+    const memberRow = screen.getByText(/Class2D\s*[#·-]\s*1/i).closest("tr");
+    expect(memberRow).not.toBeNull();
+    expect(within(memberRow!).getByText(/2,05\s*Å\/px/i)).toBeInTheDocument();
   });
 });
