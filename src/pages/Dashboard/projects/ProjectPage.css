@@ -1877,8 +1877,28 @@
   bottom: var(--ppLogsDockHeight, 0px);
 }
 
-.projectpage-widget-root .pp-logsToggle[aria-pressed="true"] {
-  background-color: var(--ppBrand) !important;
-  border-color: var(--ppBrandHover) !important;
-  color: #ffffff !important;
+/* Unified pressed state: Logs, Mini Map, Focus, and Table view Logs. */
+.projectpage-widget-root .pp-flowControlBtn[aria-pressed="true"],
+.projectpage-widget-root .pp-chipBtn.pp-logsToggle[aria-pressed="true"] {
+  background-color: rgba(71, 85, 105, 0.22) !important;
+  border-color: rgba(71, 85, 105, 0.40) !important;
+  color: var(--ppInk) !important;
+}
+
+/* A slightly deeper inset surface is more legible against dark controls. */
+.projectpage-widget-root.dark .pp-flowControlBtn[aria-pressed="true"],
+.projectpage-widget-root.dark .pp-chipBtn.pp-logsToggle[aria-pressed="true"] {
+  background-color: rgba(2, 6, 23, 0.38) !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+}
+
+/* Keep the active outline neutral while the pointer is over the button. */
+.projectpage-widget-root .pp-flowControlBtn[aria-pressed="true"]:hover:not(:disabled),
+.projectpage-widget-root .pp-chipBtn.pp-logsToggle[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: rgba(71, 85, 105, 0.52) !important;
+}
+
+.projectpage-widget-root.dark .pp-flowControlBtn[aria-pressed="true"]:hover:not(:disabled),
+.projectpage-widget-root.dark .pp-chipBtn.pp-logsToggle[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.58) !important;
 }
