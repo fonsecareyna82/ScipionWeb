@@ -16,7 +16,7 @@ import RemoteFileDialog, {
   RemotePreview,
 } from "@/components/files/RemoteFileDialog";
 
-import { Handle, Position, useReactFlow } from "reactflow";
+import { Handle, Position, useReactFlow, useUpdateNodeInternals } from "reactflow";
 import styles from "./ProtocolNodeCard.module.css";
 
 import { useDrag } from "./DragContext";
@@ -735,6 +735,20 @@ export default function ProtocolNodeCard({
 
   const { setCurrentDraggedOutput } = useDrag();
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // A direction change moves the handles to different sides of the card.
+  // React Flow must remeasure their DOM positions for the existing edges.
+  const updateNodeInternals = useUpdateNodeInternals();
+  const previousHandleDirectionRef = useRef(graphDirection);
+
+  useEffect(() => {
+    if (previousHandleDirectionRef.current === graphDirection) return;
+    previousHandleDirectionRef.current = graphDirection;
+
+    if (!showHandles) return;
+    const nodeId = String(data.id ?? "").trim();
+    if (nodeId) updateNodeInternals(nodeId);
+  }, [graphDirection, showHandles, data.id, updateNodeInternals]);
 
   const suppressNextMenuActionRef = useRef(false);
 
@@ -2647,6 +2661,32 @@ export default function ProtocolNodeCard({
                           const buildDragPayload = () => {
                             const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
 
+                            // GREEN 93: graph outputs may carry a UI label instead of
+                            // the Scipion producer/output reference used by the finder.
+                            // Only correct an EXACT producer-label alias; do not touch
+                            // opaque native values, paths, or scalar output values.
+                            const rawOutputValue = String(value.value ?? "");
+                            const outputKey = String(value.name ?? "").trim();
+                            const producerId = String(value.parentId ?? data.id ?? "").trim();
+                            const graphProtocolId = String(data.id ?? "").trim();
+                            const labelBasedValue = [data.label, data.runName, data.title]
+                              .some((candidate) => {
+                                const label = String(candidate ?? "").trim();
+                                return Boolean(label) && !/^\d+$/.test(label) && (
+                                  rawOutputValue.trim() === label ||
+                                  rawOutputValue.trim() === `${label}.${outputKey}`
+                                );
+                              });
+                            const mayUseProducerReference =
+                              !isScalar &&
+                              /^[1-9]\d*$/.test(producerId) &&
+                              producerId === graphProtocolId &&
+                              /^[A-Za-z_][A-Za-z0-9_]*$/.test(outputKey) &&
+                              labelBasedValue;
+                            const draggedValue = mayUseProducerReference
+                              ? `${producerId}.${outputKey}`
+                              : rawOutputValue;
+
                             return {
                               paramClass: inferredParamClass,
                               pointerClass: value.pointerClass ?? "",
@@ -2657,7 +2697,7 @@ export default function ProtocolNodeCard({
                                 }
                                 : {}),
                               _expectedClass: value.pointerClass ?? "",
-                              value: value.value ?? "",
+                              value: draggedValue,
                               info: value.info ?? "",
                               parentId: value.parentId ?? "",
                               name: value.name ?? "",
@@ -2971,11 +3011,13 @@ export default function ProtocolNodeCard({
             <>
               <Handle
                 type="target"
+                id={graphDirection === "TB" ? "top" : "left"}
                 position={graphDirection === "TB" ? Position.Top : Position.Left}
                 style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />
               <Handle
                 type="source"
+                id={graphDirection === "TB" ? "bottom" : "right"}
                 position={graphDirection === "TB" ? Position.Bottom : Position.Right}
                 style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />

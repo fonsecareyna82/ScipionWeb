@@ -20,9 +20,16 @@ vi.mock("react-hot-toast", () => ({
 
 const mockReactFlowGetNodes = vi.fn();
 const mockReactFlowSetNodes = vi.fn();
+const mockUpdateNodeInternals = vi.fn();
 
 vi.mock("reactflow", () => ({
-    Handle: (props: any) => <div data-testid={`handle-${props.type}`} />,
+    Handle: (props: any) => (
+        <div
+            data-testid={`handle-${props.type}`}
+            data-handle-id={props.id ?? ""}
+            data-handle-position={props.position ?? ""}
+        />
+    ),
     Position: {
         Top: "top",
         Bottom: "bottom",
@@ -33,6 +40,7 @@ vi.mock("reactflow", () => ({
         getNodes: mockReactFlowGetNodes,
         setNodes: mockReactFlowSetNodes,
     }),
+    useUpdateNodeInternals: () => mockUpdateNodeInternals,
 }));
 
 vi.mock("@/components/protocol/DragContext", () => ({
@@ -244,7 +252,7 @@ function renderComponent(
     mockReactFlowGetNodes.mockReturnValue([]);
     mockReactFlowSetNodes.mockClear();
 
-    render(
+    const rendered = render(
         <ProtocolNodeCard
             data={createProtocolData()}
             selectedNodeId="999"
@@ -262,6 +270,7 @@ function renderComponent(
         onDuplicate,
         onOpenProtocolClass,
         service,
+        rerender: rendered.rerender,
     };
 }
 
@@ -524,6 +533,55 @@ describe("ProtocolNodeCard", () => {
         expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
     });
 
+    // The graph card must pass a Scipion producer/output reference, not a
+    // human-readable protocol label. The finder already uses the former.
+    // A correct native output reference must not be rewritten or altered.
+    it.each([
+        ["Import Movies.outputParticles", "12.outputParticles"],
+        ["Import Movies", "12.outputParticles"],
+        ["12.outputParticles", "12.outputParticles"],
+    ])(
+        "keeps the output reference authoritative when dragging a graph output: %s",
+        (graphValue, expectedReference) => {
+            renderComponent({
+                data: createProtocolData({
+                    outputs: [{
+                        outputName: "outputParticles",
+                        info: "Particles for drag",
+                        paramClass: "PointerParam",
+                        pointerClass: "SetOfParticles",
+                        value: graphValue,
+                        parentId: "12",
+                    }],
+                }),
+            });
+
+            const pill = screen.getByText("Particles for drag").closest("div");
+            expect(pill).not.toBeNull();
+            const setData = vi.fn();
+            fireEvent.dragStart(pill!, {
+                dataTransfer: { setData, setDragImage: vi.fn() },
+            });
+
+            expect(mockSetCurrentDraggedOutput).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    value: expectedReference,
+                    name: "outputParticles",
+                    parentId: "12",
+                    pointerClass: "SetOfParticles",
+                }),
+            );
+            expect(setData).toHaveBeenCalledTimes(1);
+            expect(setData.mock.calls[0][0]).toBe("application/scipion-output");
+            expect(JSON.parse(setData.mock.calls[0][1])).toMatchObject({
+                value: expectedReference,
+                name: "outputParticles",
+                parentId: "12",
+                pointerClass: "SetOfParticles",
+            });
+        },
+    );
+
     it("sets dragged output data on drag start and clears it on drag end", () => {
         renderComponent({
             data: createProtocolData({
@@ -779,4 +837,49 @@ describe("ProtocolNodeCard", () => {
         },
     );
 
+});
+
+// This suite intentionally shares the existing React Flow mocks and test data.
+// In Tree LR the graph uses sourceHandle="right", targetHandle="left";
+// in Tree TB it uses sourceHandle="bottom", targetHandle="top".
+describe("Tree direction edge handles must match graph edges", () => {
+    it("keeps the visible Tree LR handles on the right and left (baseline)", () => {
+        renderComponent({ graphDirection: "LR" });
+
+        expect(screen.getByTestId("handle-source"))
+            .toHaveAttribute("data-handle-position", "right");
+        expect(screen.getByTestId("handle-target"))
+            .toHaveAttribute("data-handle-position", "left");
+    });
+
+    it("gives Tree LR handles the IDs referenced by LR edges", () => {
+        renderComponent({ graphDirection: "LR" });
+
+        expect(screen.getByTestId("handle-source"))
+            .toHaveAttribute("data-handle-id", "right");
+        expect(screen.getByTestId("handle-target"))
+            .toHaveAttribute("data-handle-id", "left");
+    });
+
+    it("gives Tree TB handles the IDs referenced by TB edges", () => {
+        renderComponent({ graphDirection: "TB" });
+
+        expect(screen.getByTestId("handle-source"))
+            .toHaveAttribute("data-handle-id", "bottom");
+        expect(screen.getByTestId("handle-target"))
+            .toHaveAttribute("data-handle-id", "top");
+    });
+
+    it("remeasures node internals after switching from Tree TB to Tree LR", async () => {
+        const { rerender } = renderComponent({ graphDirection: "TB" });
+        mockUpdateNodeInternals.mockClear();
+
+        rerender(
+            <ProtocolNodeCard data={createProtocolData()} graphDirection="LR" />,
+        );
+
+        await waitFor(() => {
+            expect(mockUpdateNodeInternals).toHaveBeenCalledWith("12");
+        });
+    });
 });
