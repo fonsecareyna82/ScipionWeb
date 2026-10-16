@@ -1871,3 +1871,14 @@
 .pp-canvasMenuItem:disabled .pp-canvasMenuIcon {
   opacity: 0.55;
 }
+
+/* workflowLogsDock: keep the Table view out of the optional bottom dock. */
+.projectpage-widget-root .pp-workflowContent > .ppt-root {
+  bottom: var(--ppLogsDockHeight, 0px);
+}
+
+.projectpage-widget-root .pp-logsToggle[aria-pressed="true"] {
+  background-color: var(--ppBrand) !important;
+  border-color: var(--ppBrandHover) !important;
+  color: #ffffff !important;
+}

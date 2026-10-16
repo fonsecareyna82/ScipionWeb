@@ -12,6 +12,7 @@ import React, {
 } from "react";
 
 import ProtocolForm from "@/components/protocol/ProtocolForm";
+import WorkflowLogsDock from "@/components/projects/WorkflowLogsDock";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
 import {
@@ -62,6 +63,7 @@ import {
   MapIcon,
   FocusIcon,
   TagsIcon,
+  Terminal,
   AlertTriangle,
   Trash2,
   Play,
@@ -1802,8 +1804,21 @@ export default function ProjectPage() {
   const delayedRefreshTimerRef = useRef<number | null>(null);
 
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
+  const [workflowLogsOpen, setWorkflowLogsOpen] = useState(false);
+  const [workflowLogsHeight, setWorkflowLogsHeight] = useState(270);
+  const [workflowLogsProtocolId, setWorkflowLogsProtocolId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => { selectedIdRef.current = previousNodeId; }, [previousNodeId]);
+
+  // Reset across projects; changing the protocol does not change the graph camera.
+  useEffect(() => { setWorkflowLogsProtocolId(null); }, [projectId]);
+
+  // Follow only individual protocol selections; keep the last one on deselection.
+  useEffect(() => {
+    if (previousNodeId && previousNodeId !== "PROJECT") {
+      setWorkflowLogsProtocolId(previousNodeId);
+    }
+  }, [previousNodeId]);
 
   const [viewMode, setViewMode] = useState<"hierarchical" | "grid" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -9390,12 +9405,34 @@ export default function ProjectPage() {
               </div>
             </div>
 
+            {viewMode === "table" && (
+              <button
+                type="button"
+                className="pp-chipBtn pp-logsToggle"
+                aria-label={workflowLogsOpen ? "Hide workflow logs" : "Show workflow logs"}
+                aria-pressed={workflowLogsOpen}
+                aria-controls="workflow-logs-dock"
+                onClick={() => setWorkflowLogsOpen((open) => !open)}
+                title={workflowLogsOpen ? "Hide workflow logs" : "Show workflow logs"}
+              >
+                <Terminal className="pp-btnIcon" aria-hidden="true" />
+                <span>Logs</span>
+              </button>
+            )}
           </div>
         </div>
 
 
         {/* Content wrapper */}
-        <div ref={contentPortalRef} className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
+        <div
+          ref={contentPortalRef}
+          className="pp-workflowContent flex-1 relative min-h-0 overflow-hidden"
+          style={{
+            contain: "paint",
+            // Always reserve at least 140px for the workflow/table on short windows.
+            "--ppLogsDockHeight": workflowLogsOpen ? `min(${workflowLogsHeight}px, max(0px, calc(100% - 140px)))` : "0px",
+          } as React.CSSProperties}
+        >
           {/* removed switching overlay to avoid flicker */}
 
           {isLoadingProject && (
@@ -9552,6 +9589,7 @@ export default function ProjectPage() {
             className={`absolute inset-0 border ${viewMode !== "table" ? "" : "hidden"}`}
             data-view-mode={viewMode}
             aria-hidden={viewMode === "table"}
+            style={{ bottom: "var(--ppLogsDockHeight, 0px)" }}
             onContextMenu={(e) => e.preventDefault()}
           >
             {/* === Canvas context menu === */}
@@ -9671,6 +9709,18 @@ export default function ProjectPage() {
 
                 <button
                   type="button"
+                  className="pp-flowControlBtn pp-logsToggle"
+                  aria-label={workflowLogsOpen ? "Hide workflow logs" : "Show workflow logs"}
+                  aria-pressed={workflowLogsOpen}
+                  aria-controls="workflow-logs-dock"
+                  onClick={() => setWorkflowLogsOpen((open) => !open)}
+                  title={workflowLogsOpen ? "Hide workflow logs" : "Show workflow logs"}
+                >
+                  <Terminal className="pp-btnIcon" aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
                   title={miniMapEnabled ? "Hide minimap" : "Show minimap"}
                   onClick={() => setMiniMapEnabled((v) => !v)}
                   className="pp-flowControlBtn"
@@ -9766,8 +9816,8 @@ export default function ProjectPage() {
           <div
             className="dock-wrapper"
             style={{
-              zIndex:
-                60,
+              zIndex: 60,
+              bottom: "var(--ppLogsDockHeight, 0px)",
             }}
           >
             <div
@@ -9903,6 +9953,23 @@ export default function ProjectPage() {
               )}
             </div>
           </div>
+
+          {workflowLogsOpen && (
+            <WorkflowLogsDock
+              key={`${String(projectId ?? "none")}:${String(workflowLogsProtocolId ?? "none")}`}
+              projectId={projectId}
+              protocolId={workflowLogsProtocolId}
+              protocolLabel={workflowLogsProtocolId ? findNodeLabel(workflowLogsProtocolId) : ""}
+              protocolStatus={workflowLogsProtocolId ? String(
+                nodes.find((node) => String(node.id) === workflowLogsProtocolId)?.data?.status ??
+                tableData.find((row) => String(row.id) === workflowLogsProtocolId)?.status ??
+                (project?.protocols as any)?.[workflowLogsProtocolId]?.status ?? ""
+              ) : null}
+              height={workflowLogsHeight}
+              onHeightChange={setWorkflowLogsHeight}
+              onClose={() => setWorkflowLogsOpen(false)}
+            />
+          )}
 
           <ProjectWorkflowsPanel
             open={workflowsOpen}
