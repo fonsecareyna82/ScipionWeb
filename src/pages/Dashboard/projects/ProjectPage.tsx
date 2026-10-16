@@ -9817,7 +9817,8 @@ export default function ProjectPage() {
             className="dock-wrapper"
             style={{
               zIndex: 60,
-              bottom: "var(--ppLogsDockHeight, 0px)",
+              // The graph/table reserve log space; protocol forms can overlap the logs.
+              bottom: 0,
             }}
           >
             <div
