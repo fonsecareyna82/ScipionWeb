@@ -402,3 +402,9 @@ body.sfw-active .MuiPopper-root {
 body.sfw-active #projectpage-portal-root .pp-dialogContent {
     z-index: 1000000 !important;
 }
+
+/* A dialog that opens floating windows (e.g. Analyze results) stays below
+   them; its own menus and popovers are separate modals and are still raised. */
+body.sfw-active .MuiModal-root.sfw-launcher-dialog {
+    z-index: 1300 !important;
+}

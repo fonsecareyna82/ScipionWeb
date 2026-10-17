@@ -148,6 +148,7 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
       // Results open in floating windows in front of this dialog and must
       // keep the keyboard focus (e.g. the metadata viewer's search fields).
       disableEnforceFocus
+      className="sfw-launcher-dialog"
       aria-labelledby="protocol-analysis-title"
       PaperProps={{
         sx: {
