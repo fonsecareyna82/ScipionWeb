@@ -1270,6 +1270,20 @@ const defaultService: ProjectService = {
       payload,
     ),
 
+  fetchPickingSession: (projectId: Id, protocolId: Id) =>
+    api.fetchPickingSession(toId(projectId), toId(protocolId)),
+  fetchPickingParticles: (projectId: Id, protocolId: Id, micId: Id) =>
+    api.fetchPickingParticles(toId(projectId), toId(protocolId), toId(micId)),
+  savePickingParticles: (projectId: Id, protocolId: Id, micId: Id, coordinates: Array<{ x: number; y: number }>) =>
+    api.savePickingParticles(toId(projectId), toId(protocolId), toId(micId), coordinates),
+  savePickingSettings: (projectId: Id, protocolId: Id, particleSize: number) =>
+    api.savePickingSettings(toId(projectId), toId(protocolId), particleSize),
+  fetchPickingMicrographImageObjectUrl: (projectId: Id, protocolId: Id, micId: Id,
+    opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal }) =>
+    api.fetchPickingMicrographImageObjectUrl(toId(projectId), toId(protocolId), toId(micId), opts),
+  createPickingCoordinates: (projectId: Id, protocolId: Id) =>
+    api.createPickingCoordinates(toId(projectId), toId(protocolId)),
+
 };
 
 export default defaultService;

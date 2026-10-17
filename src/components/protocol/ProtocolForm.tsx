@@ -47,7 +47,9 @@ import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
 import ProtocolViewerDiscoveryDialog from "./ProtocolViewerDiscoveryDialog";
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 import { openableProtocolViewers } from "@/utils/protocol_viewer_runtime_preview";
+import { isXmippPickingProtocol, xmippPickingSource } from "@/components/picking/xmippPickingSource";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
@@ -117,6 +119,7 @@ import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
 import {
   BarChart3,
+  Crosshair,
   ExternalLink,
   PanelRightClose,
   PanelRightOpen,
@@ -447,9 +450,17 @@ export default function ProtocolForm({
   // stored protocol that has produced outputs and whose class has a viewer the
   // Analyze results dialog can open: without outputs there is nothing to show.
   const hasProtocolOutputs = outputsFromApi.length > 0;
-  const canAnalyzePersistedProtocol = hasProtocolOutputs &&
+  const isPersistedProtocol =
     /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
     /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
+  const canAnalyzePersistedProtocol = hasProtocolOutputs && isPersistedProtocol;
+  // Xmipp's particle picker opens on the web for picking protocols.
+  const canPickParticles = isPersistedProtocol && isXmippPickingProtocol(protocolClassName);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickingSource = useMemo(
+    () => (canPickParticles ? xmippPickingSource(svc, String(projectId), effectiveProtocolId) : null),
+    [canPickParticles, svc, projectId, effectiveProtocolId],
+  );
   const [hasProtocolViewers, setHasProtocolViewers] = useState(false);
 
   useEffect(() => {
@@ -3939,6 +3950,29 @@ export default function ProtocolForm({
     isExternal;
 
 
+  const pickParticlesHeaderAction = canPickParticles ? (
+    <Tooltip title="Pick particles in the micrographs, as Xmipp's picker does" describeChild>
+      <Button
+        size="small"
+        onClick={() => setPickerOpen(true)}
+        aria-haspopup="dialog"
+        startIcon={<Crosshair size={15} strokeWidth={2.2} />}
+        sx={{
+          ...headerActionBtnSx, height: 30, px: 1.25, mr: 0.5, borderRadius: "8px",
+          textTransform: "none", fontSize: "0.76rem", fontWeight: 600, letterSpacing: 0.2,
+          lineHeight: 1, whiteSpace: "nowrap", color: "#f8fafc",
+          boxShadow: "inset 0 -2px 0 rgba(74, 222, 128, 0.55)",
+          "& .MuiButton-startIcon": { mr: 0.75, ml: 0, color: "#86efac" },
+          "&:hover": { background: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.32)",
+            boxShadow: "inset 0 -2px 0 rgba(74, 222, 128, 0.9)" },
+          "&.Mui-focusVisible": { outline: "2px solid #86efac", outlineOffset: 2 },
+        }}
+      >
+        Pick particles
+      </Button>
+    </Tooltip>
+  ) : null;
+
   // Shown only for protocols with a viewer, as the desktop does.
   const protocolAnalyzeHeaderAction = hasProtocolViewers ? (
     <Tooltip title="Open the viewers of this protocol" describeChild>
@@ -4053,6 +4087,7 @@ export default function ProtocolForm({
                 0.75,
             }}
           >
+            {pickParticlesHeaderAction}
             {protocolAnalyzeHeaderAction}
             {hasFormHelp && (
               <Tooltip title="Help">
@@ -4143,6 +4178,20 @@ export default function ProtocolForm({
             </IconButton>
           </Box>
         </div>
+      )}
+
+      {pickerOpen && pickingSource && (
+        <AnalyzeOutputDialog
+          open
+          onClose={() => setPickerOpen(false)}
+          projectId={Number(projectId)}
+          protocolId={Number(effectiveProtocolId)}
+          protocolLabel={protocolDisplayName}
+          outputName="picking"
+          displayName="Particle picking"
+          outputRaw={{ pointerClass: "SetOfCoordinates" }}
+          coords2dSource={pickingSource}
+        />
       )}
 
       <ProtocolViewerDiscoveryDialog
@@ -5195,7 +5244,8 @@ export default function ProtocolForm({
             }
             headerActions={
               <>
-                {protocolAnalyzeHeaderAction}
+                {pickParticlesHeaderAction}
+            {protocolAnalyzeHeaderAction}
                 {hasFormHelp && (
                   <Tooltip title="Help">
                     <IconButton
@@ -5277,7 +5327,8 @@ export default function ProtocolForm({
               }
               headerActions={
                 <>
-                  {protocolAnalyzeHeaderAction}
+                  {pickParticlesHeaderAction}
+            {protocolAnalyzeHeaderAction}
                   {hasFormHelp && (
                     <Tooltip title="Help">
                       <IconButton

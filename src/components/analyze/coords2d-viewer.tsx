@@ -64,10 +64,49 @@ import {
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   Coords2dMicrograph,
+  Coords2dMicrographsResult,
   Coords2dPoint,
+  CreateCoords2dOutputPayload,
+  CreateCoords2dOutputResult,
   Id,
   ObjectUrlResult,
 } from "@/services/ProjectService";
+
+/**
+ * Where the viewer reads micrographs and coordinates from: a stored
+ * coordinates output, or e.g. a protocol's picking session, which also saves
+ * every edit (saveMicrograph/saveBoxSize).
+ */
+export type Coords2dDataSource = {
+  /** Changes when the data comes from somewhere else; reloads the viewer. */
+  key: string;
+  listMicrographs: () => Promise<Coords2dMicrographsResult>;
+  fetchCoordinates: (micId: Id) => Promise<Coords2dPoint[]>;
+  fetchImage: (micId: Id, opts: Coords2dImageOptions) => Promise<ObjectUrlResult>;
+  fetchThumbnail: (micId: Id, opts: Coords2dImageOptions) => Promise<ObjectUrlResult>;
+  createOutput: (payload: CreateCoords2dOutputPayload) => Promise<CreateCoords2dOutputResult>;
+  saveMicrograph?: (micId: Id, coordinates: Array<{ x: number; y: number }>) => Promise<void>;
+  saveBoxSize?: (boxSize: number) => Promise<void>;
+};
+
+type Coords2dImageOptions = { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal };
+
+/** The default source: a stored SetOfCoordinates output of the protocol. */
+export function coordinatesOutputSource(
+  service: ReturnType<typeof useProjectService>, projectId: Id, protocolId: Id, outputName: string,
+): Coords2dDataSource {
+  return {
+    key: `${projectId}:${protocolId}:${outputName}`,
+    listMicrographs: () => service.listCoords2dMicrographs(projectId, protocolId, outputName),
+    fetchCoordinates: (micId) => service.fetchCoords2dForMicrograph(projectId, protocolId, outputName, micId),
+    fetchImage: (micId, opts) =>
+      service.fetchCoords2dMicrographImageObjectUrl(projectId, protocolId, outputName, micId, opts),
+    fetchThumbnail: (micId, opts) =>
+      service.fetchCoords2dMicrographThumbnailObjectUrl(projectId, protocolId, outputName, micId, opts),
+    createOutput: (payload) =>
+      service.createCoords2dOutputFromCurrentCoordinates(projectId, protocolId, outputName, payload),
+  };
+}
 
 type Coords2dViewerProps = {
   projectId: number;
@@ -75,7 +114,13 @@ type Coords2dViewerProps = {
   protocolLabel: string;
   outputName: string;
   onClose?: () => void;
+  /** Read and write somewhere else than the output (e.g. a picking session). */
+  source?: Coords2dDataSource;
+  /** Shown instead of the output name. */
+  title?: string;
 };
+
+const AUTOSAVE_DELAY_MS = 700;
 
 type ViewerPoint = Coords2dPoint & {
   id: Id;
@@ -687,8 +732,14 @@ function Coords2dViewer({
   protocolLabel,
   outputName,
   onClose,
+  source,
+  title,
 }: Coords2dViewerProps) {
   const service = useProjectService();
+  const dataSource = useMemo(
+    () => source ?? coordinatesOutputSource(service, projectId, protocolId, outputName),
+    [source, service, projectId, protocolId, outputName],
+  );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
@@ -865,7 +916,7 @@ function Coords2dViewer({
   }, []);
 
   useEffect(() => {
-    const loadKey = `${projectId}:${protocolId}:${outputName}`;
+    const loadKey = dataSource.key;
     if (micrographsLoadKeyRef.current === loadKey) return;
 
     micrographsLoadKeyRef.current = loadKey;
@@ -878,7 +929,7 @@ function Coords2dViewer({
       setSuccessMessage(null);
 
       try {
-        const result = await service.listCoords2dMicrographs(projectId, protocolId, outputName);
+        const result = await dataSource.listMicrographs();
 
         if (cancelled) return;
 
@@ -908,12 +959,12 @@ function Coords2dViewer({
     return () => {
       cancelled = true;
     };
-  }, [service, projectId, protocolId, outputName]);
+  }, [dataSource]);
 
   useEffect(() => {
     if (!micrographs.length) return;
 
-    const sourceKey = `${projectId}:${protocolId}:${outputName}`;
+    const sourceKey = dataSource.key;
     const idsKey = micrographs.map((micrograph) => toStringId(micrograph.id)).join("|");
     const loadKey = `${sourceKey}:${idsKey}`;
 
@@ -997,11 +1048,7 @@ function Coords2dViewer({
 
           try {
             const result = normalizeObjectUrl(
-              await service.fetchCoords2dMicrographThumbnailObjectUrl(
-                projectId,
-                protocolId,
-                outputName,
-                micrograph.id,
+              await dataSource.fetchThumbnail(micrograph.id,
                 { size: THUMBNAIL_SIZE, format: "png" },
               ),
             );
@@ -1037,7 +1084,7 @@ function Coords2dViewer({
     return () => {
       cancelled = true;
     };
-  }, [service, projectId, protocolId, outputName, micrographs]);
+  }, [dataSource, micrographs]);
 
   useEffect(() => {
     if (!selectedMicKey || selectedMicId === null || selectedMicId === undefined) return;
@@ -1050,11 +1097,7 @@ function Coords2dViewer({
       setError(null);
 
       try {
-        const points = await service.fetchCoords2dForMicrograph(
-          projectId,
-          protocolId,
-          outputName,
-          selectedMicId,
+        const points = await dataSource.fetchCoordinates(selectedMicId,
         );
 
         if (cancelled) return;
@@ -1095,17 +1138,14 @@ function Coords2dViewer({
       cancelled = true;
     };
   }, [
-    service,
-    projectId,
-    protocolId,
-    outputName,
+    dataSource,
     selectedMicId,
     selectedMicKey,
     pointsByMicId,
   ]);
 
   useEffect(() => {
-    const sourceKey = `${projectId}:${protocolId}:${outputName}`;
+    const sourceKey = dataSource.key;
 
     if (imageCacheSourceKeyRef.current !== sourceKey) {
       Object.values(imageObjectUrlCacheRef.current).forEach((item) => {
@@ -1173,11 +1213,7 @@ function Coords2dViewer({
     async function loadPreview() {
       try {
         const preview = normalizeObjectUrl(
-          await service.fetchCoords2dMicrographThumbnailObjectUrl(
-            projectId,
-            protocolId,
-            outputName,
-            selectedMicId,
+          await dataSource.fetchThumbnail(selectedMicId,
             { size: MICROGRAPH_PREVIEW_SIZE, format: "png" },
           ),
         );
@@ -1222,11 +1258,7 @@ function Coords2dViewer({
     async function loadImage() {
       try {
         objectUrl = normalizeObjectUrl(
-          await service.fetchCoords2dMicrographImageObjectUrl(
-            projectId,
-            protocolId,
-            outputName,
-            selectedMicId,
+          await dataSource.fetchImage(selectedMicId,
             { size: MICROGRAPH_IMAGE_SIZE, format: "png" },
           ),
         );
@@ -1341,7 +1373,7 @@ function Coords2dViewer({
 
       previewObjectUrl?.revoke?.();
     };
-  }, [service, projectId, protocolId, outputName, selectedMicId]);
+  }, [dataSource, selectedMicId]);
 
   // Warms the image + coordinates cache for the micrograph immediately
   // before/after the selected one in the list, so the common case --
@@ -1377,11 +1409,7 @@ function Coords2dViewer({
 
       try {
         objectUrl = normalizeObjectUrl(
-          await service.fetchCoords2dMicrographImageObjectUrl(
-            projectId,
-            protocolId,
-            outputName,
-            micId,
+          await dataSource.fetchImage(micId,
             { size: MICROGRAPH_IMAGE_SIZE, format: "png" },
           ),
         );
@@ -1429,11 +1457,7 @@ function Coords2dViewer({
       if (pointsByMicIdRef.current[micKey]) return;
 
       try {
-        const points = await service.fetchCoords2dForMicrograph(
-          projectId,
-          protocolId,
-          outputName,
-          micId,
+        const points = await dataSource.fetchCoordinates(micId,
         );
 
         if (cancelled) return;
@@ -1481,7 +1505,7 @@ function Coords2dViewer({
     return () => {
       cancelled = true;
     };
-  }, [service, projectId, protocolId, outputName, selectedMicId, selectedMicKey, micrographs]);
+  }, [dataSource, selectedMicId, selectedMicKey, micrographs]);
 
   useEffect(() => {
     const node = canvasWrapRef.current;
@@ -2043,6 +2067,56 @@ function Coords2dViewer({
     }
   }, [onClose]);
 
+  // A picking session saves every edit, a moment after it is made.
+  const savingRef = useRef<Promise<void> | null>(null);
+  const savePendingChangesRef = useRef<() => Promise<void>>(async () => undefined);
+  savePendingChangesRef.current = async () => {
+    const saveMicrograph = dataSource.saveMicrograph;
+    if (!saveMicrograph || updatedMicIds.size === 0) return;
+    const snapshotPoints = pointsByMicIdRef.current;
+    const snapshotDeleted = deletedPointIdsRef.current;
+    const { micrographs: changed } = buildCreateOutputPayload();
+    await Promise.all(changed.map((item) => saveMicrograph(
+      item.id, item.coordinates.map((point) => ({ x: point.x, y: point.y })))));
+    // Mark as saved only if nothing changed while saving; else save again.
+    if (pointsByMicIdRef.current === snapshotPoints && deletedPointIdsRef.current === snapshotDeleted) {
+      clearSavedState();
+    }
+  };
+  const savePendingChanges = useCallback(async () => {
+    while (savingRef.current) await savingRef.current;
+    const saving = savePendingChangesRef.current().finally(() => { savingRef.current = null; });
+    savingRef.current = saving;
+    await saving;
+  }, []);
+
+  useEffect(() => {
+    if (!dataSource.saveMicrograph || updatedMicIds.size === 0) return;
+    const timer = window.setTimeout(() => {
+      savePendingChanges().catch((err) => {
+        setError(err instanceof Error ? err.message : "The picked particles could not be saved");
+      });
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [dataSource, updatedMicIds, pointsByMicId, deletedPointIds, savePendingChanges]);
+
+  const savedBoxSizeRef = useRef<number | null>(null);
+  useEffect(() => {
+    const saveBoxSize = dataSource.saveBoxSize;
+    if (!saveBoxSize || loadingMicrographs) return;
+    if (savedBoxSizeRef.current === null) {
+      savedBoxSizeRef.current = boxSize;  // The value just loaded.
+      return;
+    }
+    if (savedBoxSizeRef.current === boxSize) return;
+    const timer = window.setTimeout(() => {
+      saveBoxSize(boxSize).then(() => { savedBoxSizeRef.current = boxSize; }).catch((err) => {
+        setError(err instanceof Error ? err.message : "The particle size could not be saved");
+      });
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [dataSource, boxSize, loadingMicrographs]);
+
   const requestCloseViewer = useCallback(() => {
     if (hasUnsavedChanges) {
       setConfirmationAction("close");
@@ -2062,11 +2136,9 @@ function Coords2dViewer({
     setSuccessMessage(null);
 
     try {
-      const result = await service.createCoords2dOutputFromCurrentCoordinates(
-        projectId,
-        protocolId,
-        outputName,
-        buildCreateOutputPayload(),
+      // A picking session builds the output from its saved files.
+      if (dataSource.saveMicrograph) await savePendingChanges();
+      const result = await dataSource.createOutput(buildCreateOutputPayload(),
       );
 
       clearSavedState();
@@ -2083,10 +2155,8 @@ function Coords2dViewer({
   }, [
     buildCreateOutputPayload,
     clearSavedState,
-    outputName,
-    projectId,
-    protocolId,
-    service,
+    dataSource,
+    savePendingChanges,
   ]);
 
   const handleConfirmAction = useCallback(async () => {
@@ -2710,7 +2780,7 @@ function Coords2dViewer({
         <Box sx={{ flex: 1 }} />
 
         <Typography variant="caption" sx={{ color: "text.secondary" }}>
-          {protocolLabel} · {outputName}
+          {protocolLabel} · {title ?? outputName}
         </Typography>
       </Box>
 

@@ -52,6 +52,8 @@ import {
   Coords2dPoint,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
+  PickingParticles,
+  PickingSession,
   RenameProtocolPayload,
   ExternalViewerDescriptor,
   ExternalViewerListOptions,
@@ -4918,6 +4920,82 @@ export async function fetchCoords2dMicrographThumbnailObjectUrl(
         ? originalHeight
         : null,
   };
+}
+
+/* ======================= XMIPP PARTICLE PICKING SESSION ======================= */
+
+function pickingUrl(projectId: Id, protocolId: Id, path: string): string {
+  return `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/picking${path}`;
+}
+
+/** Micrographs, particle size and mode of a protocol's picking session. */
+export async function fetchPickingSession(projectId: Id, protocolId: Id): Promise<PickingSession> {
+  const response = await fetchWithAuth(pickingUrl(projectId, protocolId, "/session"), { method: "GET", cache: "no-store" });
+  if (!response.ok) throw await toApiError(response, "The picking session could not be opened");
+  return safeJson<PickingSession>(response);
+}
+
+export async function fetchPickingParticles(projectId: Id, protocolId: Id, micId: Id): Promise<PickingParticles> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/coordinates`),
+    { method: "GET", cache: "no-store" },
+  );
+  if (!response.ok) throw await toApiError(response, "The picked particles could not be loaded");
+  return safeJson<PickingParticles>(response);
+}
+
+export async function savePickingParticles(
+  projectId: Id, protocolId: Id, micId: Id, coordinates: Array<{ x: number; y: number }>,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/coordinates`),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coordinates }) },
+  );
+  if (!response.ok) throw await toApiError(response, "The picked particles could not be saved");
+}
+
+export async function savePickingSettings(projectId: Id, protocolId: Id, particleSize: number): Promise<void> {
+  const response = await fetchWithAuth(pickingUrl(projectId, protocolId, "/settings"), {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ particleSize }),
+  });
+  if (!response.ok) throw await toApiError(response, "The particle size could not be saved");
+}
+
+export async function fetchPickingMicrographImageObjectUrl(
+  projectId: Id, protocolId: Id, micId: Id,
+  opts: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal } = {},
+): Promise<ObjectUrlResult> {
+  const params = new URLSearchParams();
+  if (opts.size) params.set("size", String(opts.size));
+  if (opts.format) params.set("format", opts.format);
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/image?${params.toString()}`),
+    { method: "GET", signal: opts.signal },
+  );
+  if (!response.ok) throw await toApiError(response, "The micrograph image could not be loaded");
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const width = Number(response.headers.get("X-Preview-Original-Width"));
+  const height = Number(response.headers.get("X-Preview-Original-Height"));
+  return {
+    url: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+    originalWidth: Number.isFinite(width) && width > 0 ? width : null,
+    originalHeight: Number.isFinite(height) && height > 0 ? height : null,
+  };
+}
+
+/** Registers the session particles as a coordinates output of the protocol. */
+export async function createPickingCoordinates(projectId: Id, protocolId: Id): Promise<CreateCoords2dOutputResult> {
+  const response = await fetchWithAuth(pickingUrl(projectId, protocolId, "/coordinates"), { method: "POST" });
+  if (!response.ok) throw await toApiError(response, "The coordinates could not be created");
+  const raw = await safeJson<any>(response);
+  return {
+    success: raw?.success === true,
+    outputName: String(raw?.outputName ?? ""),
+    totalCoordinates: Number(raw?.totalCoordinates ?? 0),
+    message: String(raw?.message ?? ""),
+  } as CreateCoords2dOutputResult;
 }
 
 export async function createCoords2dOutputFromCurrentCoordinates(

@@ -40,7 +40,7 @@ import ExternalWindowPortal, {
 
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
-import Coords2dViewer from "./coords2d-viewer";
+import Coords2dViewer, { type Coords2dDataSource } from "./coords2d-viewer";
 import IntegratedTomographyViewer from "./integrated-tomography-viewer";
 import FscViewer from "./fsc-viewer";
 import CtfViewer from "./ctf-viewer";
@@ -59,6 +59,8 @@ type AnalyzeOutputDialogProps = {
   displayName?: string;
   /** Open a metadata file (not a stored output) on this table or block. */
   metadataFile?: { initialTable?: string | null } | null;
+  /** Coordinates from somewhere else than the output, e.g. a picking session. */
+  coords2dSource?: Coords2dDataSource | null;
 };
 
 function normalizedKind(k?: string) {
@@ -141,7 +143,7 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
   };
 }
 
-function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw, displayName, metadataFile = null }: AnalyzeOutputDialogProps) {
+function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw, displayName, metadataFile = null, coords2dSource = null }: AnalyzeOutputDialogProps) {
   const shownName = displayName || outputName;
   const fileInitialTable = metadataFile ? metadataFile.initialTable ?? null : undefined;
   const { theme: appTheme } = useScipionTheme();
@@ -510,6 +512,8 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
           protocolLabel={protocolLabel}
           outputName={outputName}
           onClose={onClose}
+          source={coords2dSource ?? undefined}
+          title={displayName}
         />
       );
     }
@@ -532,7 +536,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         </Typography>
       </Box>
     );
-  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose, fileInitialTable]);
+  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose, fileInitialTable, coords2dSource, displayName]);
 
 
   return (
