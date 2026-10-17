@@ -2,6 +2,7 @@
  * This is not an action registry and it cannot confer execution privileges.
  */
 import type { ViewerPreviewSection } from "@/utils/protocol_viewer_preview";
+import type { ProtocolViewerCandidate, ProtocolViewerCandidatesResponse } from "@/services/ProjectService";
 import { describeProtocolViewerPreview } from "@/utils/protocol_viewer_preview";
 import { parseViewerReactiveEntries, type ViewerReactiveEntry } from "@/utils/protocol_viewer_reactive_form";
 
@@ -177,4 +178,23 @@ export function describeProtocolViewerRuntimePreview(
       field.visibility !== "legacy" && field.hiddenAttributeAvailable === false),
     ...(conditionalFields ? {conditionalFields} : {}),
   };
+}
+
+/**
+ * Viewers the Analyze results dialog can open. With runtime viewers only the
+ * protocol viewers (desktop "Analyze results" forms) count; viewers of single
+ * objects belong to Analyze output.
+ */
+export function openableProtocolViewers(
+  response: ProtocolViewerCandidatesResponse | null | undefined,
+): ProtocolViewerCandidate[] {
+  if (!response || !Array.isArray(response.viewers)) return [];
+  const viewers = response.viewers.slice(0, 48).filter(
+    (entry): entry is ProtocolViewerCandidate =>
+      !!entry && typeof entry === "object" &&
+      (typeof entry.id === "string" || typeof entry.name === "string"),
+  );
+  return response.runtimePreviewAvailable === true
+    ? viewers.filter(viewer => viewer.viewerKind === "protocol-form")
+    : viewers;
 }

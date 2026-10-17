@@ -2,6 +2,8 @@
 export type ProtocolViewerCandidate = {
   id: string;
   name: string;
+  /** "protocol-form" for desktop "Analyze results" viewers; others show single objects. */
+  viewerKind?: string;
   webReady?: boolean;
   webLaunchAllowed?: boolean;
   /** Server-authored advisory metadata. Treat as untrusted until verified for display. */

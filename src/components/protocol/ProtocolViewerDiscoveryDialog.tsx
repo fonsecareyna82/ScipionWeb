@@ -8,7 +8,7 @@ import {
 import { AlertTriangle, BarChart3, ChevronRight, Eye, Info, LayoutList, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import ProtocolViewerRuntimePreviewPanel from "./ProtocolViewerRuntimePreviewPanel";
-import { validRuntimeViewerId } from "@/utils/protocol_viewer_runtime_preview";
+import { openableProtocolViewers, validRuntimeViewerId } from "@/utils/protocol_viewer_runtime_preview";
 import type { ProtocolViewerCandidate } from "@/services/ProjectService";
 import { describeProtocolViewerPreview } from "@/utils/protocol_viewer_preview";
 import { describeProtocolViewerWebActionStatuses } from "@/utils/protocol_viewer_web_action_status";
@@ -69,11 +69,7 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
           return;
         }
         const runtime = result.runtimePreviewAvailable === true;
-        const listed = result.viewers.slice(0, 48).filter(
-          (entry): entry is ProtocolViewerCandidate =>
-            !!entry && typeof entry === "object" &&
-            (typeof entry.id === "string" || typeof entry.name === "string"),
-        );
+        const listed = openableProtocolViewers(result);
         setRuntimePreviewAvailable(runtime);
         setViewers(listed);
         // A single viewer opens directly, as on the desktop.

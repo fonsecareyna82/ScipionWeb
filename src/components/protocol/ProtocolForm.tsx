@@ -47,6 +47,7 @@ import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
 import ProtocolViewerDiscoveryDialog from "./ProtocolViewerDiscoveryDialog";
+import { openableProtocolViewers } from "@/utils/protocol_viewer_runtime_preview";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
@@ -440,6 +441,23 @@ export default function ProtocolForm({
 
     return "";
   }, [protocolDetails?.runName, protocolDetails?.label, info, form, protocolId]);
+
+  // Protocol analysis never depends on the selected output: it needs a stored
+  // protocol whose class has a viewer the Analyze results dialog can open.
+  const canAnalyzePersistedProtocol =
+    /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
+    /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
+  const [hasProtocolViewers, setHasProtocolViewers] = useState(false);
+
+  useEffect(() => {
+    setHasProtocolViewers(false);
+    if (!canAnalyzePersistedProtocol || typeof svc.fetchProtocolViewerCandidates !== "function") return;
+    let cancelled = false;
+    Promise.resolve(svc.fetchProtocolViewerCandidates(String(projectId), effectiveProtocolId))
+      .then(result => { if (!cancelled) setHasProtocolViewers(openableProtocolViewers(result).length > 0); })
+      .catch(() => { if (!cancelled) setHasProtocolViewers(false); });
+    return () => { cancelled = true; };
+  }, [svc, projectId, effectiveProtocolId, canAnalyzePersistedProtocol]);
 
   const externalWindowRef =
     useRef<
@@ -3918,17 +3936,13 @@ export default function ProtocolForm({
     isExternal;
 
 
-  // RED 129/GREEN 130: protocol analysis never depends on the selected output.
-  const canAnalyzePersistedProtocol =
-    /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
-    /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
-  const protocolAnalyzeHeaderAction = (
-    <Tooltip title={canAnalyzePersistedProtocol ? "Discover protocol-level viewers" : "Save this protocol before analyzing results"}>
+  // Shown only for protocols with a viewer, as the desktop does.
+  const protocolAnalyzeHeaderAction = hasProtocolViewers ? (
+    <Tooltip title="Open the viewers of this protocol">
       <span>
         <Button
           size="small"
           variant="outlined"
-          disabled={!canAnalyzePersistedProtocol}
           onClick={() => setProtocolAnalyzeOpen(true)}
           sx={{ textTransform: "none", fontSize: "0.72rem", color: "white", borderColor: "#aab3c0", mr: 0.5,
             "&:hover": { borderColor: "white", backgroundColor: "rgba(255,255,255,0.12)" },
@@ -3938,7 +3952,7 @@ export default function ProtocolForm({
         </Button>
       </span>
     </Tooltip>
-  );
+  ) : null;
 
   const formContent = (
     <div

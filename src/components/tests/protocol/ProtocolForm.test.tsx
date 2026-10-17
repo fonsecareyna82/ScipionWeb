@@ -2997,58 +2997,72 @@ describe("ProtocolForm generic Set item loader (RED 59)", () => {
 });
 
 
-describe("RED 129: protocol and output analysis remain separate", () => {
+describe("Analyze results button of the protocol form", () => {
+    const protocolViewer = { id: "xmipp3.viewers.viewer_cl2d.XmippCL2DViewer", name: "XmippCL2DViewer",
+        viewerKind: "protocol-form" };
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetchProtocolViewerCandidates.mockResolvedValue({
-            projectId: 1, protocolId: "7", viewers: [],
+            projectId: 1, protocolId: "7", viewers: [protocolViewer], runtimePreviewAvailable: true,
         });
     });
 
-    it("shows a protocol-level Analyze results action even with zero outputs", async () => {
+    it("appears once the stored protocol is known to have a viewer, even with zero outputs", async () => {
         renderComponent();
-        const button = screen.getByRole("button", { name: "Analyze results" });
+        const button = await screen.findByRole("button", { name: "Analyze results" });
         expect(button).toBeEnabled();
-        expect(mockFetchProtocolViewerCandidates).not.toHaveBeenCalled();
-        fireEvent.click(button);
-        await waitFor(() => {
-            expect(mockFetchProtocolViewerCandidates).toHaveBeenCalledWith("1", "7");
-        });
-        expect(await screen.findByText("No protocol viewers registered for this protocol.")).toBeInTheDocument();
+        expect(mockFetchProtocolViewerCandidates).toHaveBeenCalledWith("1", "7");
     });
 
-    it("displays the registered protocol viewers without enabling execution", async () => {
+    it("is not shown for a protocol without viewers", async () => {
+        mockFetchProtocolViewerCandidates.mockResolvedValue({ projectId: 1, protocolId: "7", viewers: [] });
+        renderComponent();
+        await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalledWith("1", "7"));
+        expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
+    });
+
+    it("ignores viewers of single objects, which belong to Analyze output", async () => {
+        mockFetchProtocolViewerCandidates.mockResolvedValue({
+            viewers: [{ id: "pwem.viewers.DataViewer", name: "DataViewer", viewerKind: "simple" }],
+            runtimePreviewAvailable: true,
+        });
+        renderComponent();
+        await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalled());
+        expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
+    });
+
+    it("is not shown when the viewers cannot be discovered", async () => {
+        mockFetchProtocolViewerCandidates.mockRejectedValue(new Error("Backend unavailable"));
+        renderComponent();
+        await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalled());
+        expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
+        expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
+    });
+
+    it("opens the protocol viewers dialog", async () => {
         mockFetchProtocolViewerCandidates.mockResolvedValue({
             viewers: [{ id: "relion.viewer.RelionViewer", name: "RelionViewer",
                 webLaunchAllowed: false, contractValidation: { status: "described" } }],
         });
         renderComponent();
-        fireEvent.click(screen.getByRole("button", { name: "Analyze results" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Analyze results" }));
         const dialog = await screen.findByRole("dialog", { name: "Analyze protocol results" });
         expect(within(dialog).getByText("RelionViewer")).toBeInTheDocument();
-        expect(within(dialog).getByText("Web integration pending")).toBeInTheDocument();
         expect(within(dialog).queryByRole("button", { name: /launch|run|execute/i })).not.toBeInTheDocument();
     });
 
-    it("reports a viewer discovery failure without falling back to an output", async () => {
-        mockFetchProtocolViewerCandidates.mockRejectedValue(new Error("Backend unavailable"));
-        renderComponent();
-        fireEvent.click(screen.getByRole("button", { name: "Analyze results" }));
-        expect(await screen.findByText("Could not load protocol viewers.")).toBeInTheDocument();
-        expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
-    });
-
-    it("disables protocol analysis for a protocol without a persisted id", () => {
+    it("is not offered for a protocol without a persisted id", () => {
         const data: any = createData();
         data.info.protocolId = null;
         delete data.info.id;
         renderComponent({ data });
-        expect(screen.getByRole("button", { name: "Analyze results" })).toBeDisabled();
+        expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
         expect(mockFetchProtocolViewerCandidates).not.toHaveBeenCalled();
     });
 
-    it("offers the same protocol action in the floating presentation", () => {
+    it("offers the same protocol action in the floating presentation", async () => {
         renderComponent({ variant: "floating" });
-        expect(screen.getByRole("button", { name: "Analyze results" })).toBeEnabled();
+        expect(await screen.findByRole("button", { name: "Analyze results" })).toBeEnabled();
     });
 });

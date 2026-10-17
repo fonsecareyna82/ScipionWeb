@@ -20,7 +20,7 @@ vi.mock("@/components/analyze/analyze-output-dialog", () => ({
 }));
 
 const viewerId = "xmipp3.viewers.XmippCL2DViewer";
-const viewer = {id: viewerId, name: "XmippCL2DViewer", webReady: false};
+const viewer = {id: viewerId, name: "XmippCL2DViewer", webReady: false, viewerKind: "protocol-form"};
 
 function field(name: string, label: string, control = "text", extras: Record<string, unknown> = {}) {
   return {
@@ -74,6 +74,15 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     const [projectId, protocolId, id, opts] = fetchProtocolViewerRuntimePreview.mock.calls[0];
     expect([projectId, protocolId, id]).toEqual(["1", "7", viewerId]);
     expect(opts.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("lists only protocol viewers, not viewers of single objects", async () => {
+    fetchProtocolViewerCandidates.mockResolvedValue({runtimePreviewAvailable: true, viewers: [
+      viewer, {id: "pwem.viewers.DataViewer", name: "DataViewer", viewerKind: "simple"},
+    ]});
+    renderDialog();
+    await screen.findByTestId("protocol-viewer-runtime-preview");
+    expect(screen.queryByText("DataViewer")).not.toBeInTheDocument();
   });
 
   it("keeps the static description when the server does not offer runtime viewers", async () => {
