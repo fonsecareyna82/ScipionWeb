@@ -1,22 +1,23 @@
 // The protocol viewer's own form, built at runtime from the plugin code.
 // Each field with a visualize handler gets an "eye" that runs it on the server.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Alert, Box, Checkbox, CircularProgress, FormControlLabel, IconButton, MenuItem,
+  Alert, Box, Checkbox, CircularProgress, FormControlLabel, IconButton, LinearProgress, MenuItem,
   TextField, Tooltip, Typography,
 } from "@mui/material";
-import { Eye } from "lucide-react";
+import { Eye, Info, SlidersHorizontal } from "lucide-react";
 import type { ProjectService, ProtocolViewerActionValues } from "@/services/ProjectService";
 import { describeProtocolViewerRuntimePreview, validRuntimeViewerId, type RuntimeViewerPreview } from "@/utils/protocol_viewer_runtime_preview";
 import { evaluateViewerCondition, initialViewerLocalValues, localViewerFieldValue } from "@/utils/protocol_viewer_reactive_form";
 import { describeViewerActionResult, type ViewerActionResult } from "@/utils/protocol_viewer_action_result";
-import ProtocolViewerActionResults from "./ProtocolViewerActionResults";
+import ProtocolViewerActionResults, { hasWindowContent } from "./ProtocolViewerActionResults";
 
 type Props = {
   service: ProjectService;
   projectId: string;
   protocolId: string;
   viewerId: string;
+  viewerName?: string;
   protocolLabel?: string;
 };
 
@@ -27,7 +28,7 @@ type State =
 type ActionState =
   | { status: "idle" }
   | { status: "running"; action: string }
-  | { status: "done"; result: ViewerActionResult }
+  | { status: "done"; result: ViewerActionResult; run: number }
   | { status: "failed"; action: string; messages: string[] };
 
 const ACTION_ERRORS: Record<string, string> = {
@@ -38,11 +39,12 @@ const ACTION_ERRORS: Record<string, string> = {
   worker_timeout: "The viewer took too long to answer.",
 };
 
-export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, protocolId, viewerId, protocolLabel = "" }: Props) {
+export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, protocolId, viewerId, viewerName, protocolLabel = "" }: Props) {
   const scope = `${projectId}/${protocolId}/${viewerId}`;
   const [state, setState] = useState<State>({ status: "loading", scope });
   const [action, setAction] = useState<ActionState>({ status: "idle" });
   const actionController = useRef<AbortController | null>(null);
+  const runCounter = useRef(0);
   const shown = state.scope === scope ? state : { status: "loading" as const, scope };
 
   useEffect(() => {
@@ -78,7 +80,8 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
         projectId, protocolId, viewerId, name, values, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const result = describeViewerActionResult(response, { projectId, protocolId, viewerId, action: name });
-      setAction(result ? { status: "done", result }
+      runCounter.current += 1;
+      setAction(result ? { status: "done", result, run: runCounter.current }
         : { status: "failed", action: name, messages: ["The viewer answer could not be read."] });
     } catch (error: any) {
       if (controller.signal.aborted) return;
@@ -90,46 +93,92 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
     }
   };
 
+  const ready = shown.status === "ready" ? shown.preview : null;
+  const actionLabel = (name: string) => {
+    if (!ready) return name;
+    const fields = [
+      ...ready.sections.flatMap(section => [...section.fields, ...section.groups.flatMap(group => group.fields)]),
+      ...(ready.conditionalFields ?? []).map(entry => entry.field),
+    ];
+    return fields.find(field => field.name === name)?.label ?? name;
+  };
+  const doneResult = action.status === "done" ? action.result : null;
+  const inlineMessages = doneResult && !hasWindowContent(doneResult)
+    ? [...doneResult.messages, ...doneResult.items.filter(item => item.kind === "message")]
+    : [];
+
   return (
-    <Box sx={{ mt: 1 }}>
-      {shown.status === "loading" && (
-        <Box role="status" sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <CircularProgress size={16} /><Typography variant="body2">Loading viewer form...</Typography>
-        </Box>
+    <Box component="section" aria-label="Viewer options" sx={{
+      flex: 1, minHeight: 0, display: "flex", flexDirection: "column", bgcolor: "#ffffff",
+    }}>
+      <ColumnHeader icon={<SlidersHorizontal size={15} />} title="Options" subtitle={viewerName} />
+      <Box sx={{ height: 3 }}>{action.status === "running" && <LinearProgress aria-label="Preparing the result" />}</Box>
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2.5, pb: 2.5 }}>
+        {action.status === "failed" && (
+          <Alert severity="error" sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+            <strong>{actionLabel(action.action)}: </strong>
+            {action.messages.map((message, index) => <div key={index}>{message}</div>)}
+          </Alert>
+        )}
+        {doneResult && doneResult.items.length === 0 && doneResult.messages.length === 0 && (
+          <Alert severity="info" sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+            {actionLabel(doneResult.action)}: the viewer returned nothing to show.
+          </Alert>
+        )}
+        {inlineMessages.map((message, index) => (
+          <Alert key={index} severity={message.level} sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+            {message.title && <strong>{message.title}: </strong>}{message.text}
+          </Alert>
+        ))}
+        {shown.status === "loading" && (
+          <Box role="status" sx={{ display: "flex", gap: 1, alignItems: "center", py: 2 }}>
+            <CircularProgress size={16} /><Typography variant="body2">Loading viewer form...</Typography>
+          </Box>
+        )}
+        {shown.status === "error" && <Alert severity="error" sx={{ mt: 1 }}>The viewer form could not be loaded.</Alert>}
+        {shown.status === "invalid" && <Alert severity="error" sx={{ mt: 1 }}>The viewer form could not be read.</Alert>}
+        {ready && (
+          <Box data-testid="protocol-viewer-runtime-preview">
+            {ready.sections.length === 0 && !ready.conditionalFields?.length && (
+              <Typography variant="body2" sx={{ py: 2, color: "#64748b" }}>This viewer has no options to show.</Typography>
+            )}
+            <RuntimeLocalViewerForm
+              preview={ready}
+              runningAction={action.status === "running" ? action.action : null}
+              onAction={typeof service.runProtocolViewerAction === "function" ? runAction : undefined}
+            />
+            {ready.omittedFields > 0 && (
+              <Typography variant="caption" sx={{ display: "block", mt: 1.5, color: "#64748b" }}>
+                {ready.omittedFields} options of this viewer cannot be shown on the web.
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Box>
+      {action.status === "done" && hasWindowContent(action.result) && (
+        <ProtocolViewerActionResults
+          key={action.run}
+          service={service} projectId={projectId} protocolId={protocolId}
+          protocolLabel={protocolLabel} title={actionLabel(action.result.action)}
+          result={action.result} onClose={() => setAction({ status: "idle" })} />
       )}
-      {shown.status === "error" && <Alert severity="error">The viewer form could not be loaded.</Alert>}
-      {shown.status === "invalid" && <Alert severity="error">The viewer form could not be read.</Alert>}
-      {shown.status === "ready" && (
-        <Box data-testid="protocol-viewer-runtime-preview">
-          {shown.preview.sections.length === 0 && !shown.preview.conditionalFields?.length && (
-            <Typography variant="body2">This viewer has no options to show.</Typography>
-          )}
-          <RuntimeLocalViewerForm
-            preview={shown.preview}
-            runningAction={action.status === "running" ? action.action : null}
-            onAction={typeof service.runProtocolViewerAction === "function" ? runAction : undefined}
-          />
-          {shown.preview.omittedFields > 0 && (
-            <Typography variant="caption" sx={{ display: "block", mt: 1 }}>
-              {shown.preview.omittedFields} options of this viewer cannot be shown on the web.
-            </Typography>
-          )}
-        </Box>
-      )}
-      {action.status === "running" && (
-        <Box role="status" sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
-          <CircularProgress size={16} /><Typography variant="body2">Preparing the result...</Typography>
-        </Box>
-      )}
-      {action.status === "failed" && (
-        <Alert severity="error" sx={{ mt: 1 }}>
-          {action.messages.map((message, index) => <div key={index}>{message}</div>)}
-        </Alert>
-      )}
-      {action.status === "done" && (
-        <ProtocolViewerActionResults service={service} projectId={projectId} protocolId={protocolId}
-          protocolLabel={protocolLabel} result={action.result} />
-      )}
+    </Box>
+  );
+}
+
+type ColumnHeaderProps = { icon: ReactNode; title: string; subtitle?: string; action?: ReactNode };
+
+function ColumnHeader({ icon, title, subtitle, action }: ColumnHeaderProps) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, pt: 1.5, pb: 1, minHeight: 48 }}>
+      <Box sx={{ color: "#475569", display: "flex" }}>{icon}</Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "#64748b" }}>
+          {title}
+        </Typography>
+        {subtitle && <Typography noWrap sx={{ fontSize: "0.88rem", fontWeight: 600, color: "#0f172a" }}>{subtitle}</Typography>}
+      </Box>
+      {action}
     </Box>
   );
 }
@@ -181,8 +230,14 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
       <span>
         <IconButton size="small" aria-label={`Show ${field.label}`}
           disabled={runningAction !== null}
-          onClick={() => onAction(field.name, actionValues(values))}>
-          {runningAction === field.name ? <CircularProgress size={16} /> : <Eye size={18} />}
+          onClick={() => onAction(field.name, actionValues(values))}
+          sx={{
+            width: 34, height: 34, flex: "0 0 auto", border: "1px solid",
+            borderColor: runningAction === field.name ? "#333d49" : "rgba(148, 163, 184, 0.6)",
+            color: "#333d49", bgcolor: runningAction === field.name ? "#eef2f6" : "#ffffff",
+            "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
+          }}>
+          {runningAction === field.name ? <CircularProgress size={16} /> : <Eye size={17} />}
         </IconButton>
       </span>
     </Tooltip>
@@ -196,7 +251,7 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
       (values[field.name] === undefined || values[field.name] === null ? "" : String(values[field.name]));
     let control;
     if (!EDITABLE.has(field.control)) {
-      control = <Typography variant="body2" sx={{ flex: 1 }}>{field.label}</Typography>;
+      control = <Typography sx={{ flex: 1, fontSize: "0.88rem", fontWeight: 500, color: "#1e293b" }}>{field.label}</Typography>;
     } else if (field.control === "boolean") {
       control = (
         <FormControlLabel sx={{ flex: 1 }} control={<Checkbox checked={values[field.name] === true}
@@ -218,12 +273,17 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
       );
     }
     return (
-      <Box key={field.name} sx={{ mt: 1 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {control}
-          {eye(field)}
-        </Box>
-        {field.help && <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>{field.help}</Typography>}
+      <Box key={field.name} sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 0.75 }}>
+        {control}
+        {field.help && (
+          <Tooltip title={<Box sx={{ whiteSpace: "pre-line" }}>{field.help}</Box>} placement="right">
+            <Box component="span" aria-label={`Help for ${field.label}`} tabIndex={0}
+              sx={{ display: "flex", color: "#94a3b8", cursor: "help", "&:hover": { color: "#475569" } }}>
+              <Info size={15} />
+            </Box>
+          </Tooltip>
+        )}
+        {eye(field)}
       </Box>
     );
   };
@@ -245,16 +305,17 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
           ...deferred.filter(item => item.section === name && item.group !== null)
             .map(item => item.group as string)])];
         return (
-          <Box key={`${index}-${name}`} sx={{ mt: 1 }}>
-            <Typography variant="subtitle2">{name}</Typography>
+          <Box key={`${index}-${name}`} sx={{ mt: index === 0 ? 0.5 : 2 }}>
+            <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: "#334155", pb: 0.5,
+              borderBottom: "1px solid rgba(148, 163, 184, 0.35)" }}>{name}</Typography>
             {section?.fields.map(field => renderField(field))}
             {direct.map(entry => renderField(entry.field))}
             {groups.map((groupName, groupIndex) => {
               const group = section?.groups.find(item => item.label === groupName);
               const additional = deferred.filter(item => item.section === name && item.group === groupName);
               return (
-                <Box key={`${groupIndex}-${groupName}`} sx={{ pl: 2, mt: 1, borderLeft: "2px solid", borderColor: "divider" }}>
-                  <Typography variant="subtitle2">{groupName}</Typography>
+                <Box key={`${groupIndex}-${groupName}`} sx={{ pl: 1.5, mt: 1.5, borderLeft: "2px solid rgba(148, 163, 184, 0.45)" }}>
+                  <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "#475569" }}>{groupName}</Typography>
                   {group?.fields.map(field => renderField(field))}
                   {additional.map(entry => renderField(entry.field))}
                 </Box>

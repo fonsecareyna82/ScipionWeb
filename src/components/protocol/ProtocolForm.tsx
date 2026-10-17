@@ -4113,6 +4113,7 @@ export default function ProtocolForm({
         onClose={() => setProtocolAnalyzeOpen(false)}
         projectId={projectId}
         protocolId={effectiveProtocolId}
+        protocolLabel={protocolDisplayName}
       />
 
       {/* Protocol form help dialog */}

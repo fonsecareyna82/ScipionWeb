@@ -150,6 +150,29 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     expect(screen.getByTestId("analyze-output-dialog")).toHaveTextContent("7|vf.x.y|classes.sqlite|SetOfClasses2D|");
   });
 
+  it("keeps viewer messages in the form instead of opening a result window", async () => {
+    runProtocolViewerAction.mockResolvedValue(actionReply("classesToShow", [
+      {kind: "message", level: "info", title: "Info message", text: "There are no discarded CTFs"},
+    ]));
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Show What to show"}));
+    expect(await screen.findByText("There are no discarded CTFs")).toBeInTheDocument();
+    expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument();
+  });
+
+  it("opens other results in a window in front of the form and closes it on request", async () => {
+    runProtocolViewerAction.mockResolvedValue(actionReply("showConvergence", [
+      {kind: "plot", title: "Similarity", mediaType: "image/png", data: "iVBORw0KGgo="},
+    ]));
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Show Visualize convergence"}));
+    expect(await screen.findByTestId("protocol-viewer-action-results")).toBeInTheDocument();
+    expect(screen.getByText("Result · Visualize convergence")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Close result"}));
+    await waitFor(() => expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument());
+    expect(screen.getByTestId("protocol-viewer-runtime-preview")).toBeInTheDocument();
+  });
+
   it("shows the viewer's own validation messages when an action fails", async () => {
     runProtocolViewerAction.mockRejectedValue(Object.assign(new Error("validation_failed"), {
       code: "validation_failed", messages: ["Select at least one level"],
