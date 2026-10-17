@@ -2,15 +2,21 @@
 // Each field with a visualize handler gets an "eye" that runs it on the server.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Alert, Box, Checkbox, CircularProgress, FormControlLabel, IconButton, LinearProgress, MenuItem,
+  Alert, Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, LinearProgress, MenuItem,
   TextField, Tooltip, Typography,
 } from "@mui/material";
-import { ExternalLink, Eye, Info, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, Eye, Info, Monitor, SlidersHorizontal } from "lucide-react";
 import type { ProjectService, ProtocolViewerActionValues } from "@/services/ProjectService";
 import { describeProtocolViewerRuntimePreview, validRuntimeViewerId, type RuntimeViewerPreview } from "@/utils/protocol_viewer_runtime_preview";
 import { evaluateViewerCondition, initialViewerLocalValues, localViewerFieldValue } from "@/utils/protocol_viewer_reactive_form";
-import { describeViewerActionResult, type ViewerActionResult } from "@/utils/protocol_viewer_action_result";
-import ProtocolViewerActionResults, { hasWindowContent, ViewerLinkButton } from "./ProtocolViewerActionResults";
+import {
+  describeViewerActionResult, type ViewerActionDesktop, type ViewerActionLink, type ViewerActionMessage,
+  type ViewerActionResult, type ViewerActionVolumes,
+} from "@/utils/protocol_viewer_action_result";
+import ProtocolViewerActionResults, {
+  hasWindowContent, isInlineItem, openVolumesTarget, ViewerLinkButton,
+} from "./ProtocolViewerActionResults";
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
 type Props = {
   service: ProjectService;
@@ -45,6 +51,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
   const [action, setAction] = useState<ActionState>({ status: "idle" });
   const actionController = useRef<AbortController | null>(null);
   const runCounter = useRef(0);
+  const [webVolumes, setWebVolumes] = useState<ViewerActionVolumes | null>(null);
   const shown = state.scope === scope ? state : { status: "loading" as const, scope };
 
   useEffect(() => {
@@ -103,12 +110,15 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
     return fields.find(field => field.name === name)?.label ?? name;
   };
   const doneResult = action.status === "done" ? action.result : null;
-  const inlineMessages = doneResult && !hasWindowContent(doneResult)
-    ? [...doneResult.messages, ...doneResult.items.filter(item => item.kind === "message")]
-    : [];
-  const inlineLinks = doneResult && !hasWindowContent(doneResult)
-    ? doneResult.items.filter(item => item.kind === "link")
-    : [];
+  // Notices go in the form; viewer messages too unless a results window shows them.
+  const inlineItems = doneResult ? doneResult.items.filter(isInlineItem) : [];
+  const inlineMessages = [
+    ...(doneResult && !hasWindowContent(doneResult) ? doneResult.messages : []),
+    ...inlineItems.filter((item): item is ViewerActionMessage => item.kind === "message"),
+  ];
+  const inlineLinks = inlineItems.filter((item): item is ViewerActionLink => item.kind === "link");
+  const desktopItems = inlineItems.filter(
+    (item): item is ViewerActionDesktop | ViewerActionVolumes => item.kind === "desktop" || item.kind === "volumes");
 
   return (
     <Box component="section" aria-label="Viewer options" sx={{
@@ -140,6 +150,26 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
             </Box>
           </Alert>
         ))}
+        {desktopItems.map((item, index) => {
+          const program = item.kind === "desktop" ? item.program : item.desktopProgram;
+          return (
+            <Alert key={`desktop-${index}`} severity="success" icon={<Monitor size={18} />} sx={{ mt: 1.5,
+              "& .MuiAlert-message": { flex: 1, minWidth: 0 } }} onClose={() => setAction({ status: "idle" })}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <strong>{actionLabel(doneResult!.action)}</strong>
+                  <Box sx={{ fontSize: "0.8rem", color: "#475569" }}>Opened in {program} on this computer.</Box>
+                </Box>
+                {item.kind === "volumes" && (
+                  <Button size="small" variant="outlined" onClick={() => setWebVolumes(item)}
+                    sx={{ textTransform: "none", flex: "0 0 auto", color: "#333d49", borderColor: "#94a3b8" }}>
+                    Show in the web volume viewer
+                  </Button>
+                )}
+              </Box>
+            </Alert>
+          );
+        })}
         {inlineMessages.map((message, index) => (
           <Alert key={index} severity={message.level} sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
             {message.title && <strong>{message.title}: </strong>}{message.text}
@@ -170,6 +200,18 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
           </Box>
         )}
       </Box>
+      {webVolumes && (
+        <AnalyzeOutputDialog
+          open
+          onClose={() => setWebVolumes(null)}
+          projectId={Number(projectId)}
+          protocolLabel={protocolLabel}
+          protocolId={openVolumesTarget(webVolumes, protocolId).protocolId}
+          outputName={webVolumes.fileToken}
+          displayName={webVolumes.title}
+          outputRaw={{ pointerClass: "SetOfVolumes" }}
+        />
+      )}
       {action.status === "done" && hasWindowContent(action.result) && (
         <ProtocolViewerActionResults
           key={action.run}

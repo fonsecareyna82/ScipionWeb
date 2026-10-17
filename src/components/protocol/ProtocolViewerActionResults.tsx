@@ -1,6 +1,6 @@
 // Renders what a protocol viewer action produced, with ScipionWeb's own viewers.
 import { useEffect, useState, type ReactNode } from "react";
-import { Database, ExternalLink, File, FileText, Image as ImageIcon, Table2 } from "lucide-react";
+import { Box as Box3D, Database, ExternalLink, File, FileText, Image as ImageIcon, Table2 } from "lucide-react";
 import {
   Alert, Box, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Typography,
@@ -11,7 +11,7 @@ import { ImagePreviewDialog, type ImagePreviewSource } from "@/components/analyz
 import type { ProjectService } from "@/services/ProjectService";
 import {
   unsupportedViewReason, viewerDataClassName,
-  type ViewerActionData, type ViewerActionItem, type ViewerActionResult,
+  type ViewerActionData, type ViewerActionItem, type ViewerActionResult, type ViewerActionVolumes,
 } from "@/utils/protocol_viewer_action_result";
 
 type Props = {
@@ -38,17 +38,37 @@ function canOpenInMetadataViewer(item: ViewerActionData): boolean {
   return item.output !== null || (item.format === "metadata" && item.fileToken !== null);
 }
 
-/** A result made of one data set or image opens straight in its viewer. */
-export function directlyOpenableItem(result: ViewerActionResult): ViewerActionData | null {
+type OpenableItem = ViewerActionData | ViewerActionVolumes;
+
+/** A result made of one data set, image or group of volumes opens straight in its viewer. */
+export function directlyOpenableItem(result: ViewerActionResult): OpenableItem | null {
   const [only] = result.items;
-  return result.items.length === 1 && result.messages.length === 0 && only.kind === "data" &&
+  if (result.items.length !== 1 || result.messages.length !== 0) return null;
+  if (only.kind === "volumes") return only.desktopProgram ? null : only;
+  return only.kind === "data" &&
     (canOpenInMetadataViewer(only) || (only.format === "image" && only.path !== null))
     ? only : null;
 }
 
-/** Messages and links are shown in the form, like desktop message boxes. */
+/** Shown in the form rather than in a results window, like desktop message boxes. */
+export function isInlineItem(item: ViewerActionItem): boolean {
+  return item.kind === "message" || item.kind === "link" || item.kind === "desktop" ||
+    (item.kind === "volumes" && item.desktopProgram !== null);
+}
+
 export function hasWindowContent(result: ViewerActionResult): boolean {
-  return result.items.some(item => item.kind !== "message" && item.kind !== "link");
+  return result.items.some(item => !isInlineItem(item));
+}
+
+/** Viewer for volumes given as files, e.g. those a viewer hands to ChimeraX. */
+export function openVolumesTarget(item: ViewerActionVolumes, protocolId: string) {
+  return {
+    protocolId: Number(protocolId),
+    outputName: item.fileToken,
+    displayName: item.title,
+    className: "SetOfVolumes",
+    metadataFile: null,
+  };
 }
 
 /** Opens a page the viewer asked for, in a new browser tab. */
@@ -86,8 +106,10 @@ export default function ProtocolViewerActionResults({
   const [openData, setOpenData] = useState<OpenData | null>(null);
   const [image, setImage] = useState<ImagePreviewSource | null>(null);
 
-  const openItem = (item: ViewerActionData) => {
-    if (item.output) {
+  const openItem = (item: OpenableItem) => {
+    if (item.kind === "volumes") {
+      setOpenData(openVolumesTarget(item, protocolId));
+    } else if (item.output) {
       setOpenData({
         protocolId: item.output.protocolId,
         outputName: item.output.outputName,
@@ -143,7 +165,7 @@ export default function ProtocolViewerActionResults({
                 {message.title && <strong>{message.title}: </strong>}{message.text}
               </Alert>
             ))}
-            {result.items.map((item, index) => (
+            {result.items.filter(item => !isInlineItem(item)).map((item, index) => (
               <ResultItem key={`${item.kind}-${index}`} item={item}
                 onOpen={openItem}
                 onOpenImage={(imageTitle, path) => setImage(previewImageSource(service, projectId, protocolId, imageTitle, path))}
@@ -185,7 +207,7 @@ const FORMAT_ICONS = { metadata: Table2, image: ImageIcon, text: FileText, file:
 
 type ResultItemProps = {
   item: ViewerActionItem;
-  onOpen: (item: ViewerActionData) => void;
+  onOpen: (item: OpenableItem) => void;
   onOpenImage: (title: string, path: string) => void;
   onOpenPlot: (title: string, src: string) => void;
 };
@@ -279,6 +301,17 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         </Paper>
       );
     }
+    case "volumes":
+      return (
+        <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
+          <FileIcon icon={Box3D} />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: "0.75rem", color: "#64748b", wordBreak: "break-all" }}>{item.paths.join(", ")}</Typography>
+          </Box>
+          <OpenButton onClick={() => onOpen(item)} />
+        </Paper>
+      );
     case "link":
       return (
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>

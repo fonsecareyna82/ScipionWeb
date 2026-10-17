@@ -68,6 +68,24 @@ export type ViewerActionData = {
   fileToken: string | null;
 };
 
+/** Volumes the viewer hands to a desktop program such as ChimeraX. */
+export type ViewerActionVolumes = {
+  kind: "volumes";
+  viewClass: string;
+  title: string;
+  paths: string[];
+  fileToken: string;
+  /** Set when the program was opened on the server's own screen. */
+  desktopProgram: string | null;
+};
+
+/** A desktop program opened on the server's screen (nothing to show here). */
+export type ViewerActionDesktop = {
+  kind: "desktop";
+  viewClass: string;
+  program: string;
+};
+
 /** A web page the viewer opens, e.g. a cryoSPARC job. */
 export type ViewerActionLink = {
   kind: "link";
@@ -90,6 +108,8 @@ export type ViewerActionItem =
   | ViewerActionImage
   | ViewerActionData
   | ViewerActionLink
+  | ViewerActionVolumes
+  | ViewerActionDesktop
   | ViewerActionUnsupported;
 
 export type ViewerActionResult = {
@@ -200,6 +220,19 @@ function item(value: unknown): ViewerActionItem | null {
         fileToken,
       };
     }
+    case "volumes": {
+      const paths = Array.isArray(data.paths)
+        ? data.paths.map(relativePath).filter((path): path is string => path !== null) : [];
+      const fileToken = typeof data.fileToken === "string" && /^vf\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.fileToken)
+        ? data.fileToken : null;
+      if (!paths.length || !fileToken) return null;
+      return {kind: "volumes", viewClass: text(data.viewClass, 128), title: text(data.title, 255),
+        paths: paths.slice(0, 64), fileToken,
+        desktopProgram: typeof data.desktopProgram === "string" && data.desktopProgram
+          ? text(data.desktopProgram, 64) : null};
+    }
+    case "desktop":
+      return {kind: "desktop", viewClass: text(data.viewClass, 128), program: text(data.program, 64) || "program"};
     case "link": {
       const url = typeof data.url === "string" && data.url.length <= 2048 &&
         /^https?:\/\/\S+$/i.test(data.url) ? data.url : null;
@@ -237,7 +270,7 @@ export function describeViewerActionResult(
 /** Human explanation for Views that have no web counterpart yet. */
 export function unsupportedViewReason(reason: string): string {
   switch (reason) {
-    case "desktop_command": return "Opens an external desktop program (e.g. ChimeraX).";
+    case "desktop_command": return "Opens an external desktop program (e.g. ChimeraX), which needs ScipionAPI to run on a computer with a screen.";
     case "desktop_picker": return "Opens the interactive desktop particle picker.";
     case "file_outside_project": return "The file is outside the project folder.";
     case "invalid_link": return "The viewer tried to open a page that is not a web address.";

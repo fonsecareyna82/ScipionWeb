@@ -195,6 +195,31 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument();
   });
 
+  it("opens volumes meant for ChimeraX in the web volume viewer", async () => {
+    runProtocolViewerAction.mockResolvedValue(actionReply("showConvergence", [
+      {kind: "volumes", viewClass: "ChimeraView", title: "2 volumes", fileToken: "vf.v.s",
+        paths: ["Runs/a.mrc", "Runs/b.mrc"], desktopProgram: null},
+    ]));
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Show Visualize convergence"}));
+    expect(await screen.findByTestId("analyze-output-dialog"))
+      .toHaveTextContent("7|vf.v.s|2 volumes|SetOfVolumes|");
+  });
+
+  it("reports ChimeraX opened on this computer and offers the web volume viewer too", async () => {
+    runProtocolViewerAction.mockResolvedValue(actionReply("showConvergence", [
+      {kind: "volumes", viewClass: "ChimeraView", title: "sharpened.mrc", fileToken: "vf.v.s",
+        paths: ["Runs/sharpened.mrc"], desktopProgram: "ChimeraX"},
+    ]));
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Show Visualize convergence"}));
+    expect(await screen.findByText("Opened in ChimeraX on this computer.")).toBeInTheDocument();
+    expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Show in the web volume viewer"}));
+    expect(screen.getByTestId("analyze-output-dialog")).toHaveTextContent("7|vf.v.s|sharpened.mrc|SetOfVolumes|");
+  });
+
   it("shows the viewer's own validation messages when an action fails", async () => {
     runProtocolViewerAction.mockRejectedValue(Object.assign(new Error("validation_failed"), {
       code: "validation_failed", messages: ["Select at least one level"],
