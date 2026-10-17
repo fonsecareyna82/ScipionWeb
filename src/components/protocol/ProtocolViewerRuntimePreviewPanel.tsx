@@ -5,12 +5,12 @@ import {
   Alert, Box, Checkbox, CircularProgress, FormControlLabel, IconButton, LinearProgress, MenuItem,
   TextField, Tooltip, Typography,
 } from "@mui/material";
-import { Eye, Info, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, Eye, Info, SlidersHorizontal } from "lucide-react";
 import type { ProjectService, ProtocolViewerActionValues } from "@/services/ProjectService";
 import { describeProtocolViewerRuntimePreview, validRuntimeViewerId, type RuntimeViewerPreview } from "@/utils/protocol_viewer_runtime_preview";
 import { evaluateViewerCondition, initialViewerLocalValues, localViewerFieldValue } from "@/utils/protocol_viewer_reactive_form";
 import { describeViewerActionResult, type ViewerActionResult } from "@/utils/protocol_viewer_action_result";
-import ProtocolViewerActionResults, { hasWindowContent } from "./ProtocolViewerActionResults";
+import ProtocolViewerActionResults, { hasWindowContent, ViewerLinkButton } from "./ProtocolViewerActionResults";
 
 type Props = {
   service: ProjectService;
@@ -106,6 +106,9 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
   const inlineMessages = doneResult && !hasWindowContent(doneResult)
     ? [...doneResult.messages, ...doneResult.items.filter(item => item.kind === "message")]
     : [];
+  const inlineLinks = doneResult && !hasWindowContent(doneResult)
+    ? doneResult.items.filter(item => item.kind === "link")
+    : [];
 
   return (
     <Box component="section" aria-label="Viewer options" sx={{
@@ -125,6 +128,18 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
             {actionLabel(doneResult.action)}: the viewer returned nothing to show.
           </Alert>
         )}
+        {inlineLinks.map((link, index) => (
+          <Alert key={`link-${index}`} severity="info" icon={<ExternalLink size={18} />} sx={{ mt: 1.5,
+            "& .MuiAlert-message": { flex: 1, minWidth: 0 } }} onClose={() => setAction({ status: "idle" })}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <strong>{actionLabel(doneResult!.action)}</strong>
+                <Box sx={{ fontSize: "0.78rem", wordBreak: "break-all", color: "#475569" }}>{link.url}</Box>
+              </Box>
+              <ViewerLinkButton url={link.url} />
+            </Box>
+          </Alert>
+        ))}
         {inlineMessages.map((message, index) => (
           <Alert key={index} severity={message.level} sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
             {message.title && <strong>{message.title}: </strong>}{message.text}

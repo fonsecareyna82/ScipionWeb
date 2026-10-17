@@ -68,6 +68,13 @@ export type ViewerActionData = {
   fileToken: string | null;
 };
 
+/** A web page the viewer opens, e.g. a cryoSPARC job. */
+export type ViewerActionLink = {
+  kind: "link";
+  url: string;
+  title: string;
+};
+
 export type ViewerActionUnsupported = {
   kind: "unsupported";
   viewClass: string;
@@ -82,6 +89,7 @@ export type ViewerActionItem =
   | ViewerActionText
   | ViewerActionImage
   | ViewerActionData
+  | ViewerActionLink
   | ViewerActionUnsupported;
 
 export type ViewerActionResult = {
@@ -192,6 +200,11 @@ function item(value: unknown): ViewerActionItem | null {
         fileToken,
       };
     }
+    case "link": {
+      const url = typeof data.url === "string" && data.url.length <= 2048 &&
+        /^https?:\/\/\S+$/i.test(data.url) ? data.url : null;
+      return url ? {kind: "link", url, title: text(data.title, 255) || url} : null;
+    }
     case "unsupported":
       return {kind: "unsupported", viewClass: text(data.viewClass, 128),
         reason: text(data.reason, 64), detail: text(data.detail, 500)};
@@ -227,6 +240,7 @@ export function unsupportedViewReason(reason: string): string {
     case "desktop_command": return "Opens an external desktop program (e.g. ChimeraX).";
     case "desktop_picker": return "Opens the interactive desktop particle picker.";
     case "file_outside_project": return "The file is outside the project folder.";
+    case "invalid_link": return "The viewer tried to open a page that is not a web address.";
     case "set_not_stored": return "The data set is not stored in the project.";
     case "plot_too_large": return "The plot is too large to display.";
     case "plot_render_failed": return "The plot could not be rendered.";

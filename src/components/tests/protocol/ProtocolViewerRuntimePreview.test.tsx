@@ -182,6 +182,19 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     expect(screen.getByTestId("protocol-viewer-runtime-preview")).toBeInTheDocument();
   });
 
+  it("offers pages the viewer opens, like a cryoSPARC job, in a new browser tab", async () => {
+    const url = "http://cryosparc.local:39000/browse/P12-W3-J45";
+    runProtocolViewerAction.mockResolvedValue(actionReply("classesToShow", [
+      {kind: "link", url, title: url},
+    ]));
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Show What to show"}));
+    const link = await screen.findByRole("link", {name: "Open in a new tab"});
+    expect(link).toHaveAttribute("href", url);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument();
+  });
+
   it("shows the viewer's own validation messages when an action fails", async () => {
     runProtocolViewerAction.mockRejectedValue(Object.assign(new Error("validation_failed"), {
       code: "validation_failed", messages: ["Select at least one level"],

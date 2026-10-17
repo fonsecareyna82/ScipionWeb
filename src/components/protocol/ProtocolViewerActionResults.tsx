@@ -46,9 +46,20 @@ export function directlyOpenableItem(result: ViewerActionResult): ViewerActionDa
     ? only : null;
 }
 
-/** Results with only messages are shown in the form, like desktop message boxes. */
+/** Messages and links are shown in the form, like desktop message boxes. */
 export function hasWindowContent(result: ViewerActionResult): boolean {
-  return result.items.some(item => item.kind !== "message");
+  return result.items.some(item => item.kind !== "message" && item.kind !== "link");
+}
+
+/** Opens a page the viewer asked for, in a new browser tab. */
+export function ViewerLinkButton({ url }: { url: string }) {
+  return (
+    <Button size="small" variant="contained" component="a" href={url} target="_blank"
+      rel="noopener noreferrer" startIcon={<ExternalLink size={14} />}
+      sx={{ textTransform: "none", flex: "0 0 auto", bgcolor: "#333d49", "&:hover": { bgcolor: "#25303b" } }}>
+      Open in a new tab
+    </Button>
+  );
 }
 
 function previewImageSource(
@@ -268,6 +279,16 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         </Paper>
       );
     }
+    case "link":
+      return (
+        <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
+          <FileIcon icon={ExternalLink} />
+          <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.8rem", color: "#334155", wordBreak: "break-all" }}>
+            {item.url}
+          </Typography>
+          <ViewerLinkButton url={item.url} />
+        </Paper>
+      );
     case "unsupported":
       return (
         <Alert severity="info" variant="outlined">
