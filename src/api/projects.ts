@@ -570,7 +570,7 @@ export async function importProject(
 
 /* ======================= PROTOCOL READS ======================= */
 
-/** Experimental admin-only runtime form inspection; the server must opt in. */
+/** The runtime form of a protocol viewer; the server must enable viewers. */
 export async function fetchProtocolViewerRuntimePreview(
   projectId: Id,
   protocolId: Id,
