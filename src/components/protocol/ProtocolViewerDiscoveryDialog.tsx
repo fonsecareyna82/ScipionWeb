@@ -11,7 +11,6 @@ import ProtocolViewerRuntimePreviewPanel from "./ProtocolViewerRuntimePreviewPan
 import { openableProtocolViewers, validRuntimeViewerId } from "@/utils/protocol_viewer_runtime_preview";
 import type { ProtocolViewerCandidate } from "@/services/ProjectService";
 import { describeProtocolViewerPreview } from "@/utils/protocol_viewer_preview";
-import { describeProtocolViewerWebActionStatuses } from "@/utils/protocol_viewer_web_action_status";
 
 type Props = {
   open: boolean;
@@ -274,7 +273,6 @@ function CenteredState({ icon, title, text, action }: CenteredStateProps) {
 
 function StaticViewerDetails({ viewer }: { viewer: ProtocolViewerCandidate }) {
   const preview = describeProtocolViewerPreview(viewer);
-  const actionStatuses = describeProtocolViewerWebActionStatuses(viewer.webActionContracts, preview.actions);
   return (
     <Box sx={{ overflowY: "auto", p: 2.5 }}>
       <Paper variant="outlined" sx={{ p: 2, borderColor: BORDER }} data-testid="protocol-viewer-details">
@@ -306,16 +304,6 @@ function StaticViewerDetails({ viewer }: { viewer: ProtocolViewerCandidate }) {
         {preview.actions.map((action) => (
           <Box key={action.id} data-testid={`protocol-web-action-${action.id}`}>
             <Typography variant="body2">{action.label} — not executable</Typography>
-            {actionStatuses.get(action.id) && (
-              <Typography variant="caption" sx={{ display: "block" }}>
-                {actionStatuses.get(action.id)?.label}
-              </Typography>
-            )}
-            {actionStatuses.get(action.id) && (
-              <Typography variant="caption" sx={{ display: "block" }}>
-                Blockers: {actionStatuses.get(action.id)?.blockers.join(", ")}
-              </Typography>
-            )}
           </Box>
         ))}
         {(preview.dynamicSkipped > 0 || preview.hiddenCount > 0) && (

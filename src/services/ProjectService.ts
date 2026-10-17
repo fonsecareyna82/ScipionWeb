@@ -6,8 +6,6 @@ export type ProtocolViewerCandidate = {
   viewerKind?: string;
   webReady?: boolean;
   webLaunchAllowed?: boolean;
-  /** Server-authored advisory metadata. Treat as untrusted until verified for display. */
-  webActionContracts?: unknown;
   formSchema?: {
     status?: string;
     sections?: Array<{
