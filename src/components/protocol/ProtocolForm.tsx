@@ -116,6 +116,7 @@ import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
 import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
 import {
+  BarChart3,
   ExternalLink,
   PanelRightClose,
   PanelRightOpen,
@@ -3938,19 +3939,39 @@ export default function ProtocolForm({
 
   // Shown only for protocols with a viewer, as the desktop does.
   const protocolAnalyzeHeaderAction = hasProtocolViewers ? (
-    <Tooltip title="Open the viewers of this protocol">
-      <span>
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={() => setProtocolAnalyzeOpen(true)}
-          sx={{ textTransform: "none", fontSize: "0.72rem", color: "white", borderColor: "#aab3c0", mr: 0.5,
-            "&:hover": { borderColor: "white", backgroundColor: "rgba(255,255,255,0.12)" },
-            "&.Mui-disabled": { color: "#9ca3af", borderColor: "#6b7280" } }}
-        >
-          Analyze results
-        </Button>
-      </span>
+    <Tooltip title="Open the viewers of this protocol" describeChild>
+      <Button
+        size="small"
+        onClick={() => setProtocolAnalyzeOpen(true)}
+        aria-haspopup="dialog"
+        startIcon={<BarChart3 size={15} strokeWidth={2.2} />}
+        sx={{
+          ...headerActionBtnSx,
+          height: 30,
+          px: 1.25,
+          mr: 0.5,
+          borderRadius: "8px",
+          textTransform: "none",
+          fontSize: "0.76rem",
+          fontWeight: 600,
+          letterSpacing: 0.2,
+          lineHeight: 1,
+          whiteSpace: "nowrap",
+          color: "#f8fafc",
+          boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.55)",
+          transition: "background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+          "& .MuiButton-startIcon": { mr: 0.75, ml: 0, color: "#7dd3fc" },
+          "&:hover": {
+            background: "rgba(255,255,255,0.14)",
+            borderColor: "rgba(255,255,255,0.32)",
+            boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.9)",
+          },
+          "&:active": { background: "rgba(255,255,255,0.2)" },
+          "&.Mui-focusVisible": { outline: "2px solid #7dd3fc", outlineOffset: 2 },
+        }}
+      >
+        Analyze results
+      </Button>
     </Tooltip>
   ) : null;
 
