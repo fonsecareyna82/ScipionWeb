@@ -1,5 +1,11 @@
 // src/api/projects.ts
 import { ProtocolNode } from "./protocols";
+import type {
+  ProtocolViewerActionResponse,
+  ProtocolViewerActionValues,
+  ProtocolViewerCandidatesResponse,
+  ProtocolViewerRuntimePreview,
+} from "@/services/ProjectService";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
@@ -563,6 +569,87 @@ export async function importProject(
 }
 
 /* ======================= PROTOCOL READS ======================= */
+
+/** Experimental admin-only runtime form inspection; the server must opt in. */
+export async function fetchProtocolViewerRuntimePreview(
+  projectId: Id,
+  protocolId: Id,
+  viewerId: string,
+  opts: {signal?: AbortSignal} = {},
+): Promise<ProtocolViewerRuntimePreview> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/viewers/runtime-preview`,
+    {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      cache: "no-store",
+      signal: opts.signal,
+      body: JSON.stringify({viewerId}),
+    },
+  );
+  if (!response.ok) throw await toApiError(response, "Dynamic protocol viewer preview is unavailable");
+  return safeJson<ProtocolViewerRuntimePreview>(response);
+}
+
+/** Run one viewer action; the server describes the Views it produced. */
+export async function runProtocolViewerAction(
+  projectId: Id,
+  protocolId: Id,
+  viewerId: string,
+  action: string,
+  values: ProtocolViewerActionValues,
+  opts: {signal?: AbortSignal} = {},
+): Promise<ProtocolViewerActionResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/viewers/action`,
+    {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      cache: "no-store",
+      signal: opts.signal,
+      body: JSON.stringify({viewerId, action, values}),
+    },
+  );
+  if (!response.ok) {
+    // The server answers {detail: {code, messages}} for expected failures.
+    let payload: any;
+    try { payload = await safeJson<any>(response); } catch { payload = undefined; }
+    const detail = payload && typeof payload === "object" ? payload.detail : undefined;
+    const code = typeof detail?.code === "string" ? detail.code
+      : typeof detail === "string" ? detail : `http_${response.status}`;
+    const messages = Array.isArray(detail?.messages)
+      ? detail.messages.filter((m: unknown): m is string => typeof m === "string").slice(0, 32)
+      : [];
+    throw new ProtocolViewerActionError(code, messages, response.status);
+  }
+  return safeJson<ProtocolViewerActionResponse>(response);
+}
+
+export class ProtocolViewerActionError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly messages: string[],
+    public readonly status: number,
+  ) {
+    super(messages[0] || code);
+    this.name = "ProtocolViewerActionError";
+  }
+}
+
+/** Read-only viewer candidates for a persisted protocol (no viewer execution). */
+export async function fetchProtocolViewerCandidates(
+  projectId: Id,
+  protocolId: Id,
+): Promise<ProtocolViewerCandidatesResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/viewers`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!response.ok) throw await toApiError(response, "Failed to fetch protocol viewers");
+  return safeJson<ProtocolViewerCandidatesResponse>(response);
+}
+
+
 export async function fetchProtocolDetails(
   projectId: Id,
   protocolId: Id,

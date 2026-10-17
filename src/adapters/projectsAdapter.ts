@@ -88,7 +88,7 @@ import type {
   WorkflowFileImportResult,
   ProtocolRelationCandidatesPayload,
   ProtocolRelationCandidatesResult,
-
+  ProtocolViewerActionValues,
 } from "@/services/ProjectService";
 
 import * as settingsApi from "@/api/settings";
@@ -165,6 +165,18 @@ const defaultService: ProjectService = {
 
   fetchProtocolDetails: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
+
+  fetchProtocolViewerCandidates: (projectId: Id, protocolId: Id) =>
+    api.fetchProtocolViewerCandidates(toId(projectId), toId(protocolId)),
+
+  fetchProtocolViewerRuntimePreview: (
+    projectId: Id, protocolId: Id, viewerId: string, opts?: {signal?: AbortSignal},
+  ) => api.fetchProtocolViewerRuntimePreview(toId(projectId), toId(protocolId), viewerId, opts),
+
+  runProtocolViewerAction: (
+    projectId: Id, protocolId: Id, viewerId: string, action: string,
+    values: ProtocolViewerActionValues, opts?: {signal?: AbortSignal},
+  ) => api.runProtocolViewerAction(toId(projectId), toId(protocolId), viewerId, action, values, opts),
 
   fetchProtocolRuntimeSummaries: (projectId: Id, protocolIds: Id[],) => api.fetchProtocolRuntimeSummaries(toId(projectId), protocolIds,),
 

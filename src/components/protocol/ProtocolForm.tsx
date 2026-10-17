@@ -46,6 +46,7 @@ import ExecuteModeButton from "./ExecuteModeButton";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
+import ProtocolViewerDiscoveryDialog from "./ProtocolViewerDiscoveryDialog";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
@@ -301,6 +302,7 @@ export default function ProtocolForm({
 
   const hasFormHelp = isNonEmptyString(formHelpText);
   const [openFormHelp, setOpenFormHelp] = useState(false);
+  const [protocolAnalyzeOpen, setProtocolAnalyzeOpen] = useState(false);
 
   // keepValuesForLater
   const values = useMemo(() => {
@@ -3915,6 +3917,29 @@ export default function ProtocolForm({
     isFloating ||
     isExternal;
 
+
+  // RED 129/GREEN 130: protocol analysis never depends on the selected output.
+  const canAnalyzePersistedProtocol =
+    /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
+    /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
+  const protocolAnalyzeHeaderAction = (
+    <Tooltip title={canAnalyzePersistedProtocol ? "Discover protocol-level viewers" : "Save this protocol before analyzing results"}>
+      <span>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!canAnalyzePersistedProtocol}
+          onClick={() => setProtocolAnalyzeOpen(true)}
+          sx={{ textTransform: "none", fontSize: "0.72rem", color: "white", borderColor: "#aab3c0", mr: 0.5,
+            "&:hover": { borderColor: "white", backgroundColor: "rgba(255,255,255,0.12)" },
+            "&.Mui-disabled": { color: "#9ca3af", borderColor: "#6b7280" } }}
+        >
+          Analyze results
+        </Button>
+      </span>
+    </Tooltip>
+  );
+
   const formContent = (
     <div
       className={[
@@ -3991,6 +4016,7 @@ export default function ProtocolForm({
                 0.75,
             }}
           >
+            {protocolAnalyzeHeaderAction}
             {hasFormHelp && (
               <Tooltip title="Help">
                 <IconButton
@@ -4081,6 +4107,13 @@ export default function ProtocolForm({
           </Box>
         </div>
       )}
+
+      <ProtocolViewerDiscoveryDialog
+        open={protocolAnalyzeOpen}
+        onClose={() => setProtocolAnalyzeOpen(false)}
+        projectId={projectId}
+        protocolId={effectiveProtocolId}
+      />
 
       {/* Protocol form help dialog */}
       {hasFormHelp && (
@@ -5123,35 +5156,21 @@ export default function ProtocolForm({
               </div>
             }
             headerActions={
-              hasFormHelp
-                ? (
+              <>
+                {protocolAnalyzeHeaderAction}
+                {hasFormHelp && (
                   <Tooltip title="Help">
                     <IconButton
-                      onClick={
-                        () =>
-                          setOpenFormHelp(
-                            true,
-                          )
-                      }
+                      onClick={() => setOpenFormHelp(true)}
                       aria-label="Open protocol help"
                       size="small"
-                      sx={
-                        headerActionBtnSx
-                      }
+                      sx={headerActionBtnSx}
                     >
-                      <span
-                        style={{
-                          fontSize:
-                            "1.1rem",
-                        }}
-                        className="ml-2 mr-2 text-white"
-                      >
-                        ?
-                      </span>
+                      <span style={{ fontSize: "1.1rem" }} className="ml-2 mr-2 text-white">?</span>
                     </IconButton>
                   </Tooltip>
-                )
-                : null
+                )}
+              </>
             }
             returnAriaLabel="Return protocol form to ScipionWeb"
             returnTitle="Return protocol form to ScipionWeb"
@@ -5220,6 +5239,7 @@ export default function ProtocolForm({
               }
               headerActions={
                 <>
+                  {protocolAnalyzeHeaderAction}
                   {hasFormHelp && (
                     <Tooltip title="Help">
                       <IconButton

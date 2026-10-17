@@ -84,6 +84,8 @@ type MetadataViewerProps = {
   onClose?: () => void;
   embedded?: boolean;
   outputClassName?: string;
+  /** Table (or block) to open first, matched by name or alias. */
+  initialTable?: string | null;
 };
 
 type ViewMode = "table" | "gallery";
@@ -1518,6 +1520,7 @@ function useMetadataTables(
   protocolId: number,
   outputName: string,
   isMountedRef: MutableRefObject<boolean>,
+  initialTable?: string | null,
 ) {
   const [tables, setTables] = useState<MetadataTableInfo[] | null>(null);
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -1542,7 +1545,11 @@ function useMetadataTables(
         setSelectedTable((prev) => {
           if (!safeList.length) return "";
           if (prev && safeList.some((table) => table.name === prev)) return prev;
-          return safeList[0].name;
+          const requested = initialTable
+            ? safeList.find((table) => table.name === initialTable || table.alias === initialTable ||
+                table.name === `data_${initialTable}`)
+            : undefined;
+          return (requested ?? safeList[0]).name;
         });
       } catch (error) {
         if (cancelled || !isMountedRef.current) return;
@@ -3516,7 +3523,7 @@ function ColumnsDialog({
 
 /* ======================= Main component ======================= */
 
-export function MetadataViewer({ projectId, protocolId, outputName, outputClassName, onClose, embedded = false }: MetadataViewerProps) {
+export function MetadataViewer({ projectId, protocolId, outputName, outputClassName, onClose, embedded = false, initialTable = null }: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
   const svcRef = useProjectServiceRef();
 
@@ -3598,6 +3605,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     protocolId,
     outputName,
     isMountedRef,
+    initialTable,
   );
 
   // Only the root `objects` table contains the 2D/3D class representatives.

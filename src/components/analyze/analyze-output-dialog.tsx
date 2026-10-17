@@ -55,6 +55,10 @@ type AnalyzeOutputDialogProps = {
   protocolLabel: string;
   outputName: string;
   outputRaw: any | null;
+  /** Shown instead of outputName, e.g. for a file opened by a protocol viewer. */
+  displayName?: string;
+  /** Open a metadata file (not a stored output) on this table or block. */
+  metadataFile?: { initialTable?: string | null } | null;
 };
 
 function normalizedKind(k?: string) {
@@ -137,7 +141,9 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
   };
 }
 
-function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw }: AnalyzeOutputDialogProps) {
+function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw, displayName, metadataFile = null }: AnalyzeOutputDialogProps) {
+  const shownName = displayName || outputName;
+  const fileInitialTable = metadataFile ? metadataFile.initialTable ?? null : undefined;
   const { theme: appTheme } = useScipionTheme();
 
   const externalWindowRef =
@@ -287,7 +293,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         const popup =
           openExternalWindow({
             title:
-              `ScipionWeb - ${outputName}`,
+              `ScipionWeb - ${shownName}`,
 
             width:
               1400,
@@ -315,7 +321,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         );
       },
       [
-        outputName,
+        shownName,
       ],
     );
 
@@ -458,6 +464,13 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
 
   const body = useMemo(() => {
 
+    if (fileInitialTable !== undefined) {
+      return (
+        <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName}
+          outputClassName={pointerClass || undefined} onClose={onClose} initialTable={fileInitialTable} />
+      );
+    }
+
     if (isTomographyIntegratedKind(pointerClass)) {
       return (
         <IntegratedTomographyViewer
@@ -519,7 +532,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
         </Typography>
       </Box>
     );
-  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose]);
+  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose, fileInitialTable]);
 
 
   return (
@@ -601,7 +614,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                 viewerContentHost
               }
               title={
-                `Analyze Result - ${outputName}`
+                `Analyze Result - ${shownName}`
               }
               subtitle={
                 `Protocol: ${String(
@@ -636,7 +649,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                 handleClose
               }
               ariaLabel={
-                `Analyze result ${outputName}`
+                `Analyze result ${shownName}`
               }
               closeAriaLabel="Close analyze dialog"
               initialWidth="80vw"
@@ -717,7 +730,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                       }}
                     >
                       Analyze Result -{" "}
-                      {outputName}
+                      {shownName}
                     </Typography>
 
                     {pointerClass

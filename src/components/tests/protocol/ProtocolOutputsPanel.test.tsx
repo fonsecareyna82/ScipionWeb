@@ -73,7 +73,7 @@ describe("ProtocolOutputsPanel", () => {
     });
 
     expect(screen.getByText("No outputs for this protocol.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Analyze results" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Analyze output" })).toBeDisabled();
   });
 
   it("renders scalar outputs locally without requesting a preview", () => {
@@ -107,7 +107,7 @@ describe("ProtocolOutputsPanel", () => {
     expect(
       screen.queryByRole(
         "button",
-        { name: "Analyze results" },
+        { name: "Analyze output" },
       ),
     ).not.toBeInTheDocument();
 
@@ -164,7 +164,7 @@ describe("ProtocolOutputsPanel", () => {
     });
 
     expect(await screen.findByText("This is the first preview")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Analyze results" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Analyze output" })).toBeEnabled();
   });
 
   it("renders image previews without output-specific presentation", async () => {
@@ -326,7 +326,7 @@ describe("ProtocolOutputsPanel", () => {
     await screen.findByText("Preview outputA");
     rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[]} />);
     expect(screen.getByText("No outputs for this protocol.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Analyze results" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Analyze output" })).toBeDisabled();
     rerender(<ProtocolOutputsPanel projectId={1} protocolId={2} outputsFromApi={[...outputs].reverse()} />);
     await screen.findByText("Preview outputB");
   });
@@ -353,7 +353,7 @@ describe("ProtocolOutputsPanel", () => {
 
     expect(await screen.findByText("Preview A")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Analyze results" }));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze output" }));
 
     await waitFor(() => {
       expect(mockResolveAnalyzeViewer).toHaveBeenCalled();
@@ -361,5 +361,25 @@ describe("ProtocolOutputsPanel", () => {
 
     expect(await screen.findByTestId("analyze-output-dialog")).toBeInTheDocument();
     expect(screen.getByText("Import Movies::outputA")).toBeInTheDocument();
+  });
+});
+
+
+describe("RED 129: the output action is explicitly scoped", () => {
+  it("labels output analysis separately and preserves the selected output resolver", async () => {
+    mockFetchOutputPreview.mockResolvedValue(null);
+    mockResolveAnalyzeViewer.mockResolvedValue({ handled: false });
+    renderComponent({ outputsFromApi: [
+      { outputName: "outputA", info: "Output A" },
+      { outputName: "outputB", info: "Output B" },
+    ] });
+    fireEvent.click(screen.getByText("Output B"));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze output" }));
+    await waitFor(() => {
+      expect(mockResolveAnalyzeViewer).toHaveBeenCalledWith(
+        expect.objectContaining({ outputName: "outputB", protocolId: "2" }),
+      );
+    });
+    expect(await screen.findByTestId("analyze-output-dialog")).toHaveTextContent("outputB");
   });
 });

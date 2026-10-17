@@ -1015,7 +1015,7 @@ export default function ProtocolOutputsPanel({
                                         },
                                     }}
                                 >
-                                    Analyze results
+                                    Analyze output
                                 </Button>
                             </Box>
                         )}

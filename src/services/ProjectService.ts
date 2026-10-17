@@ -1,3 +1,74 @@
+/** Advisory protocol-level viewer metadata; never an execution permission. */
+export type ProtocolViewerCandidate = {
+  id: string;
+  name: string;
+  webReady?: boolean;
+  webLaunchAllowed?: boolean;
+  /** Server-authored advisory metadata. Treat as untrusted until verified for display. */
+  webActionContracts?: unknown;
+  formSchema?: {
+    status?: string;
+    sections?: Array<{
+      label?: string;
+      fields?: Array<Record<string, unknown>>;
+      groups?: Array<{ label?: string; fields?: Array<Record<string, unknown>> }>;
+    }>;
+    fieldsDiscovered?: number;
+    hiddenFields?: number;
+    dynamicDefinitionsSkipped?: number;
+  } | null;
+  actionSchema?: {
+    status?: string;
+    actions?: Array<Record<string, unknown>>;
+  } | null;
+  contractValidation?: {
+    status?: string;
+    webReady?: boolean;
+    issues?: string[];
+    blockers?: string[];
+  };
+};
+export type ProtocolViewerCandidatesResponse = {
+  projectId?: number;
+  protocolId?: string;
+  viewers: ProtocolViewerCandidate[];
+  runtimePreviewAvailable?: boolean;
+};
+
+/** Inert schema returned only by the explicit experimental admin POST. */
+export type ProtocolViewerRuntimePreview = {
+  status: "runtime-preview";
+  source: "isolated-worker";
+  projectId: number;
+  protocolId: string;
+  viewerId: string;
+  sections: Array<Record<string, unknown>>;
+  fieldsDiscovered: number;
+  omittedFields: number;
+  webReady: false;
+  renderable: false;
+  executionAllowed: false;
+  conditionalFields?: Array<Record<string, unknown>>;
+  instanceEligibility?: string;
+  /** Fields with a visualize handler (the desktop "eye" buttons). */
+  actions?: string[];
+};
+
+/** Scalar form values sent with a viewer action, keyed by field name. */
+export type ProtocolViewerActionValues = Record<string, string | number | boolean | null>;
+
+/** What one viewer action produced; validated by protocol_viewer_action_result. */
+export type ProtocolViewerActionResponse = {
+  status: "viewer-action";
+  projectId: number;
+  protocolId: string;
+  viewerId: string;
+  action: string;
+  items: Array<Record<string, unknown>>;
+  messages: Array<Record<string, unknown>>;
+  omittedItems: number;
+};
+
 // src/services/ProjectService.ts
 
 import { loadWorkflowPayload } from "@/api/projects";
@@ -1867,6 +1938,20 @@ export interface ProjectService<
 
   /** Get protocol details by project/protocol ids. */
   fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<TProtocol>;
+
+  /** Read-only, protocol-scoped viewer discovery. */
+  fetchProtocolViewerCandidates?: (projectId: Id, protocolId: Id) => Promise<ProtocolViewerCandidatesResponse>;
+
+  /** Explicit trusted-plugin inspection only; never call on mount. */
+  fetchProtocolViewerRuntimePreview?: (
+    projectId: Id, protocolId: Id, viewerId: string, opts?: {signal?: AbortSignal},
+  ) => Promise<ProtocolViewerRuntimePreview>;
+
+  /** Run one viewer action (the desktop "eye") with the current form values. */
+  runProtocolViewerAction?: (
+    projectId: Id, protocolId: Id, viewerId: string, action: string,
+    values: ProtocolViewerActionValues, opts?: {signal?: AbortSignal},
+  ) => Promise<ProtocolViewerActionResponse>;
 
   fetchProtocolRuntimeSummaries?: (projectId: Id, protocolIds: Id[],) => Promise<ProtocolRuntimeSummary[]>;
 
