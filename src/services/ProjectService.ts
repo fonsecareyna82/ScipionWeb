@@ -1380,6 +1380,8 @@ export type Coords2dPoint = {
   micId: Id;
   score?: number | null;
   classLabel?: string | null;
+  /** Picked by a classifier (e.g. Xmipp's supervised picker), not by hand. */
+  kind?: "automatic" | null;
 };
 
 export type Coords2dMicrographsResult = {
@@ -1426,11 +1428,21 @@ export type PickingSession = Coords2dMicrographsResult & {
   }>;
 };
 
+/** A running picking protocol waiting for its picker in the web. */
+export type OpenPickingSession = {
+  protocolId: number;
+  /** One per launch of the protocol. */
+  sessionId: string;
+  kind: "xmipp-picking";
+  label: string;
+};
+
 export type PickingParticles = {
+  /** Manual and (not rejected) automatic particles. */
   coordinates: Coords2dPoint[];
-  automatic: Array<Coords2dPoint & { enabled: boolean }>;
   state: string;
   threshold: number;
+  automaticTotal: number;
 };
 
 export type ProtocolRelationCandidatesPayload = {
@@ -2802,10 +2814,14 @@ export interface ProjectService<
   fetchPickingSession?(projectId: Id, protocolId: Id): Promise<PickingSession>;
   fetchPickingParticles?(projectId: Id, protocolId: Id, micId: Id): Promise<PickingParticles>;
   savePickingParticles?(projectId: Id, protocolId: Id, micId: Id,
-    coordinates: Array<{ x: number; y: number }>): Promise<void>;
+    coordinates: Array<{ id?: string; x: number; y: number }>, threshold?: number): Promise<void>;
   savePickingSettings?(projectId: Id, protocolId: Id, particleSize: number): Promise<void>;
   fetchPickingMicrographImageObjectUrl?(projectId: Id, protocolId: Id, micId: Id,
     opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal }): Promise<ObjectUrlResult>;
   createPickingCoordinates?(projectId: Id, protocolId: Id): Promise<CreateCoords2dOutputResult>;
+  fetchOpenPickingSessions?(projectId: Id): Promise<OpenPickingSession[]>;
+  trainPickingClassifier?(projectId: Id, protocolId: Id, micId: Id): Promise<void>;
+  correctPickingAndAutopickNext?(projectId: Id, protocolId: Id, micId: Id, nextMicId: Id | null): Promise<void>;
+  closePickingSession?(projectId: Id, protocolId: Id): Promise<void>;
 
 }

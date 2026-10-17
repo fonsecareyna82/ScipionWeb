@@ -52,6 +52,7 @@ import {
   Coords2dPoint,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
+  OpenPickingSession,
   PickingParticles,
   PickingSession,
   RenameProtocolPayload,
@@ -4945,11 +4946,13 @@ export async function fetchPickingParticles(projectId: Id, protocolId: Id, micId
 }
 
 export async function savePickingParticles(
-  projectId: Id, protocolId: Id, micId: Id, coordinates: Array<{ x: number; y: number }>,
+  projectId: Id, protocolId: Id, micId: Id, coordinates: Array<{ id?: string; x: number; y: number }>,
+  threshold?: number,
 ): Promise<void> {
   const response = await fetchWithAuth(
     pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/coordinates`),
-    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coordinates }) },
+    { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(threshold === undefined ? { coordinates } : { coordinates, threshold }) },
   );
   if (!response.ok) throw await toApiError(response, "The picked particles could not be saved");
 }
@@ -4983,6 +4986,44 @@ export async function fetchPickingMicrographImageObjectUrl(
     originalWidth: Number.isFinite(width) && width > 0 ? width : null,
     originalHeight: Number.isFinite(height) && height > 0 ? height : null,
   };
+}
+
+/** Picking protocols of the project whose running step waits for the web picker. */
+export async function fetchOpenPickingSessions(projectId: Id): Promise<OpenPickingSession[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/picking/open-sessions`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!response.ok) throw await toApiError(response, "The picking sessions could not be checked");
+  const raw = await safeJson<any>(response);
+  return Array.isArray(raw?.sessions) ? raw.sessions : [];
+}
+
+/** The web picker was closed: the protocol's interactive step finishes. */
+export async function closePickingSession(projectId: Id, protocolId: Id): Promise<void> {
+  const response = await fetchWithAuth(pickingUrl(projectId, protocolId, "/close"), { method: "POST" });
+  if (!response.ok) throw await toApiError(response, "The picking session could not be closed");
+}
+
+/** Trains Xmipp's picker with the manual particles and autopicks this micrograph. */
+export async function trainPickingClassifier(projectId: Id, protocolId: Id, micId: Id): Promise<void> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/train`),
+    { method: "POST" },
+  );
+  if (!response.ok) throw await toApiError(response, "The picker could not be trained");
+}
+
+/** Learns from this micrograph's corrections and autopicks the next one. */
+export async function correctPickingAndAutopickNext(
+  projectId: Id, protocolId: Id, micId: Id, nextMicId: Id | null,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/next`),
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nextMicId: nextMicId == null ? null : String(nextMicId) }) },
+  );
+  if (!response.ok) throw await toApiError(response, "The next micrograph could not be autopicked");
 }
 
 /** Registers the session particles as a coordinates output of the protocol. */

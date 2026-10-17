@@ -98,6 +98,7 @@ import type { ProtocolTag } from "@/components/tags/tagTypes";
 import TagsDialog from "@/components/tags/TagsDialog";
 import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import ProjectProtocolTable, { ProjectProtocolTableHandle } from "@/components/projects/ProjectProtocolTable";
+import WebPickingSessions from "@/components/picking/WebPickingSessions";
 
 
 /* --------------------- Types --------------------- */
@@ -1793,6 +1794,10 @@ export default function ProjectPage() {
   }, [openForms]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
+  const hasRunningProtocols = useMemo(
+    () => nodes.some((node) => ["running", "launched"].includes(String(node.data?.status ?? "").toLowerCase())),
+    [nodes],
+  );
   const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
   const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
@@ -10890,6 +10895,8 @@ export default function ProjectPage() {
           />
         )}
       </div>
+      {/* Launched picking protocols open Xmipp's picker here. */}
+      <WebPickingSessions projectId={projId} active={hasRunningProtocols} />
       {/* portalRootInsideWidgetSoDialogsInheritWidgetStyles */}
       <div ref={portalRootRef} id="projectpage-portal-root" className="pp-portalRoot" />
     </div>

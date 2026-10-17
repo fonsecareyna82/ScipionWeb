@@ -49,6 +49,7 @@ import {
   Hand,
   ImageMinus,
   LocateFixed,
+  ChevronRight,
   Plus,
   RotateCcw,
   Save,
@@ -85,8 +86,18 @@ export type Coords2dDataSource = {
   fetchImage: (micId: Id, opts: Coords2dImageOptions) => Promise<ObjectUrlResult>;
   fetchThumbnail: (micId: Id, opts: Coords2dImageOptions) => Promise<ObjectUrlResult>;
   createOutput: (payload: CreateCoords2dOutputPayload) => Promise<CreateCoords2dOutputResult>;
-  saveMicrograph?: (micId: Id, coordinates: Array<{ x: number; y: number }>) => Promise<void>;
+  saveMicrograph?: (micId: Id, coordinates: Array<{ id?: string; x: number; y: number }>,
+    threshold?: number) => Promise<void>;
   saveBoxSize?: (boxSize: number) => Promise<void>;
+  /** Score below which a micrograph's automatic particles are hidden. */
+  getThreshold?: (micId: Id) => number | undefined;
+  /** A picker that learns from the user (Xmipp's supervised picking). */
+  supervised?: {
+    /** Train with the manual particles and autopick this micrograph. */
+    train: (micId: Id) => Promise<void>;
+    /** Learn from this micrograph's corrections and autopick the next one. */
+    next: (micId: Id, nextMicId: Id | null) => Promise<void>;
+  };
 };
 
 type Coords2dImageOptions = { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal };
@@ -234,6 +245,32 @@ const ROW_SELECTED = "rgba(219,234,254,0.95)";
 const ROW_SELECTED_HOVER = "rgba(191,219,254,0.95)";
 const ROW_SELECTED_TEXT = "#0f172a";
 const DEFAULT_PICK_COLOR = "#06b6d4";
+
+/** Automatic particles use the pick color moved around the hue circle, as Xmipp's picker. */
+function shiftHue(hex: string, fraction: number): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return hex;
+  const value = parseInt(match[1], 16);
+  const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((c) => c / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+  const light = (max + min) / 2;
+  const sat = delta === 0 ? 0 : delta / (1 - Math.abs(2 * light - 1));
+  let hue = 0;
+  if (delta !== 0) {
+    hue = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  }
+  hue = ((hue * 60 + fraction * 360) % 360 + 360) % 360;
+  const chroma = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = light - chroma / 2;
+  const [r1, g1, b1] = hue < 60 ? [chroma, x, 0] : hue < 120 ? [x, chroma, 0] : hue < 180 ? [0, chroma, x]
+    : hue < 240 ? [0, x, chroma] : hue < 300 ? [x, 0, chroma] : [chroma, 0, x];
+  return "#" + [r1, g1, b1].map((c) => Math.round((c + m) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+function isAutomaticPoint(point: Coords2dPoint): boolean {
+  return point.kind === "automatic";
+}
 
 const VIEWER_TEXT_SX = {
   "& .MuiButton-root": {
@@ -790,6 +827,7 @@ function Coords2dViewer({
   const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
   const [toolMode, setToolMode] = useState<ToolMode>("pan");
   const [pickColor, setPickColor] = useState(DEFAULT_PICK_COLOR);
+  const automaticColor = useMemo(() => shiftHue(pickColor, 0.66), [pickColor]);
   const [deletedPointIds, setDeletedPointIds] = useState<Set<string>>(() => new Set());
   const [previewHiddenPointIds, setPreviewHiddenPointIds] = useState<Set<string>>(() => new Set());
   const [updatedMicIds, setUpdatedMicIds] = useState<Set<string>>(() => new Set());
@@ -837,6 +875,10 @@ function Coords2dViewer({
     return micrographs.find((micrograph) => toStringId(micrograph.id) === selectedMicKey) ?? null;
   }, [micrographs, selectedMicKey]);
 
+  const [thresholdByMicId, setThresholdByMicId] = useState<Record<string, number>>({});
+  const currentThreshold = thresholdByMicId[selectedMicKey] ?? 0;
+  const supportsThreshold = typeof dataSource.getThreshold === "function";
+
   const currentPoints = useMemo(() => {
     if (!selectedMicKey) return [];
     return pointsByMicId[selectedMicKey] ?? [];
@@ -845,9 +887,11 @@ function Coords2dViewer({
   const baseVisiblePoints = useMemo(() => {
     return currentPoints.filter((point, index) => {
       const pointId = getPointId(point, index);
-      return !deletedPointIds.has(pointId);
+      if (deletedPointIds.has(pointId)) return false;
+      // Automatic particles below the micrograph's threshold are not shown.
+      return !isAutomaticPoint(point) || Number(point.score ?? 1) >= currentThreshold;
     });
-  }, [currentPoints, deletedPointIds]);
+  }, [currentPoints, deletedPointIds, currentThreshold]);
 
   const visiblePoints = useMemo(() => {
     return baseVisiblePoints.filter((point, index) => {
@@ -2069,6 +2113,8 @@ function Coords2dViewer({
 
   // A picking session saves every edit, a moment after it is made.
   const savingRef = useRef<Promise<void> | null>(null);
+  const thresholdByMicIdRef = useRef(thresholdByMicId);
+  thresholdByMicIdRef.current = thresholdByMicId;
   const savePendingChangesRef = useRef<() => Promise<void>>(async () => undefined);
   savePendingChangesRef.current = async () => {
     const saveMicrograph = dataSource.saveMicrograph;
@@ -2076,8 +2122,11 @@ function Coords2dViewer({
     const snapshotPoints = pointsByMicIdRef.current;
     const snapshotDeleted = deletedPointIdsRef.current;
     const { micrographs: changed } = buildCreateOutputPayload();
+    const thresholds = thresholdByMicIdRef.current;
     await Promise.all(changed.map((item) => saveMicrograph(
-      item.id, item.coordinates.map((point) => ({ x: point.x, y: point.y })))));
+      item.id,
+      item.coordinates.map((point) => ({ id: point.id == null ? undefined : String(point.id), x: point.x, y: point.y })),
+      thresholds[String(item.id)])));
     // Mark as saved only if nothing changed while saving; else save again.
     if (pointsByMicIdRef.current === snapshotPoints && deletedPointIdsRef.current === snapshotDeleted) {
       clearSavedState();
@@ -2116,6 +2165,76 @@ function Coords2dViewer({
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [dataSource, boxSize, loadingMicrographs]);
+
+  // The threshold the session stored for each micrograph, once loaded.
+  useEffect(() => {
+    if (!supportsThreshold || !selectedMicKey || !pointsByMicId[selectedMicKey]) return;
+    if (thresholdByMicId[selectedMicKey] !== undefined) return;
+    const stored = dataSource.getThreshold?.(selectedMicKey);
+    setThresholdByMicId((current) => ({ ...current, [selectedMicKey]: Number(stored ?? 0) }));
+  }, [dataSource, supportsThreshold, selectedMicKey, pointsByMicId, thresholdByMicId]);
+
+  const changeThreshold = useCallback((value: number) => {
+    if (!selectedMicKey) return;
+    const rounded = Math.round(value * 100) / 100;
+    setThresholdByMicId((current) => ({ ...current, [selectedMicKey]: rounded }));
+    setUpdatedMicIds((current) => new Set(current).add(selectedMicKey));
+  }, [selectedMicKey]);
+
+  // Supervised picking: the server changes particles, which are then reloaded.
+  const [supervisedBusy, setSupervisedBusy] = useState<"train" | "next" | null>(null);
+
+  const reloadMicrographs = useCallback((micKeys: string[]) => {
+    const keys = new Set(micKeys);
+    const loadedIds = new Set<string>();
+    for (const key of keys) {
+      (pointsByMicIdRef.current[key] ?? []).forEach((point, index) => loadedIds.add(getPointId(point, index)));
+    }
+    const drop = <T,>(current: Record<string, T>) =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => !keys.has(key)));
+    setPointsByMicId((current) => drop(current));
+    setOriginalPointsByMicId((current) => drop(current));
+    setThresholdByMicId((current) => drop(current));
+    setUpdatedMicIds((current) => new Set([...current].filter((key) => !keys.has(key))));
+    setDeletedPointIds((current) => {
+      const next = new Set([...current].filter((id) => !loadedIds.has(id)));
+      deletedPointIdsRef.current = next;
+      return next;
+    });
+    void dataSource.listMicrographs().then((result) => {
+      const counts = new Map((result.micrographs ?? []).map((item) => [toStringId(item.id), item.particles]));
+      setMicrographs((current) => current.map((micrograph) => {
+        const count = counts.get(toStringId(micrograph.id));
+        return count === undefined ? micrograph : { ...micrograph, particles: count, updated: false };
+      }));
+      setTotalPicks(result.totalPicks ?? 0);
+    }).catch(() => undefined);
+  }, [dataSource]);
+
+  const runSupervised = useCallback(async (action: "train" | "next") => {
+    const supervised = dataSource.supervised;
+    if (!supervised || selectedMicId == null) return;
+    const micKey = toStringId(selectedMicId);
+    const index = micrographs.findIndex((micrograph) => toStringId(micrograph.id) === micKey);
+    const nextMicId = action === "next" ? micrographs[index + 1]?.id ?? null : null;
+    setSupervisedBusy(action);
+    setError(null);
+    try {
+      await savePendingChanges();
+      if (action === "train") {
+        await supervised.train(selectedMicId);
+        reloadMicrographs([micKey]);
+      } else {
+        await supervised.next(selectedMicId, nextMicId);
+        reloadMicrographs(nextMicId == null ? [micKey] : [micKey, toStringId(nextMicId)]);
+        if (nextMicId != null) setSelectedMicId(nextMicId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The picker could not do that");
+    } finally {
+      setSupervisedBusy(null);
+    }
+  }, [dataSource, micrographs, reloadMicrographs, savePendingChanges, selectedMicId]);
 
   const requestCloseViewer = useCallback(() => {
     if (hasUnsavedChanges) {
@@ -2216,7 +2335,7 @@ function Coords2dViewer({
       const radiusPx = Math.max(2, (boxSize / 2) * transform.scale);
       const selected = pointId === selectedPointId;
 
-      ctx.strokeStyle = selected ? "#ffff00" : pickColor;
+      ctx.strokeStyle = selected ? "#ffff00" : isAutomaticPoint(point) ? automaticColor : pickColor;
       ctx.lineWidth = selected ? 2.5 : 1.2;
       ctx.beginPath();
 
@@ -2237,6 +2356,7 @@ function Coords2dViewer({
     imageUrl,
     imageWorldSize,
     pickColor,
+    automaticColor,
     selectedPointId,
     shapeMode,
     size.height,
@@ -2761,6 +2881,27 @@ function Coords2dViewer({
           ({boxSize})
         </Typography>
 
+        {supportsThreshold && currentPoints.some(isAutomaticPoint) && (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              Threshold:
+            </Typography>
+            <Slider
+              size="small"
+              min={0}
+              max={1}
+              step={0.01}
+              value={currentThreshold}
+              onChange={(_, value) => changeThreshold(Array.isArray(value) ? value[0] : value)}
+              aria-label="Automatic particles threshold"
+              sx={{ width: 160, color: automaticColor }}
+            />
+            <Typography variant="body2" sx={{ minWidth: 34 }}>
+              {currentThreshold.toFixed(2)}
+            </Typography>
+          </>
+        )}
+
         <Chip
           size="small"
           label={`Total micrograph: ${micrographs.length}`}
@@ -2884,6 +3025,7 @@ function Coords2dViewer({
           </Tooltip>
         </ButtonGroup>
 
+
         <Box sx={{ flex: 1 }} />
 
         {selectedPoint ? (
@@ -2891,6 +3033,43 @@ function Coords2dViewer({
             x={formatNumber(selectedPoint.x)} y={formatNumber(selectedPoint.y)}
           </Typography>
         ) : null}
+
+        {dataSource.supervised && (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              Supervised:
+            </Typography>
+
+            <ButtonGroup size="small" variant="outlined"
+              disabled={supervisedBusy !== null || creatingOutput || selectedMicId == null}>
+              <Tooltip title="Train the picker with your manual particles and autopick this micrograph" describeChild>
+                <Button
+                  startIcon={supervisedBusy === "train" ? <CircularProgress size={14} /> : <Sparkles size={16} />}
+                  onClick={() => void runSupervised("train")}
+                  sx={{
+                    textTransform: "none", color: "#1f3d1f", bgcolor: "#cfe8cf", borderColor: "#9cc99c",
+                    "&:hover": { bgcolor: "#bddcbd", borderColor: "#86b886" },
+                  }}
+                >
+                  {supervisedBusy === "train" ? "Training..." : "Train"}
+                </Button>
+              </Tooltip>
+
+              <Tooltip title="Learn from your corrections here and autopick the next micrograph" describeChild>
+                <Button
+                  endIcon={supervisedBusy === "next" ? <CircularProgress size={14} /> : <ChevronRight size={16} />}
+                  onClick={() => void runSupervised("next")}
+                  sx={{
+                    textTransform: "none", color: "#1d3a46", bgcolor: "#c3d7df", borderColor: "#91b2bf",
+                    "&:hover": { bgcolor: "#b0cad4", borderColor: "#7fa3b2" },
+                  }}
+                >
+                  {supervisedBusy === "next" ? "Autopicking..." : "Next"}
+                </Button>
+              </Tooltip>
+            </ButtonGroup>
+          </>
+        )}
       </Box>
 
       {error ? (

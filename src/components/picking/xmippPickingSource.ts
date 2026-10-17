@@ -15,21 +15,40 @@ function required<T>(method: T | undefined, name: string): T {
 }
 
 export function xmippPickingSource(service: ProjectService, projectId: Id, protocolId: Id): Coords2dDataSource {
+  // Per micrograph, the score below which automatic particles are hidden.
+  const thresholds = new Map<string, number>();
   return {
     key: `picking:${projectId}:${protocolId}`,
     listMicrographs: () =>
       required(service.fetchPickingSession, "session").call(service, projectId, protocolId),
-    fetchCoordinates: async (micId) =>
-      (await required(service.fetchPickingParticles, "particles").call(service, projectId, protocolId, micId)).coordinates,
+    fetchCoordinates: async (micId) => {
+      const particles = await required(service.fetchPickingParticles, "particles")
+        .call(service, projectId, protocolId, micId);
+      thresholds.set(String(micId), Number(particles.threshold ?? 0));
+      // Session ids (m0, a0...) repeat between micrographs; the viewer needs them unique.
+      return particles.coordinates.map((point) => ({ ...point, id: `${micId}:${point.id}` }));
+    },
+    getThreshold: (micId) => thresholds.get(String(micId)),
     fetchImage: (micId, opts) =>
       required(service.fetchPickingMicrographImageObjectUrl, "image").call(service, projectId, protocolId, micId, opts),
     fetchThumbnail: (micId, opts) =>
       required(service.fetchPickingMicrographImageObjectUrl, "image").call(service, projectId, protocolId, micId, opts),
     createOutput: () =>
       required(service.createPickingCoordinates, "coordinates").call(service, projectId, protocolId),
-    saveMicrograph: (micId, coordinates) =>
-      required(service.savePickingParticles, "save").call(service, projectId, protocolId, micId, coordinates),
+    saveMicrograph: async (micId, coordinates, threshold) => {
+      const prefix = `${micId}:`;
+      const sessionPoints = coordinates.map(({ id, x, y }) =>
+        (id && id.startsWith(prefix) ? { id: id.slice(prefix.length), x, y } : { x, y }));
+      await required(service.savePickingParticles, "save")
+        .call(service, projectId, protocolId, micId, sessionPoints, threshold);
+      if (threshold !== undefined) thresholds.set(String(micId), threshold);
+    },
     saveBoxSize: (boxSize) =>
       required(service.savePickingSettings, "settings").call(service, projectId, protocolId, boxSize),
+    supervised: service.trainPickingClassifier && service.correctPickingAndAutopickNext ? {
+      train: (micId) => service.trainPickingClassifier!(projectId, protocolId, micId),
+      next: (micId, nextMicId) =>
+        service.correctPickingAndAutopickNext!(projectId, protocolId, micId, nextMicId),
+    } : undefined,
   };
 }

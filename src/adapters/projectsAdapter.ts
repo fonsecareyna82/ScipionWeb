@@ -1274,8 +1274,9 @@ const defaultService: ProjectService = {
     api.fetchPickingSession(toId(projectId), toId(protocolId)),
   fetchPickingParticles: (projectId: Id, protocolId: Id, micId: Id) =>
     api.fetchPickingParticles(toId(projectId), toId(protocolId), toId(micId)),
-  savePickingParticles: (projectId: Id, protocolId: Id, micId: Id, coordinates: Array<{ x: number; y: number }>) =>
-    api.savePickingParticles(toId(projectId), toId(protocolId), toId(micId), coordinates),
+  savePickingParticles: (projectId: Id, protocolId: Id, micId: Id,
+    coordinates: Array<{ id?: string; x: number; y: number }>, threshold?: number) =>
+    api.savePickingParticles(toId(projectId), toId(protocolId), toId(micId), coordinates, threshold),
   savePickingSettings: (projectId: Id, protocolId: Id, particleSize: number) =>
     api.savePickingSettings(toId(projectId), toId(protocolId), particleSize),
   fetchPickingMicrographImageObjectUrl: (projectId: Id, protocolId: Id, micId: Id,
@@ -1283,6 +1284,13 @@ const defaultService: ProjectService = {
     api.fetchPickingMicrographImageObjectUrl(toId(projectId), toId(protocolId), toId(micId), opts),
   createPickingCoordinates: (projectId: Id, protocolId: Id) =>
     api.createPickingCoordinates(toId(projectId), toId(protocolId)),
+  fetchOpenPickingSessions: (projectId: Id) => api.fetchOpenPickingSessions(toId(projectId)),
+  trainPickingClassifier: (projectId: Id, protocolId: Id, micId: Id) =>
+    api.trainPickingClassifier(toId(projectId), toId(protocolId), toId(micId)),
+  correctPickingAndAutopickNext: (projectId: Id, protocolId: Id, micId: Id, nextMicId: Id | null) =>
+    api.correctPickingAndAutopickNext(toId(projectId), toId(protocolId), toId(micId), nextMicId),
+  closePickingSession: (projectId: Id, protocolId: Id) =>
+    api.closePickingSession(toId(projectId), toId(protocolId)),
 
 };
 

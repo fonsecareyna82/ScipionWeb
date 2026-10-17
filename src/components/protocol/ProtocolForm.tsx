@@ -119,7 +119,6 @@ import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
 import {
   BarChart3,
-  Crosshair,
   ExternalLink,
   PanelRightClose,
   PanelRightOpen,
@@ -454,8 +453,11 @@ export default function ProtocolForm({
     /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
     /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
   const canAnalyzePersistedProtocol = hasProtocolOutputs && isPersistedProtocol;
-  // Xmipp's particle picker opens on the web for picking protocols.
-  const canPickParticles = isPersistedProtocol && isXmippPickingProtocol(protocolClassName);
+  // Xmipp picking protocols: Launch opens the picker while the protocol runs
+  // (WebPickingSessions); afterwards Analyze results reopens it, as on the desktop.
+  const protocolStatus = String(protocolDetails?.status ?? info?.status ?? "").toLowerCase();
+  const canPickParticles = isPersistedProtocol && isXmippPickingProtocol(protocolClassName) &&
+    !["running", "launched", "scheduled", "new", "saved", ""].includes(protocolStatus);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickingSource = useMemo(
     () => (canPickParticles ? xmippPickingSource(svc, String(projectId), effectiveProtocolId) : null),
@@ -3950,35 +3952,12 @@ export default function ProtocolForm({
     isExternal;
 
 
-  const pickParticlesHeaderAction = canPickParticles ? (
-    <Tooltip title="Pick particles in the micrographs, as Xmipp's picker does" describeChild>
-      <Button
-        size="small"
-        onClick={() => setPickerOpen(true)}
-        aria-haspopup="dialog"
-        startIcon={<Crosshair size={15} strokeWidth={2.2} />}
-        sx={{
-          ...headerActionBtnSx, height: 30, px: 1.25, mr: 0.5, borderRadius: "8px",
-          textTransform: "none", fontSize: "0.76rem", fontWeight: 600, letterSpacing: 0.2,
-          lineHeight: 1, whiteSpace: "nowrap", color: "#f8fafc",
-          boxShadow: "inset 0 -2px 0 rgba(74, 222, 128, 0.55)",
-          "& .MuiButton-startIcon": { mr: 0.75, ml: 0, color: "#86efac" },
-          "&:hover": { background: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.32)",
-            boxShadow: "inset 0 -2px 0 rgba(74, 222, 128, 0.9)" },
-          "&.Mui-focusVisible": { outline: "2px solid #86efac", outlineOffset: 2 },
-        }}
-      >
-        Pick particles
-      </Button>
-    </Tooltip>
-  ) : null;
-
   // Shown only for protocols with a viewer, as the desktop does.
-  const protocolAnalyzeHeaderAction = hasProtocolViewers ? (
+  const protocolAnalyzeHeaderAction = hasProtocolViewers || canPickParticles ? (
     <Tooltip title="Open the viewers of this protocol" describeChild>
       <Button
         size="small"
-        onClick={() => setProtocolAnalyzeOpen(true)}
+        onClick={() => (canPickParticles ? setPickerOpen(true) : setProtocolAnalyzeOpen(true))}
         aria-haspopup="dialog"
         startIcon={<BarChart3 size={15} strokeWidth={2.2} />}
         sx={{
@@ -4087,7 +4066,6 @@ export default function ProtocolForm({
                 0.75,
             }}
           >
-            {pickParticlesHeaderAction}
             {protocolAnalyzeHeaderAction}
             {hasFormHelp && (
               <Tooltip title="Help">
@@ -5244,8 +5222,7 @@ export default function ProtocolForm({
             }
             headerActions={
               <>
-                {pickParticlesHeaderAction}
-            {protocolAnalyzeHeaderAction}
+                {protocolAnalyzeHeaderAction}
                 {hasFormHelp && (
                   <Tooltip title="Help">
                     <IconButton
@@ -5327,8 +5304,7 @@ export default function ProtocolForm({
               }
               headerActions={
                 <>
-                  {pickParticlesHeaderAction}
-            {protocolAnalyzeHeaderAction}
+                  {protocolAnalyzeHeaderAction}
                   {hasFormHelp && (
                     <Tooltip title="Help">
                       <IconButton
