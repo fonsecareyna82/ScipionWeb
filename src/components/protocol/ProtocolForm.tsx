@@ -443,9 +443,11 @@ export default function ProtocolForm({
     return "";
   }, [protocolDetails?.runName, protocolDetails?.label, info, form, protocolId]);
 
-  // Protocol analysis never depends on the selected output: it needs a stored
-  // protocol whose class has a viewer the Analyze results dialog can open.
-  const canAnalyzePersistedProtocol =
+  // Protocol analysis never depends on the selected output, but it needs a
+  // stored protocol that has produced outputs and whose class has a viewer the
+  // Analyze results dialog can open: without outputs there is nothing to show.
+  const hasProtocolOutputs = outputsFromApi.length > 0;
+  const canAnalyzePersistedProtocol = hasProtocolOutputs &&
     /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
     /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
   const [hasProtocolViewers, setHasProtocolViewers] = useState(false);

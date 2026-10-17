@@ -3001,6 +3001,13 @@ describe("Analyze results button of the protocol form", () => {
     const protocolViewer = { id: "xmipp3.viewers.viewer_cl2d.XmippCL2DViewer", name: "XmippCL2DViewer",
         viewerKind: "protocol-form" };
 
+    // A protocol that has produced something to analyze.
+    function dataWithOutputs(): any {
+        const data: any = createData();
+        data.info.outputs = [{ name: "outputClasses", className: "SetOfClasses2D" }];
+        return data;
+    }
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockFetchProtocolViewerCandidates.mockResolvedValue({
@@ -3008,16 +3015,22 @@ describe("Analyze results button of the protocol form", () => {
         });
     });
 
-    it("appears once the stored protocol is known to have a viewer, even with zero outputs", async () => {
-        renderComponent();
+    it("appears once a protocol with outputs is known to have a viewer", async () => {
+        renderComponent({ data: dataWithOutputs() });
         const button = await screen.findByRole("button", { name: "Analyze results" });
         expect(button).toBeEnabled();
         expect(mockFetchProtocolViewerCandidates).toHaveBeenCalledWith("1", "7");
     });
 
+    it("is not shown, nor are viewers queried, while the protocol has no outputs", () => {
+        renderComponent();
+        expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
+        expect(mockFetchProtocolViewerCandidates).not.toHaveBeenCalled();
+    });
+
     it("is not shown for a protocol without viewers", async () => {
         mockFetchProtocolViewerCandidates.mockResolvedValue({ projectId: 1, protocolId: "7", viewers: [] });
-        renderComponent();
+        renderComponent({ data: dataWithOutputs() });
         await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalledWith("1", "7"));
         expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
     });
@@ -3027,14 +3040,14 @@ describe("Analyze results button of the protocol form", () => {
             viewers: [{ id: "pwem.viewers.DataViewer", name: "DataViewer", viewerKind: "simple" }],
             runtimePreviewAvailable: true,
         });
-        renderComponent();
+        renderComponent({ data: dataWithOutputs() });
         await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalled());
         expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
     });
 
     it("is not shown when the viewers cannot be discovered", async () => {
         mockFetchProtocolViewerCandidates.mockRejectedValue(new Error("Backend unavailable"));
-        renderComponent();
+        renderComponent({ data: dataWithOutputs() });
         await waitFor(() => expect(mockFetchProtocolViewerCandidates).toHaveBeenCalled());
         expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
         expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
@@ -3045,7 +3058,7 @@ describe("Analyze results button of the protocol form", () => {
             viewers: [{ id: "relion.viewer.RelionViewer", name: "RelionViewer",
                 webLaunchAllowed: false, contractValidation: { status: "described" } }],
         });
-        renderComponent();
+        renderComponent({ data: dataWithOutputs() });
         fireEvent.click(await screen.findByRole("button", { name: "Analyze results" }));
         const dialog = await screen.findByRole("dialog", { name: "Analyze protocol results" });
         expect(within(dialog).getByText("RelionViewer")).toBeInTheDocument();
@@ -3053,7 +3066,7 @@ describe("Analyze results button of the protocol form", () => {
     });
 
     it("is not offered for a protocol without a persisted id", () => {
-        const data: any = createData();
+        const data: any = dataWithOutputs();
         data.info.protocolId = null;
         delete data.info.id;
         renderComponent({ data });
@@ -3062,7 +3075,7 @@ describe("Analyze results button of the protocol form", () => {
     });
 
     it("offers the same protocol action in the floating presentation", async () => {
-        renderComponent({ variant: "floating" });
+        renderComponent({ data: dataWithOutputs(), variant: "floating" });
         expect(await screen.findByRole("button", { name: "Analyze results" })).toBeEnabled();
     });
 });
