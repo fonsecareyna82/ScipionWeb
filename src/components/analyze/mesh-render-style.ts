@@ -17,6 +17,8 @@ export type MeshRenderStyle = {
     projection: MeshProjection;
     // Color of the solid surface; null uses the tint of the colormap.
     surfaceColor: string | null;
+    // Closes the surface where the clipping planes cut it.
+    caps: boolean;
 };
 
 export const DEFAULT_MESH_RENDER_STYLE: MeshRenderStyle = {
@@ -26,6 +28,7 @@ export const DEFAULT_MESH_RENDER_STYLE: MeshRenderStyle = {
     depthCue: false,
     projection: "perspective",
     surfaceColor: null,
+    caps: true,
 };
 
 export type MeshLightingPreset = {
@@ -334,7 +337,10 @@ export class MeshOutlinePass extends Pass {
         private readonly sourceMaterial: THREE.Material & { wireframe?: boolean },
     ) {
         super();
-        this.depthTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
+        // With a stencil, so the clipping caps can be drawn in the depth image.
+        const depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedInt248Type);
+        depthTexture.format = THREE.DepthStencilFormat;
+        this.depthTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture, stencilBuffer: true });
         this.depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
         this.material = new THREE.ShaderMaterial({
             uniforms: THREE.UniformsUtils.clone(MeshOutlineShader.uniforms),
@@ -364,9 +370,15 @@ export class MeshOutlinePass extends Pass {
     ): void {
         const { scene } = this;
         const camera = this.camera as THREE.PerspectiveCamera | THREE.OrthographicCamera;
+        // The clipping caps exist only through the stencil: when they show,
+        // the depth image is drawn with the materials of the scene.
+        let capping = false;
+        scene.traverse((object) => {
+            if (object.userData.clippingCap && object.visible) capping = true;
+        });
         const hidden: THREE.Object3D[] = [];
         scene.traverse((object) => {
-            if (object.userData.outlineHidden && object.visible) {
+            if (object.userData.outlineHidden && object.visible && !(capping && object.userData.clippingCap)) {
                 object.visible = false;
                 hidden.push(object);
             }
@@ -378,7 +390,7 @@ export class MeshOutlinePass extends Pass {
         this.depthMaterial.wireframe = !!this.sourceMaterial.wireframe;
         scene.background = null;
         scene.fog = null;
-        scene.overrideMaterial = this.depthMaterial;
+        scene.overrideMaterial = capping ? null : this.depthMaterial;
         renderer.setRenderTarget(this.depthTarget);
         renderer.clear();
         renderer.render(scene, camera);

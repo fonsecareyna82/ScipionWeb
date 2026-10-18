@@ -32,7 +32,9 @@ import {
   type MeshProjection,
   type MeshRenderStyle,
 } from "./mesh-render-style";
-import GpuVolumeView from "./gpu-volume-view";
+import useLiveSurfaces from "./use-live-surfaces";
+import type { SurfaceGrid } from "./surface-nets";
+import GpuVolumeView, { type VolumeRayMode } from "./gpu-volume-view";
 import { useClippingSliceImages } from "./use-clipping-slice-images";
 import useVolumeRegions from "./use-volume-regions";
 import {
@@ -95,6 +97,8 @@ type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "appearance" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
+// Largest side of the reduced map used for the surfaces computed in the browser.
+const LIVE_SURFACE_MAX_DIM = 128;
 type MeshColorMode3d = "solid" | "density" | "components" | "radial" | "height";
 type SliceLayoutMode = "single" | "triple";
 type OrthoAxis = VolumeAxis;
@@ -185,6 +189,12 @@ const HELP_TEXT: Record<string, string> = {
     "Fades the farther parts of the surface into the background to show depth.",
   projection3d:
     "Perspective makes nearer parts larger. Orthographic keeps sizes, which is better to compare distances.",
+  rayMode3d:
+    "Blend adds up the densities along each ray. MIP shows the brightest density along each ray (good for tomograms and weak features). Iso draws a lit surface where the density first exceeds the lower end of the density window.",
+  innerSurface3d:
+    "Shows a second surface at a higher level, opaque, inside the main one; lower the opacity of the main surface to see it. Computed in the browser from a reduced copy of the map.",
+  caps3d:
+    "Closes the surface where the clipping planes cut it, so the section of the map shows solid.",
   surfaceColor3d:
     "Color of the surface in Solid mode. Reset uses the tint of the colormap.",
   colormap3d:
@@ -404,7 +414,17 @@ export default function VolumeViewer({
 
   const [surfaceCount, setSurfaceCount] = useState(3);
   const [opacity3d, setOpacity3d] = useState(1);
+  const [rayMode3d, setRayMode3d] = useState<VolumeRayMode>("dvr");
   const [meshStyle3d, setMeshStyle3d] = useState<MeshRenderStyle>(DEFAULT_MESH_RENDER_STYLE);
+  // A reduced copy of the map, to follow the threshold and draw the inner
+  // level in the browser. Loaded the first time either is used.
+  const [liveGrid, setLiveGrid] = useState<SurfaceGrid | null>(null);
+  const [liveGridWanted, setLiveGridWanted] = useState(false);
+  const [surfacePreviewLevel, setSurfacePreviewLevel] = useState<number | null>(null);
+  const [surfacePreviewCommitted, setSurfacePreviewCommitted] = useState(false);
+  const [innerSurfaceEnabled3d, setInnerSurfaceEnabled3d] = useState(false);
+  const [innerSurfaceLevel3d, setInnerSurfaceLevel3d] = useState<number | null>(null);
+  const [innerSurfaceColor3d, setInnerSurfaceColor3d] = useState("#e8a33d");
   const updateMeshStyle3d = useCallback(
     (patch: Partial<MeshRenderStyle>) => setMeshStyle3d((current) => ({ ...current, ...patch })),
     [],
@@ -1895,6 +1915,71 @@ export default function VolumeViewer({
     surfaceLevelRange,
   ]);
 
+  const liveGridMaxDim = Math.min(maxDim3d, LIVE_SURFACE_MAX_DIM);
+
+  // The reduced map belongs to one volume: drop it when the volume changes.
+  useEffect(() => {
+    setLiveGrid(null);
+    setLiveGridWanted(false);
+    setSurfacePreviewLevel(null);
+    setSurfacePreviewCommitted(false);
+    setInnerSurfaceEnabled3d(false);
+    setInnerSurfaceLevel3d(null);
+  }, [selectedId, projectId, protocolId, outputName]);
+
+  useEffect(() => {
+    if (!active || !liveGridWanted || !usesSurfaceMesh3d || selectedId == null || liveGrid) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    void svc
+      .getVolumeData3d(projectId, protocolId, outputName, selectedId, {
+        maxDim: liveGridMaxDim,
+        method: "binning",
+        signal: controller.signal,
+      })
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed = normalize3dPayload(raw);
+        if (!parsed.values.length || !parsed.dims.x || !parsed.dims.y || !parsed.dims.z) return;
+        setLiveGrid({ values: parsed.values, dims: parsed.dims, order: parsed.order });
+      })
+      .catch(() => {
+        // Without the reduced map the surface still updates when released.
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [active, liveGridWanted, usesSurfaceMesh3d, selectedId, liveGrid, svc, projectId, protocolId, outputName, liveGridMaxDim]);
+
+  // The live surface stays until the API surface of the released level arrives.
+  useEffect(() => {
+    if (surfacePreviewCommitted && !surfaceRefreshing && !mapLoading) {
+      setSurfacePreviewLevel(null);
+      setSurfacePreviewCommitted(false);
+    }
+  }, [surfacePreviewCommitted, surfaceRefreshing, mapLoading, surfaceMesh]);
+
+  const innerSurfaceLevelValue = useMemo(() => {
+    if (innerSurfaceLevel3d != null) return innerSurfaceLevel3d;
+    const top = surfaceLevelRange?.[1] ?? surfaceLevelValue;
+    return surfaceLevelValue + 0.5 * (top - surfaceLevelValue);
+  }, [innerSurfaceLevel3d, surfaceLevelRange, surfaceLevelValue]);
+
+  const liveSurfaces = useLiveSurfaces(
+    usesSurfaceMesh3d ? liveGrid : null,
+    {
+      preview: surfacePreviewLevel,
+      inner: innerSurfaceEnabled3d ? innerSurfaceLevelValue : null,
+    },
+  );
+
+  const startSurfacePreview = useCallback((level: number) => {
+    setLiveGridWanted(true);
+    setSurfacePreviewLevel(level);
+    setSurfacePreviewCommitted(false);
+  }, []);
+
   const needsVolumeRegions =
     active &&
     colorMode3d === "components" &&
@@ -2359,6 +2444,7 @@ export default function VolumeViewer({
                   colorMode={volumeColorMode3d}
                   regions={volumeRegions}
                   renderMode="volume"
+                  rayMode={rayMode3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={0.8}
                   resetViewKey={reset3dViewKey}
@@ -2377,6 +2463,9 @@ export default function VolumeViewer({
                   colorMode={colorMode3d}
                   renderStyle={meshStyle3d}
                   lengthScale={meshLengthScale}
+                  previewMesh={surfacePreviewLevel != null ? liveSurfaces.preview : null}
+                  innerMesh={innerSurfaceEnabled3d ? liveSurfaces.inner : null}
+                  innerColor={innerSurfaceColor3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   resetViewKey={reset3dViewKey}
@@ -3194,6 +3283,23 @@ export default function VolumeViewer({
 
                           {renderMode3d === "volume" ? (
                             <>
+                              <ParamRow
+                                label="Rays"
+                                helpKey="rayMode3d"
+                                onHelp={openHelp}
+                                control={
+                                  <ToggleButtonGroup
+                                    size="small"
+                                    exclusive
+                                    value={rayMode3d}
+                                    onChange={(_, value) => value && setRayMode3d(value as VolumeRayMode)}
+                                  >
+                                    <ToggleButton value="dvr">blend</ToggleButton>
+                                    <ToggleButton value="mip">MIP</ToggleButton>
+                                    <ToggleButton value="iso">iso</ToggleButton>
+                                  </ToggleButtonGroup>
+                                }
+                              />
                               <Box>
                                 <Box
                                   sx={{
@@ -3277,15 +3383,69 @@ export default function VolumeViewer({
                                   displayRange={surfaceLevelRange}
                                   validRange={surfaceLevelRange ?? surfaceLevelRange}
                                   value={surfaceLevelValue}
-                                  disabled={selectedId == null || mapLoading || surfaceRefreshing}
+                                  disabled={selectedId == null || mapLoading}
                                   onHelp={openHelp("surfaceLevel3d")}
                                   onChange={(level) => {
                                     setSurfaceLevel3d(level);
+                                    startSurfacePreview(level);
                                   }}
                                   onCommit={(level) => {
                                     setSurfaceLevel3d(level);
+                                    setSurfacePreviewLevel(level);
+                                    setSurfacePreviewCommitted(true);
                                     void reloadSurfaceMesh(level, { silent: true });
                                   }}
+                                />
+                              )}
+
+                              <ParamRow
+                                label="Inner surface"
+                                helpKey="innerSurface3d"
+                                onHelp={openHelp}
+                                control={
+                                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                    <Switch
+                                      size="small"
+                                      checked={innerSurfaceEnabled3d}
+                                      disabled={selectedId == null || mapLoading}
+                                      onChange={(event) => {
+                                        const enabled = event.target.checked;
+                                        setInnerSurfaceEnabled3d(enabled);
+                                        if (enabled) {
+                                          setLiveGridWanted(true);
+                                          if (opacity3d >= 1) setOpacity3d(0.4);
+                                        }
+                                      }}
+                                      slotProps={{ input: { "aria-label": "Inner surface" } }}
+                                    />
+                                    {innerSurfaceEnabled3d && (
+                                      <input
+                                        type="color"
+                                        aria-label="Inner surface color"
+                                        value={innerSurfaceColor3d}
+                                        onChange={(event) => setInnerSurfaceColor3d(event.target.value)}
+                                        style={{ width: 32, height: 24, padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                                      />
+                                    )}
+                                    {innerSurfaceEnabled3d && !liveSurfaces.inner && (
+                                      <Typography variant="caption" color="text.secondary">computing…</Typography>
+                                    )}
+                                  </Box>
+                                }
+                              />
+
+                              {innerSurfaceEnabled3d && surfaceLevelRange && (
+                                <SurfaceLevelHistogramSlider
+                                  title="Inner contour"
+                                  histogram={histogram}
+                                  loading={histLoading}
+                                  error={histError}
+                                  displayRange={surfaceLevelRange}
+                                  validRange={surfaceLevelRange}
+                                  value={innerSurfaceLevelValue}
+                                  onHelp={openHelp("innerSurface3d")}
+                                  onChange={(level) => setInnerSurfaceLevel3d(level)}
+                                  onCommit={(level) => setInnerSurfaceLevel3d(level)}
                                 />
                               )}
 
@@ -3610,7 +3770,9 @@ function SurfaceLevelHistogramSlider({
   onHelp,
   onChange,
   onCommit,
+  title = "Contour",
 }: {
+  title?: string;
   histogram: HistogramData | null;
   loading: boolean;
   error: string | null;
@@ -3677,7 +3839,7 @@ function SurfaceLevelHistogramSlider({
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
         <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
           <Typography variant="caption" color="text.secondary">
-            Contour
+            {title}
           </Typography>
           <IconButton size="small" onClick={onHelp}>
             <HelpCircle size={14} />
@@ -3757,6 +3919,7 @@ function SurfaceLevelHistogramSlider({
         valueLabelDisplay="auto"
         valueLabelFormat={(v) => formatSci(v as number)}
         disabled={disabled || max <= min}
+        aria-label={title}
         onChange={(_, v) => {
           const rawValue = Array.isArray(v) ? v[0] : v;
           if (!Number.isFinite(rawValue)) return;
@@ -5694,6 +5857,19 @@ function MeshLookControls({
             checked={style.depthCue}
             onChange={(event) => onChange({ depthCue: event.target.checked })}
             slotProps={{ input: { "aria-label": "Depth cue" } }}
+          />
+        }
+      />
+      <ParamRow
+        label="Caps"
+        helpKey="caps3d"
+        onHelp={onHelp}
+        control={
+          <Switch
+            size="small"
+            checked={style.caps}
+            onChange={(event) => onChange({ caps: event.target.checked })}
+            slotProps={{ input: { "aria-label": "Clipping caps" } }}
           />
         }
       />

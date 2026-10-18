@@ -66,9 +66,11 @@ vi.mock("../../analyze/gpu-volume-view", () => ({
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode, previewMesh, innerMesh }: any) => (
         <div
             data-testid="mock-mesh-volume"
+            data-preview-triangles={previewMesh ? previewMesh.indices.length / 3 : 0}
+            data-inner-triangles={innerMesh ? innerMesh.indices.length / 3 : 0}
             data-render-style={JSON.stringify(renderStyle ?? {})}
             data-color-mode={colorMode ?? ""}
             data-reset-view-key={resetViewKey}
@@ -785,9 +787,52 @@ describe("VolumeViewer", () => {
             depthCue: true,
             projection: "orthographic",
             surfaceColor: "#ff8800",
+            caps: true,
         });
         expect(view).toHaveAttribute("data-color-mode", "radial");
         expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(surfaceCalls);
+    });
+
+    it("follows the contour slider with a surface computed in the browser", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+        expect(serviceMocks.getVolumeData3d).not.toHaveBeenCalled();
+        // The API surface of the released level stays pending.
+        serviceMocks.getVolumeSurfaceMesh.mockReturnValue(new Promise(() => undefined));
+
+        fireEvent.keyDown(await screen.findByRole("slider", { name: "Contour" }), { key: "ArrowRight" });
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeData3d).toHaveBeenCalledWith(
+                1, 2, "volumeOutput", expect.anything(),
+                expect.objectContaining({ maxDim: 128, method: "binning" }),
+            );
+        });
+        await waitFor(() => {
+            expect(Number(screen.getByTestId("mock-mesh-volume").getAttribute("data-preview-triangles"))).toBeGreaterThan(0);
+        });
+    });
+
+    it("draws an inner surface and makes the outer one see-through", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+
+        fireEvent.click(await screen.findByLabelText("Inner surface"));
+
+        expect(await screen.findByRole("slider", { name: "Inner contour" })).toBeInTheDocument();
+        await waitFor(() => {
+            expect(Number(screen.getByTestId("mock-mesh-volume").getAttribute("data-inner-triangles"))).toBeGreaterThan(0);
+        });
+        fireEvent.click(screen.getByLabelText("Inner surface"));
+        await waitFor(() => {
+            expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-inner-triangles", "0");
+        });
     });
 
     it("switches to metadata mode when metadata is available", async () => {

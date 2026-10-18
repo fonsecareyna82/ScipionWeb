@@ -36,6 +36,14 @@ import {
     sampleColormap,
     type MeshRenderStyle,
 } from "./mesh-render-style";
+import { createClippingCaps } from "./mesh-clipping-caps";
+
+// A surface computed in the browser (the live threshold, the inner level).
+export type MeshSurfaceArrays = {
+    vertices: ArrayLike<number>;
+    normals?: ArrayLike<number>;
+    indices: ArrayLike<number>;
+};
 
 export type MeshColorMode = "solid" | "density" | "components" | "radial" | "height";
 
@@ -72,6 +80,11 @@ export type MeshVolumeViewProps = {
     active?: boolean;
     renderStyle?: MeshRenderStyle;
     lengthScale?: MeshLengthScale;
+    // Shown instead of mesh while the threshold moves, in the same frame.
+    previewMesh?: MeshSurfaceArrays | null;
+    // A second, opaque surface at a higher level, inside a transparent mesh.
+    innerMesh?: MeshSurfaceArrays | null;
+    innerColor?: string;
 };
 
 export type MeshCameraState = {
@@ -587,6 +600,28 @@ function cameraPresetUp(preset: VolumeCameraCommand["preset"]): THREE.Vector3 {
     return new THREE.Vector3(0, 1, 0);
 }
 
+function buildSurfaceGeometry(source: MeshSurfaceArrays): THREE.BufferGeometry {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(source.vertices), 3));
+    // The normals of the API (and of the browser surfaces) come from the
+    // volume: they are smoother than those of the triangles.
+    const hasNormals = source.normals?.length === source.vertices.length;
+    if (hasNormals) {
+        geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(source.normals!), 3));
+    }
+    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(source.indices), 1));
+    if (!hasNormals) geometry.computeVertexNormals();
+    geometry.normalizeNormals();
+    geometry.computeBoundingSphere();
+    geometry.computeBoundingBox();
+    return geometry;
+}
+
+function asColorSource(source: MeshSurfaceArrays, mesh: VolumeSurfaceMesh): VolumeSurfaceMesh {
+    // A browser surface has no density values; it keeps the rest of the mesh.
+    return source === mesh ? mesh : { ...mesh, ...source, values: undefined } as VolumeSurfaceMesh;
+}
+
 export default function MeshVolumeView({
     mesh,
     opacity = 1,
@@ -607,6 +642,9 @@ export default function MeshVolumeView({
     active = true,
     renderStyle = DEFAULT_MESH_RENDER_STYLE,
     lengthScale,
+    previewMesh = null,
+    innerMesh = null,
+    innerColor = "#e8a33d",
 }: MeshVolumeViewProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const autoRotateRef = useRef(autoRotate);
@@ -624,6 +662,26 @@ export default function MeshVolumeView({
     const [colorRange, setColorRange] = useState<[number, number] | null>(null);
     const projection = renderStyle.projection;
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+    const meshRef = useRef(mesh);
+    meshRef.current = mesh;
+    const displayed: MeshSurfaceArrays = previewMesh?.indices.length ? previewMesh : mesh;
+    const displayedRef = useRef(displayed);
+    displayedRef.current = displayed;
+    const colorModeRef = useRef(colorMode);
+    colorModeRef.current = colorMode;
+    const colormapRef = useRef(colormap);
+    colormapRef.current = colormap;
+    const innerMeshRef = useRef(innerMesh);
+    innerMeshRef.current = innerMesh;
+    const innerColorRef = useRef(innerColor);
+    innerColorRef.current = innerColor;
+    const opacityRef = useRef(opacity);
+    opacityRef.current = opacity;
+    const displayModeRef = useRef(displayMode);
+    displayModeRef.current = displayMode;
+    const applyGeometryRef = useRef<() => void>(() => undefined);
+    const applyInnerRef = useRef<() => void>(() => undefined);
+    const hasMesh = !!(mesh?.vertices?.length && mesh?.indices?.length);
     const requestRenderRef = useRef<() => void>(() => undefined);
     const resetViewRef = useRef<() => void>(() => undefined);
     const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => undefined);
@@ -659,7 +717,7 @@ export default function MeshVolumeView({
 
         const { usesVertexColors, range } = applyMeshVertexColors(
             geometry,
-            mesh,
+            asColorSource(displayedRef.current, meshRef.current),
             colorMode,
             colormap,
         );
@@ -674,8 +732,16 @@ export default function MeshVolumeView({
 
         setColorRange(range);
         material.needsUpdate = true;
-        requestRenderRef.current();
-    }, [colorMode, colormap, mesh, renderStyle.surfaceColor]);
+        applyRenderStyleRef.current();
+    }, [colorMode, colormap, renderStyle.surfaceColor]);
+
+    useEffect(() => {
+        applyGeometryRef.current();
+    }, [displayed]);
+
+    useEffect(() => {
+        applyInnerRef.current();
+    }, [innerMesh, innerColor]);
 
     useEffect(() => {
         renderStyleRef.current = renderStyle;
@@ -688,9 +754,11 @@ export default function MeshVolumeView({
 
         material.opacity = opacity;
         material.transparent = opacity < 1;
+        // A see-through surface must not hide the inner one behind it.
+        material.depthWrite = opacity >= 1;
         material.wireframe = displayMode === "mesh";
         material.needsUpdate = true;
-        requestRenderRef.current();
+        applyRenderStyleRef.current();
     }, [opacity, displayMode]);
 
     useEffect(() => {
@@ -711,10 +779,11 @@ export default function MeshVolumeView({
         const host = hostRef.current;
         if (!host) return;
 
-        if (!mesh?.vertices?.length || !mesh?.indices?.length) {
+        if (!hasMesh) {
             onErrorRef.current?.("Surface mesh is empty.");
             return;
         }
+        const mesh = meshRef.current;
 
         let renderer: THREE.WebGLRenderer | null = null;
         let composer: EffectComposer | null = null;
@@ -740,6 +809,7 @@ export default function MeshVolumeView({
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
                 alpha: true,
+                stencil: true,
                 powerPreference: "high-performance",
             });
 
@@ -780,28 +850,7 @@ export default function MeshVolumeView({
             };
             controls.target.set(0, 0, 0);
 
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute(
-                "position",
-                new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3),
-            );
-
-            // The API computes the normals from the volume (or from the
-            // smoothed surface): they are smoother than those of the triangles.
-            const hasServerNormals = mesh.normals?.length === mesh.vertices.length;
-            if (hasServerNormals) {
-                geometry.setAttribute(
-                    "normal",
-                    new THREE.BufferAttribute(new Float32Array(mesh.normals), 3),
-                );
-            }
-
-            geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
-
-            if (!hasServerNormals) geometry.computeVertexNormals();
-            geometry.normalizeNormals();
-            geometry.computeBoundingSphere();
-            geometry.computeBoundingBox();
+            const geometry = buildSurfaceGeometry(displayedRef.current);
 
             const sphere = geometry.boundingSphere;
             const radius = Math.max(0.5, sphere?.radius ?? 0.5);
@@ -810,9 +859,9 @@ export default function MeshVolumeView({
 
             const { usesVertexColors, range: initialColorRange } = applyMeshVertexColors(
                 geometry,
-                mesh,
-                colorMode,
-                colormap,
+                asColorSource(displayedRef.current, mesh),
+                colorModeRef.current,
+                colormapRef.current,
             );
             setColorRange(initialColorRange);
 
@@ -821,12 +870,13 @@ export default function MeshVolumeView({
             const material = new THREE.MeshPhongMaterial({
                 color: usesVertexColors
                     ? new THREE.Color(1, 1, 1)
-                    : surfaceColor(colormap, renderStyleRef.current),
+                    : surfaceColor(colormapRef.current, renderStyleRef.current),
                 vertexColors: usesVertexColors,
                 flatShading: false,
-                transparent: opacity < 1,
-                opacity,
-                wireframe: displayMode === "mesh",
+                transparent: opacityRef.current < 1,
+                depthWrite: opacityRef.current >= 1,
+                opacity: opacityRef.current,
+                wireframe: displayModeRef.current === "mesh",
                 side: THREE.DoubleSide,
             });
 
@@ -837,16 +887,40 @@ export default function MeshVolumeView({
             surfacePivot.add(surface);
             scene.add(surfacePivot);
 
+            const innerMaterial = new THREE.MeshPhongMaterial({ side: THREE.DoubleSide });
+            const inner = new THREE.Mesh(new THREE.BufferGeometry(), innerMaterial);
+            inner.visible = false;
+            surfacePivot.add(inner);
+
             orientationGizmo = createVolumeOrientationGizmo(
                 host,
                 clipBoundsRef.current,
             );
 
-            const volumeBounds = getMeshVolumeLocalBounds(mesh, geometry.boundingBox);
+            let volumeBounds = getMeshVolumeLocalBounds(mesh, geometry.boundingBox);
+            let boundsMesh = mesh;
             const localClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
             const worldClipPlanes = Array.from({ length: 6 }, () => new THREE.Plane());
             material.clippingPlanes = worldClipPlanes;
+            innerMaterial.clippingPlanes = worldClipPlanes;
             renderer.localClippingEnabled = true;
+            const caps = createClippingCaps(worldClipPlanes, surfacePivot, scene, geometry);
+
+            // The caps close the opaque surface: the inner one when the
+            // outer is see-through.
+            const updateCaps = () => {
+                const bounds = clipBoundsRef.current;
+                const activePlanes = (["x", "y", "z"] as VolumeAxis[]).flatMap((axis) => [
+                    bounds[axis][0] > 0.0001,
+                    bounds[axis][1] < 0.9999,
+                ]);
+                const innerCapped = inner.visible && material.transparent;
+                const capped = innerCapped ? inner : surface;
+                caps.setGeometry(capped.geometry);
+                caps.setColor(innerCapped || !material.vertexColors ? (capped.material as THREE.MeshPhongMaterial).color : new THREE.Color(0xb8bec8));
+                const solid = innerCapped || !material.transparent;
+                caps.setActive(renderStyleRef.current.caps && solid && displayModeRef.current !== "mesh", activePlanes);
+            };
 
             const slicePlanes = {
                 x: [
@@ -880,6 +954,7 @@ export default function MeshVolumeView({
                 });
 
                 updateOcclusion();
+                updateCaps();
 
                 orientationGizmo?.setClipBounds(bounds);
                 requestRenderRef.current();
@@ -942,6 +1017,7 @@ export default function MeshVolumeView({
             // the scene render would otherwise lose the antialiasing of the canvas.
             const composerTarget = new THREE.WebGLRenderTarget(1, 1, {
                 type: THREE.HalfFloatType,
+                stencilBuffer: true,
                 samples: renderer.capabilities.isWebGL2 ? 4 : 0,
             });
             composer = new EffectComposer(renderer, composerTarget);
@@ -982,7 +1058,8 @@ export default function MeshVolumeView({
                 if (!gtaoPass) return;
                 const occlusion = MESH_LIGHTING_PRESETS[renderStyleRef.current.lighting].occlusion;
                 gtaoPass.blendIntensity = occlusion;
-                gtaoPass.enabled = occlusion > 0 && !isClippingActive(clipBoundsRef.current);
+                // The occlusion of a see-through surface would darken what is behind it.
+                gtaoPass.enabled = occlusion > 0 && !isClippingActive(clipBoundsRef.current) && opacityRef.current >= 1;
             }
 
             const updateDepthCue = () => {
@@ -1001,7 +1078,10 @@ export default function MeshVolumeView({
                 rimLight.intensity = preset.rim;
                 material.specular.setScalar(preset.specular);
                 material.shininess = preset.shininess;
+                innerMaterial.specular.setScalar(preset.specular);
+                innerMaterial.shininess = preset.shininess;
                 updateOcclusion();
+                updateCaps();
 
                 backgroundTexture?.dispose();
                 const background = createBackgroundTexture(style.background);
@@ -1011,7 +1091,10 @@ export default function MeshVolumeView({
                 const hadFog = scene.fog != null;
                 scene.fog = style.depthCue ? new THREE.Fog(backgroundFogColor(style.background), 1, 2) : null;
                 updateDepthCue();
-                if (hadFog !== (scene.fog != null)) material.needsUpdate = true;
+                if (hadFog !== (scene.fog != null)) {
+                    material.needsUpdate = true;
+                    innerMaterial.needsUpdate = true;
+                }
 
                 if (outlinePass && smaaPass) {
                     outlinePass.width = Math.max(0, style.outlineWidth);
@@ -1073,6 +1156,7 @@ export default function MeshVolumeView({
                     camera.quaternion,
                     surfacePivot.quaternion,
                 );
+                caps.update();
                 composer?.render(dt);
 
                 if (autoRotateRef.current || controlsChanged) requestRender();
@@ -1085,6 +1169,57 @@ export default function MeshVolumeView({
 
             requestRenderRef.current = requestRender;
             applyRenderStyleRef.current = applyRenderStyle;
+
+            // Replaces the surface (a new level, or the live threshold)
+            // without rebuilding the view: the camera stays where it is.
+            const applyGeometry = () => {
+                const source = displayedRef.current;
+                if (!source?.vertices?.length || !source?.indices?.length) return;
+                if (geometryRef.current && surface.geometry === geometryRef.current && geometryRef.current.userData.source === source) return;
+                const next = buildSurfaceGeometry(source);
+                next.userData.source = source;
+                const { usesVertexColors: colored, range } = applyMeshVertexColors(
+                    next,
+                    asColorSource(source, meshRef.current),
+                    colorModeRef.current,
+                    colormapRef.current,
+                );
+                const previous = surface.geometry;
+                surface.geometry = next;
+                geometryRef.current = next;
+                previous.dispose();
+                if (material.vertexColors !== colored) {
+                    material.vertexColors = colored;
+                    material.color.copy(colored ? new THREE.Color(1, 1, 1) : surfaceColor(colormapRef.current, renderStyleRef.current));
+                    material.needsUpdate = true;
+                }
+                setColorRange(range);
+                if (meshRef.current !== boundsMesh) {
+                    boundsMesh = meshRef.current;
+                    volumeBounds = getMeshVolumeLocalBounds(boundsMesh, next.boundingBox);
+                }
+                updateClipBounds();
+            };
+            geometry.userData.source = displayedRef.current;
+            applyGeometryRef.current = applyGeometry;
+
+            const applyInner = () => {
+                const source = innerMeshRef.current;
+                const previous = inner.geometry;
+                if (source?.indices?.length) {
+                    inner.geometry = buildSurfaceGeometry(source);
+                    inner.visible = true;
+                } else {
+                    inner.geometry = new THREE.BufferGeometry();
+                    inner.visible = false;
+                }
+                previous.dispose();
+                innerMaterial.color.set(innerColorRef.current);
+                updateCaps();
+                requestRender();
+            };
+            applyInnerRef.current = applyInner;
+            applyInner();
             applyRenderStyle();
 
             const handleControlsChange = () => {
@@ -1123,7 +1258,7 @@ export default function MeshVolumeView({
 
             // Shows the whole mesh seen along direction (from the camera to the mesh).
             const fitView = (direction: THREE.Vector3, up: THREE.Vector3) => {
-                const fit = fitMeshInView(mesh.vertices, surfacePivot.quaternion, direction, up, CAMERA_FOV, viewAspect());
+                const fit = fitMeshInView(displayedRef.current.vertices, surfacePivot.quaternion, direction, up, CAMERA_FOV, viewAspect());
                 const target = fit?.target ?? sphere?.center ?? new THREE.Vector3(0, 0, 0);
                 const distance = fit?.distance ?? radius * 2.6;
                 controls.target.copy(target);
@@ -1289,6 +1424,7 @@ export default function MeshVolumeView({
                 smaaPass?.dispose();
                 composer?.dispose();
                 backgroundTexture?.dispose();
+                caps.dispose();
                 orientationGizmo?.dispose();
                 orientationGizmo = null;
 
@@ -1307,6 +1443,8 @@ export default function MeshVolumeView({
                 applyClipBoundsRef.current = () => undefined;
                 applySlicePlanesRef.current = () => undefined;
                 applyRenderStyleRef.current = () => undefined;
+                applyGeometryRef.current = () => undefined;
+                applyInnerRef.current = () => undefined;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
@@ -1327,7 +1465,9 @@ export default function MeshVolumeView({
             );
         }
 
-    }, [mesh, currentCameraStateKey, projection]);
+        // The surface itself changes through applyGeometry.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasMesh, currentCameraStateKey, projection]);
 
     useEffect(() => {
         if (resetViewKey > 0) resetViewRef.current();

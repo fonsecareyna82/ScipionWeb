@@ -32,6 +32,9 @@ export type GpuVolumeViewProps = {
   regions?: VolumeRegionLabels | null;
   shell?: number;
   renderMode?: "volume" | "surface";
+  // How volume mode draws a ray: blend the densities (dvr), keep the
+  // brightest one (mip), or stop at the lower threshold as a lit surface (iso).
+  rayMode?: VolumeRayMode;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
   resetViewKey?: number;
@@ -43,6 +46,17 @@ export type GpuVolumeViewProps = {
 };
 
 
+
+export type VolumeRayMode = "dvr" | "mip" | "iso";
+
+function rayModeToId(rayMode: VolumeRayMode) {
+  if (rayMode === "mip") return 1;
+  if (rayMode === "iso") return 2;
+  return 0;
+}
+
+// The key light comes from the upper left of the camera, as on the surfaces.
+const CAMERA_KEY_LIGHT = new THREE.Vector3(-1.2, 1.4, 2.0).normalize();
 
 const VERT = `
   varying vec3 vPos;
@@ -78,6 +92,7 @@ const FRAG = `
   uniform float uOpacity;
   uniform float uShell;
   uniform int uIsoMode;
+  uniform int uRayMode;
   uniform int uSteps;
   uniform int uCmap;
   uniform vec3 uLightDir;
@@ -262,6 +277,85 @@ const FRAG = `
     float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
     float tJit = (jitter - 0.5) * dt;
 
+    if (uIsoMode == 0 && uRayMode == 1) {
+      // Maximum intensity projection: the brightest density along the ray.
+      float brightest = 0.0;
+      for (int i = 0; i < 512; i++) {
+        if (float(i) >= raySteps) break;
+        vec3 uvw = ro + rd * (t0 + dt * (float(i) + 0.5)) + 0.5;
+        brightest = max(brightest, sampleD(uvw));
+      }
+      float v = clamp((brightest - uIsoMin) / denom, 0.0, 1.0);
+      if (v <= 0.002 && acc.a <= 0.001) discard;
+      vec3 col = uColorMode == 0 && uCmap != 1 ? cmap(0.72) * (0.25 + 0.75 * v) : cmap(v);
+      float a = clamp(v * (0.35 + 0.65 * uOpacity) * 1.6, 0.0, 1.0);
+      acc.rgb += (1.0 - acc.a) * col * a;
+      acc.a += (1.0 - acc.a) * a;
+      gl_FragColor = acc;
+      return;
+    }
+
+    if (uIsoMode == 0 && uRayMode == 2) {
+      // Isosurface: the first point of the ray above the lower threshold,
+      // refined between the last two samples, lit like a surface.
+      float previousT = t0;
+      float previousD = sampleD(ro + rd * t0 + 0.5);
+      bool inside = previousD >= uIsoMin;
+      float hitT = -1.0;
+      if (inside) hitT = t0;
+      for (int i = 0; i < 512; i++) {
+        if (hitT >= 0.0 || float(i) >= raySteps) break;
+        float t = t0 + dt * (float(i) + 1.0);
+        float d = sampleD(ro + rd * t + 0.5);
+        if (d >= uIsoMin) {
+          float lo = previousT;
+          float hi = t;
+          for (int k = 0; k < 6; k++) {
+            float mid = 0.5 * (lo + hi);
+            if (sampleD(ro + rd * mid + 0.5) >= uIsoMin) hi = mid; else lo = mid;
+          }
+          hitT = hi;
+        }
+        previousT = t;
+        previousD = d;
+      }
+      if (hitT < 0.0) {
+        if (acc.a <= 0.001) discard;
+        gl_FragColor = acc;
+        return;
+      }
+      vec3 uvw = ro + rd * hitT + 0.5;
+      vec3 h = texStep * 1.5;
+      vec3 grad = vec3(
+        sampleD(uvw + vec3(h.x, 0.0, 0.0)) - sampleD(uvw - vec3(h.x, 0.0, 0.0)),
+        sampleD(uvw + vec3(0.0, h.y, 0.0)) - sampleD(uvw - vec3(0.0, h.y, 0.0)),
+        sampleD(uvw + vec3(0.0, 0.0, h.z)) - sampleD(uvw - vec3(0.0, 0.0, h.z))
+      );
+      // The surface faces where the density decreases; a cut through the
+      // density (inside at the entry) faces the camera.
+      vec3 nrm = inside || length(grad) < 1e-6 ? -rd : normalize(-grad);
+      vec3 col;
+      if (uColorMode == 2 && uHasRegions == 1) {
+        float regionId = floor(texture(uRegionTex, uvw).r * 255.0 + 0.5);
+        col = regionId > 0.5 ? regionColor(regionId) : cmap(0.72);
+      } else if (uColorMode == 1) {
+        col = cmap(clamp((sampleD(uvw + rd * texStep * 2.0) - uIsoMin) / denom, 0.0, 1.0));
+      } else {
+        col = cmap(0.72);
+      }
+      vec3 viewDir = -rd;
+      if (dot(nrm, viewDir) < 0.0) nrm = -nrm;
+      float diff = max(dot(nrm, lightDir), 0.0);
+      float fill = max(dot(nrm, normalize(viewDir - lightDir)), 0.0);
+      float spec = pow(max(dot(nrm, normalize(lightDir + viewDir)), 0.0), 36.0);
+      col = col * (0.18 + 0.72 * diff + 0.18 * fill) + spec * 0.16;
+      float a = clamp(uOpacity * 1.6, 0.0, 1.0);
+      acc.rgb += (1.0 - acc.a) * col * a;
+      acc.a += (1.0 - acc.a) * a;
+      gl_FragColor = acc;
+      return;
+    }
+
     for (int i = 0; i < 512; i++) {
       if (float(i) >= raySteps) break;
 
@@ -316,10 +410,12 @@ const FRAG = `
             vec3 grad = vec3(dx, dy, dz);
             float gradMag = length(grad);
 
+            // Facing where the density decreases, toward the light that
+            // follows the camera.
             vec3 nrm =
               gradMag > 1e-6
-                ? normalize(grad)
-                : vec3(0.0, 0.0, 1.0);
+                ? -normalize(grad)
+                : -rd;
 
             float ambient = 0.38;
             float diff = max(dot(nrm, lightDir), 0.0);
@@ -515,6 +611,7 @@ export default function GpuVolumeView({
   regions = null,
   shell = 0.12,
   renderMode = "surface",
+  rayMode = "dvr",
   autoRotate = false,
   autoRotateSpeed = 0.8,
   resetViewKey = 0,
@@ -692,6 +789,7 @@ export default function GpuVolumeView({
         uOpacity: { value: opacity },
         uShell: { value: shellClamped },
         uIsoMode: { value: renderMode === "volume" ? 0 : 1 },
+        uRayMode: { value: rayModeToId(rayMode) },
         uSteps: { value: baseSteps },
         uCmap: { value: cmapId },
         uInvModel: { value: uInvModel },
@@ -726,6 +824,8 @@ export default function GpuVolumeView({
     };
 
     const tmpDir = new THREE.Vector3();
+    const lightDirLocal = new THREE.Vector3();
+    const lightRotation = new THREE.Quaternion();
     const tmpCamDir = new THREE.Vector3();
     const tmpTarget = new THREE.Vector3();
 
@@ -1077,6 +1177,14 @@ export default function GpuVolumeView({
         uInvModelRef.current
           .copy(meshRef.current.matrixWorld)
           .invert();
+
+        // The light follows the camera: its direction in the volume frame.
+        lightDirLocal
+          .copy(CAMERA_KEY_LIGHT)
+          .applyQuaternion(cameraNow.quaternion)
+          .applyQuaternion(lightRotation.copy(meshRef.current.quaternion).invert())
+          .normalize();
+        material.uniforms.uLightDir.value.copy(lightDirLocal);
       }
 
       orientationGizmo.updateOrientation(
@@ -1249,6 +1357,7 @@ export default function GpuVolumeView({
     mat.uniforms.uCmap.value = cmapId;
     mat.uniforms.uIsoMode.value =
       renderMode === "volume" ? 0 : 1;
+    mat.uniforms.uRayMode.value = rayModeToId(rayMode);
     // Render mode is mutable without rebuilding the WebGL renderer, so its
     // interaction policy must follow the live mode too.
     if (controlsRef.current) {
@@ -1265,6 +1374,7 @@ export default function GpuVolumeView({
     shellClamped,
     cmapId,
     renderMode,
+    rayMode,
     colorModeId,
   ]);
 

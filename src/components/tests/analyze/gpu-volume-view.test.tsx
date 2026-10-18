@@ -106,6 +106,17 @@ vi.mock("three", () => {
         project() {
             return this;
         }
+
+        applyQuaternion(q: Quaternion) {
+            // v' = v + 2w (u x v) + 2 u x (u x v), with u the vector part of q.
+            const tx = 2 * (q.y * this.z - q.z * this.y);
+            const ty = 2 * (q.z * this.x - q.x * this.z);
+            const tz = 2 * (q.x * this.y - q.y * this.x);
+            this.x += q.w * tx + q.y * tz - q.z * ty;
+            this.y += q.w * ty + q.z * tx - q.x * tz;
+            this.z += q.w * tz + q.x * ty - q.y * tx;
+            return this;
+        }
     }
 
     class Quaternion {
@@ -148,6 +159,16 @@ vi.mock("three", () => {
         premultiply(q: Quaternion) {
             return this.multiplyQuaternions(q, this.clone());
         }
+
+        copy(q: Quaternion) {
+            this.x = q.x; this.y = q.y; this.z = q.z; this.w = q.w;
+            return this;
+        }
+
+        invert() {
+            this.x = -this.x; this.y = -this.y; this.z = -this.z;
+            return this;
+        }
     }
 
     class Matrix4 {
@@ -173,6 +194,7 @@ vi.mock("three", () => {
         aspect = 1;
         position = new Vector3();
         up = new Vector3(0, 1, 0);
+        quaternion = new Quaternion();
 
         constructor() {
             threeState.lastCamera = this;
@@ -496,6 +518,18 @@ describe("GpuVolumeView", () => {
             expect(threeState.lastMaterial.uniforms.uCmap.value).toBe(6);
             expect(threeState.lastMaterial.uniforms.uIsoMode.value).toBe(0);
         });
+    });
+
+    it("draws volume rays as blend, MIP or isosurface", async () => {
+        const { rerender } = render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+
+        await waitFor(() => {
+            expect(threeState.lastMaterial?.uniforms.uRayMode.value).toBe(0);
+        });
+        rerender(<GpuVolumeView {...makeProps({ renderMode: "volume", rayMode: "mip" })} />);
+        await waitFor(() => expect(threeState.lastMaterial.uniforms.uRayMode.value).toBe(1));
+        rerender(<GpuVolumeView {...makeProps({ renderMode: "volume", rayMode: "iso" })} />);
+        await waitFor(() => expect(threeState.lastMaterial.uniforms.uRayMode.value).toBe(2));
     });
 
     it("updates clipping and synchronized slice-plane uniforms without rebuilding the renderer", async () => {
