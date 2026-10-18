@@ -5299,13 +5299,17 @@ export default function ProjectPage() {
         ])
       );
 
+    // A reflow only moves the cards: shown cards keep their live data (steps,
+    // status, timers, highlight), which may be newer than the loaded project.
     const seededWithLiveTicks =
       seeded.map((node) => {
         const current = currentNodesById.get(String(node.id));
-        const merged = mergeNodeElapsedTick(node as Node<StatusNodeData>, current);
-        // Keep the selection's highlight while the cards move.
-        const gridRelation = (current?.data as any)?.gridRelation;
-        return gridRelation ? { ...merged, data: { ...(merged.data as any), gridRelation } } : merged;
+        if (!current) return node as Node<StatusNodeData>;
+        return {
+          ...current,
+          position: node.position,
+          data: { ...(current.data as any), gridSection: (node.data as any)?.gridSection },
+        } as Node<StatusNodeData>;
       });
 
     setNodes(seededWithLiveTicks);

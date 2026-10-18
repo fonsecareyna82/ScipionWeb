@@ -149,6 +149,16 @@ describe("ProjectPage camera stability when protocol forms open and close", () =
     expect(harness.getViewport()).toEqual(harness.initialViewport);
   });
 
+  it("moves grid cards on reflow but keeps their live data (e.g. steps done)", async () => {
+    const harness = createHarness("grid");
+    harness.context.reflowGrid();
+    await harness.flushFrames();
+    // The loaded project says "finished"; the card shown is newer ("running").
+    const [[reflowed]] = harness.context.setNodes.mock.calls;
+    expect(reflowed[0].data.status).toBe("running");
+    expect(reflowed[0].position).toEqual({ x: 100, y: 200 });
+  });
+
   it.each(["grid", "hierarchical"] as const)("still centers %s on initial load", async (mode) => {
     const harness = createHarness(mode);
     harness.context.firstLoadRef.current = true;
