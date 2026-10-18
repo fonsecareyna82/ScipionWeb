@@ -22,6 +22,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  Switch,
   InputLabel,
   MenuItem,
   Radio,
@@ -41,11 +42,18 @@ import {
   ArrowBack,
 } from "@mui/icons-material";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { Id } from "@/services/ProjectService";
+import type { Id, TiltStackFrame } from "@/services/ProjectService";
 import { CloseIcon } from "@/icons";
 import toast from "react-hot-toast";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
+import TiltImageCanvas from "./tilt-image-canvas";
+import {
+  DEFAULT_TILT_DISPLAY,
+  loadingOrder,
+  seriesReference,
+  type TiltDisplay,
+} from "./tilt-image-render";
 
 type TiltSeriesViewerProps = {
   projectId: Id;
@@ -95,6 +103,11 @@ type ObjectUrlResult = {
 type CachedPreview = ObjectUrlResult & {
   lastUsed: number;
 };
+
+// The viewer draws the tilts itself from the series reduced by the API
+// (fetchTiltSeriesStack); the PNG previews below remain for an API without it.
+const STACK_MAX_DIM = 1024;
+const STACK_CHUNK = 6;
 
 const PREVIEW_CACHE_LIMIT = 200;
 const PREVIEW_BATCH_SIZE = 24;
@@ -266,6 +279,12 @@ function truncatePathMiddle(path: string, maxLength = 40): string {
   return `${start}...${end}`;
 }
 
+function formatTiltLabel(frame: TiltViewRow | null | undefined, position: number, total: number): string {
+  const angle = Number(frame?.tiltAngle);
+  const angleText = Number.isFinite(angle) ? `${angle >= 0 ? "+" : ""}${angle.toFixed(1)}°` : "";
+  return [angleText, `${position + 1} / ${total}`].filter(Boolean).join("  ·  ");
+}
+
 export default function TiltSeriesViewer({
   projectId,
   protocolId,
@@ -342,6 +361,18 @@ export default function TiltSeriesViewer({
 
   const [brightness, setBrightness] = useState<number>(100);
   const [contrast, setContrast] = useState<number>(100);
+
+  // The series reduced by the API, drawn in the browser.
+  const stackSupported = typeof (svc as any).fetchTiltSeriesStack === "function";
+  const [stackFailed, setStackFailed] = useState(false);
+  const legacyPreview = !stackSupported || stackFailed;
+  const stackFramesRef = useRef<Map<number, TiltStackFrame>>(new Map());
+  const stackFlipRef = useRef(true);
+  const [stackVersion, setStackVersion] = useState(0);
+  const [tiltDisplay, setTiltDisplay] = useState<TiltDisplay>(DEFAULT_TILT_DISPLAY);
+  const selectedRowIndexRef = useRef<number | null>(null);
+  const legacyPreviewRef = useRef(legacyPreview);
+  legacyPreviewRef.current = legacyPreview;
 
   const [displayedUrl, setDisplayedUrl] = useState<string | null>(null);
   const [transitionUrl, setTransitionUrl] = useState<string | null>(null);
@@ -1192,6 +1223,7 @@ export default function TiltSeriesViewer({
     previewWarmupAbortRef.current?.abort();
     previewWarmupAbortRef.current = null;
 
+    if (!legacyPreview) return;
     if (mainMode !== "viewer") return;
     if (selectedSeriesId == null) return;
     if (!framesData?.frames?.length) return;
@@ -1286,6 +1318,7 @@ export default function TiltSeriesViewer({
     framesData?.frames?.length,
     applyTransform,
     prefetchPreviewBatch,
+    legacyPreview,
   ]);
 
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
@@ -1297,7 +1330,7 @@ export default function TiltSeriesViewer({
   // for the latest position (never a queue of the ones passed through).
   useEffect(() => {
 
-    if (mainMode === "metadata") {
+    if (mainMode === "metadata" || !legacyPreview) {
       previewAbortRef.current?.abort();
       setPreviewLoading(false);
       return;
@@ -1471,10 +1504,12 @@ export default function TiltSeriesViewer({
     isPlaying,
     isScrubbing,
     trimPreviewCache,
+    legacyPreview,
   ]);
 
 
   useEffect(() => {
+    if (!legacyPreview) return;
     if (mainMode !== "viewer") return;
     if (selectedSeriesId == null) return;
     if (selectedRowIndex == null) return;
@@ -1518,7 +1553,77 @@ export default function TiltSeriesViewer({
     isPlaying,
     isScrubbing,
     prefetchPreviewBatch,
+    legacyPreview,
   ]);
+
+  selectedRowIndexRef.current = selectedRowIndex;
+
+  // loadTheReducedSeriesNearestTheCurrentTiltFirst
+  //
+  // Chunks of tilts come in the order of their distance to the current tilt,
+  // measured again before every chunk: jumping elsewhere moves the loading
+  // there. Every tilt arrives once; drawing it later needs no request.
+  useEffect(() => {
+    stackFramesRef.current = new Map();
+    setStackVersion((version) => version + 1);
+    if (legacyPreview || mainMode !== "viewer" || selectedSeriesId == null) return;
+    const frames = framesData?.frames;
+    if (!frames?.length || String(framesData?.tiltSeriesId) !== String(selectedSeriesId)) return;
+
+    const controller = new AbortController();
+    const seriesId = selectedSeriesId;
+    const frameIndexes = frames.map((frame, row) => getPreviewFrameIndex(frame, row));
+    const requested = new Set<number>();
+
+    void (async () => {
+      while (!controller.signal.aborted) {
+        const order = loadingOrder(frameIndexes.length, selectedRowIndexRef.current ?? 0);
+        const chunk = order.map((row) => frameIndexes[row]).filter((index) => !requested.has(index)).slice(0, STACK_CHUNK);
+        if (!chunk.length) return;
+        chunk.forEach((index) => requested.add(index));
+        try {
+          const stack = await (svc as any).fetchTiltSeriesStack(projectId, protocolId, outputName, seriesId, {
+            indices: chunk,
+            maxDim: STACK_MAX_DIM,
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          stackFlipRef.current = stack.flipVertically !== false;
+          for (const frame of stack.frames as TiltStackFrame[]) {
+            stackFramesRef.current.set(Number(frame.index), frame);
+          }
+          setStackVersion((version) => version + 1);
+        } catch (error: any) {
+          if (controller.signal.aborted || error?.name === "AbortError") return;
+          // An API without the stack, or failing on it: back to the previews.
+          if (stackFramesRef.current.size === 0) setStackFailed(true);
+          return;
+        }
+      }
+    })();
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacyPreview, mainMode, selectedSeriesId, framesData?.tiltSeriesId, framesData?.frames, projectId, protocolId, outputName, svc]);
+
+  const stackCurrentFrame = useMemo(() => {
+    if (legacyPreview || selectedRowIndex == null) return null;
+    const row = framesData?.frames?.[selectedRowIndex];
+    if (!row) return null;
+    return stackFramesRef.current.get(getPreviewFrameIndex(row, selectedRowIndex)) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacyPreview, selectedRowIndex, framesData?.frames, stackVersion]);
+
+  const stackReference = useMemo(
+    () => (tiltDisplay.seriesScale ? seriesReference(stackFramesRef.current.values()) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tiltDisplay.seriesScale, stackVersion],
+  );
+
+  const tiltDisplayWithInvert = useMemo(
+    () => ({ ...tiltDisplay, invert: invertPreview }),
+    [tiltDisplay, invertPreview],
+  );
 
   // manageDisplayedUrlVsTransitionUrlForSmoothCrossfade
   useEffect(() => {
@@ -1802,6 +1907,10 @@ export default function TiltSeriesViewer({
         if (previewLoadingRef.current) {
           return prev;
         }
+        if (!legacyPreviewRef.current && prev != null) {
+          const shown = framesData?.frames?.[prev];
+          if (shown && !stackFramesRef.current.has(getPreviewFrameIndex(shown, prev))) return prev;
+        }
 
         if (prev == null) {
           return 0;
@@ -1819,7 +1928,7 @@ export default function TiltSeriesViewer({
 
         return next;
       });
-    }, 400);
+    }, legacyPreviewRef.current ? 400 : 150);
 
     autoplayRef.current = handle;
 
@@ -2488,6 +2597,66 @@ export default function TiltSeriesViewer({
           </Paper>
 
           {/* smallerBrightnessContrastPanel */}
+          {!legacyPreview ? (
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.5,
+                borderBottom: "1px solid #e5e7eb",
+                bgcolor: "background.paper",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flex: 1, minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}>
+                  Brightness
+                </Typography>
+                <Slider
+                  size="small"
+                  aria-label="Brightness"
+                  value={tiltDisplay.brightness}
+                  min={-100}
+                  max={100}
+                  onChange={(_, value) => setTiltDisplay((current) => ({ ...current, brightness: value as number }))}
+                />
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flex: 1, minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}>
+                  Contrast
+                </Typography>
+                <Slider
+                  size="small"
+                  aria-label="Contrast"
+                  value={tiltDisplay.contrast}
+                  min={40}
+                  max={400}
+                  onChange={(_, value) => setTiltDisplay((current) => ({ ...current, contrast: value as number }))}
+                />
+              </Box>
+              <Tooltip title="One contrast for the whole series, so the brightness does not jump between tilts">
+                <FormControlLabel
+                  sx={{ m: 0, "& .MuiFormControlLabel-label": { fontSize: "0.7rem", whiteSpace: "nowrap" } }}
+                  control={
+                    <Switch
+                      size="small"
+                      checked={tiltDisplay.seriesScale}
+                      onChange={(event) => setTiltDisplay((current) => ({ ...current, seriesScale: event.target.checked }))}
+                    />
+                  }
+                  label="Series scale"
+                />
+              </Tooltip>
+              <Button
+                size="small"
+                onClick={() => setTiltDisplay((current) => ({ ...DEFAULT_TILT_DISPLAY, seriesScale: current.seriesScale }))}
+                sx={{ textTransform: "none", fontSize: "0.7rem", minWidth: 0 }}
+              >
+                Auto
+              </Button>
+            </Box>
+          ) : (
           <Box
             sx={{
               px: 1.5,
@@ -2520,6 +2689,7 @@ export default function TiltSeriesViewer({
               <Slider size="small" value={contrast} min={50} max={200} onChange={(_, value) => setContrast(value as number)} />
             </Box>
           </Box>
+          )}
 
           {/* imageAndOverlayControls */}
           <Box
@@ -2533,6 +2703,23 @@ export default function TiltSeriesViewer({
               position: "relative",
             }}
             onDoubleClick={() => setInvertPreview((prev) => !prev)}
+            tabIndex={0}
+            aria-label="Tilt image viewer"
+            onKeyDown={(event) => {
+              if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+                event.preventDefault();
+                handlePrev();
+              } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+                event.preventDefault();
+                handleNext();
+              } else if (event.key === "Home" && totalFrames > 0) {
+                event.preventDefault();
+                setSelectedRowIndex(0);
+              } else if (event.key === "End" && totalFrames > 0) {
+                event.preventDefault();
+                setSelectedRowIndex(totalFrames - 1);
+              }
+            }}
           >
             <Box
               sx={{
@@ -2634,7 +2821,28 @@ export default function TiltSeriesViewer({
               </Tooltip>
             </Box>
 
-            {previewError ? (
+            {!legacyPreview ? (
+              selectedRowIndex == null || !framesData?.frames?.length ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
+                  No preview available.
+                </Typography>
+              ) : stackCurrentFrame?.error ? (
+                <Typography variant="body2" color="error">
+                  {stackCurrentFrame.error}
+                </Typography>
+              ) : (
+                <TiltImageCanvas
+                  frame={stackCurrentFrame?.data ? stackCurrentFrame : null}
+                  display={tiltDisplayWithInvert}
+                  reference={stackReference}
+                  applyTransform={applyTransform}
+                  flipVertically={stackFlipRef.current}
+                  label={formatTiltLabel(framesData.frames[selectedRowIndex], selectedRowIndex, totalFrames)}
+                  loading={!stackCurrentFrame}
+                  onStep={(direction) => (direction > 0 ? handleNext() : handlePrev())}
+                />
+              )
+            ) : previewError ? (
               <Typography variant="body2" color="error">
                 {previewError}
               </Typography>

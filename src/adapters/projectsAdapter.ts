@@ -71,6 +71,8 @@ import type {
   ExternalViewerLaunchResult,
   ProtocolOutputThumbnailsOptions,
   TiltSeriesBatchPreviewOptions,
+  TiltSeriesStack,
+  TiltSeriesStackOptions,
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
   TomogramReview,
@@ -925,6 +927,21 @@ const defaultService: ProjectService = {
       tiltSeriesId,
       viewIndex,
       options,
+    ),
+
+  fetchTiltSeriesStack: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    opts?: TiltSeriesStackOptions,
+  ): Promise<TiltSeriesStack> =>
+    api.fetchTiltSeriesStack(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(tiltSeriesId),
+      opts,
     ),
 
   fetchTiltSeriesViewImagesBatch: (

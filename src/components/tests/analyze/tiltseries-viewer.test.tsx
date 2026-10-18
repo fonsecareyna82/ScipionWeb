@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
     listOutputTiltSeries: vi.fn(),
@@ -1090,4 +1090,78 @@ describe("TiltSeriesViewer", () => {
             vi.useRealTimers();
         }
     }, 10000);
+
+    describe("drawing the reduced series in the browser", () => {
+        const stackFrame = (index: number) => ({
+            index,
+            width: 2,
+            height: 2,
+            origWidth: 8,
+            origHeight: 8,
+            low: 0,
+            high: 255,
+            mean: 128,
+            std: 20,
+            data: new Uint8Array(4),
+        });
+
+        beforeEach(() => {
+            (serviceMocks as any).fetchTiltSeriesStack = vi.fn(
+                async (_p: number, _q: number, _o: string, seriesId: string, options: { indices: number[] }) => ({
+                    tiltSeriesId: seriesId,
+                    maxDim: 1024,
+                    flipVertically: true,
+                    frames: options.indices.map(stackFrame),
+                }),
+            );
+            vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+        });
+
+        afterEach(() => {
+            delete (serviceMocks as any).fetchTiltSeriesStack;
+            vi.restoreAllMocks();
+        });
+
+        it("loads the tilts from the current one outwards and draws them without previews", async () => {
+            renderViewer();
+
+            expect(await screen.findByTestId("tilt-image-canvas")).toBeInTheDocument();
+            expect(await screen.findByText(/-30\.0°/)).toBeInTheDocument();
+            expect((serviceMocks as any).fetchTiltSeriesStack).toHaveBeenCalledWith(
+                1, 2, "tiltOutput", "TS1", expect.objectContaining({ indices: [0, 1], maxDim: 1024 }),
+            );
+            expect(serviceMocks.fetchTiltSeriesViewImageObjectUrl).not.toHaveBeenCalled();
+            expect(serviceMocks.fetchTiltSeriesViewImagesBatch).not.toHaveBeenCalled();
+        });
+
+        it("moves between loaded tilts without new requests", async () => {
+            serviceMocks.fetchTiltSeriesFrames.mockImplementation(
+                async (_p: number, _q: number, _o: string, seriesId: string) => makeFramesPayloadWithCount(String(seriesId), 10),
+            );
+            renderViewer();
+
+            const viewer = await screen.findByLabelText("Tilt image viewer");
+            await waitFor(() => expect((serviceMocks as any).fetchTiltSeriesStack).toHaveBeenCalledTimes(2));
+            // The viewer opens on the middle tilt; the loading starts there.
+            expect((serviceMocks as any).fetchTiltSeriesStack.mock.calls[0][4].indices).toEqual([4, 5, 3, 6, 2, 7]);
+            expect((serviceMocks as any).fetchTiltSeriesStack.mock.calls[1][4].indices).toEqual([1, 8, 0, 9]);
+            expect(await screen.findByText(/-56\.0°/)).toBeInTheDocument();
+
+            fireEvent.keyDown(viewer, { key: "ArrowDown" });
+            fireEvent.keyDown(viewer, { key: "ArrowDown" });
+            expect(await screen.findByText(/-54\.0°/)).toBeInTheDocument();
+            fireEvent.keyDown(viewer, { key: "End" });
+            expect(await screen.findByText(/-51\.0°/)).toBeInTheDocument();
+            expect((serviceMocks as any).fetchTiltSeriesStack).toHaveBeenCalledTimes(2);
+            expect(screen.queryByText("Loading tilt…")).not.toBeInTheDocument();
+        });
+
+        it("goes back to the previews when the API has no reduced series", async () => {
+            (serviceMocks as any).fetchTiltSeriesStack.mockRejectedValue(new Error("Not Found"));
+            renderViewer();
+
+            await waitFor(() => expect(serviceMocks.fetchTiltSeriesViewImageObjectUrl).toHaveBeenCalled());
+            expect(screen.queryByTestId("tilt-image-canvas")).not.toBeInTheDocument();
+        });
+    });
 });

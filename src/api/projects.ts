@@ -17,6 +17,9 @@ import {
   ObjectUrlResult,
   TiltSeriesBatchPreviewResult,
   TiltSeriesBatchPreviewOptions,
+  TiltSeriesStack,
+  TiltSeriesStackOptions,
+  TiltStackFrame,
   WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
@@ -4292,6 +4295,58 @@ export async function fetchTiltSeriesViewImageObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
 
   return { url: objUrl, revoke };
+}
+
+export async function fetchTiltSeriesStack(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  opts: TiltSeriesStackOptions = {},
+): Promise<TiltSeriesStack> {
+  const enc = encodeURIComponent;
+  const params = new URLSearchParams();
+  if (opts.indices?.length) params.set("indices", opts.indices.join(","));
+  if (opts.maxDim != null) params.set("maxDim", String(opts.maxDim));
+  const query = params.toString();
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/stack${query ? `?${query}` : ""}`;
+
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store", signal: opts.signal });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch the tilt series images");
+  }
+  return parseTiltSeriesStack(await res.arrayBuffer());
+}
+
+// The stack of the API: "TSST", the header length (uint32 LE), a JSON header
+// listing the frames, then the 8-bit image of every frame without an error.
+export function parseTiltSeriesStack(buffer: ArrayBuffer): TiltSeriesStack {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 8 || String.fromCharCode(...bytes.subarray(0, 4)) !== "TSST") {
+    throw new Error("Invalid tilt series stack.");
+  }
+  const headerLength = new DataView(buffer).getUint32(4, true);
+  const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLength))) as Record<string, any>;
+  let offset = 8 + headerLength;
+  const frames: TiltStackFrame[] = (Array.isArray(header.frames) ? header.frames : []).map((frame: any) => {
+    if (frame.error != null) return { ...frame, index: Number(frame.index) };
+    const size = Number(frame.width) * Number(frame.height);
+    if (!(size > 0) || offset + size > buffer.byteLength) {
+      throw new Error("Invalid tilt series stack.");
+    }
+    const data = new Uint8Array(buffer, offset, size);
+    offset += size;
+    return { ...frame, index: Number(frame.index), data };
+  });
+  return {
+    tiltSeriesId: String(header.tiltSeriesId ?? ""),
+    maxDim: Number(header.maxDim) || 0,
+    flipVertically: header.flipVertically !== false,
+    frames,
+  };
 }
 
 export async function fetchTiltSeriesViewImagesBatch(

@@ -755,6 +755,42 @@ export type VolumeSurfaceMethod =
   | "fourier"
   | "none";
 
+// One tilt image reduced for the viewer (8 bits over mean +/- 5 standard
+// deviations of the original values; ``low``/``high`` give the values of 0 and 255).
+export type TiltStackFrame = {
+  index: number;
+  tiltAngle?: number | null;
+  rot?: number | null;
+  shiftX?: number | null;
+  shiftY?: number | null;
+  width?: number;
+  height?: number;
+  origWidth?: number;
+  origHeight?: number;
+  binning?: number;
+  mean?: number;
+  std?: number;
+  low?: number;
+  high?: number;
+  // Row by row, the first row of the file first; absent with an error.
+  data?: Uint8Array;
+  error?: string;
+};
+
+export type TiltSeriesStack = {
+  tiltSeriesId: string;
+  maxDim: number;
+  // The previews show the images flipped vertically.
+  flipVertically: boolean;
+  frames: TiltStackFrame[];
+};
+
+export type TiltSeriesStackOptions = {
+  indices?: number[];
+  maxDim?: number;
+  signal?: AbortSignal;
+};
+
 export interface VolumeSurfaceMesh {
   kind: "surfaceMesh";
   level: number;
@@ -2264,6 +2300,15 @@ export interface ProjectService<
     tiltSeriesId: Id,
     opts: TiltSeriesBatchPreviewOptions,
   ): Promise<TiltSeriesBatchPreviewResult>;
+
+  // Tilt series: tilt images reduced for the viewer, many at once
+  fetchTiltSeriesStack(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    opts?: TiltSeriesStackOptions,
+  ): Promise<TiltSeriesStack>;
 
   // Tilt series: create a new SetOfTiltSeries based on current exclusions
   createNewSetOfTiltSeries(
