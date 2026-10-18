@@ -769,10 +769,11 @@ export interface VolumeSurfaceMesh {
   minComponentTriangles?: number;
   smoothingIterations?: number;
   removedComponents?: number;
-  vertices: number[];
-  normals: number[];
-  indices: number[];
-  values?: number[];
+  // Plain arrays from JSON, typed arrays from the binary transport.
+  vertices: ArrayLike<number>;
+  normals: ArrayLike<number>;
+  indices: ArrayLike<number>;
+  values?: ArrayLike<number>;
   center?: number[];
   scale?: number;
   maxDim?: number;

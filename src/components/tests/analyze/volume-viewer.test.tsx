@@ -66,9 +66,11 @@ vi.mock("../../analyze/gpu-volume-view", () => ({
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode }: any) => (
         <div
             data-testid="mock-mesh-volume"
+            data-render-style={JSON.stringify(renderStyle ?? {})}
+            data-color-mode={colorMode ?? ""}
             data-reset-view-key={resetViewKey}
             data-camera-preset={cameraCommand?.preset ?? ""}
             data-camera-key={cameraCommand?.key ?? 0}
@@ -752,6 +754,40 @@ describe("VolumeViewer", () => {
 
         await chooseCameraPreset("Right (+X)");
         expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-camera-key", "2");
+    });
+
+    it("changes how the surface looks without reloading it", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+        const surfaceCalls = serviceMocks.getVolumeSurfaceMesh.mock.calls.length;
+        fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+
+        const choose = async (comboboxLabel: string, option: string) => {
+            fireEvent.mouseDown(screen.getByRole("combobox", { name: comboboxLabel }));
+            fireEvent.click(await screen.findByText(option, { selector: "li" }));
+        };
+        await choose("Surface lighting", "Soft");
+        await choose("Surface silhouettes", "Medium");
+        await choose("Surface background", "Black");
+        fireEvent.click(screen.getByLabelText("Depth cue"));
+        fireEvent.click(screen.getByRole("button", { name: "ortho.", hidden: true }));
+        fireEvent.change(screen.getByLabelText("Surface color"), { target: { value: "#ff8800" } });
+        fireEvent.click(screen.getByRole("button", { name: "radial", hidden: true }));
+
+        const view = screen.getByTestId("mock-mesh-volume");
+        expect(JSON.parse(view.getAttribute("data-render-style") ?? "{}")).toEqual({
+            lighting: "soft",
+            outlineWidth: 2,
+            background: "black",
+            depthCue: true,
+            projection: "orthographic",
+            surfaceColor: "#ff8800",
+        });
+        expect(view).toHaveAttribute("data-color-mode", "radial");
+        expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledTimes(surfaceCalls);
     });
 
     it("switches to metadata mode when metadata is available", async () => {

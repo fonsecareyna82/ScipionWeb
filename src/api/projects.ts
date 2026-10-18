@@ -3139,10 +3139,11 @@ export interface VolumeSurfaceMesh {
   order: "zyx" | "xyz";
   vertexCount: number;
   triangleCount: number;
-  vertices: number[];
-  normals: number[];
-  indices: number[];
-  values?: number[];
+  // Plain arrays from JSON, typed arrays from the binary transport.
+  vertices: ArrayLike<number>;
+  normals: ArrayLike<number>;
+  indices: ArrayLike<number>;
+  values?: ArrayLike<number>;
   center?: number[];
   scale?: number;
   maxDim?: number;
@@ -3204,7 +3205,9 @@ export async function getVolumeSurfaceMesh(
     );
   }
 
-  const url = params.toString() ? `${base}?${params.toString()}` : base;
+  params.set("format", "binary");
+
+  const url = `${base}?${params.toString()}`;
 
   // Opt into browser HTTP caching: the backend now caches + ETags the
   // mesh, so a revisit to the same volume/params can revalidate instead
@@ -3219,7 +3222,41 @@ export async function getVolumeSurfaceMesh(
     throw await toApiError(res, "Failed to fetch volume surface mesh");
   }
 
-  return safeJson<VolumeSurfaceMesh>(res);
+  if ((res.headers.get("content-type") ?? "").includes("json")) {
+    return safeJson<VolumeSurfaceMesh>(res);
+  }
+  return parseVolumeSurfaceMeshBinary(await res.arrayBuffer());
+}
+
+const SURFACE_MESH_MAGIC = "SMSH";
+const SURFACE_MESH_ARRAY_TYPES: Record<string, (buffer: ArrayBuffer, offset: number, length: number) => ArrayLike<number>> = {
+  float32: (buffer, offset, length) => new Float32Array(buffer, offset, length),
+  uint32: (buffer, offset, length) => new Uint32Array(buffer, offset, length),
+};
+
+// The binary mesh of the API: "SMSH", the header length (uint32 LE), a JSON
+// header and the arrays it lists, each starting at a multiple of 4 bytes.
+export function parseVolumeSurfaceMeshBinary(buffer: ArrayBuffer): VolumeSurfaceMesh {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 8 || String.fromCharCode(...bytes.subarray(0, 4)) !== SURFACE_MESH_MAGIC) {
+    throw new Error("Invalid surface mesh payload.");
+  }
+  const headerLength = new DataView(buffer).getUint32(4, true);
+  const { arrays, ...header } = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLength))) as {
+    arrays: Array<{ name: string; type: string; length: number }>;
+  } & Record<string, unknown>;
+
+  const mesh: Record<string, unknown> = { ...header };
+  let offset = 8 + headerLength;
+  for (const { name, type, length } of arrays) {
+    const view = SURFACE_MESH_ARRAY_TYPES[type];
+    if (!view || offset + length * 4 > buffer.byteLength) {
+      throw new Error("Invalid surface mesh payload.");
+    }
+    mesh[name] = view(buffer, offset, length);
+    offset += length * 4;
+  }
+  return mesh as unknown as VolumeSurfaceMesh;
 }
 
 const VOLUME_DATA3D_HEADER_BYTES = 28;

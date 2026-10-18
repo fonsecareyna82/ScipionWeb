@@ -17,12 +17,21 @@ import {
   IconButton,
   Popover,
   Tooltip,
+  Switch,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { VolumeHistogramPlot } from "./volume-histogram-plot";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw, Ruler } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
+import {
+  DEFAULT_MESH_RENDER_STYLE,
+  meshUnitLength,
+  type MeshBackground,
+  type MeshLighting,
+  type MeshProjection,
+  type MeshRenderStyle,
+} from "./mesh-render-style";
 import GpuVolumeView from "./gpu-volume-view";
 import { useClippingSliceImages } from "./use-clipping-slice-images";
 import useVolumeRegions from "./use-volume-regions";
@@ -86,7 +95,7 @@ type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "appearance" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "volume" | "surface" | "mesh";
-type MeshColorMode3d = "solid" | "density" | "components";
+type MeshColorMode3d = "solid" | "density" | "components" | "radial" | "height";
 type SliceLayoutMode = "single" | "triple";
 type OrthoAxis = VolumeAxis;
 type OrthoPosition = Partial<Record<"x" | "y" | "z", number>>;
@@ -165,7 +174,19 @@ const HELP_TEXT: Record<string, string> = {
   method3d:
     "Downsampling method for interactive 3D rendering. Stride is the fastest option. None preserves the original grid only when the volume is already within the safe interactive limit.",
   colorMode3d:
-    "Solid uses one surface color. Density colors the surface from its local intensity values. Components assigns a different color to each disconnected geometric region.",
+    "Solid uses one surface color. Density colors the surface from its local intensity values. Regions assigns a different color to each disconnected geometric region. Radial colors the surface by its distance from the center and Height by its position from bottom to top (surface and mesh only).",
+  lighting3d:
+    "Default: a key light with soft shadows. Full: brighter, with stronger ambient occlusion and highlights. Soft: mostly ambient light, shows the cavities. Flat: no shading, best with silhouettes.",
+  outline3d:
+    "Draws a line where the surface hides what is behind it, as molecular viewers do.",
+  background3d:
+    "Background of the 3D view.",
+  depthCue3d:
+    "Fades the farther parts of the surface into the background to show depth.",
+  projection3d:
+    "Perspective makes nearer parts larger. Orthographic keeps sizes, which is better to compare distances.",
+  surfaceColor3d:
+    "Color of the surface in Solid mode. Reset uses the tint of the colormap.",
   colormap3d:
     "Colormap used by Solid and Density modes. Components generates its own colors.",
   opacity3d:
@@ -383,6 +404,11 @@ export default function VolumeViewer({
 
   const [surfaceCount, setSurfaceCount] = useState(3);
   const [opacity3d, setOpacity3d] = useState(1);
+  const [meshStyle3d, setMeshStyle3d] = useState<MeshRenderStyle>(DEFAULT_MESH_RENDER_STYLE);
+  const updateMeshStyle3d = useCallback(
+    (patch: Partial<MeshRenderStyle>) => setMeshStyle3d((current) => ({ ...current, ...patch })),
+    [],
+  );
   const [colormap3d, setColormap3d] = useState<string>("viridis");
   const [colorMode3d, setColorMode3d] = useState<MeshColorMode3d>("solid");
 
@@ -394,6 +420,9 @@ export default function VolumeViewer({
     useState<RenderMode3d>("surface");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
+  // Radial and height colorings exist only for the surface; elsewhere it is solid.
+  const volumeColorMode3d: VolumeColorMode =
+    colorMode3d === "radial" || colorMode3d === "height" ? "solid" : colorMode3d;
   const needsHistogram =
     active &&
     selectedId != null &&
@@ -871,6 +900,12 @@ export default function VolumeViewer({
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
   const voxelScale = useMemo(() => getVoxelScale(meta), [meta]);
+  const meshLengthScale = useMemo(
+    () => surfaceMesh
+      ? { unitLength: meshUnitLength(surfaceMesh, voxelScale.x), unit: voxelScale.unit }
+      : undefined,
+    [surfaceMesh, voxelScale],
+  );
 
   const selectedMetaReady =
     selectedId != null &&
@@ -1884,22 +1919,22 @@ export default function VolumeViewer({
 
   const singleOverlayUrl = useSliceOverlayObjectUrl(
     sliceOverlayEnabled, mapData, volumeRegions, axis, effectiveSliceIndex,
-    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
+    dims, volumeColorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
   const zOverlayUrl = useSliceOverlayObjectUrl(
     sliceOverlayEnabled, mapData, volumeRegions, "z", effectiveSliceIndexZ,
-    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
+    dims, volumeColorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
   const yOverlayUrl = useSliceOverlayObjectUrl(
     sliceOverlayEnabled, mapData, volumeRegions, "y", effectiveSliceIndexY,
-    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
+    dims, volumeColorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
   const xOverlayUrl = useSliceOverlayObjectUrl(
     sliceOverlayEnabled, mapData, volumeRegions, "x", effectiveSliceIndexX,
-    dims, colorMode3d, surfaceLevelValue, opacity3d, colormap3d,
+    dims, volumeColorMode3d, surfaceLevelValue, opacity3d, colormap3d,
   );
 
   const meshCameraStateKey = useMemo(
@@ -2321,7 +2356,7 @@ export default function VolumeViewer({
                   isoMax={isoRange3d[1]}
                   opacity={opacity3d}
                   colormap={colormap3d}
-                  colorMode={colorMode3d}
+                  colorMode={volumeColorMode3d}
                   regions={volumeRegions}
                   renderMode="volume"
                   autoRotate={autoRotate3d}
@@ -2340,6 +2375,8 @@ export default function VolumeViewer({
                   opacity={opacity3d}
                   colormap={colormap3d}
                   colorMode={colorMode3d}
+                  renderStyle={meshStyle3d}
+                  lengthScale={meshLengthScale}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   resetViewKey={reset3dViewKey}
@@ -2619,7 +2656,7 @@ export default function VolumeViewer({
                                 select
                                 value={
                                   sliceOverlayEnabled
-                                    ? colorMode3d
+                                    ? volumeColorMode3d
                                     : "off"
                                 }
                                 onChange={(event) => {
@@ -2966,16 +3003,19 @@ export default function VolumeViewer({
                               <ToggleButtonGroup
                                 size="small"
                                 exclusive
-                                value={colorMode3d}
+                                value={usesSurfaceMesh3d ? colorMode3d : volumeColorMode3d}
                                 onChange={(_, value) => {
                                   if (value) {
                                     setColorMode3d(value as MeshColorMode3d);
                                   }
                                 }}
+                                sx={{ flexWrap: "wrap" }}
                               >
                                 <ToggleButton value="solid">solid</ToggleButton>
                                 <ToggleButton value="density">density</ToggleButton>
                                 <ToggleButton value="components">regions</ToggleButton>
+                                {usesSurfaceMesh3d && <ToggleButton value="radial">radial</ToggleButton>}
+                                {usesSurfaceMesh3d && <ToggleButton value="height">height</ToggleButton>}
                               </ToggleButtonGroup>
                             }
                           />
@@ -3013,6 +3053,15 @@ export default function VolumeViewer({
                               />
                             }
                           />
+
+                          {usesSurfaceMesh3d && (
+                            <MeshLookControls
+                              style={meshStyle3d}
+                              solidColor={colorMode3d === "solid"}
+                              onChange={updateMeshStyle3d}
+                              onHelp={openHelp}
+                            />
+                          )}
 
                           <Divider />
                         </>
@@ -5540,6 +5589,157 @@ function ParamRow({
       </Box>
       {control}
     </Box>
+  );
+}
+
+const MESH_LIGHTING_OPTIONS: Array<{ value: MeshLighting; label: string }> = [
+  { value: "default", label: "Default" },
+  { value: "full", label: "Full" },
+  { value: "soft", label: "Soft" },
+  { value: "flat", label: "Flat" },
+];
+
+const MESH_OUTLINE_OPTIONS = [
+  { value: 0, label: "Off" },
+  { value: 1, label: "Thin" },
+  { value: 2, label: "Medium" },
+  { value: 3.5, label: "Thick" },
+];
+
+const MESH_BACKGROUND_OPTIONS: Array<{ value: MeshBackground; label: string }> = [
+  { value: "light", label: "Light" },
+  { value: "white", label: "White" },
+  { value: "black", label: "Black" },
+  { value: "gradient", label: "Gradient" },
+];
+
+// How the surface looks: lighting, silhouettes, background, depth cue,
+// projection and the color of the solid surface.
+function MeshLookControls({
+  style,
+  solidColor,
+  onChange,
+  onHelp,
+}: {
+  style: MeshRenderStyle;
+  solidColor: boolean;
+  onChange: (patch: Partial<MeshRenderStyle>) => void;
+  onHelp: (key: string) => (e: React.MouseEvent<HTMLElement>) => void;
+}) {
+  const selectProps = { MenuProps: { disablePortal: true } };
+  return (
+    <>
+      <SectionTitle title="Surface look" />
+      <ParamRow
+        label="Lighting"
+        helpKey="lighting3d"
+        onHelp={onHelp}
+        control={
+          <TextField
+            size="small"
+            select
+            value={style.lighting}
+            onChange={(event) => onChange({ lighting: event.target.value as MeshLighting })}
+            SelectProps={{ ...selectProps, SelectDisplayProps: { "aria-label": "Surface lighting" } as React.HTMLAttributes<HTMLDivElement> }}
+          >
+            {MESH_LIGHTING_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+            ))}
+          </TextField>
+        }
+      />
+      <ParamRow
+        label="Silhouettes"
+        helpKey="outline3d"
+        onHelp={onHelp}
+        control={
+          <TextField
+            size="small"
+            select
+            value={style.outlineWidth}
+            onChange={(event) => onChange({ outlineWidth: Number(event.target.value) })}
+            SelectProps={{ ...selectProps, SelectDisplayProps: { "aria-label": "Surface silhouettes" } as React.HTMLAttributes<HTMLDivElement> }}
+          >
+            {MESH_OUTLINE_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+            ))}
+          </TextField>
+        }
+      />
+      <ParamRow
+        label="Background"
+        helpKey="background3d"
+        onHelp={onHelp}
+        control={
+          <TextField
+            size="small"
+            select
+            value={style.background}
+            onChange={(event) => onChange({ background: event.target.value as MeshBackground })}
+            SelectProps={{ ...selectProps, SelectDisplayProps: { "aria-label": "Surface background" } as React.HTMLAttributes<HTMLDivElement> }}
+          >
+            {MESH_BACKGROUND_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+            ))}
+          </TextField>
+        }
+      />
+      <ParamRow
+        label="Depth cue"
+        helpKey="depthCue3d"
+        onHelp={onHelp}
+        control={
+          <Switch
+            size="small"
+            checked={style.depthCue}
+            onChange={(event) => onChange({ depthCue: event.target.checked })}
+            slotProps={{ input: { "aria-label": "Depth cue" } }}
+          />
+        }
+      />
+      <ParamRow
+        label="Projection"
+        helpKey="projection3d"
+        onHelp={onHelp}
+        control={
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={style.projection}
+            onChange={(_, value) => value && onChange({ projection: value as MeshProjection })}
+          >
+            <ToggleButton value="perspective">persp.</ToggleButton>
+            <ToggleButton value="orthographic">ortho.</ToggleButton>
+          </ToggleButtonGroup>
+        }
+      />
+      {solidColor && (
+        <ParamRow
+          label="Surface color"
+          helpKey="surfaceColor3d"
+          onHelp={onHelp}
+          control={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <input
+                type="color"
+                aria-label="Surface color"
+                value={style.surfaceColor ?? "#52b894"}
+                onChange={(event) => onChange({ surfaceColor: event.target.value })}
+                style={{ width: 36, height: 26, padding: 0, border: "none", background: "none", cursor: "pointer" }}
+              />
+              <Button
+                size="small"
+                disabled={!style.surfaceColor}
+                onClick={() => onChange({ surfaceColor: null })}
+                sx={{ textTransform: "none", minWidth: 0 }}
+              >
+                Reset
+              </Button>
+            </Box>
+          }
+        />
+      )}
+    </>
   );
 }
 

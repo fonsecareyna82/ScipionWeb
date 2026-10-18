@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { setClippingSliceImage, updateClippingSliceUvs } from "./mesh-clipping-slices";
 import type { ClippingSliceImages } from "./use-clipping-slice-images";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
@@ -20,8 +21,36 @@ import {
     createVolumeOrientationGizmo,
     type VolumeOrientationGizmo,
 } from "./volume-orientation-gizmo";
+import {
+    DEFAULT_MESH_RENDER_STYLE,
+    MESH_BACKGROUNDS,
+    MESH_LIGHTING_PRESETS,
+    MESH_LIGHT_POSITIONS,
+    MeshOutlinePass,
+    backgroundFogColor,
+    buildGeometricVertexColors,
+    colormapCssGradient,
+    colormapStops,
+    createBackgroundTexture,
+    fitMeshInView,
+    sampleColormap,
+    type MeshRenderStyle,
+} from "./mesh-render-style";
 
-export type MeshColorMode = "solid" | "density" | "components";
+export type MeshColorMode = "solid" | "density" | "components" | "radial" | "height";
+
+// Length of one mesh unit (the API scales the mesh to a unit size) for the legend.
+export type MeshLengthScale = {
+    unitLength: number | null;
+    unit: string;
+};
+
+type MeshColorLegend = {
+    label: string;
+    min: number;
+    max: number;
+    gradient: string;
+};
 
 export type MeshVolumeViewProps = {
     mesh: VolumeSurfaceMesh;
@@ -41,6 +70,8 @@ export type MeshVolumeViewProps = {
     cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
     active?: boolean;
+    renderStyle?: MeshRenderStyle;
+    lengthScale?: MeshLengthScale;
 };
 
 export type MeshCameraState = {
@@ -49,6 +80,8 @@ export type MeshCameraState = {
     target: [number, number, number];
     zoom: number;
     objectQuaternion: [number, number, number, number];
+    // Visible half height of the orthographic camera at zoom 1.
+    orthoHalfHeight?: number;
 };
 
 type DragState = {
@@ -58,7 +91,9 @@ type DragState = {
     lastY: number;
 };
 
-const GTAO_BLEND_INTENSITY = 0.88;
+const CAMERA_FOV = 35;
+// Silhouettes appear where the depth jumps by this fraction of the mesh size.
+const OUTLINE_DEPTH_JUMP = 0.03;
 const GTAO_RESOLUTION_SCALE = 1.0;
 const GTAO_MOTION_RESOLUTION_SCALE = 0.62;
 
@@ -103,17 +138,6 @@ function colorFromColormap(colormap?: string): THREE.Color {
     }
 }
 
-const COLORMAP_STOPS: Record<string, number[]> = {
-    gray: [0x111111, 0xf3f4f6],
-    grey: [0x111111, 0xf3f4f6],
-    viridis: [0x440154, 0x31688e, 0x35b779, 0xfde725],
-    magma: [0x000004, 0x721f81, 0xf1605d, 0xfcfdbf],
-    plasma: [0x0d0887, 0x9c179e, 0xed7953, 0xf0f921],
-    inferno: [0x000004, 0x57106e, 0xbc3754, 0xfcffa4],
-    cividis: [0x00224e, 0x575d6d, 0xa59c74, 0xfee838],
-    turbo: [0x30123b, 0x28bbec, 0xa4fc3c, 0xf9a31b, 0x7a0403],
-};
-
 function buildDensityVertexColors(
     mesh: VolumeSurfaceMesh,
     colormap: string,
@@ -139,9 +163,7 @@ function buildDensityVertexColors(
         return null;
     }
 
-    const stops =
-        COLORMAP_STOPS[colormap.toLowerCase()] ??
-        COLORMAP_STOPS.viridis;
+    const stops = colormapStops(colormap);
 
     const colors = new Float32Array(vertexCount * 3);
     const colorA = new THREE.Color();
@@ -153,14 +175,7 @@ function buildDensityVertexColors(
             ? Math.max(0, Math.min(1, (raw - min) / (max - min)))
             : 0;
 
-        const position = normalized * (stops.length - 1);
-        const lower = Math.floor(position);
-        const upper = Math.min(stops.length - 1, lower + 1);
-        const mix = position - lower;
-
-        colorA.setHex(stops[lower]);
-        colorB.setHex(stops[upper]);
-        colorA.lerp(colorB, mix);
+        sampleColormap(stops, normalized, colorA, colorB);
 
         const offset = i * 3;
         colors[offset] = colorA.r;
@@ -293,17 +308,23 @@ function applyMeshVertexColors(
     mesh: VolumeSurfaceMesh,
     colorMode: MeshColorMode,
     colormap: string,
-): boolean {
-    const colors =
-        colorMode === "density"
-            ? buildDensityVertexColors(mesh, colormap)
-            : colorMode === "components"
-                ? buildComponentVertexColors(mesh)
-                : null;
+): { usesVertexColors: boolean; range: [number, number] | null } {
+    let colors: Float32Array | null = null;
+    let range: [number, number] | null = null;
+
+    if (colorMode === "density") {
+        colors = buildDensityVertexColors(mesh, colormap);
+    } else if (colorMode === "components") {
+        colors = buildComponentVertexColors(mesh);
+    } else if (colorMode === "radial" || colorMode === "height") {
+        const geometric = buildGeometricVertexColors(mesh.vertices, colorMode, colormap);
+        colors = geometric?.colors ?? null;
+        range = geometric ? [geometric.min, geometric.max] : null;
+    }
 
     if (!colors) {
         geometry.deleteAttribute("color");
-        return false;
+        return { usesVertexColors: false, range: null };
     }
 
     geometry.setAttribute(
@@ -311,7 +332,47 @@ function applyMeshVertexColors(
         new THREE.BufferAttribute(colors, 3),
     );
 
-    return true;
+    return { usesVertexColors: true, range };
+}
+
+function meshColorLegend(
+    colorMode: MeshColorMode,
+    colormap: string,
+    range: [number, number] | null,
+    lengthScale: MeshLengthScale | undefined,
+): MeshColorLegend | null {
+    if (!range || (colorMode !== "radial" && colorMode !== "height")) return null;
+    const unitLength = lengthScale?.unitLength;
+    const factor = unitLength && Number.isFinite(unitLength) ? unitLength : 1;
+    const shift = colorMode === "height" ? range[0] : 0;
+    return {
+        label: colorMode === "radial" ? "Distance from center" : "Height",
+        min: (range[0] - shift) * factor,
+        max: (range[1] - shift) * factor,
+        gradient: colormapCssGradient(colormap),
+    };
+}
+
+function formatLegendValue(value: number, unit: string): string {
+    const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2;
+    return `${value.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
+}
+
+function surfaceColor(colormap: string, renderStyle: MeshRenderStyle): THREE.Color {
+    return renderStyle.surfaceColor ? new THREE.Color(renderStyle.surfaceColor) : colorFromColormap(colormap);
+}
+
+function setCameraFrustum(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, aspect: number, halfHeight: number) {
+    if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+        (camera as THREE.PerspectiveCamera).aspect = aspect;
+    } else {
+        const ortho = camera as THREE.OrthographicCamera;
+        ortho.top = halfHeight;
+        ortho.bottom = -halfHeight;
+        ortho.left = -halfHeight * aspect;
+        ortho.right = halfHeight * aspect;
+    }
+    camera.updateProjectionMatrix();
 }
 
 function disposeObject3d(root: THREE.Object3D): void {
@@ -341,7 +402,7 @@ function toQuaternionTuple(values: number[]): [number, number, number, number] {
 
 function rotateObjectInScreenSpace(
     object: THREE.Object3D,
-    camera: THREE.PerspectiveCamera,
+    camera: THREE.Camera,
     dx: number,
     dy: number,
 ) {
@@ -427,6 +488,7 @@ function createMeshSlicePlane(
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     plane.userData.volumeAxis = axis;
+    plane.userData.outlineHidden = true;
     plane.renderOrder = 4;
 
     if (axis === "x") plane.rotation.y = Math.PI / 2;
@@ -543,6 +605,8 @@ export default function MeshVolumeView({
     cameraStateRef: externalCameraStateRef,
     onError,
     active = true,
+    renderStyle = DEFAULT_MESH_RENDER_STYLE,
+    lengthScale,
 }: MeshVolumeViewProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const autoRotateRef = useRef(autoRotate);
@@ -554,7 +618,11 @@ export default function MeshVolumeView({
     const internalCameraStateRef = useRef<MeshCameraState | null>(null);
     const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
-    const materialRef = useRef<THREE.MeshLambertMaterial | null>(null);
+    const materialRef = useRef<THREE.MeshPhongMaterial | null>(null);
+    const renderStyleRef = useRef(renderStyle);
+    const applyRenderStyleRef = useRef<() => void>(() => undefined);
+    const [colorRange, setColorRange] = useState<[number, number] | null>(null);
+    const projection = renderStyle.projection;
     const geometryRef = useRef<THREE.BufferGeometry | null>(null);
     const requestRenderRef = useRef<() => void>(() => undefined);
     const resetViewRef = useRef<() => void>(() => undefined);
@@ -589,7 +657,7 @@ export default function MeshVolumeView({
 
         if (!geometry || !material) return;
 
-        const usesVertexColors = applyMeshVertexColors(
+        const { usesVertexColors, range } = applyMeshVertexColors(
             geometry,
             mesh,
             colorMode,
@@ -601,12 +669,18 @@ export default function MeshVolumeView({
         if (usesVertexColors) {
             material.color.setRGB(1, 1, 1);
         } else {
-            material.color.copy(colorFromColormap(colormap));
+            material.color.copy(surfaceColor(colormap, renderStyleRef.current));
         }
 
+        setColorRange(range);
         material.needsUpdate = true;
         requestRenderRef.current();
-    }, [colorMode, colormap, mesh]);
+    }, [colorMode, colormap, mesh, renderStyle.surfaceColor]);
+
+    useEffect(() => {
+        renderStyleRef.current = renderStyle;
+        applyRenderStyleRef.current();
+    }, [renderStyle]);
 
     useEffect(() => {
         const material = materialRef.current;
@@ -645,24 +719,29 @@ export default function MeshVolumeView({
         let renderer: THREE.WebGLRenderer | null = null;
         let composer: EffectComposer | null = null;
         let gtaoPass: GTAOPass | null = null;
+        let outlinePass: MeshOutlinePass | null = null;
         let outputPass: OutputPass | null = null;
+        let smaaPass: SMAAPass | null = null;
         let orientationGizmo: VolumeOrientationGizmo | null = null;
         let frameId: number | null = null;
         let dragState: DragState | null = null;
 
         try {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xe7ecf3);
-
-            const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
+            const perspective = projection === "perspective";
+            const camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = perspective
+                ? new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.01, 100)
+                : new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
             camera.position.set(0.9, -1.45, 0.9);
+            // The lights are children of the camera, so they follow it.
+            scene.add(camera);
+            const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV) / 2);
 
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
                 alpha: true,
                 powerPreference: "high-performance",
             });
-            renderer.setClearColor(0xe7ecf3, 1);
 
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -707,7 +786,10 @@ export default function MeshVolumeView({
                 new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3),
             );
 
-            if (mesh.normals?.length === mesh.vertices.length) {
+            // The API computes the normals from the volume (or from the
+            // smoothed surface): they are smoother than those of the triangles.
+            const hasServerNormals = mesh.normals?.length === mesh.vertices.length;
+            if (hasServerNormals) {
                 geometry.setAttribute(
                     "normal",
                     new THREE.BufferAttribute(new Float32Array(mesh.normals), 3),
@@ -716,24 +798,30 @@ export default function MeshVolumeView({
 
             geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
 
-            geometry.computeVertexNormals();
+            if (!hasServerNormals) geometry.computeVertexNormals();
             geometry.normalizeNormals();
             geometry.computeBoundingSphere();
             geometry.computeBoundingBox();
 
-            const usesVertexColors = applyMeshVertexColors(
+            const sphere = geometry.boundingSphere;
+            const radius = Math.max(0.5, sphere?.radius ?? 0.5);
+            camera.near = Math.max(0.001, radius / 100);
+            camera.far = Math.max(100, radius * 100);
+
+            const { usesVertexColors, range: initialColorRange } = applyMeshVertexColors(
                 geometry,
                 mesh,
                 colorMode,
                 colormap,
             );
+            setColorRange(initialColorRange);
 
             geometryRef.current = geometry;
 
-            const material = new THREE.MeshLambertMaterial({
+            const material = new THREE.MeshPhongMaterial({
                 color: usesVertexColors
                     ? new THREE.Color(1, 1, 1)
-                    : colorFromColormap(colormap),
+                    : surfaceColor(colormap, renderStyleRef.current),
                 vertexColors: usesVertexColors,
                 flatShading: false,
                 transparent: opacity < 1,
@@ -791,9 +879,7 @@ export default function MeshVolumeView({
                     worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
                 });
 
-                if (gtaoPass) {
-                    gtaoPass.enabled = !isClippingActive(bounds);
-                }
+                updateOcclusion();
 
                 orientationGizmo?.setClipBounds(bounds);
                 requestRenderRef.current();
@@ -834,42 +920,112 @@ export default function MeshVolumeView({
                     target: toNumberTuple(controls.target.toArray()),
                     zoom: camera.zoom,
                     objectQuaternion: toQuaternionTuple(surfacePivot.quaternion.toArray()),
+                    orthoHalfHeight: perspective ? undefined : orthoHalfHeight,
                 };
             };
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.10);
+            const ambient = new THREE.AmbientLight(0xffffff, 0);
             scene.add(ambient);
 
-            const key = new THREE.DirectionalLight(0xffffff, 1.45);
-            key.position.set(1.6, -2.2, 2.0);
-            scene.add(key);
+            const addCameraLight = (position: THREE.Vector3) => {
+                const light = new THREE.DirectionalLight(0xffffff, 0);
+                light.position.copy(position);
+                camera.add(light);
+                camera.add(light.target);
+                return light;
+            };
+            const keyLight = addCameraLight(MESH_LIGHT_POSITIONS.key);
+            const fillLight = addCameraLight(MESH_LIGHT_POSITIONS.fill);
+            const rimLight = addCameraLight(MESH_LIGHT_POSITIONS.rim);
 
-            const fill = new THREE.DirectionalLight(0xffffff, 0.22);
-            fill.position.set(-1.5, -0.8, 0.8);
-            scene.add(fill);
-
-            const rim = new THREE.DirectionalLight(0xffffff, 0.28);
-            rim.position.set(-0.6, 1.5, -1.4);
-            scene.add(rim);
-
-            composer = new EffectComposer(renderer);
+            // Multisampling smooths the edges of the surface; the passes after
+            // the scene render would otherwise lose the antialiasing of the canvas.
+            const composerTarget = new THREE.WebGLRenderTarget(1, 1, {
+                type: THREE.HalfFloatType,
+                samples: renderer.capabilities.isWebGL2 ? 4 : 0,
+            });
+            composer = new EffectComposer(renderer, composerTarget);
 
             const renderPass = new RenderPass(scene, camera);
             renderPass.clearAlpha = 0;
             composer.addPass(renderPass);
 
             gtaoPass = new GTAOPass(scene, camera, 1, 1);
-            gtaoPass.blendIntensity = GTAO_BLEND_INTENSITY;
             gtaoPass.updateGtaoMaterial(GTAO_PARAMETERS);
             gtaoPass.updatePdMaterial(GTAO_DENOISE_PARAMETERS);
-            gtaoPass.enabled = !isClippingActive(clipBoundsRef.current);
+            if (!perspective) {
+                // GTAOPass only reads the camera type from its shader defaults.
+                const occlusionMaterials = gtaoPass as unknown as Record<string, THREE.ShaderMaterial | undefined>;
+                for (const name of ["gtaoMaterial", "depthRenderMaterial"]) {
+                    const shader = occlusionMaterials[name];
+                    if (shader?.defines) {
+                        shader.defines.PERSPECTIVE_CAMERA = 0;
+                        shader.needsUpdate = true;
+                    }
+                }
+            }
             composer.addPass(gtaoPass);
+
+            outlinePass = new MeshOutlinePass(scene, camera, material);
+            outlinePass.depthJump = 2 * radius * OUTLINE_DEPTH_JUMP;
+            composer.addPass(outlinePass);
 
             outputPass = new OutputPass();
             composer.addPass(outputPass);
 
+            smaaPass = new SMAAPass(1, 1);
+            composer.addPass(smaaPass);
+
+            let backgroundTexture: THREE.Texture | null = null;
+
+            function updateOcclusion() {
+                if (!gtaoPass) return;
+                const occlusion = MESH_LIGHTING_PRESETS[renderStyleRef.current.lighting].occlusion;
+                gtaoPass.blendIntensity = occlusion;
+                gtaoPass.enabled = occlusion > 0 && !isClippingActive(clipBoundsRef.current);
+            }
+
+            const updateDepthCue = () => {
+                if (!(scene.fog instanceof THREE.Fog)) return;
+                const distance = camera.position.distanceTo(controls.target);
+                scene.fog.near = Math.max(0, distance - radius * 0.4);
+                scene.fog.far = distance + radius * 1.4;
+            };
+
+            const applyRenderStyle = () => {
+                const style = renderStyleRef.current;
+                const preset = MESH_LIGHTING_PRESETS[style.lighting];
+                ambient.intensity = preset.ambient;
+                keyLight.intensity = preset.key;
+                fillLight.intensity = preset.fill;
+                rimLight.intensity = preset.rim;
+                material.specular.setScalar(preset.specular);
+                material.shininess = preset.shininess;
+                updateOcclusion();
+
+                backgroundTexture?.dispose();
+                const background = createBackgroundTexture(style.background);
+                backgroundTexture = background instanceof THREE.Texture ? background : null;
+                scene.background = background;
+
+                const hadFog = scene.fog != null;
+                scene.fog = style.depthCue ? new THREE.Fog(backgroundFogColor(style.background), 1, 2) : null;
+                updateDepthCue();
+                if (hadFog !== (scene.fog != null)) material.needsUpdate = true;
+
+                if (outlinePass && smaaPass) {
+                    outlinePass.width = Math.max(0, style.outlineWidth);
+                    outlinePass.enabled = outlinePass.width > 0;
+                    outlinePass.material.uniforms.outlineColor.value.setHex(MESH_BACKGROUNDS[style.background].outline);
+                    // The silhouettes come from a depth image without multisampling.
+                    smaaPass.enabled = outlinePass.enabled;
+                }
+                requestRenderRef.current();
+            };
+
             const clock = new THREE.Clock();
             const baseDpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+            let orthoHalfHeight = radius * 2.6 * tanHalfFov;
             let controlsInteracting = false;
             let appliedDpr = -1;
             let appliedGtaoScale = -1;
@@ -892,8 +1048,7 @@ export default function MeshVolumeView({
                 composer.setPixelRatio(desiredDpr);
                 composer.setSize(width, height);
                 gtaoPass.setSize(Math.max(1, Math.floor(width * gtaoScale)), Math.max(1, Math.floor(height * gtaoScale)));
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
+                setCameraFrustum(camera, width / height, orthoHalfHeight);
             };
 
             const renderFrame = () => {
@@ -909,6 +1064,7 @@ export default function MeshVolumeView({
                 }
 
                 const controlsChanged = controls.update();
+                updateDepthCue();
                 surfacePivot.updateMatrixWorld(true);
                 localClipPlanes.forEach((plane, index) => {
                     worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
@@ -928,6 +1084,8 @@ export default function MeshVolumeView({
             };
 
             requestRenderRef.current = requestRender;
+            applyRenderStyleRef.current = applyRenderStyle;
+            applyRenderStyle();
 
             const handleControlsChange = () => {
                 saveCameraState();
@@ -960,20 +1118,27 @@ export default function MeshVolumeView({
 
             const observer = new ResizeObserver(resize);
             observer.observe(host);
-            resize();
 
-            const sphere = geometry.boundingSphere;
-            const radius = Math.max(0.5, sphere?.radius ?? 0.5);
-            camera.near = Math.max(0.001, radius / 100);
-            camera.far = Math.max(100, radius * 100);
+            const viewAspect = () => Math.max(1, host.clientWidth) / Math.max(1, host.clientHeight);
+
+            // Shows the whole mesh seen along direction (from the camera to the mesh).
+            const fitView = (direction: THREE.Vector3, up: THREE.Vector3) => {
+                const fit = fitMeshInView(mesh.vertices, surfacePivot.quaternion, direction, up, CAMERA_FOV, viewAspect());
+                const target = fit?.target ?? sphere?.center ?? new THREE.Vector3(0, 0, 0);
+                const distance = fit?.distance ?? radius * 2.6;
+                controls.target.copy(target);
+                camera.up.copy(up);
+                camera.position.copy(target).addScaledVector(direction.clone().normalize(), -distance);
+                camera.zoom = 1;
+                orthoHalfHeight = fit?.halfHeight ?? distance * tanHalfFov;
+                setCameraFrustum(camera, viewAspect(), orthoHalfHeight);
+            };
+
+            const DEFAULT_VIEW_DIRECTION = new THREE.Vector3(-1.15, 2.0, -1.15);
 
             const resetView = () => {
-                camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
-                camera.up.set(0, 1, 0);
-                camera.zoom = 1;
-                controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
                 surfacePivot.quaternion.identity();
-                camera.updateProjectionMatrix();
+                fitView(DEFAULT_VIEW_DIRECTION, new THREE.Vector3(0, 1, 0));
                 controls.update();
                 saveCameraState();
                 requestRender();
@@ -982,15 +1147,8 @@ export default function MeshVolumeView({
             resetViewRef.current = resetView;
 
             const applyCameraCommand = (command: VolumeCameraCommand) => {
-                const target = sphere?.center ?? new THREE.Vector3(0, 0, 0);
-                const currentDistance = camera.position.distanceTo(controls.target);
-                const distance = Number.isFinite(currentDistance) && currentDistance > 0.1 ? currentDistance : radius * 2.5;
-
                 surfacePivot.quaternion.identity();
-                controls.target.copy(target);
-                camera.up.copy(cameraPresetUp(command.preset));
-                camera.position.copy(target).addScaledVector(cameraPresetDirection(command.preset), distance);
-                camera.updateProjectionMatrix();
+                fitView(cameraPresetDirection(command.preset).negate(), cameraPresetUp(command.preset));
                 controls.update();
                 updateClipBounds();
                 saveCameraState();
@@ -1001,18 +1159,29 @@ export default function MeshVolumeView({
 
             const savedCameraState = cameraStateRef.current;
             if (savedCameraState?.key === currentCameraStateKey) {
-                camera.position.fromArray(savedCameraState.position);
-                camera.zoom = savedCameraState.zoom;
-                controls.target.fromArray(savedCameraState.target);
+                const target = new THREE.Vector3().fromArray(savedCameraState.target);
+                const offset = new THREE.Vector3().fromArray(savedCameraState.position).sub(target);
+                const savedZoom = savedCameraState.zoom > 0 ? savedCameraState.zoom : 1;
+                // Visible half height at the target, kept when the projection changes.
+                const visibleHalfHeight = savedCameraState.orthoHalfHeight != null
+                    ? savedCameraState.orthoHalfHeight / savedZoom
+                    : (offset.length() * tanHalfFov) / savedZoom;
+                controls.target.copy(target);
                 surfacePivot.quaternion.fromArray(savedCameraState.objectQuaternion);
+                if (perspective) {
+                    camera.zoom = 1;
+                    camera.position.copy(target).add(offset.setLength(Math.max(camera.near * 2, visibleHalfHeight / tanHalfFov)));
+                } else {
+                    camera.position.copy(target).add(offset);
+                    orthoHalfHeight = savedCameraState.orthoHalfHeight ?? offset.length() * tanHalfFov;
+                    camera.zoom = orthoHalfHeight / Math.max(1e-6, visibleHalfHeight);
+                }
             } else {
-                camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
-                camera.up.set(0, 1, 0);
-                controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
                 surfacePivot.quaternion.identity();
+                fitView(DEFAULT_VIEW_DIRECTION, new THREE.Vector3(0, 1, 0));
             }
 
-            camera.updateProjectionMatrix();
+            resize();
             controls.update();
             saveCameraState();
             requestRender();
@@ -1115,8 +1284,11 @@ export default function MeshVolumeView({
                 controls.dispose();
 
                 gtaoPass?.dispose();
+                outlinePass?.dispose();
                 outputPass?.dispose();
+                smaaPass?.dispose();
                 composer?.dispose();
+                backgroundTexture?.dispose();
                 orientationGizmo?.dispose();
                 orientationGizmo = null;
 
@@ -1134,10 +1306,13 @@ export default function MeshVolumeView({
                 applyCameraCommandRef.current = () => undefined;
                 applyClipBoundsRef.current = () => undefined;
                 applySlicePlanesRef.current = () => undefined;
+                applyRenderStyleRef.current = () => undefined;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
+            outlinePass?.dispose();
             outputPass?.dispose();
+            smaaPass?.dispose();
             composer?.dispose();
             orientationGizmo?.dispose();
             renderer?.dispose();
@@ -1145,13 +1320,14 @@ export default function MeshVolumeView({
             applyCameraCommandRef.current = () => undefined;
             applyClipBoundsRef.current = () => undefined;
             applySlicePlanesRef.current = () => undefined;
+            applyRenderStyleRef.current = () => undefined;
 
             onErrorRef.current?.(
                 error?.message || "Failed to render surface mesh.",
             );
         }
 
-    }, [mesh, currentCameraStateKey]);
+    }, [mesh, currentCameraStateKey, projection]);
 
     useEffect(() => {
         if (resetViewKey > 0) resetViewRef.current();
@@ -1161,17 +1337,53 @@ export default function MeshVolumeView({
         if (cameraCommand) applyCameraCommandRef.current(cameraCommand);
     }, [cameraCommand]);
 
+    const legend = meshColorLegend(colorMode, colormap, colorRange, lengthScale);
+    const legendUnit = lengthScale?.unitLength ? lengthScale.unit : "";
+    const legendText = MESH_BACKGROUNDS[renderStyle.background].legendText;
+
     return (
         <div
-            ref={hostRef}
             style={{
                 width: "100%",
                 height: "100%",
                 minWidth: 0,
                 minHeight: 0,
-                overflow: "hidden",
                 position: "relative",
             }}
-        />
+        >
+            <div
+                ref={hostRef}
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    minWidth: 0,
+                    minHeight: 0,
+                    overflow: "hidden",
+                    position: "relative",
+                }}
+            />
+            {legend && (
+                <div
+                    role="img"
+                    aria-label={`${legend.label} color scale`}
+                    style={{
+                        position: "absolute",
+                        left: 12,
+                        bottom: 12,
+                        color: legendText,
+                        fontSize: 11,
+                        pointerEvents: "none",
+                        textShadow: legendText === "#1f2937" ? "none" : "0 1px 2px rgba(0,0,0,0.6)",
+                    }}
+                >
+                    <div style={{ fontWeight: 600, marginBottom: 3 }}>{legend.label}</div>
+                    <div style={{ width: 140, height: 8, borderRadius: 4, background: legend.gradient }} />
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                        <span>{formatLegendValue(legend.min, legendUnit)}</span>
+                        <span>{formatLegendValue(legend.max, legendUnit)}</span>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
