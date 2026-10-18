@@ -95,10 +95,10 @@ describe("grid tools", () => {
     });
   });
 
-  it("groups statuses for the filter", () => {
-    expect(["running", "launched", "scheduled", "interactive"].map(gridStatusCategory)).toEqual(Array(4).fill("running"));
-    expect(["failed", "aborted"].map(gridStatusCategory)).toEqual(["failed", "failed"]);
-    expect(gridStatusCategory("finished")).toBe("finished");
-    expect(["saved", "new", undefined].map(gridStatusCategory)).toEqual(["saved", "saved", "saved"]);
+  it("filters by each protocol status on its own", () => {
+    const statuses = ["running", "launched", "scheduled", "interactive", "failed", "aborted", "finished", "saved", "new"];
+    expect(statuses.map(gridStatusCategory)).toEqual(statuses);
+    expect(gridStatusCategory("RUNNING")).toBe("running");
+    expect([undefined, "weird"].map(gridStatusCategory)).toEqual(["new", "new"]);
   });
 });

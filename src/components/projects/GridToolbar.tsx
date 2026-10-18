@@ -5,9 +5,14 @@ import type { GridStatusCategory } from "@/utils/graph_utils";
 
 export const GRID_STATUS_FILTERS: Array<{ id: GridStatusCategory; label: string; color: string }> = [
   { id: "running", label: "Running", color: "#0ea5e9" },
+  { id: "launched", label: "Launched", color: "#6366f1" },
+  { id: "scheduled", label: "Scheduled", color: "#a855f7" },
+  { id: "interactive", label: "Interactive", color: "#14b8a6" },
   { id: "failed", label: "Failed", color: "#ef4444" },
+  { id: "aborted", label: "Aborted", color: "#f97316" },
   { id: "finished", label: "Finished", color: "#22c55e" },
   { id: "saved", label: "Saved", color: "#94a3b8" },
+  { id: "new", label: "New", color: "#cbd5e1" },
 ];
 
 type Props = {
@@ -49,7 +54,7 @@ export default function GridToolbar({
           boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
         }}
       >
-        {GRID_STATUS_FILTERS.map((filter) => {
+        {GRID_STATUS_FILTERS.filter((filter) => counts[filter.id] > 0 || statusFilter.has(filter.id)).map((filter) => {
           const active = statusFilter.has(filter.id);
           return (
             <button

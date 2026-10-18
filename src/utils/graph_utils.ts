@@ -1665,15 +1665,16 @@ export function getGridRelations(
   return relations;
 }
 
-export type GridStatusCategory = "running" | "failed" | "finished" | "saved";
+/** Protocol statuses, in the order the grid's status filter lists them. */
+export const GRID_STATUSES = [
+  "running", "launched", "scheduled", "interactive", "failed", "aborted", "finished", "saved", "new",
+] as const;
+export type GridStatusCategory = typeof GRID_STATUSES[number];
 
-/** The grid's status filter groups protocol statuses in four. */
+/** The grid's status filter has one entry per protocol status. */
 export function gridStatusCategory(status: unknown): GridStatusCategory {
-  const value = String(status ?? "").toLowerCase();
-  if (["running", "launched", "scheduled", "interactive"].includes(value)) return "running";
-  if (["failed", "aborted"].includes(value)) return "failed";
-  if (value === "finished") return "finished";
-  return "saved";
+  const value = String(status ?? "").toLowerCase() as GridStatusCategory;
+  return GRID_STATUSES.includes(value) ? value : "new";
 }
 
 /**

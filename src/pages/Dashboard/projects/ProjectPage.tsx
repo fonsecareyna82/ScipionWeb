@@ -16,7 +16,7 @@ import WorkflowLogsDock from "@/components/projects/WorkflowLogsDock";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import {
   buildGraphElements, compactAfterDeletion, getGraphTopologySignature, getGridRelations, gridNeighbour,
-  gridStatusCategory, type GridStatusCategory, type NodeSizeMap,
+  GRID_STATUSES, gridStatusCategory, type GridStatusCategory, type NodeSizeMap,
 } from "@/utils/graph_utils";
 import GridToolbar from "@/components/projects/GridToolbar";
 import {
@@ -5134,7 +5134,7 @@ export default function ProjectPage() {
   }, [previousNodeId, viewMode, project, nodes, setNodes, gridLineage, gridStatusFilter]);
 
   const gridStatusCounts = useMemo(() => {
-    const counts: Record<GridStatusCategory, number> = { running: 0, failed: 0, finished: 0, saved: 0 };
+    const counts = Object.fromEntries(GRID_STATUSES.map((status) => [status, 0])) as Record<GridStatusCategory, number>;
     for (const [id, protocol] of Object.entries((project?.protocols ?? {}) as Record<string, any>)) {
       if (id !== "PROJECT") counts[gridStatusCategory(protocol?.status)] += 1;
     }
