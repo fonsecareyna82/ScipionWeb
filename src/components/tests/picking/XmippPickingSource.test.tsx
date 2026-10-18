@@ -149,6 +149,25 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(next).toHaveBeenCalledWith("4", "5"));
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("5"));
+    // Both micrographs were changed by the picker.
+    await waitFor(() => expect(screen.getAllByRole("cell", { name: "Yes" })).toHaveLength(2));
+  });
+
+  it("fixes the box size once the picker is trained, as the desktop picker", async () => {
+    const micrographs = [{ id: "4", index: 1, fileName: "a.mrc", label: "first.tif", particles: 26 }];
+    const source = pickingSource({
+      listMicrographs: vi.fn()
+        .mockResolvedValueOnce({ micrographs, totalMicrographs: 1, totalPicks: 26, boxSize: 99 })
+        .mockResolvedValue({ micrographs, totalMicrographs: 1, totalPicks: 26, boxSize: 99, boxSizeEditable: false }),
+      supervised: { train: vi.fn().mockResolvedValue(undefined), next: vi.fn() },
+    });
+    render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
+      outputName="picking" source={source} />);
+    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    expect(screen.getAllByRole("slider")[0]).not.toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: "Train" }));
+    expect(await screen.findByText("Fixed by the trained picker")).toBeInTheDocument();
+    expect(screen.getAllByRole("slider")[0]).toBeDisabled();
   });
 
   it("offers no supervised buttons for coordinates outputs", async () => {

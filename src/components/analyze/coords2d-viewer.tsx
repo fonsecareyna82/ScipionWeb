@@ -831,6 +831,9 @@ function Coords2dViewer({
   const [deletedPointIds, setDeletedPointIds] = useState<Set<string>>(() => new Set());
   const [previewHiddenPointIds, setPreviewHiddenPointIds] = useState<Set<string>>(() => new Set());
   const [updatedMicIds, setUpdatedMicIds] = useState<Set<string>>(() => new Set());
+  // Saved as they are made, picking session changes stay marked as updated.
+  const [sessionChangedMicIds, setSessionChangedMicIds] = useState<Set<string>>(() => new Set());
+  const [boxSizeEditable, setBoxSizeEditable] = useState(true);
 
   const [filtersAnchorEl, setFiltersAnchorEl] = useState<HTMLElement | null>(null);
   const [toolsAnchorEl, setToolsAnchorEl] = useState<HTMLElement | null>(null);
@@ -984,6 +987,7 @@ function Coords2dViewer({
         if (result.boxSize && Number.isFinite(result.boxSize)) {
           setBoxSize(Math.max(MIN_BOX_SIZE, Math.min(MAX_BOX_SIZE, Number(result.boxSize))));
         }
+        setBoxSizeEditable(result.boxSizeEditable !== false);
 
         const firstMicId = nextMicrographs[0]?.id ?? null;
         setSelectedMicId(firstMicId);
@@ -2196,6 +2200,8 @@ function Coords2dViewer({
     setOriginalPointsByMicId((current) => drop(current));
     setThresholdByMicId((current) => drop(current));
     setUpdatedMicIds((current) => new Set([...current].filter((key) => !keys.has(key))));
+    // Changed by the picker (Train/Next).
+    setSessionChangedMicIds((current) => new Set([...current, ...keys]));
     setDeletedPointIds((current) => {
       const next = new Set([...current].filter((id) => !loadedIds.has(id)));
       deletedPointIdsRef.current = next;
@@ -2208,6 +2214,7 @@ function Coords2dViewer({
         return count === undefined ? micrograph : { ...micrograph, particles: count, updated: false };
       }));
       setTotalPicks(result.totalPicks ?? 0);
+      setBoxSizeEditable(result.boxSizeEditable !== false);
     }).catch(() => undefined);
   }, [dataSource]);
 
@@ -2382,6 +2389,7 @@ function Coords2dViewer({
   const markMicrographUpdated = useCallback((micId: Id) => {
     setSuccessMessage(null);
     setUpdatedMicIds((current) => new Set(current).add(toStringId(micId)));
+    setSessionChangedMicIds((current) => new Set(current).add(toStringId(micId)));
   }, []);
 
   const updateMicrographParticleCount = useCallback((micId: Id, delta: number) => {
@@ -2873,6 +2881,7 @@ function Coords2dViewer({
           max={MAX_BOX_SIZE}
           step={1}
           value={boxSize}
+          disabled={!boxSizeEditable}
           onChange={(_, value) => setBoxSize(Array.isArray(value) ? value[0] : value)}
           sx={{ width: 260 }}
         />
@@ -2880,6 +2889,12 @@ function Coords2dViewer({
         <Typography variant="body2" sx={{ minWidth: 42 }}>
           ({boxSize})
         </Typography>
+
+        {!boxSizeEditable && (
+          <Typography variant="caption" color="text.secondary">
+            Fixed by the trained picker
+          </Typography>
+        )}
 
         {supportsThreshold && currentPoints.some(isAutomaticPoint) && (
           <>
@@ -3137,7 +3152,8 @@ function Coords2dViewer({
                     index={index}
                     selected={micKey === selectedMicKey}
                     thumbnailUrl={thumbnailUrls[micKey]}
-                    updated={updatedMicIds.has(micKey) || Boolean(micrograph.updated)}
+                    updated={updatedMicIds.has(micKey) || Boolean(micrograph.updated)
+                      || (Boolean(dataSource.saveMicrograph) && sessionChangedMicIds.has(micKey))}
                     onSelect={handleSelectMicrograph}
                   />
                 );

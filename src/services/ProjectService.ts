@@ -1389,6 +1389,8 @@ export type Coords2dMicrographsResult = {
   totalMicrographs: number;
   totalPicks: number;
   boxSize?: number | null;
+  /** False when the box size is fixed (e.g. by a trained picker). */
+  boxSizeEditable?: boolean | null;
 };
 
 export type CreateCoords2dOutputPoint = {
