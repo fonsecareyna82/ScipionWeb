@@ -1624,7 +1624,8 @@ export async function importWorkflowProtocols(
 
 export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<any> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols/delete`,
+    // The page reloads the project itself: no need for the API to rebuild it.
+    `${BASE_URL}/projects/${projectId}/protocols/delete?includeWorkflow=false`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1674,7 +1675,7 @@ export async function executeProtocolWorkflow(projectId: Id, protocolId: Id, pro
 
 export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RESET_FROM}`,
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RESET_FROM}?includeWorkflow=false`,
     { method: "POST" },
   );
   if (!response.ok)

@@ -355,6 +355,32 @@ describe("ProjectsCard", () => {
     );
   });
 
+  it("shows that the project is being deleted and cannot be closed meanwhile", async () => {
+    let finish: () => void = () => undefined;
+    const service = createProjectServiceMock({
+      deleteProject: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })),
+    });
+
+    renderWithProviders(
+      <ProjectCard id={13} label="Big Project" value={13} projectOwnerId={1} isOwner={true} />,
+      { service },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Mock action remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const busy = await screen.findByRole("button", { name: "Deleting…" });
+    expect(busy).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(screen.getByText("Delete project?")).toBeInTheDocument();
+    fireEvent.click(busy);
+    expect(service.deleteProject).toHaveBeenCalledTimes(1);
+
+    finish();
+    await waitFor(() => expect(screen.queryByText("Delete project?")).not.toBeInTheDocument());
+  });
+
   it("disables owner-only actions for non-owners", () => {
     const service = createProjectServiceMock();
 

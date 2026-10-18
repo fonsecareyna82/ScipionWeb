@@ -836,7 +836,11 @@ export default function ProjectCard(props: ProjectCardProps) {
     onShare?.(id);
   }, [canModify, id, onShare]);
 
+  const [deleting, setDeleting] = useState(false);
+
   const confirmRemove = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
     try {
       await svc.deleteProject(String(id));
       toast.success(`Project "${label}" deleted successfully`);
@@ -844,8 +848,10 @@ export default function ProjectCard(props: ProjectCardProps) {
       onDelete?.(id);
     } catch (error: any) {
       toast.error(error?.message || "Error deleting project");
+    } finally {
+      setDeleting(false);
     }
-  }, [svc, id, label, onDelete]);
+  }, [svc, id, label, onDelete, deleting]);
 
   const handleRenameSubmit = useCallback(async () => {
     if (!newLabel.trim()) {
@@ -1673,7 +1679,10 @@ export default function ProjectCard(props: ProjectCardProps) {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/35"
             role="dialog"
             aria-modal="true"
-            onClick={() => setShowDeleteModal(false)}
+            aria-busy={deleting}
+            onClick={() => {
+              if (!deleting) setShowDeleteModal(false);
+            }}
           >
             <motion.div
               initial={{ scale: 0.96, opacity: 0 }}
@@ -1693,16 +1702,24 @@ export default function ProjectCard(props: ProjectCardProps) {
                 <button
                   type="button"
                   onClick={() => setShowDeleteModal(false)}
-                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
+                  disabled={deleting}
+                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={confirmRemove}
-                  className="rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.98] hover:shadow-md"
+                  disabled={deleting}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.98] hover:shadow-md disabled:cursor-wait disabled:opacity-80"
                 >
-                  Delete
+                  {deleting && (
+                    <span
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                    />
+                  )}
+                  {deleting ? "Deleting…" : "Delete"}
                 </button>
               </div>
             </motion.div>
