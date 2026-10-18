@@ -109,7 +109,8 @@ import WebPickingSessions from "@/components/picking/WebPickingSessions";
 // Grid view zoom: the default shows several cards per row; the zoom buttons
 // make the cards larger or smaller within these limits.
 const DEFAULT_GRID_ZOOM = 0.347;
-const MIN_GRID_ZOOM = 0.18;
+// Small enough for many cards per row, before cards get too small to read.
+const MIN_GRID_ZOOM = 0.28;
 const MAX_GRID_ZOOM = 0.7;
 
 interface StatusNodeData {

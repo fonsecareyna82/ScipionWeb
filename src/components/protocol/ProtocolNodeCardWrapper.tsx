@@ -6,7 +6,7 @@ import { useReactFlow } from "reactflow";
 
 import ProtocolNodeCard, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
-import { GRID_COMPACT_ZOOM, type GridRelation } from "@/utils/graph_utils";
+import type { GridRelation } from "@/utils/graph_utils";
 
 type NodeActions = {
   onEdit?: (id: string) => void;
@@ -157,7 +157,6 @@ export const createStatusNodeWrapper = (
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
           showHandles={viewMode !== "grid"}
-          compactThreshold={viewMode === "grid" ? GRID_COMPACT_ZOOM : undefined}
           service={analyzeViewerService}
           contextMenuVisibility={contextMenuVisibility}
         />

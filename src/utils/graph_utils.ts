@@ -53,8 +53,7 @@ const GRID_MARGIN = 100;
 const GRID_SECTION_GAP = 560;
 // Output lists scroll, so a card does not grow without bounds.
 const GRID_MAX_ESTIMATED_HEIGHT = 720;
-/** At this grid zoom or below, cards show only their header (no outputs). */
-export const GRID_COMPACT_ZOOM = 0.26;
+
 type GraphPosition = { x: number; y: number };
 
 export type NodeSizeMap = Record<string, { width: number; height: number }>;
@@ -1304,12 +1303,9 @@ export function buildGraphElements(
       GRID_CARD_WIDTH,
       ...Object.keys(protocols).map((id) => Math.ceil(nodeSizeMap?.[id]?.width ?? 0)),
     );
-    const compact = zoom <= GRID_COMPACT_ZOOM;
     const cardHeight = (id: string) => {
       const measured = nodeSizeMap?.[id]?.height;
       if (typeof measured === "number" && measured > 0) return Math.ceil(measured);
-      // Compact cards hide their outputs.
-      if (compact) return estimateNodeHeight(getGraphNodeLabel(id, protocols, projectName));
       return Math.min(GRID_MAX_ESTIMATED_HEIGHT, getEstimatedGraphNodeHeight({ id, protocols, projectName, nodeSizeMap }));
     };
     const columns = Math.max(1, Math.floor((worldWidth + GRID_GAP_X) / (cardWidth + GRID_GAP_X)));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  GRID_COMPACT_ZOOM, buildGraphElements, getGridRelations, getGridSections, gridNeighbour, gridStatusCategory,
+  buildGraphElements, getGridRelations, getGridSections, gridNeighbour, gridStatusCategory,
 } from "@/utils/graph_utils";
 
 const workflow = {
@@ -58,7 +58,7 @@ describe("grid view", () => {
       const nodes = grid(many, 1600, zoom).nodes;
       return nodes.filter((node) => node.position.y === nodes[0].position.y).length;
     };
-    expect(perRow(0.2)).toBeGreaterThan(perRow(0.347));
+    expect(perRow(0.28)).toBeGreaterThan(perRow(0.347));
     expect(perRow(0.347)).toBeGreaterThan(perRow(0.6));
   });
 
@@ -100,18 +100,5 @@ describe("grid tools", () => {
     expect(["failed", "aborted"].map(gridStatusCategory)).toEqual(["failed", "failed"]);
     expect(gridStatusCategory("finished")).toBe("finished");
     expect(["saved", "new", undefined].map(gridStatusCategory)).toEqual(["saved", "saved", "saved"]);
-  });
-
-  it("packs rows of compact cards (no outputs) tighter", () => {
-    const withOutputs = {
-      PROJECT: { label: "P", children: ["1"] },
-      "1": { label: "import", children: ["2"], outputs: [{}, {}, {}, {}, {}] },
-      "2": { label: "next", children: [] },
-    } as any;
-    const rowGap = (zoom: number) => {
-      const nodes = buildGraphElements("P", withOutputs, "grid", "TB", 200, zoom).nodes;
-      return nodes.find((n) => n.id === "2")!.position.y - nodes.find((n) => n.id === "1")!.position.y;
-    };
-    expect(rowGap(GRID_COMPACT_ZOOM)).toBeLessThan(rowGap(GRID_COMPACT_ZOOM + 0.1));
   });
 });
