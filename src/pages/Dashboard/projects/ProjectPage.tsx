@@ -103,6 +103,7 @@ import TagsDialog from "@/components/tags/TagsDialog";
 import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import ProjectProtocolTable, { ProjectProtocolTableHandle } from "@/components/projects/ProjectProtocolTable";
 import WebPickingSessions from "@/components/picking/WebPickingSessions";
+import { loadSignedNodeThumbnails, type SignedThumbnailList } from "@/utils/signed-thumbnails";
 
 
 /* --------------------- Types --------------------- */
@@ -980,6 +981,17 @@ const getProtocolRowDisplayName = (row: any) => {
 
 const PROTOCOL_OUTPUT_THUMBNAIL_SIZE = 128;
 
+// Signed thumbnails (GET /projects/{id}/thumbnails): a node output is about
+// this wide; its image is asked at the screen's pixels.
+const GRAPH_THUMBNAIL_CSS_WIDTH = 320;
+
+function graphThumbnailSize(): number {
+  const ratio = typeof window !== "undefined" ? Math.min(2, Math.max(1, window.devicePixelRatio || 1)) : 1;
+  return Math.round(GRAPH_THUMBNAIL_CSS_WIDTH * ratio);
+}
+
+
+
 function getOutputNameFromNodeOutput(output: unknown): string {
   if (!output || typeof output !== "object") return "";
 
@@ -1812,6 +1824,7 @@ export default function ProjectPage() {
   const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
   const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
+  const signedThumbnailListRef = useRef<SignedThumbnailList | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] =
     useState<any[]>([]);
@@ -2291,6 +2304,41 @@ export default function ProjectPage() {
       if (!enabled) return [];
       if (projectIdValue == null) return [];
       if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return [];
+
+      // Signed thumbnails: one cheap list for the project, each image by its
+      // URL; a new signature (an output that grew) brings a new image.
+      if (typeof svc.fetchProjectThumbnails === "function" && typeof svc.fetchThumbnailImageObjectUrl === "function") {
+        if (outputThumbnailInFlightRef.current) return [];
+        const size = graphThumbnailSize();
+        const run = (async () => {
+          const nodeOutputs = sourceNodes.flatMap((node) => {
+            const protocolId = String(node.id ?? "").trim();
+            if (!protocolId || protocolId === "PROJECT") return [];
+            return (Array.isArray(node.data?.outputs) ? node.data.outputs : [])
+              .filter((output) => !isScalarOutput(output))
+              .map((output) => ({ protocolId, outputName: getOutputNameFromNodeOutput(output) }))
+              .filter((output) => output.outputName);
+          });
+          return loadSignedNodeThumbnails({
+            svc,
+            projectId: projectIdValue,
+            nodeOutputs,
+            size,
+            listRef: signedThumbnailListRef,
+            cache: outputThumbnailCacheRef.current,
+          });
+        })();
+        outputThumbnailInFlightRef.current = run.then(() => undefined, () => undefined);
+        try {
+          return await run;
+        } catch (err) {
+          console.warn("fetchProjectThumbnails failed", err);
+          return [];
+        } finally {
+          outputThumbnailInFlightRef.current = null;
+        }
+      }
+
       if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return [];
 
       const cachedItems: ProtocolOutputThumbnailItem[] = [];

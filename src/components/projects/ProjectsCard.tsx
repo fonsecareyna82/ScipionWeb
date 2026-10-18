@@ -80,6 +80,17 @@ type ThumbnailObjectUrlCacheEntry = {
 };
 
 const THUMBNAIL_ITEMS_TTL_MS = 300_000;
+
+// Each output of a card is about this wide; its image is asked at the
+// screen's pixels (up to twice that on high density screens).
+const CARD_OUTPUT_CSS_WIDTH = 224;
+// Images downloaded at once by a card.
+const CARD_IMAGE_CONCURRENCY = 4;
+
+function cardThumbnailSize(): number {
+  const ratio = typeof window !== "undefined" ? Math.min(2, Math.max(1, window.devicePixelRatio || 1)) : 1;
+  return Math.round(CARD_OUTPUT_CSS_WIDTH * ratio);
+}
 const THUMBNAIL_ITEMS_CACHE = new Map<string, ThumbnailItemsCacheEntry>();
 
 const THUMBNAIL_OBJECT_URL_CACHE_MAX = 180;
@@ -267,6 +278,23 @@ function appendQueryParams(
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
+// A thumbnail that fades in once decoded instead of popping in.
+function FadeInImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onLoad={() => setLoaded(true)}
+      className={classNames(
+        "block h-full w-full object-contain transition-opacity duration-300 ease-out",
+        loaded ? "opacity-100" : "opacity-0",
+      )}
+      draggable={false}
+    />
+  );
+}
+
 export default function ProjectCard(props: ProjectCardProps) {
   const {
     id,
@@ -412,8 +440,78 @@ export default function ProjectCard(props: ProjectCardProps) {
     let cancelled = false;
     const controller = new AbortController();
 
+    // The thumbnails listed from the database, each image downloaded once by
+    // its signed URL (it is drawn on the server meanwhile when missing).
+    async function loadSignedThumbnails() {
+      setGalleryMetaLoading(true);
+      setGalleryError(false);
+      try {
+        const list = await svc.fetchProjectThumbnails!(id, {
+          scope: "card",
+          size: cardThumbnailSize(),
+          maxProtocols: 4,
+          maxOutputsPerProtocol: 2,
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+
+        const groups: HydratedProjectThumbnailGroup[] = list.groups
+          .map((group) => ({
+            protocolId: group.protocolId,
+            label: group.label,
+            status: group.status,
+            outputs: group.outputs
+              .filter((output) => output.state !== "unavailable")
+              .map((output) => ({
+                outputName: output.outputName,
+                outputClassName: output.outputClassName,
+                thumbnailUrl: output.url,
+                src: null,
+                hasError: false,
+              })),
+          }))
+          .filter((group) => group.outputs.length > 0);
+
+        setGalleryItems(groups);
+        setGalleryMetaLoading(false);
+        if (!groups.length) return;
+        setGalleryImagesLoading(true);
+
+        const tasks = groups.flatMap((group, groupIndex) =>
+          group.outputs.map((output, outputIndex) => ({ groupIndex, outputIndex, url: output.thumbnailUrl as string })),
+        );
+        await runWithConcurrencyLimit(tasks, CARD_IMAGE_CONCURRENCY, async (task) => {
+          const src = await svc.fetchThumbnailImageObjectUrl!(task.url, { signal: controller.signal }).catch(() => null);
+          if (cancelled) return;
+          setGalleryItems((prev) => prev.map((group, groupIndex) => groupIndex !== task.groupIndex ? group : {
+            ...group,
+            outputs: group.outputs.map((output, outputIndex) => outputIndex !== task.outputIndex ? output
+              : { ...output, src, hasError: !src }),
+          }));
+        });
+      } catch {
+        if (controller.signal.aborted || cancelled) return;
+        setGalleryItems([]);
+        setGalleryError(true);
+      } finally {
+        if (!cancelled) {
+          setGalleryMetaLoading(false);
+          setGalleryImagesLoading(false);
+        }
+      }
+    }
+
     async function loadGalleryItems() {
-      if (!isInViewport || !thumbnailItemsUrl) {
+      if (!isInViewport) {
+        return;
+      }
+
+      if (typeof svc.fetchProjectThumbnails === "function" && typeof svc.fetchThumbnailImageObjectUrl === "function") {
+        await loadSignedThumbnails();
+        return;
+      }
+
+      if (!thumbnailItemsUrl) {
         return;
       }
 
@@ -623,14 +721,17 @@ export default function ProjectCard(props: ProjectCardProps) {
     [galleryItems],
   );
 
+  const signedThumbnails = typeof svc.fetchProjectThumbnails === "function";
+
   const shouldPreferProtocolGallery = useMemo(() => {
-    if (!thumbnailItemsUrl) return false;
+    if (!thumbnailItemsUrl && !signedThumbnails) return false;
     if (galleryMetaLoading || galleryImagesLoading) return true;
     if (galleryHasImages) return true;
     if (galleryHasPendingImages) return true;
     return false;
   }, [
     thumbnailItemsUrl,
+    signedThumbnails,
     galleryMetaLoading,
     galleryImagesLoading,
     galleryHasImages,
@@ -640,11 +741,13 @@ export default function ProjectCard(props: ProjectCardProps) {
   const shouldLoadProjectFallback = useMemo(
     () => Boolean(
       thumbnailUrl &&
-      !thumbnailItemsUrl
+      !thumbnailItemsUrl &&
+      !signedThumbnails
     ),
     [
       thumbnailUrl,
       thumbnailItemsUrl,
+      signedThumbnails,
     ],
   );
 
@@ -1145,11 +1248,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                                           title={output.outputName ?? output.outputClassName ?? "Output"}
                                         >
                                           {output.src ? (
-                                            <img
+                                            <FadeInImage
                                               src={output.src}
                                               alt={output.outputName ?? output.outputClassName ?? "Output"}
-                                              className="block h-full w-full object-contain"
-                                              draggable={false}
                                             />
                                           ) : (
                                             <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />

@@ -22,14 +22,20 @@ vi.mock("react-hot-toast", () => ({
   },
 }));
 
-vi.mock("framer-motion", () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
-  },
-}));
+vi.mock("framer-motion", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    motion: {
+      // Forwards the ref: the card watches its element to load its thumbnails.
+      div: React.forwardRef<HTMLDivElement, Record<string, any>>(
+        ({ children, initial: _initial, animate: _animate, transition: _transition, ...props }, ref) => (
+          <div ref={ref} {...props}>{children}</div>
+        ),
+      ),
+    },
+  };
+});
 
 vi.mock("@/icons", () => ({
   CalendarIcon: (props: any) => <svg data-testid="calendar-icon" {...props} />,
@@ -126,6 +132,49 @@ describe("ProjectsCard", () => {
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open project" })).toBeInTheDocument();
     expect(screen.getByText("12 GB")).toBeInTheDocument();
+  });
+
+  it("shows the signed thumbnails of the best protocols, each image downloaded by its URL", async () => {
+    const fetchThumbnailImageObjectUrl = vi.fn(async (url: string) => (url.includes("outputCTF") ? null : `blob:${url}`));
+    const service = createProjectServiceMock({
+      fetchProjectThumbnails: vi.fn().mockResolvedValue({
+        projectId: 9,
+        size: 256,
+        scope: "card",
+        groups: [
+          {
+            protocolId: "10",
+            label: "import micrographs",
+            status: "finished",
+            outputs: [
+              { outputName: "outputMicrographs", signature: "a", state: "ready", url: "/projects/9/protocols/10/outputs/outputMicrographs/thumbnail-image?size=256&sig=a" },
+              { outputName: "outputBroken", signature: "b", state: "unavailable", url: "/x" },
+            ],
+          },
+          {
+            protocolId: "20",
+            label: "ctffind",
+            status: "running",
+            outputs: [{ outputName: "outputCTF", signature: "c", state: "pending", url: "/projects/9/protocols/20/outputs/outputCTF/thumbnail-image?size=256&sig=c" }],
+          },
+        ],
+      }),
+      fetchThumbnailImageObjectUrl,
+    });
+
+    renderWithProviders(
+      <ProjectCard id={9} label="Thumbs" value={9} projectOwnerId={1} isOwner={true} />,
+      { service },
+    );
+
+    const image = await screen.findByAltText("outputMicrographs");
+    expect(image).toHaveAttribute("src", "blob:/projects/9/protocols/10/outputs/outputMicrographs/thumbnail-image?size=256&sig=a");
+    expect(service.fetchProjectThumbnails).toHaveBeenCalledWith(9, expect.objectContaining({ scope: "card", maxProtocols: 4 }));
+    expect(screen.getByText("import micrographs")).toBeInTheDocument();
+    expect(screen.getByText("ctffind")).toBeInTheDocument();
+    // The output that cannot be drawn is not asked for.
+    expect(fetchThumbnailImageObjectUrl).toHaveBeenCalledTimes(2);
+    expect(screen.queryByAltText("outputBroken")).not.toBeInTheDocument();
   });
 
   it("shows guest/shared state for a shared non-owner project", () => {

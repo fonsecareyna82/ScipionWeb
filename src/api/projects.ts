@@ -20,6 +20,8 @@ import {
   TiltSeriesStack,
   TiltSeriesStackOptions,
   TiltStackFrame,
+  ProjectThumbnailList,
+  ProjectThumbnailListOptions,
   TomogramVolumeStack,
   WorkflowDescriptor,
   TiltExclusionsPayload,
@@ -4748,6 +4750,87 @@ export async function fetchJsonUrl(
   }
 
   return safeJson<any>(response);
+}
+
+export async function fetchProjectThumbnails(
+  projectId: Id,
+  opts: ProjectThumbnailListOptions = {},
+): Promise<ProjectThumbnailList> {
+  const params = new URLSearchParams({
+    scope: opts.scope ?? "card",
+    size: String(opts.size ?? 256),
+  });
+  if (opts.maxProtocols != null) params.set("maxProtocols", String(opts.maxProtocols));
+  if (opts.maxOutputsPerProtocol != null) params.set("maxOutputsPerProtocol", String(opts.maxOutputsPerProtocol));
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/thumbnails?${params}`, {
+    method: "GET",
+    cache: "no-store",
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list the project thumbnails");
+  }
+  return safeJson<ProjectThumbnailList>(res);
+}
+
+// Thumbnail images by URL. A URL names the signature of its output, so its
+// image never changes: each one is downloaded once per page.
+const THUMBNAIL_IMAGE_CACHE_LIMIT = 400;
+const thumbnailImages = new Map<string, Promise<string | null>>();
+
+// Waits between requests while the server is still drawing a thumbnail (202).
+const THUMBNAIL_RETRY_DELAYS_MS = [400, 700, 1000, 1500, 2000, 3000, 3000, 4000, 5000, 5000, 6000, 8000];
+
+function waitFor(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+}
+
+async function downloadThumbnailImage(url: string, signal?: AbortSignal): Promise<string | null> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchWithAuth(url, { method: "GET", cache: "default", signal });
+    if (res.status === 202) {
+      if (attempt >= THUMBNAIL_RETRY_DELAYS_MS.length) return null;
+      await waitFor(THUMBNAIL_RETRY_DELAYS_MS[attempt], signal);
+      continue;
+    }
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw await toApiError(res, "Failed to fetch the thumbnail");
+    }
+    return URL.createObjectURL(await res.blob());
+  }
+}
+
+export function fetchThumbnailImageObjectUrl(
+  url: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<string | null> {
+  const resolved = resolveBackendUrl(url) ?? url;
+  const cached = thumbnailImages.get(resolved);
+  if (cached) {
+    // Most recently used last.
+    thumbnailImages.delete(resolved);
+    thumbnailImages.set(resolved, cached);
+    return cached;
+  }
+  const download = downloadThumbnailImage(resolved, opts.signal).catch((error) => {
+    // A failed or cancelled download is not remembered.
+    thumbnailImages.delete(resolved);
+    throw error;
+  });
+  thumbnailImages.set(resolved, download);
+  while (thumbnailImages.size > THUMBNAIL_IMAGE_CACHE_LIMIT) {
+    const [oldestUrl, oldest] = thumbnailImages.entries().next().value as [string, Promise<string | null>];
+    thumbnailImages.delete(oldestUrl);
+    void oldest.then((objectUrl) => objectUrl && URL.revokeObjectURL(objectUrl)).catch(() => undefined);
+  }
+  return download;
 }
 
 export async function fetchBlobObjectUrl(

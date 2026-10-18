@@ -114,6 +114,40 @@ export type ProjectThumbnailOutputItem = {
   thumbnailRebuildUrl?: string | null;
 };
 
+// The thumbnails of a project from GET /projects/{id}/thumbnails: every URL
+// names the signature of its output, so its image never changes.
+export type ProjectThumbnailState = "ready" | "pending" | "unavailable";
+
+export type ProjectThumbnailEntry = {
+  outputName: string;
+  outputClassName?: string | null;
+  signature: string;
+  state: ProjectThumbnailState;
+  url: string;
+};
+
+export type ProjectThumbnailListGroup = {
+  protocolId: string;
+  label?: string;
+  status?: string;
+  outputs: ProjectThumbnailEntry[];
+};
+
+export type ProjectThumbnailList = {
+  projectId: number;
+  size: number;
+  scope: "card" | "graph";
+  groups: ProjectThumbnailListGroup[];
+};
+
+export type ProjectThumbnailListOptions = {
+  scope?: "card" | "graph";
+  size?: number;
+  maxProtocols?: number;
+  maxOutputsPerProtocol?: number;
+  signal?: AbortSignal;
+};
+
 export type ProjectThumbnailGroup = {
   protocolId: Id;
   label?: string;
@@ -1741,6 +1775,12 @@ export interface ProjectService<
     url: string,
     opts?: AuthenticatedRequestOptions,
   ): Promise<any>;
+
+  /** The thumbnails of a project, from the database (never loads the project). */
+  fetchProjectThumbnails?(projectId: Id, opts?: ProjectThumbnailListOptions): Promise<ProjectThumbnailList>;
+
+  /** A thumbnail image as an object URL, waiting while it is drawn; null when it has none. */
+  fetchThumbnailImageObjectUrl?(url: string, opts?: { signal?: AbortSignal }): Promise<string | null>;
 
   fetchBlobObjectUrl(
     url: string,

@@ -72,6 +72,7 @@ import type {
   ProtocolOutputThumbnailsOptions,
   TiltSeriesBatchPreviewOptions,
   TiltSeriesStack,
+  ProjectThumbnailListOptions,
   TiltSeriesStackOptions,
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
@@ -111,6 +112,12 @@ const defaultService: ProjectService = {
     opts?: AuthenticatedRequestOptions,
   ) =>
     api.fetchJsonUrl(url, opts),
+
+  fetchProjectThumbnails: (projectId: Id, opts?: ProjectThumbnailListOptions) =>
+    api.fetchProjectThumbnails(toId(projectId), opts),
+
+  fetchThumbnailImageObjectUrl: (url: string, opts?: { signal?: AbortSignal }) =>
+    api.fetchThumbnailImageObjectUrl(url, opts),
 
   fetchBlobObjectUrl: (
     url: string,
