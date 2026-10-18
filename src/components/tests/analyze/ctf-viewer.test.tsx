@@ -228,13 +228,19 @@ describe(
             const thumbnail = await screen.findByAltText(alt);
             const thumbnailUrl = thumbnail.getAttribute("src");
             const revoke = vi.fn();
-            serviceMocks[method].mockResolvedValueOnce({ url: `blob:detail-${kind}`, revoke });
+            const revokeFull = vi.fn();
+            serviceMocks[method]
+                .mockResolvedValueOnce({ url: `blob:detail-${kind}`, revoke })
+                .mockResolvedValueOnce({ url: `blob:full-${kind}`, revoke: revokeFull });
 
             fireEvent.doubleClick(thumbnail);
             const dialog = await screen.findByRole("dialog", { name: "Image preview" });
             const image = await within(dialog).findByRole("img");
-            expect(image).toHaveAttribute("src", `blob:detail-${kind}`);
-            expect(serviceMocks[method]).toHaveBeenLastCalledWith(1, 2, "outputCTF", "1", expect.objectContaining({ size: 1024, signal: expect.any(AbortSignal) }));
+            // The quick image first, then the full resolution, lossless one.
+            await waitFor(() => expect(image).toHaveAttribute("src", `blob:full-${kind}`));
+            expect(serviceMocks[method]).toHaveBeenCalledWith(1, 2, "outputCTF", "1", expect.objectContaining({ size: 1024, signal: expect.any(AbortSignal) }));
+            expect(serviceMocks[method]).toHaveBeenCalledWith(1, 2, "outputCTF", "1", expect.objectContaining({ size: 4096, format: "png", signal: expect.any(AbortSignal) }));
+            expect(revoke).toHaveBeenCalledTimes(1);
             expect(thumbnail).toHaveAttribute("src", thumbnailUrl);
 
             fireEvent.click(within(dialog).getByRole("button", { name: "Zoom in" }));
@@ -244,7 +250,7 @@ describe(
 
             fireEvent.click(within(dialog).getByRole("button", { name: "Close image preview" }));
             await waitFor(() => expect(screen.queryByRole("dialog", { name: "Image preview" })).not.toBeInTheDocument());
-            expect(revoke).toHaveBeenCalledTimes(1);
+            expect(revokeFull).toHaveBeenCalledTimes(1);
             expect(thumbnail).toHaveAttribute("src", thumbnailUrl);
         });
 
@@ -278,7 +284,9 @@ describe(
             const calls = serviceMocks.fetchCTFMicrographImageObjectUrl.mock.calls;
             const signal = calls[calls.length - 1][4].signal as AbortSignal;
 
-            serviceMocks.fetchCTFPsdImageObjectUrl.mockResolvedValueOnce({ url: "blob:detail-psd", revoke: vi.fn() });
+            serviceMocks.fetchCTFPsdImageObjectUrl
+                .mockResolvedValueOnce({ url: "blob:detail-psd", revoke: vi.fn() })
+                .mockResolvedValueOnce({ url: "blob:detail-psd", revoke: vi.fn() });
             fireEvent.click(screen.getByRole("button", { name: "Open PSD image" }));
             const dialog = await screen.findByRole("dialog", { name: "Image preview" });
             await waitFor(() => expect(within(dialog).getByRole("img")).toHaveAttribute("src", "blob:detail-psd"));

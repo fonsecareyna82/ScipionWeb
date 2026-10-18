@@ -551,10 +551,16 @@ export default function CtfViewer({
         setImagePreview({
             title: kind === "psd" ? "PSD" : "Micrograph",
             path: kind === "psd" ? selectedRow.psdFile! : selectedRow.micrographName,
-            renderSize: 1024,
             details: [{ label: "CTF", value: String(selectedRow.ctfId) }],
             loadImage: (signal) => {
                 const options = { size: 1024, format: "png" as const, quality: 80, signal };
+                return kind === "psd"
+                    ? svc.fetchCTFPsdImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options)
+                    : svc.fetchCTFMicrographImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options);
+            },
+            // Lossless at the image's own resolution (huge micrographs are bounded).
+            loadFullImage: (signal) => {
+                const options = { size: 4096, format: "png" as const, quality: 100, signal };
                 return kind === "psd"
                     ? svc.fetchCTFPsdImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options)
                     : svc.fetchCTFMicrographImageObjectUrl(projectId, protocolId, outputName, selectedRow.ctfId, options);

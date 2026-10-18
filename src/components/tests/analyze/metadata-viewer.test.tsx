@@ -1215,9 +1215,11 @@ describe("MetadataViewer", () => {
                     opts,
                 ) => ({
                     url:
-                        opts.size === 1024
-                            ? "blob:preview-large"
-                            : "blob:thumb-small",
+                        opts.size === 4096
+                            ? "blob:preview-full"
+                            : opts.size === 1024
+                                ? "blob:preview-large"
+                                : "blob:thumb-small",
 
                     revoke: vi.fn(),
                 }),
@@ -1281,28 +1283,17 @@ describe("MetadataViewer", () => {
                     "img",
                 );
 
-        expect(
-            preview,
-        ).toHaveAttribute(
-            "src",
-            "blob:preview-large",
-        );
+        // The quick image is replaced by the full resolution, lossless one.
+        await waitFor(() => expect(preview).toHaveAttribute("src", "blob:preview-full"));
+        expect(within(dialog).getByTestId("preview-quality-badge")).toHaveTextContent(/^Full resolution/);
 
-        const lastCall =
-            serviceMocks
-                .fetchMetadataImageCellObjectUrl
-                .mock.calls[
-            serviceMocks
-                .fetchMetadataImageCellObjectUrl
-                .mock.calls.length - 1
-            ];
-
-        expect(
-            lastCall[6],
-        ).toMatchObject({
-            size: 1024,
-            format: "webp",
-        });
+        const previewCalls = serviceMocks.fetchMetadataImageCellObjectUrl.mock.calls
+            .map((call) => call[6])
+            .filter((opts) => opts.size >= 1024);
+        expect(previewCalls).toEqual(expect.arrayContaining([
+            expect.objectContaining({ size: 1024, format: "webp" }),
+            expect.objectContaining({ size: 4096, format: "png", contrastMode: "original" }),
+        ]));
 
         const externalButton =
             within(dialog)

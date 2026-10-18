@@ -2537,11 +2537,13 @@ function MetadataImageCell({
   );
 }
 
-// Target size requested for the double-click "view in detail" dialog --
-// deliberately larger than any thumbnail size the grid/table ever renders,
-// so this is a genuine higher-resolution fetch and not just an upscaled
-// thumbnail.
+// The double-click dialog first shows the image at this size (quick), then
+// at its full resolution, lossless: images are never enlarged past their own
+// size, so the largest size only bounds huge micrographs. Class
+// representatives and volumes are drawn (enlarged) at most at the smaller one.
 const METADATA_IMAGE_PREVIEW_SIZE = 1024;
+const METADATA_IMAGE_FULL_SIZE = 4096;
+const METADATA_IMAGE_FULL_DRAWN_SIZE = 2048;
 
 type MetadataImagePreviewDialogProps = {
   state: ImagePreviewState | null;
@@ -2572,7 +2574,6 @@ function MetadataImagePreviewDialog({
     return {
       title: state.columnAlias,
       path: state.path,
-      renderSize: METADATA_IMAGE_PREVIEW_SIZE,
       details: [
         { label: "Row", value: state.rowIndexInTable + 1 },
         ...(state.rowId != null ? [{ label: "ID", value: state.rowId }] : []),
@@ -2604,6 +2605,21 @@ function MetadataImagePreviewDialog({
           );
         }
       },
+      loadFullImage: (signal) => svcRef.current.fetchMetadataImageCellObjectUrl(
+        projectId, protocolId, outputName, tableName,
+        state.rowIndexInTable, state.columnName,
+        {
+          rowId: state.rowId ?? undefined,
+          sortBy: sortBy ?? undefined,
+          asc: sortBy ? sortAsc : undefined,
+          size: contrastMode === "original" ? METADATA_IMAGE_FULL_SIZE : METADATA_IMAGE_FULL_DRAWN_SIZE,
+          contrastMode,
+          applyTransform: false,
+          inline: true,
+          signal,
+          format: "png",
+        },
+      ),
     };
   }, [state, projectId, protocolId, outputName, tableName, sortBy, sortAsc, contrastMode, svcRef]);
 

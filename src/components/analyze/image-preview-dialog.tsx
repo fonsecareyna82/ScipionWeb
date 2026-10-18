@@ -39,11 +39,15 @@ import ExternalWindowPortal, {
 export type ImagePreviewSource = {
   title: string;
   path: string;
-  renderSize?: number;
   details?: Array<{ label: string; value: string | number; highlight?: boolean }>;
   // Each load owns its object URL; the dialog releases it on close or replacement.
   loadImage: (signal: AbortSignal) => Promise<{ url: string; revoke: () => void }>;
+  // The image at its full resolution, without compression losses: loaded after
+  // the quick one, which it replaces when it arrives.
+  loadFullImage?: (signal: AbortSignal) => Promise<{ url: string; revoke: () => void }>;
 };
+
+type FullQuality = "loading" | "ready" | "failed" | null;
 
 type ImagePreviewDialogProps = {
   image: ImagePreviewSource | null;
@@ -70,6 +74,20 @@ export function ImagePreviewDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fullQuality, setFullQuality] = useState<FullQuality>(null);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  // The "Full resolution" badge shows for a moment when the full image arrives.
+  const [showFullBadge, setShowFullBadge] = useState(false);
+
+  useEffect(() => {
+    if (fullQuality !== "ready") {
+      setShowFullBadge(false);
+      return;
+    }
+    setShowFullBadge(true);
+    const timer = window.setTimeout(() => setShowFullBadge(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [fullQuality]);
 
   const externalWindowRef = useRef<Window | null>(null);
 
@@ -128,6 +146,8 @@ export function ImagePreviewDialog({
     setPreviewUrl(null);
     setError(null);
     setLoading(!!image);
+    setFullQuality(image?.loadFullImage ? "loading" : null);
+    setNaturalSize(null);
     resetView();
     dragStateRef.current.active = false;
     setIsPanning(false);
@@ -135,30 +155,58 @@ export function ImagePreviewDialog({
 
     let cancelled = false;
     let revokeCurrent: (() => void) | null = null;
+    let showingFull = false;
+    let quickFailure: unknown = null;
+    let fullFailed = !image.loadFullImage;
     const controller = new AbortController();
+
+    const show = (result: { url: string; revoke: () => void }, full: boolean) => {
+      if (cancelled || (showingFull && !full)) {
+        result.revoke();
+        return;
+      }
+      revokeCurrent?.();
+      revokeCurrent = result.revoke;
+      showingFull = full;
+      setPreviewUrl(result.url);
+      setError(null);
+      setLoading(false);
+    };
+    // An error shows only when neither image could be loaded.
+    const failIfNothing = () => {
+      if (cancelled || revokeCurrent || !fullFailed || quickFailure === null) return;
+      setError(getErrorMessage(quickFailure, "Failed to load image"));
+      setLoading(false);
+    };
 
     void (async () => {
       try {
-        const result = await image.loadImage(controller.signal);
-        if (cancelled) {
-          result.revoke();
-          return;
-        }
-        revokeCurrent = result.revoke;
-        setPreviewUrl(result.url);
-        setLoading(false);
+        show(await image.loadImage(controller.signal), false);
       } catch (error) {
-        if (!cancelled) {
-          setError(getErrorMessage(error, "Failed to load image"));
-          setLoading(false);
-        }
+        quickFailure = error ?? new Error("Failed to load image");
+        failIfNothing();
       }
     })();
+
+    if (image.loadFullImage) {
+      const loadFull = image.loadFullImage;
+      void (async () => {
+        try {
+          show(await loadFull(controller.signal), true);
+          if (!cancelled) setFullQuality("ready");
+        } catch {
+          fullFailed = true;
+          if (!cancelled) setFullQuality("failed");
+          failIfNothing();
+        }
+      })();
+    }
 
     return () => {
       cancelled = true;
       controller.abort();
       revokeCurrent?.();
+      revokeCurrent = null;
     };
   }, [image, resetView]);
 
@@ -743,8 +791,8 @@ export function ImagePreviewDialog({
                   sx={{
                     position: "relative",
                     zIndex: 1,
-                    width: "min(1024px, 100%)",
-                    height: "min(1024px, calc(100vh - 220px))",
+                    width: "100%",
+                    height: "100%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -757,6 +805,10 @@ export function ImagePreviewDialog({
                     src={previewUrl}
                     alt={image?.path ?? ""}
                     draggable={false}
+                    onLoad={(event) => {
+                      const { naturalWidth, naturalHeight } = event.currentTarget;
+                      if (naturalWidth && naturalHeight) setNaturalSize({ width: naturalWidth, height: naturalHeight });
+                    }}
                     style={{
                       display: "block",
                       width: "100%",
@@ -767,6 +819,38 @@ export function ImagePreviewDialog({
                       transition: isPanning ? "none" : "transform 120ms ease-out",
                     }}
                   />
+                </Box>
+              )}
+
+              {!loading && !error && previewUrl && (fullQuality === "loading" || showFullBadge) && (
+                <Box
+                  role="status"
+                  data-testid="preview-quality-badge"
+                  sx={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    zIndex: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    px: 1.25,
+                    py: 0.5,
+                    borderRadius: "999px",
+                    color: "#ffffff",
+                    backgroundColor: fullQuality === "loading" ? "rgba(15,23,42,0.78)" : "rgba(22,101,52,0.85)",
+                    boxShadow: "0 6px 18px rgba(15,23,42,0.18)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  {fullQuality === "loading" ? (
+                    <CircularProgress size={12} thickness={5} sx={{ color: "#ffffff" }} />
+                  ) : null}
+                  <Typography variant="caption" sx={{ fontWeight: 700, lineHeight: 1.2, color: "inherit" }}>
+                    {fullQuality === "loading"
+                      ? "Loading full resolution…"
+                      : `Full resolution${naturalSize ? ` · ${naturalSize.width} × ${naturalSize.height} px` : ""}`}
+                  </Typography>
                 </Box>
               )}
             </Box>
@@ -810,18 +894,23 @@ export function ImagePreviewDialog({
                       xs: 0,
                       sm: "auto",
                     },
-                    color: "#94a3b8",
+                    color: "#64748b",
                   }}
                 >
                   <Typography
                     variant="caption"
                     sx={{
-                      fontSize: "0.68rem",
-                      fontWeight: 600,
+                      fontSize: "0.72rem",
+                      fontWeight: 650,
                       letterSpacing: "0.025em",
                     }}
                   >
-                    Double-click preview · {image.renderSize ?? 1024}px render
+                    {fullQuality === "loading"
+                      ? "Loading full resolution…"
+                      : fullQuality === "ready"
+                        ? "Full resolution"
+                        : "Preview"}
+                    {naturalSize ? ` · ${naturalSize.width} × ${naturalSize.height} px` : ""}
                   </Typography>
                 </Box>
               </Box>
