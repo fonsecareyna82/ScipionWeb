@@ -43,6 +43,16 @@ type Direction = "TB" | "LR";
 
 /** Free space kept between a level's largest node and the next level. */
 const MIN_LEVEL_GAP = 160;
+
+// Grid view (world units; the grid is shown zoomed out).
+const GRID_CARD_WIDTH = 950;
+const GRID_GAP_X = 300;
+const GRID_GAP_Y = 200;
+const GRID_MARGIN = 100;
+// Sub-workflows start on a new row, further apart than rows of one.
+const GRID_SECTION_GAP = 560;
+// Output lists scroll, so a card does not grow without bounds.
+const GRID_MAX_ESTIMATED_HEIGHT = 720;
 type GraphPosition = { x: number; y: number };
 
 export type NodeSizeMap = Record<string, { width: number; height: number }>;
@@ -72,15 +82,6 @@ function getNodeWidth(
   return typeof w === "number" && w > 0 ? Math.ceil(w) : estimateLabelWidth(label);
 }
 
-function getNodeHeight(
-  nodeId: string,
-  label: string,
-  nodeSizeMap?: NodeSizeMap | null
-): number {
-  const h = nodeSizeMap?.[nodeId]?.height;
-  return typeof h === "number" && h > 0 ? Math.ceil(h) : estimateNodeHeight(label);
-}
-
 function uniqStable(arr: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -108,33 +109,75 @@ export function getGraphTopologySignature(protocols: Record<string, ProtocolNode
     .join("|");
 }
 
-function getTraversalOrderForGrid(protocols: Record<string, ProtocolNode>): string[] {
-  // getTraversalOrderForGrid
+/** A sub-workflow of the grid: its protocols, each after all its parents. */
+export type GridSection = { id: string; title: string; ids: string[] };
+
+/**
+ * Grid order: one section per sub-workflow (protocols connected among
+ * themselves), in creation order; inside, protocols by level (each one after
+ * all its parents, e.g. import, alignment, CTF, picking...), then creation order.
+ */
+export function getGridSections(protocols: Record<string, ProtocolNode>): GridSection[] {
+  const ids = Object.keys(protocols).filter((id) => id !== "PROJECT").sort(stableIdCompare);
+  const known = new Set(ids);
+  const childrenOf = (id: string) =>
+    uniqStable(Array.isArray(protocols[id]?.children) ? protocols[id].children.map(String) : [])
+      .filter((childId) => known.has(childId));
+
+  // Levels: longest path from the protocols without parents (cycles ignored).
+  const level = new Map<string, number>();
   const visited = new Set<string>();
-  const order: string[] = [];
-
+  const onStack = new Set<string>();
+  const postOrder: string[] = [];
   const visit = (id: string) => {
-    // visit
-    if (!id || id === "PROJECT") return;
-    if (visited.has(id)) return;
     visited.add(id);
-    order.push(id);
-
-    const prot = protocols[id];
-    const children = uniqStable(Array.isArray(prot?.children) ? prot.children.map(String) : []);
-    for (const childId of children) visit(childId);
+    onStack.add(id);
+    for (const childId of childrenOf(id)) if (!visited.has(childId)) visit(childId);
+    onStack.delete(id);
+    postOrder.push(id);
   };
+  const hasParent = new Set(ids.flatMap(childrenOf));
+  for (const id of [...ids.filter((id) => !hasParent.has(id)), ...ids]) {
+    if (!visited.has(id)) visit(id);
+  }
+  const position = new Map(postOrder.map((id, index) => [id, index]));
+  for (const id of [...postOrder].reverse()) {
+    const current = level.get(id) ?? 0;
+    level.set(id, current);
+    for (const childId of childrenOf(id)) {
+      // Only forward edges order levels (a back edge closes a cycle).
+      if ((position.get(childId) ?? 0) < (position.get(id) ?? 0)) {
+        level.set(childId, Math.max(level.get(childId) ?? 0, current + 1));
+      }
+    }
+  }
 
-  const root = protocols.PROJECT;
-  const rootChildren = uniqStable(Array.isArray(root?.children) ? root.children.map(String) : []);
-  for (const childId of rootChildren) visit(childId);
-
-  // append disconnected nodes (stable)
-  const remaining = Object.keys(protocols)
-    .filter((id) => id !== "PROJECT" && !visited.has(id))
-    .sort(stableIdCompare);
-
-  return [...order, ...remaining];
+  // Sub-workflows: connected protocols.
+  const neighbours = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
+  for (const id of ids) {
+    for (const childId of childrenOf(id)) {
+      neighbours.get(id)!.add(childId);
+      neighbours.get(childId)!.add(id);
+    }
+  }
+  const sections: GridSection[] = [];
+  const assigned = new Set<string>();
+  for (const start of ids) {
+    if (assigned.has(start)) continue;
+    const members: string[] = [];
+    const pending = [start];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (assigned.has(id)) continue;
+      assigned.add(id);
+      members.push(id);
+      for (const other of neighbours.get(id) ?? []) if (!assigned.has(other)) pending.push(other);
+    }
+    members.sort((a, b) => ((level.get(a) ?? 0) - (level.get(b) ?? 0)) || stableIdCompare(a, b));
+    const first = members[0];
+    sections.push({ id: first, title: protocols[first]?.label || first, ids: members });
+  }
+  return sections;
 }
 
 function getGraphNodeLabel(
@@ -1243,101 +1286,72 @@ export function buildGraphElements(
     return { nodes: [], edges: [], table: tableData };
   }
 
-  // GRID view -> rows and columns from top-left, no edges
+  // GRID view -> cards in rows, one block per sub-workflow, no edges
   if (viewMode === "grid") {
-    const orderedIds = getTraversalOrderForGrid(protocols);
-    const items = orderedIds.map((id) => [id, protocols[id]] as const);
-
-    const total = items.length;
-    if (total === 0) return { nodes: [], edges: [] };
+    const sections = getGridSections(protocols);
+    if (sections.length === 0) return { nodes: [], edges: [] };
 
     const fallbackW =
       typeof window !== "undefined" && typeof window.innerWidth === "number" ? window.innerWidth : 1600;
-
     const zoom = typeof viewportZoom === "number" && viewportZoom > 0 ? viewportZoom : 1;
     const screenWidthPx = Math.max(600, containerWidth ?? fallbackW);
-    const wrapWorldWidth = screenWidthPx / zoom;
+    const worldWidth = screenWidthPx / zoom - 2 * GRID_MARGIN;
 
-    const estWidths = items.map(([id, prot]) => {
-      const label = prot?.label || id;
-      return getNodeWidth(id, label, nodeSizeMap);
-    });
-
-    const estHeights = items.map(([id, prot]) => {
-      const label = prot?.label || id;
-      return getNodeHeight(id, label, nodeSizeMap);
-    });
-
-    const gapX = 720;
-    const gapY = 300;
-
-    const softWidths = estWidths.map((w) => Math.round(w * 0.45));
-    const avgSoftW =
-      softWidths.length > 0
-        ? Math.round(softWidths.reduce((a, b) => a + b, 0) / softWidths.length)
-        : 560;
-
-    const baseW = Math.min(680, Math.max(440, avgSoftW));
-    const baseH =
-      estHeights.length > 0
-        ? Math.min(
-          520,
-          Math.max(
-            320,
-            Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
-          )
-        )
-        : 380;
-
-    const cellW = baseW + gapX;
-    const cellH = baseH + gapY;
-
-    const cols =
-      Math.max(1, Math.min(total, Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))) + 1) || 1;
+    // Every card has the same width; rows are as tall as their tallest card.
+    const cardWidth = Math.max(
+      GRID_CARD_WIDTH,
+      ...Object.keys(protocols).map((id) => Math.ceil(nodeSizeMap?.[id]?.width ?? 0)),
+    );
+    const cardHeight = (id: string) => {
+      const measured = nodeSizeMap?.[id]?.height;
+      if (typeof measured === "number" && measured > 0) return Math.ceil(measured);
+      return Math.min(GRID_MAX_ESTIMATED_HEIGHT, getEstimatedGraphNodeHeight({ id, protocols, projectName, nodeSizeMap }));
+    };
+    const columns = Math.max(1, Math.floor((worldWidth + GRID_GAP_X) / (cardWidth + GRID_GAP_X)));
 
     const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
     const targetPosition: Position = direction === "LR" ? Position.Left : Position.Top;
 
-    // Start at (0,0) top-left
-    const offsetX = 100;
-    const offsetY = 100;
-
-    for (let i = 0; i < total; i++) {
-      const [id, prot] = items[i];
-      const row = Math.floor(i / cols);
-      const col = i % cols;
-
-      const x = col * cellW + offsetX;
-      const y = row * cellH + offsetY;
-
-      nodes.push({
-        id,
-        type: "status",
-        data: {
-          label: prot?.label || id,
-          title: prot?.title,
-          status: prot?.status,
-          runName: prot?.runName,
-          comment: prot?.comment,
-          id,
-          parameters: prot?.parameters,
-          cpuTime: prot?.cpuTime,
-          elapsedTime: prot?.elapsedTime,
-          elapsedSessionId: prot?.elapsedSessionId,
-          gpuIndicatorEligible: prot?.gpuIndicatorEligible === true,
-          stepsDone: prot?.stepsDone,
-          numberOfSteps: prot?.numberOfSteps,
-          outputs: prot?.outputs,
-          inputs: prot?.inputs,
-          tick: Number(prot?.elapsedTime) || 0,
-          tags: Array.isArray(prot?.tags) ? prot?.tags : [],
-        },
-        position: { x, y },
-        draggable: id !== "PROJECT",
-        sourcePosition,
-        targetPosition,
-      });
-    }
+    let y = GRID_MARGIN;
+    sections.forEach((section, sectionIndex) => {
+      if (sectionIndex > 0) y += GRID_SECTION_GAP;
+      for (let start = 0; start < section.ids.length; start += columns) {
+        const row = section.ids.slice(start, start + columns);
+        row.forEach((id, column) => {
+          const prot = protocols[id];
+          nodes.push({
+            id,
+            type: "status",
+            data: {
+              label: prot?.label || id,
+              title: prot?.title,
+              status: prot?.status,
+              runName: prot?.runName,
+              comment: prot?.comment,
+              id,
+              parameters: prot?.parameters,
+              cpuTime: prot?.cpuTime,
+              elapsedTime: prot?.elapsedTime,
+              elapsedSessionId: prot?.elapsedSessionId,
+              gpuIndicatorEligible: prot?.gpuIndicatorEligible === true,
+              stepsDone: prot?.stepsDone,
+              numberOfSteps: prot?.numberOfSteps,
+              outputs: prot?.outputs,
+              inputs: prot?.inputs,
+              tick: Number(prot?.elapsedTime) || 0,
+              tags: Array.isArray(prot?.tags) ? prot?.tags : [],
+              gridSection: { id: section.id, title: section.title, size: section.ids.length },
+            },
+            position: { x: GRID_MARGIN + column * (cardWidth + GRID_GAP_X), y },
+            draggable: true,
+            sourcePosition,
+            targetPosition,
+          });
+        });
+        y += Math.max(...row.map(cardHeight)) + GRID_GAP_Y;
+      }
+      y -= GRID_GAP_Y;
+    });
 
     return { nodes, edges: [] };
   }
@@ -1605,4 +1619,21 @@ export function compactAfterDeletion(nodes: Node[], edges: Edge[], direction: Di
     if (Math.abs(value - current) < 0.5) return node;
     return { ...node, position: direction === "TB" ? { ...node.position, x: value } : { ...node.position, y: value } };
   });
+}
+
+/** Grid view: how each protocol relates to the selected one (the grid has no edges). */
+export function getGridRelations(
+  protocols: Record<string, ProtocolNode>,
+  selectedId: string | null,
+): Record<string, "parent" | "child" | "dimmed"> {
+  if (!selectedId || !protocols[selectedId]) return {};
+  const childrenOf = (id: string) =>
+    Array.isArray(protocols[id]?.children) ? protocols[id].children.map(String) : [];
+  const children = new Set(childrenOf(selectedId));
+  const relations: Record<string, "parent" | "child" | "dimmed"> = {};
+  for (const id of Object.keys(protocols)) {
+    if (id === selectedId || id === "PROJECT") continue;
+    relations[id] = childrenOf(id).includes(selectedId) ? "parent" : children.has(id) ? "child" : "dimmed";
+  }
+  return relations;
 }

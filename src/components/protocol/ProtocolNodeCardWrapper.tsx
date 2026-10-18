@@ -35,6 +35,13 @@ type NodeActions = {
   ) => void;
 };
 
+export type GridRelation = "parent" | "child" | "dimmed";
+
+const GRID_RELATION_STYLES: Partial<Record<GridRelation, { color: string; label: string }>> = {
+  parent: { color: "#f59e0b", label: "Parent" },
+  child: { color: "#8b5cf6", label: "Child" },
+};
+
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
@@ -87,12 +94,37 @@ export const createStatusNodeWrapper = (
       };
     }, [data, id, resolvedProjectId, protocolOutputThumbnailsEnabled]);
 
+    // Grid view: with a protocol selected, its parents and children are
+    // marked and the rest fades, since the grid shows no edges.
+    const gridRelation = viewMode === "grid" ? (data as any)?.gridRelation as GridRelation | undefined : undefined;
+    const relationStyle = gridRelation ? GRID_RELATION_STYLES[gridRelation] : undefined;
+
     return (
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        style={{ display: "inline-block" }}
+        data-grid-relation={gridRelation}
+        style={{
+          display: "inline-block",
+          position: "relative",
+          borderRadius: "1rem",
+          transition: "opacity 160ms ease, outline-color 160ms ease",
+          opacity: gridRelation === "dimmed" ? 0.35 : 1,
+          outline: relationStyle ? `5px dashed ${relationStyle.color}` : undefined,
+          outlineOffset: relationStyle ? 14 : undefined,
+        }}
       >
+        {relationStyle && (
+          <span
+            style={{
+              position: "absolute", top: -96, left: 0, padding: "6px 22px", borderRadius: 999,
+              background: relationStyle.color, color: "#fff", fontSize: 40, fontWeight: 700,
+              letterSpacing: 0.5, pointerEvents: "none",
+            }}
+          >
+            {relationStyle.label}
+          </span>
+        )}
         <ProtocolNodeCard
           {...rest}
           id={String(id)}

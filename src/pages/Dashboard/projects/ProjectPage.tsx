@@ -14,7 +14,9 @@ import React, {
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import WorkflowLogsDock from "@/components/projects/WorkflowLogsDock";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
-import { buildGraphElements, compactAfterDeletion, getGraphTopologySignature } from "@/utils/graph_utils";
+import {
+  buildGraphElements, compactAfterDeletion, getGraphTopologySignature, getGridRelations, type NodeSizeMap,
+} from "@/utils/graph_utils";
 import {
   isScalarOutput,
   mergeProtocolOutputsPreservingOrder,
@@ -102,6 +104,12 @@ import WebPickingSessions from "@/components/picking/WebPickingSessions";
 
 
 /* --------------------- Types --------------------- */
+// Grid view zoom: the default shows several cards per row; the zoom buttons
+// make the cards larger or smaller within these limits.
+const DEFAULT_GRID_ZOOM = 0.347;
+const MIN_GRID_ZOOM = 0.18;
+const MAX_GRID_ZOOM = 0.7;
+
 interface StatusNodeData {
   label: string;
   title: string;
@@ -1967,14 +1975,17 @@ export default function ProjectPage() {
   const skipNextGridSnapRef = useRef(false);
 
   // Zoom rules
-  const GRID_ZOOM = 0.347;
+  // The grid is shown zoomed out; its zoom buttons change the card size.
+  const [gridZoom, setGridZoom] = useState(DEFAULT_GRID_ZOOM);
+  const gridZoomRef = useRef(gridZoom);
+  gridZoomRef.current = gridZoom;
   const MIN_ZOOM = 0.1;
   const MAX_ZOOM = 0.8;
   const clampZoom = (z: number | undefined | null) => {
     const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.347;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
-  const getEffectiveZoom = () => (viewMode === "grid" ? GRID_ZOOM : viewportRef.current.zoom);
+  const getEffectiveZoom = () => (viewMode === "grid" ? gridZoomRef.current : viewportRef.current.zoom);
 
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
@@ -3755,7 +3766,7 @@ export default function ProjectPage() {
       return {
         x: payload.viewport.x,
         y: payload.viewport.y,
-        zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(payload.viewport.zoom),
+        zoom: viewMode === "grid" ? gridZoomRef.current : clampZoom(payload.viewport.zoom),
       };
     } catch {
       return null;
@@ -3770,7 +3781,7 @@ export default function ProjectPage() {
       const normalizedViewport = {
         x: nextViewport.x,
         y: nextViewport.y,
-        zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(nextViewport.zoom),
+        zoom: viewMode === "grid" ? gridZoomRef.current : clampZoom(nextViewport.zoom),
       };
 
       const payload: PersistedViewportV1 = {
@@ -4223,7 +4234,7 @@ export default function ProjectPage() {
     setNodesLoadedOnce(false);
 
     // resetViewportForInitialPaint
-    const nextZoom = viewModeRef.current === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom);
+    const nextZoom = viewModeRef.current === "grid" ? gridZoomRef.current : clampZoom(viewportRef.current.zoom);
     setViewport({ x: 0, y: 0, zoom: nextZoom });
   }, [projectName]);
 
@@ -4270,7 +4281,7 @@ export default function ProjectPage() {
         const mode = viewModeRef.current;
         const dir = graphDirectionRef2.current;
         const width = gridWidthRef.current || flowWrapperRef.current?.clientWidth;
-        const effectiveZoom = mode === "grid" ? GRID_ZOOM : viewportRef.current.zoom;
+        const effectiveZoom = mode === "grid" ? gridZoomRef.current : viewportRef.current.zoom;
 
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
           data.shortName, data.protocols, mode, dir, width, effectiveZoom
@@ -4345,7 +4356,7 @@ export default function ProjectPage() {
               return;
             }
 
-            snapViewportToTopLeft(GRID_ZOOM);
+            snapViewportToTopLeft(gridZoomRef.current);
           });
         }
       }
@@ -5077,10 +5088,38 @@ export default function ProjectPage() {
   };
 
 
+  /* ------------------------ Grid: parents and children of the selection ------------------------ */
+  // The grid has no edges: with a protocol selected, its parents and children
+  // are marked and the other cards fade.
+  useEffect(() => {
+    const relations = viewMode === "grid"
+      ? getGridRelations((project?.protocols ?? {}) as any, previousNodeId)
+      : {};
+    const relationOf = (id: string) => relations[id];
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        const relation = relationOf(String(node.id));
+        if ((node.data as any)?.gridRelation === relation) return node;
+        changed = true;
+        return { ...node, data: { ...(node.data as any), gridRelation: relation } };
+      });
+      return changed ? next : current;
+    });
+  }, [previousNodeId, viewMode, project, nodes, setNodes]);
+
   /* ------------------------ Reflow on grid width change ------------------------ */
   useEffect(() => {
     if (viewMode !== "grid") return;
     if (!project?.protocols) return;
+
+    // Rows take the height of their tallest card, as measured once shown.
+    const measuredSizes: NodeSizeMap = {};
+    for (const node of nodesRef.current as any[]) {
+      const width = Number(node.measured?.width ?? node.width);
+      const height = Number(node.measured?.height ?? node.height);
+      if (width > 0 && height > 0) measuredSizes[String(node.id)] = { width, height };
+    }
 
     const { nodes: newNodes } = buildGraphElements(
       project.shortName,
@@ -5088,7 +5127,8 @@ export default function ProjectPage() {
       "grid",
       graphDirection,
       gridWidth || flowWrapperRef.current?.clientWidth,
-      GRID_ZOOM
+      gridZoomRef.current,
+      measuredSizes
     );
 
     const sel =
@@ -5134,6 +5174,7 @@ export default function ProjectPage() {
     }
 
   }, [gridWidth,
+    gridZoom,
     viewMode,
     project,
     graphDirection,
@@ -5305,7 +5346,7 @@ export default function ProjectPage() {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
           } else if (inst) {
-            snapViewportToTopLeft(GRID_ZOOM);
+            snapViewportToTopLeft(gridZoomRef.current);
           }
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
@@ -5588,7 +5629,7 @@ export default function ProjectPage() {
             }
           }, 0);
         } else {
-          snapViewportToTopLeft(GRID_ZOOM);
+          snapViewportToTopLeft(gridZoomRef.current);
         }
 
         requestAnimationFrame(() => {
@@ -5629,8 +5670,8 @@ export default function ProjectPage() {
       if (cancelled) return;
 
       if (viewModeRef.current === "grid") {
-        inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-        setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+        inst.setViewport({ x: 0, y: 0, zoom: gridZoomRef.current });
+        setViewport({ x: 0, y: 0, zoom: gridZoomRef.current });
       } else if (viewModeRef.current === "hierarchical") {
         centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
       }
@@ -5807,12 +5848,12 @@ export default function ProjectPage() {
           const ySum = validNodes.reduce((s, n) => s + (n.position?.y ?? 0), 0);
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
-          const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(currentViewport.zoom);
+          const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(currentViewport.zoom);
           inst.setCenter(centerX, centerY, { zoom, duration: 300 });
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         } else {
-          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(currentViewport.zoom) };
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: viewMode === "grid" ? gridZoomRef.current : clampZoom(currentViewport.zoom) };
           inst.setViewport(clamped);
           setViewport(clamped);
         }
@@ -5857,7 +5898,7 @@ export default function ProjectPage() {
 
     const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (inst2) {
-      const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst2.getViewport().zoom);
+      const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(inst2.getViewport().zoom);
       inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
       const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -5967,7 +6008,7 @@ export default function ProjectPage() {
 
       const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
       if (inst) {
-        const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst.getViewport().zoom);
+        const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(inst.getViewport().zoom);
         inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 350 });
         const vp = inst.getViewport();
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -5981,7 +6022,7 @@ export default function ProjectPage() {
     },
     [
       viewMode,
-      GRID_ZOOM,
+      gridZoom,
       projectName,
       svc,
       applyEdgeHighlight,
@@ -7840,11 +7881,11 @@ export default function ProjectPage() {
         return;
       }
 
-      const desiredZoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom ?? current.zoom);
+      const desiredZoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(viewportRef.current.zoom ?? current.zoom);
 
       if (viewMode === "grid") {
-        inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-        setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+        inst.setViewport({ x: 0, y: 0, zoom: gridZoomRef.current });
+        setViewport({ x: 0, y: 0, zoom: gridZoomRef.current });
       } else {
         inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
         const vp = inst.getViewport();
@@ -8584,7 +8625,10 @@ export default function ProjectPage() {
   /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
-    if (viewMode === "grid") return;
+    if (viewMode === "grid") {
+      setGridZoom((zoom) => Math.min(MAX_GRID_ZOOM, zoom * ZOOM_FACTOR));
+      return;
+    }
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -8594,7 +8638,10 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, [viewMode]);
   const handleZoomOut = useCallback(() => {
-    if (viewMode === "grid") return;
+    if (viewMode === "grid") {
+      setGridZoom((zoom) => Math.max(MIN_GRID_ZOOM, zoom / ZOOM_FACTOR));
+      return;
+    }
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -8603,9 +8650,22 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, [viewMode]);
+  // A new grid zoom: the cards reflow (see the grid reflow effect) and the
+  // camera keeps the same rows in view.
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const vp = inst.getViewport();
+    if (Math.abs(vp.zoom - gridZoom) < 1e-6) return;
+    const next = { x: vp.x, y: vp.y * (gridZoom / vp.zoom), zoom: gridZoom };
+    inst.setViewport(next);
+    setViewport(next);
+  }, [gridZoom, viewMode]);
+
   const handleFitView = useCallback(() => {
     if (viewMode === "grid") {
-      snapViewportToTopLeft(GRID_ZOOM);
+      snapViewportToTopLeft(gridZoomRef.current);
       return;
     }
     centerLikeButton(undefined, true);
@@ -9476,9 +9536,9 @@ export default function ProjectPage() {
               <div className="pp-flowControls">
                 <button
                   type="button"
-                  title={isGrid ? "Zoom disabled in Grid" : "Zoom in"}
+                  title={isGrid ? "Larger cards" : "Zoom in"}
                   onClick={handleZoomIn}
-                  disabled={isGrid}
+                  disabled={isGrid && gridZoom >= MAX_GRID_ZOOM}
                   className="pp-flowControlBtn"
                 >
                   <PlusIcon className="pp-btnIcon" />
@@ -9486,9 +9546,9 @@ export default function ProjectPage() {
 
                 <button
                   type="button"
-                  title={isGrid ? "Zoom disabled in Grid" : "Zoom out"}
+                  title={isGrid ? "Smaller cards" : "Zoom out"}
                   onClick={handleZoomOut}
-                  disabled={isGrid}
+                  disabled={isGrid && gridZoom <= MIN_GRID_ZOOM}
                   className="pp-flowControlBtn"
                 >
                   <MinusIcon className="pp-btnIcon" />
@@ -9566,8 +9626,8 @@ export default function ProjectPage() {
                 onNodesChange={handleNodesChangeWithPersistence}
                 onEdgesChange={onEdgesChange}
                 nodeTypes={nodeTypes}
-                minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
-                maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
+                minZoom={isGrid ? gridZoom : MIN_ZOOM}
+                maxZoom={isGrid ? gridZoom : MAX_ZOOM}
                 zoomOnScroll={!isGrid}
                 zoomOnPinch={!isGrid}
                 zoomOnDoubleClick={false}

@@ -127,6 +127,20 @@ describe("ProtocolNodeCardWrapper", () => {
     });
 
 
+    it("marks parents and children of the selection in the grid, and fades the rest", () => {
+        renderWrapper({ id: "2", viewMode: "grid", data: { label: "picker", gridRelation: "parent" } });
+        expect(screen.getByText("Parent")).toBeInTheDocument();
+        const parent = document.querySelector('[data-grid-relation="parent"]') as HTMLElement;
+        expect(parent.style.outline).toContain("dashed");
+    });
+
+    it("fades the cards unrelated to the selection in the grid, and nothing elsewhere", () => {
+        renderWrapper({ id: "3", viewMode: "grid", data: { label: "other", gridRelation: "dimmed" } });
+        expect((document.querySelector('[data-grid-relation="dimmed"]') as HTMLElement).style.opacity).toBe("0.35");
+        renderWrapper({ id: "4", viewMode: "hierarchical", data: { label: "tree", gridRelation: "child" } });
+        expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    });
+
     it("uses the ReactFlow node id as the canonical protocol identity", () => {
         renderWrapper({
             id: "10",
