@@ -2,6 +2,7 @@ import { useRef, type PointerEvent } from "react";
 import { Terminal, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import ProtocolLogsPanel from "@/components/protocol/ProtocolLogsPanel";
+import ProtocolAnalyzeAction from "@/components/protocol/ProtocolAnalyzeAction";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 
 type WorkflowLogsDockProps = {
@@ -9,6 +10,8 @@ type WorkflowLogsDockProps = {
   protocolId: string | null;
   protocolLabel: string;
   protocolStatus?: string | null;
+  /** The protocol has produced outputs (Analyze results needs them). */
+  protocolHasOutputs?: boolean;
   height: number;
   onHeightChange: (height: number) => void;
   onClose: () => void;
@@ -20,6 +23,7 @@ export default function WorkflowLogsDock({
   protocolId,
   protocolLabel,
   protocolStatus,
+  protocolHasOutputs = false,
   height,
   onHeightChange,
   onClose,
@@ -111,6 +115,16 @@ export default function WorkflowLogsDock({
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={protocolLabel}>
           {protocolId ? `#${protocolId} · ${protocolLabel || "Protocol"}` : "Select a protocol in the workflow"}
         </span>
+        {protocolId && projectId != null && (
+          <ProtocolAnalyzeAction
+            projectId={projectId}
+            protocolId={protocolId}
+            protocolLabel={protocolLabel}
+            protocolStatus={protocolStatus}
+            hasOutputs={protocolHasOutputs}
+            appearance="dock"
+          />
+        )}
         <button
           type="button"
           aria-label="Close workflow logs"

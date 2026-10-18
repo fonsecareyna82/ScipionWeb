@@ -46,10 +46,7 @@ import ExecuteModeButton from "./ExecuteModeButton";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
-import ProtocolViewerDiscoveryDialog from "./ProtocolViewerDiscoveryDialog";
-import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import { openableProtocolViewers } from "@/utils/protocol_viewer_runtime_preview";
-import { isXmippPickingProtocol, xmippPickingSource } from "@/components/picking/xmippPickingSource";
+import ProtocolAnalyzeAction from "./ProtocolAnalyzeAction";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
@@ -308,7 +305,6 @@ export default function ProtocolForm({
 
   const hasFormHelp = isNonEmptyString(formHelpText);
   const [openFormHelp, setOpenFormHelp] = useState(false);
-  const [protocolAnalyzeOpen, setProtocolAnalyzeOpen] = useState(false);
 
   // keepValuesForLater
   const values = useMemo(() => {
@@ -447,35 +443,9 @@ export default function ProtocolForm({
     return "";
   }, [protocolDetails?.runName, protocolDetails?.label, info, form, protocolId]);
 
-  // Protocol analysis never depends on the selected output, but it needs a
-  // stored protocol that has produced outputs and whose class has a viewer the
-  // Analyze results dialog can open: without outputs there is nothing to show.
+  // Analyze results needs a stored protocol with outputs (or Xmipp's picker).
   const hasProtocolOutputs = outputsFromApi.length > 0;
-  const isPersistedProtocol =
-    /^\d+$/.test(String(projectId ?? "")) && Number(projectId) > 0 &&
-    /^\d+$/.test(effectiveProtocolId) && Number(effectiveProtocolId) > 0;
-  const canAnalyzePersistedProtocol = hasProtocolOutputs && isPersistedProtocol;
-  // Xmipp picking protocols: Launch opens the picker while the protocol runs
-  // (WebPickingSessions); afterwards Analyze results reopens it, as on the desktop.
   const protocolStatus = String(protocolDetails?.status ?? info?.status ?? "").toLowerCase();
-  const canPickParticles = isPersistedProtocol && isXmippPickingProtocol(protocolClassName) &&
-    !["running", "launched", "scheduled", "new", "saved", ""].includes(protocolStatus);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const pickingSource = useMemo(
-    () => (canPickParticles ? xmippPickingSource(svc, String(projectId), effectiveProtocolId) : null),
-    [canPickParticles, svc, projectId, effectiveProtocolId],
-  );
-  const [hasProtocolViewers, setHasProtocolViewers] = useState(false);
-
-  useEffect(() => {
-    setHasProtocolViewers(false);
-    if (!canAnalyzePersistedProtocol || typeof svc.fetchProtocolViewerCandidates !== "function") return;
-    let cancelled = false;
-    Promise.resolve(svc.fetchProtocolViewerCandidates(String(projectId), effectiveProtocolId))
-      .then(result => { if (!cancelled) setHasProtocolViewers(openableProtocolViewers(result).length > 0); })
-      .catch(() => { if (!cancelled) setHasProtocolViewers(false); });
-    return () => { cancelled = true; };
-  }, [svc, projectId, effectiveProtocolId, canAnalyzePersistedProtocol]);
 
   const externalWindowRef =
     useRef<
@@ -3934,42 +3904,40 @@ export default function ProtocolForm({
 
 
   // Shown only for protocols with a viewer, as the desktop does.
-  const protocolAnalyzeHeaderAction = hasProtocolViewers || canPickParticles ? (
-    <Tooltip title="Open the viewers of this protocol" describeChild>
-      <Button
-        size="small"
-        onClick={() => (canPickParticles ? setPickerOpen(true) : setProtocolAnalyzeOpen(true))}
-        aria-haspopup="dialog"
-        startIcon={<BarChart3 size={15} strokeWidth={2.2} />}
-        sx={{
-          ...headerActionBtnSx,
-          height: 30,
-          px: 1.25,
-          mr: 0.5,
-          borderRadius: "8px",
-          textTransform: "none",
-          fontSize: "0.76rem",
-          fontWeight: 600,
-          letterSpacing: 0.2,
-          lineHeight: 1,
-          whiteSpace: "nowrap",
-          color: "#f8fafc",
-          boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.55)",
-          transition: "background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
-          "& .MuiButton-startIcon": { mr: 0.75, ml: 0, color: "#7dd3fc" },
-          "&:hover": {
-            background: "rgba(255,255,255,0.14)",
-            borderColor: "rgba(255,255,255,0.32)",
-            boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.9)",
-          },
-          "&:active": { background: "rgba(255,255,255,0.2)" },
-          "&.Mui-focusVisible": { outline: "2px solid #7dd3fc", outlineOffset: 2 },
-        }}
-      >
-        Analyze results
-      </Button>
-    </Tooltip>
-  ) : null;
+  const protocolAnalyzeHeaderAction = (
+    <ProtocolAnalyzeAction
+      projectId={projectId}
+      protocolId={effectiveProtocolId}
+      protocolLabel={protocolDisplayName}
+      protocolStatus={protocolStatus}
+      protocolClassName={protocolClassName}
+      hasOutputs={hasProtocolOutputs}
+      headerButtonSx={{
+        ...headerActionBtnSx,
+        height: 30,
+        px: 1.25,
+        mr: 0.5,
+        borderRadius: "8px",
+        textTransform: "none",
+        fontSize: "0.76rem",
+        fontWeight: 600,
+        letterSpacing: 0.2,
+        lineHeight: 1,
+        whiteSpace: "nowrap",
+        color: "#f8fafc",
+        boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.55)",
+        transition: "background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+        "& .MuiButton-startIcon": { mr: 0.75, ml: 0, color: "#7dd3fc" },
+        "&:hover": {
+          background: "rgba(255,255,255,0.14)",
+          borderColor: "rgba(255,255,255,0.32)",
+          boxShadow: "inset 0 -2px 0 rgba(56, 189, 248, 0.9)",
+        },
+        "&:active": { background: "rgba(255,255,255,0.2)" },
+        "&.Mui-focusVisible": { outline: "2px solid #7dd3fc", outlineOffset: 2 },
+      }}
+    />
+  );
 
   const formContent = (
     <div
@@ -4139,27 +4107,6 @@ export default function ProtocolForm({
         </div>
       )}
 
-      {pickerOpen && pickingSource && (
-        <AnalyzeOutputDialog
-          open
-          onClose={() => setPickerOpen(false)}
-          projectId={Number(projectId)}
-          protocolId={Number(effectiveProtocolId)}
-          protocolLabel={protocolDisplayName}
-          outputName="picking"
-          displayName="Particle picking"
-          outputRaw={{ pointerClass: "SetOfCoordinates" }}
-          coords2dSource={pickingSource}
-        />
-      )}
-
-      <ProtocolViewerDiscoveryDialog
-        open={protocolAnalyzeOpen}
-        onClose={() => setProtocolAnalyzeOpen(false)}
-        projectId={projectId}
-        protocolId={effectiveProtocolId}
-        protocolLabel={protocolDisplayName}
-      />
 
       {/* Protocol form help dialog */}
       {hasFormHelp && (

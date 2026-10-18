@@ -31,6 +31,8 @@ export type ProtocolViewerCandidate = {
 export type ProtocolViewerCandidatesResponse = {
   projectId?: number;
   protocolId?: string;
+  protocolClassName?: string;
+  protocolStatus?: string;
   viewers: ProtocolViewerCandidate[];
   runtimePreviewAvailable?: boolean;
 };

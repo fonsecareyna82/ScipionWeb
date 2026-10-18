@@ -9971,6 +9971,10 @@ export default function ProjectPage() {
                 tableData.find((row) => String(row.id) === workflowLogsProtocolId)?.status ??
                 (project?.protocols as any)?.[workflowLogsProtocolId]?.status ?? ""
               ) : null}
+              protocolHasOutputs={Boolean(workflowLogsProtocolId && (
+                (nodes.find((node) => String(node.id) === workflowLogsProtocolId)?.data?.outputs as unknown[] | undefined)
+                  ?? tableData.find((row) => String(row.id) === workflowLogsProtocolId)?.outputs ?? []
+              ).length > 0)}
               height={workflowLogsHeight}
               onHeightChange={setWorkflowLogsHeight}
               onClose={() => setWorkflowLogsOpen(false)}
