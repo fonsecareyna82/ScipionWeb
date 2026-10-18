@@ -425,6 +425,7 @@ export default function VolumeViewer({
   const [innerSurfaceEnabled3d, setInnerSurfaceEnabled3d] = useState(false);
   const [innerSurfaceLevel3d, setInnerSurfaceLevel3d] = useState<number | null>(null);
   const [innerSurfaceColor3d, setInnerSurfaceColor3d] = useState("#e8a33d");
+  const opacityBeforeInnerRef = useRef<number | null>(null);
   const updateMeshStyle3d = useCallback(
     (patch: Partial<MeshRenderStyle>) => setMeshStyle3d((current) => ({ ...current, ...patch })),
     [],
@@ -2555,6 +2556,11 @@ export default function VolumeViewer({
                   "& .MuiInputBase-root, & .MuiInputLabel-root": {
                     fontSize: "0.76rem",
                   },
+                  // The menus open inside the panel: same size as the chosen value.
+                  "& .MuiMenuItem-root": {
+                    fontSize: "0.76rem",
+                    minHeight: 30,
+                  },
                 }}
               >
                 <ToggleButtonGroup
@@ -3089,23 +3095,22 @@ export default function VolumeViewer({
                             helpKey="colorMode3d"
                             onHelp={openHelp}
                             control={
-                              <ToggleButtonGroup
+                              <TextField
                                 size="small"
-                                exclusive
+                                select
                                 value={usesSurfaceMesh3d ? colorMode3d : volumeColorMode3d}
-                                onChange={(_, value) => {
-                                  if (value) {
-                                    setColorMode3d(value as MeshColorMode3d);
-                                  }
+                                onChange={(event) => setColorMode3d(event.target.value as MeshColorMode3d)}
+                                SelectProps={{
+                                  MenuProps: { disablePortal: true },
+                                  SelectDisplayProps: { "aria-label": "Surface coloring" } as React.HTMLAttributes<HTMLDivElement>,
                                 }}
-                                sx={{ flexWrap: "wrap" }}
                               >
-                                <ToggleButton value="solid">solid</ToggleButton>
-                                <ToggleButton value="density">density</ToggleButton>
-                                <ToggleButton value="components">regions</ToggleButton>
-                                {usesSurfaceMesh3d && <ToggleButton value="radial">radial</ToggleButton>}
-                                {usesSurfaceMesh3d && <ToggleButton value="height">height</ToggleButton>}
-                              </ToggleButtonGroup>
+                                <MenuItem value="solid">Solid</MenuItem>
+                                <MenuItem value="density">Density</MenuItem>
+                                <MenuItem value="components">Regions</MenuItem>
+                                {usesSurfaceMesh3d && <MenuItem value="radial">Radial</MenuItem>}
+                                {usesSurfaceMesh3d && <MenuItem value="height">Height</MenuItem>}
+                              </TextField>
                             }
                           />
                           <ParamRow
@@ -3413,7 +3418,12 @@ export default function VolumeViewer({
                                         setInnerSurfaceEnabled3d(enabled);
                                         if (enabled) {
                                           setLiveGridWanted(true);
+                                          opacityBeforeInnerRef.current = opacity3d;
                                           if (opacity3d >= 1) setOpacity3d(0.4);
+                                        } else if (opacityBeforeInnerRef.current != null) {
+                                          // Back to the surface as it was before the inner one.
+                                          setOpacity3d(opacityBeforeInnerRef.current);
+                                          opacityBeforeInnerRef.current = null;
                                         }
                                       }}
                                       slotProps={{ input: { "aria-label": "Inner surface" } }}

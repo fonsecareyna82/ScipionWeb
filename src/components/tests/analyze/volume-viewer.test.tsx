@@ -66,11 +66,12 @@ vi.mock("../../analyze/gpu-volume-view", () => ({
 }));
 
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode, previewMesh, innerMesh }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode, previewMesh, innerMesh, opacity }: any) => (
         <div
             data-testid="mock-mesh-volume"
             data-preview-triangles={previewMesh ? previewMesh.indices.length / 3 : 0}
             data-inner-triangles={innerMesh ? innerMesh.indices.length / 3 : 0}
+            data-opacity={opacity}
             data-render-style={JSON.stringify(renderStyle ?? {})}
             data-color-mode={colorMode ?? ""}
             data-reset-view-key={resetViewKey}
@@ -777,7 +778,7 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByLabelText("Depth cue"));
         fireEvent.click(screen.getByRole("button", { name: "ortho.", hidden: true }));
         fireEvent.change(screen.getByLabelText("Surface color"), { target: { value: "#ff8800" } });
-        fireEvent.click(screen.getByRole("button", { name: "radial", hidden: true }));
+        await choose("Surface coloring", "Radial");
 
         const view = screen.getByTestId("mock-mesh-volume");
         expect(JSON.parse(view.getAttribute("data-render-style") ?? "{}")).toEqual({
@@ -826,12 +827,17 @@ describe("VolumeViewer", () => {
         fireEvent.click(await screen.findByLabelText("Inner surface"));
 
         expect(await screen.findByRole("slider", { name: "Inner contour" })).toBeInTheDocument();
+        expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-opacity", "0.4");
         await waitFor(() => {
             expect(Number(screen.getByTestId("mock-mesh-volume").getAttribute("data-inner-triangles"))).toBeGreaterThan(0);
         });
         fireEvent.click(screen.getByLabelText("Inner surface"));
         await waitFor(() => {
             expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-inner-triangles", "0");
+        });
+        // Without the inner surface, the outer one is as solid as before.
+        await waitFor(() => {
+            expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-opacity", "1");
         });
     });
 
