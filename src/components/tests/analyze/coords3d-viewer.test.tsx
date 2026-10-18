@@ -847,6 +847,20 @@ describe("Coords3dViewer", () => {
         }
     });
 
+    it("keeps the slice info on one line whatever slice is shown", async () => {
+        renderViewer();
+
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        const [zSlider] = screen.getAllByRole("slider");
+        for (let step = 0; step < 4; step++) {
+            fireEvent.keyDown(zSlider, { key: "ArrowRight" });
+            // The item stays (also with no points in the slice): the bar never changes its lines.
+            expect(screen.getByText("Slice points:")).toBeInTheDocument();
+        }
+        const bar = screen.getByText("Slice points:").closest("div")?.parentElement as HTMLElement;
+        expect(getComputedStyle(bar).flexWrap).toBe("nowrap");
+    });
+
     it("moves the X and Y slice sliders in 3-views mode", async () => {
         renderViewer();
 

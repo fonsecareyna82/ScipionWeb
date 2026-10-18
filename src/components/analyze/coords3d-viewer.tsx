@@ -3932,14 +3932,19 @@ export default function Coords3dViewer({
               )}
 
               {viewMode !== "metadata" && !(viewMode === "slice" && sliceLayoutMode === "triple") && (
+                // One line of fixed height: values that change with the slice
+                // must never wrap it, or the slice above resizes as it moves.
                 <Box
                   sx={{
-                    p: 1,
+                    px: 1,
+                    height: 32,
                     display: "flex",
                     gap: 2,
-                    flexWrap: "wrap",
+                    flexWrap: "nowrap",
                     alignItems: "center",
                     flexShrink: 0,
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {tomoMeta && (
@@ -3961,7 +3966,7 @@ export default function Coords3dViewer({
                   {showYAxisSlider && sliceIndexY != null && maxSliceY != null && (
                     <MetaItem label="Slice (Y)" value={`${sliceIndexY + 1} / ${maxSliceY + 1}`} />
                   )}
-                  {viewMode === "slice" && slicePoints.length > 0 && (
+                  {viewMode === "slice" && (
                     <MetaItem label="Slice points" value={slicePoints.length.toLocaleString("en-US")} />
                   )}
                   {viewMode === "map3d" && pickedPoint3d && (
@@ -4878,11 +4883,12 @@ function IconRowHelp({
 
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
-    <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+    <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline", flexShrink: 0 }}>
       <Typography variant="caption" color="text.secondary">
         {label}:
       </Typography>
-      <Typography variant="caption">{value}</Typography>
+      {/* Digits of equal width: a changing number keeps its place. */}
+      <Typography variant="caption" sx={{ fontVariantNumeric: "tabular-nums" }}>{value}</Typography>
     </Box>
   );
 }
