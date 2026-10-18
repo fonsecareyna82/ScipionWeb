@@ -791,6 +791,25 @@ export type TiltSeriesStackOptions = {
   signal?: AbortSignal;
 };
 
+// A tomogram reduced for a viewer that cuts its slices itself: 8 bits per
+// voxel (z, y, x; ``low``/``high`` are the values of 0 and 255), one contrast
+// window for every slice.
+export type TomogramVolumeStack = {
+  width: number;
+  height: number;
+  depth: number;
+  origWidth: number;
+  origHeight: number;
+  origDepth: number;
+  // Original voxels per reduced voxel along x, y, z.
+  binning: [number, number, number];
+  mean: number;
+  std: number;
+  low: number;
+  high: number;
+  data: Uint8Array;
+};
+
 export interface VolumeSurfaceMesh {
   kind: "surfaceMesh";
   level: number;
@@ -2088,6 +2107,15 @@ export interface ProjectService<
       signal?: AbortSignal;
     }
   ): Promise<VolumeSliceObjectUrl>;
+
+  /** The tomogram of a SetOfCoordinates3D reduced for the browser to cut its slices. */
+  fetchCoords3dTomogramVolume(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    opts?: { maxVoxels?: number; signal?: AbortSignal },
+  ): Promise<TomogramVolumeStack>;
 
   fetchCoords3dTomogramGallery(
     projectId: Id,

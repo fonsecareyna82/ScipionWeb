@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTiltSeriesStack } from "@/api/projects";
+import { parseTiltSeriesStack, parseTomogramVolumeStack } from "@/api/projects";
 
 function payload(header: Record<string, unknown>, images: Uint8Array[]) {
     let json = JSON.stringify(header);
@@ -47,5 +47,24 @@ describe("tilt series stack", () => {
         const buffer = payload({ frames: [{ index: 0, width: 4, height: 4 }] }, [new Uint8Array(3)]);
         expect(() => parseTiltSeriesStack(buffer)).toThrow();
         expect(() => parseTiltSeriesStack(new ArrayBuffer(4))).toThrow();
+    });
+
+    it("reads a reduced tomogram", () => {
+        const header = { width: 2, height: 2, depth: 2, origWidth: 4, origHeight: 4, origDepth: 4, binning: [2, 2, 2], mean: 1, std: 1, low: -4, high: 6 };
+        let json = JSON.stringify(header);
+        while ((8 + json.length) % 4) json += " ";
+        const headerBytes = new TextEncoder().encode(json);
+        const buffer = new ArrayBuffer(8 + headerBytes.length + 8);
+        const bytes = new Uint8Array(buffer);
+        bytes.set(new TextEncoder().encode("TVOL"));
+        new DataView(buffer).setUint32(4, headerBytes.length, true);
+        bytes.set(headerBytes, 8);
+        bytes.set([1, 2, 3, 4, 5, 6, 7, 8], 8 + headerBytes.length);
+
+        const volume = parseTomogramVolumeStack(buffer);
+
+        expect(volume.binning).toEqual([2, 2, 2]);
+        expect(Array.from(volume.data)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(() => parseTomogramVolumeStack(buffer.slice(0, buffer.byteLength - 1))).toThrow();
     });
 });

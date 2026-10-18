@@ -108,6 +108,9 @@ type EditHistoryEntry = {
   dirtyAfter: boolean;
 };
 
+import { SliceUrlCache, slicePalette } from "./tomogram-slices";
+import type { TomogramVolumeStack } from "@/services/ProjectService";
+
 const MAX_POINTS_DEFAULT = 50000;
 const EDIT_HISTORY_LIMIT = 100;
 const NEARBY_SLICE_RANGE = 10;
@@ -1383,6 +1386,57 @@ export default function Coords3dViewer({
     return null;
   }, [selectedTomoId]);
 
+  // The tomogram reduced by the API: once here, every slice of every axis is
+  // cut in the browser (tomogram-slices), instantly and with one contrast for
+  // the whole tomogram. Until then (or without it) the API renders them.
+  const [tomogramVolume, setTomogramVolume] = useState<TomogramVolumeStack | null>(null);
+  const sliceUrlCachesRef = useRef<Record<SliceAxis, SliceUrlCache> | null>(null);
+  const tomogramPalette = useMemo(
+    () => (tomogramVolume ? slicePalette(tomogramVolume, tomogramColormap) : null),
+    [tomogramVolume, tomogramColormap],
+  );
+
+  useEffect(() => {
+    sliceUrlCachesRef.current?.x.clear();
+    sliceUrlCachesRef.current?.y.clear();
+    sliceUrlCachesRef.current?.z.clear();
+    sliceUrlCachesRef.current = tomogramPalette
+      ? { x: new SliceUrlCache(), y: new SliceUrlCache(), z: new SliceUrlCache() }
+      : null;
+  }, [tomogramPalette]);
+
+  useEffect(() => () => {
+    sliceUrlCachesRef.current?.x.clear();
+    sliceUrlCachesRef.current?.y.clear();
+    sliceUrlCachesRef.current?.z.clear();
+  }, []);
+
+  useEffect(() => {
+    setTomogramVolume(null);
+    const fetchVolume = (svc as any)?.fetchCoords3dTomogramVolume;
+    if (effectiveTomoId == null || typeof fetchVolume !== "function") return;
+    const controller = new AbortController();
+    fetchVolume
+      .call(svc, projectId, protocolId, outputName, effectiveTomoId, { signal: controller.signal })
+      .then((volume: TomogramVolumeStack) => {
+        if (!controller.signal.aborted) setTomogramVolume(volume);
+      })
+      .catch(() => {
+        // The API keeps rendering the slices.
+      });
+    return () => controller.abort();
+  }, [effectiveTomoId, projectId, protocolId, outputName, svc]);
+
+  // The URL of a slice cut in the browser, or null while the volume is not here.
+  const localSliceUrl = useCallback(
+    (axis: SliceAxis, index: number): string | null => {
+      const caches = sliceUrlCachesRef.current;
+      if (!tomogramVolume || !tomogramPalette || !caches) return null;
+      return caches[axis].get(tomogramVolume, tomogramPalette, axis, index);
+    },
+    [tomogramVolume, tomogramPalette],
+  );
+
   const canShowExternalViewers = Boolean(
     effectiveTomoId != null &&
     selectedTomoId != null &&
@@ -1439,6 +1493,17 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexZ, maxSliceZ));
+
+    const localUrl = localSliceUrl("z", clamped);
+    if (localUrl) {
+      sliceAbortRef.current?.abort();
+      setSliceError(null);
+      setSliceLoading(false);
+      setSliceImageUrl(localUrl);
+      setDisplayedSliceIndexZ(clamped);
+      return;
+    }
+
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|z|${tomogramColormap}|${isDraggingZ ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1533,6 +1598,7 @@ export default function Coords3dViewer({
     fetchSliceIndexZ,
     isDraggingZ,
     buildSliceFetchOptions,
+    localSliceUrl,
     maxSliceZ,
     projectId,
     protocolId,
@@ -1566,6 +1632,17 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexX, maxSliceX));
+
+    const localUrl = localSliceUrl("x", clamped);
+    if (localUrl) {
+      sliceXAbortRef.current?.abort();
+      setSliceXError(null);
+      setSliceXLoading(false);
+      setSliceXImageUrl(localUrl);
+      setDisplayedSliceIndexX(clamped);
+      return;
+    }
+
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|x|${tomogramColormap}|${isDraggingX ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1658,6 +1735,7 @@ export default function Coords3dViewer({
     fetchSliceIndexX,
     isDraggingX,
     buildSliceFetchOptions,
+    localSliceUrl,
     maxSliceX,
     projectId,
     protocolId,
@@ -1691,6 +1769,17 @@ export default function Coords3dViewer({
     }
 
     const clamped = Math.max(0, Math.min(fetchSliceIndexY, maxSliceY));
+
+    const localUrl = localSliceUrl("y", clamped);
+    if (localUrl) {
+      sliceYAbortRef.current?.abort();
+      setSliceYError(null);
+      setSliceYLoading(false);
+      setSliceYImageUrl(localUrl);
+      setDisplayedSliceIndexY(clamped);
+      return;
+    }
+
     const cacheKey = `${projectId}|${protocolId}|${outputName}|${effectiveTomoId}|y|${tomogramColormap}|${isDraggingY ? "drag" : "full"}|${clamped}`;
 
     const cached = touchCachedEntry(sliceImageCacheRef.current, cacheKey);
@@ -1783,6 +1872,7 @@ export default function Coords3dViewer({
     fetchSliceIndexY,
     isDraggingY,
     buildSliceFetchOptions,
+    localSliceUrl,
     maxSliceY,
     projectId,
     protocolId,
@@ -1796,7 +1886,7 @@ export default function Coords3dViewer({
   // isDraggingZ -- that's the coalesce-to-latest fetch above). Debounced so
   // a fast scrub doesn't fire a prefetch per tick, only once it pauses.
   useEffect(() => {
-    if (isDraggingZ) return;
+    if (isDraggingZ || tomogramVolume) return;
     if (fetchSliceIndexZ == null || maxSliceZ == null || maxSliceZ < 0) return;
     if (effectiveTomoId == null) return;
     if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
@@ -1859,6 +1949,7 @@ export default function Coords3dViewer({
     return () => window.clearTimeout(timer);
   }, [
     isDraggingZ,
+    tomogramVolume,
     fetchSliceIndexZ,
     maxSliceZ,
     effectiveTomoId,
@@ -1872,7 +1963,7 @@ export default function Coords3dViewer({
 
   // neighborSlicePrefetchX -- same as Z, for the X axis.
   useEffect(() => {
-    if (isDraggingX) return;
+    if (isDraggingX || tomogramVolume) return;
     if (fetchSliceIndexX == null || maxSliceX == null || maxSliceX < 0) return;
     if (effectiveTomoId == null) return;
     if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
@@ -1934,6 +2025,7 @@ export default function Coords3dViewer({
     return () => window.clearTimeout(timer);
   }, [
     isDraggingX,
+    tomogramVolume,
     fetchSliceIndexX,
     maxSliceX,
     effectiveTomoId,
@@ -1947,7 +2039,7 @@ export default function Coords3dViewer({
 
   // neighborSlicePrefetchY -- same as Z, for the Y axis.
   useEffect(() => {
-    if (isDraggingY) return;
+    if (isDraggingY || tomogramVolume) return;
     if (fetchSliceIndexY == null || maxSliceY == null || maxSliceY < 0) return;
     if (effectiveTomoId == null) return;
     if (typeof (svc as any)?.fetchCoords3dTomogramSliceObjectUrl !== "function") return;
@@ -2009,6 +2101,7 @@ export default function Coords3dViewer({
     return () => window.clearTimeout(timer);
   }, [
     isDraggingY,
+    tomogramVolume,
     fetchSliceIndexY,
     maxSliceY,
     effectiveTomoId,

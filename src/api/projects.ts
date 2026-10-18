@@ -20,6 +20,7 @@ import {
   TiltSeriesStack,
   TiltSeriesStackOptions,
   TiltStackFrame,
+  TomogramVolumeStack,
   WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
@@ -3470,6 +3471,47 @@ export async function fetchCoords3dForTomogram(
         String(baseTomoId)),
     n: !isArray && typeof payload.n === "number" ? payload.n : coords.length,
     coords,
+  };
+}
+
+export async function fetchCoords3dTomogramVolume(
+  projectId: Id,
+  protocolId: Id,
+  coordsOutputName: string,
+  tomoId: Id,
+  opts: { maxVoxels?: number; signal?: AbortSignal } = {},
+): Promise<TomogramVolumeStack> {
+  const enc = encodeURIComponent;
+  const query = opts.maxVoxels != null ? `?maxVoxels=${opts.maxVoxels}` : "";
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    coordsOutputName,
+  )}/coords3d/tomograms/${enc(String(tomoId))}/volume${query}`;
+
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store", signal: opts.signal });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch the tomogram");
+  }
+  return parseTomogramVolumeStack(await res.arrayBuffer());
+}
+
+// "TVOL", the header length (uint32 LE), a JSON header, then the 8-bit voxels.
+export function parseTomogramVolumeStack(buffer: ArrayBuffer): TomogramVolumeStack {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 8 || String.fromCharCode(...bytes.subarray(0, 4)) !== "TVOL") {
+    throw new Error("Invalid tomogram volume.");
+  }
+  const headerLength = new DataView(buffer).getUint32(4, true);
+  const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLength))) as Record<string, any>;
+  const size = Number(header.width) * Number(header.height) * Number(header.depth);
+  const offset = 8 + headerLength;
+  if (!(size > 0) || offset + size > buffer.byteLength) {
+    throw new Error("Invalid tomogram volume.");
+  }
+  const binning = Array.isArray(header.binning) ? header.binning.map(Number) : [1, 1, 1];
+  return {
+    ...(header as Omit<TomogramVolumeStack, "data" | "binning">),
+    binning: [binning[0] || 1, binning[1] || 1, binning[2] || 1],
+    data: new Uint8Array(buffer, offset, size),
   };
 }
 

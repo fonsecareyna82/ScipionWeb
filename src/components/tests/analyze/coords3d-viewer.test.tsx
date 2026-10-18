@@ -811,6 +811,42 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("3 views")).toBeInTheDocument();
     });
 
+    it("cuts every slice in the browser once the tomogram is here", async () => {
+        const width = 100, height = 80, depth = 60;
+        (serviceMocks as any).fetchCoords3dTomogramVolume = vi.fn(async () => ({
+            width, height, depth, origWidth: width, origHeight: height, origDepth: depth,
+            binning: [1, 1, 1], mean: 128, std: 20, low: 28, high: 228,
+            data: new Uint8Array(width * height * depth),
+        }));
+        try {
+            renderViewer();
+            expect(await screen.findByText("Total 3")).toBeInTheDocument();
+            await waitFor(() => {
+                expect((serviceMocks as any).fetchCoords3dTomogramVolume).toHaveBeenCalledWith(
+                    1, expect.any(Number), "coordsOutput", "t1", expect.objectContaining({ signal: expect.any(AbortSignal) }),
+                );
+            });
+
+            fireEvent.click(screen.getByRole("button", { name: "3 Views" }));
+            const before = serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.length;
+            const sliders = screen.getAllByRole("slider");
+            for (let step = 0; step < 5; step++) {
+                fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
+                fireEvent.keyDown(sliders[1], { key: "ArrowRight" });
+                fireEvent.keyDown(sliders[2], { key: "ArrowRight" });
+            }
+
+            await waitFor(() => {
+                const images = Array.from(document.querySelectorAll("image"));
+                expect(images.length).toBeGreaterThanOrEqual(3);
+                expect(images.every((image) => image.getAttribute("href")?.startsWith("blob:"))).toBe(true);
+            });
+            expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl.mock.calls.length).toBe(before);
+        } finally {
+            delete (serviceMocks as any).fetchCoords3dTomogramVolume;
+        }
+    });
+
     it("moves the X and Y slice sliders in 3-views mode", async () => {
         renderViewer();
 

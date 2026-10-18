@@ -693,6 +693,15 @@ const defaultService: ProjectService = {
       opts,
     ),
 
+  fetchCoords3dTomogramVolume: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    opts?: { maxVoxels?: number; signal?: AbortSignal },
+  ) =>
+    api.fetchCoords3dTomogramVolume(toId(projectId), toId(protocolId), coordsOutputName, toId(tomoId), opts),
+
   fetchCoords3dTomogramGallery: (
     projectId: Id,
     protocolId: Id,
