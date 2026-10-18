@@ -1463,3 +1463,146 @@ export function buildGraphElements(
 
   return { nodes, edges };
 }
+
+/**
+ * After protocols are deleted: everything keeps its place, and branches slide
+ * (as rigid blocks, never to the right) toward the branches on their left to
+ * close the gaps, as the layout would have packed them.
+ *
+ * A branch is a protocol with everything under it (each protocol hangs from
+ * its nearest parent above). Inner branches slide first, next to their left
+ * siblings; then whole sub-workflows, next to the one on their left. A branch
+ * with nothing on its left stays, so it never drifts away from its parent.
+ * Nothing comes closer than the layout's spacing to anything else.
+ */
+export function compactAfterDeletion(nodes: Node[], edges: Edge[], direction: Direction): Node[] {
+  const protocolNodes = nodes.filter((node) => String(node.id) !== "PROJECT");
+  if (protocolNodes.length < 2) return nodes;
+
+  const siblingGap = direction === "TB" ? 260 : 220;
+  const subworkflowGap = direction === "TB" ? 720 : 360;
+  const ids = protocolNodes.map((node) => String(node.id));
+  const byId = new Map(protocolNodes.map((node) => [String(node.id), node]));
+  const axis = new Map<string, number>();
+  const main = new Map<string, number>();
+  const crossSize = new Map<string, number>();
+  const mainSize = new Map<string, number>();
+
+  for (const node of protocolNodes) {
+    const id = String(node.id);
+    const measured = (node as any).measured ?? {};
+    const width = Number(measured.width ?? node.width);
+    const height = Number(measured.height ?? node.height);
+    const w = Number.isFinite(width) && width > 0 ? width : (direction === "TB" ? 950 : 520);
+    const h = Number.isFinite(height) && height > 0 ? height : (direction === "TB" ? 520 : 950);
+    axis.set(id, direction === "TB" ? node.position.x : node.position.y);
+    main.set(id, direction === "TB" ? node.position.y : node.position.x);
+    crossSize.set(id, direction === "TB" ? Math.max(950, w) : Math.max(520, h));
+    mainSize.set(id, direction === "TB" ? h : w);
+  }
+
+  // Each protocol hangs from its nearest parent above it.
+  const parentsOf = new Map<string, string[]>();
+  const neighbours = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
+  for (const edge of edges) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    if (!byId.has(source) || !byId.has(target)) continue;
+    parentsOf.set(target, [...(parentsOf.get(target) ?? []), source]);
+    neighbours.get(source)!.add(target);
+    neighbours.get(target)!.add(source);
+  }
+  const childrenOf = new Map<string, string[]>();
+  const roots: string[] = [];
+  for (const id of ids) {
+    const above = (parentsOf.get(id) ?? []).filter((parentId) => main.get(parentId)! < main.get(id)!);
+    if (!above.length) {
+      roots.push(id);
+      continue;
+    }
+    above.sort((a, b) => (main.get(b)! - main.get(a)!) ||
+      (Math.abs(axis.get(a)! - axis.get(id)!) - Math.abs(axis.get(b)! - axis.get(id)!)) || stableIdCompare(a, b));
+    childrenOf.set(above[0], [...(childrenOf.get(above[0]) ?? []), id]);
+  }
+
+  // Sub-workflows: protocols connected among themselves.
+  const component = new Map<string, number>();
+  ids.forEach((start, index) => {
+    if (component.has(start)) return;
+    const pending = [start];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (component.has(id)) continue;
+      component.set(id, index);
+      for (const other of neighbours.get(id) ?? []) if (!component.has(other)) pending.push(other);
+    }
+  });
+
+  const subtree = (id: string): string[] => {
+    const members: string[] = [];
+    const pending = [id];
+    const seen = new Set<string>();
+    while (pending.length) {
+      const current = pending.pop()!;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      members.push(current);
+      pending.push(...(childrenOf.get(current) ?? []));
+    }
+    return members;
+  };
+
+  const overlapsMain = (a: string, b: string) =>
+    main.get(a)! < main.get(b)! + mainSize.get(b)! && main.get(b)! < main.get(a)! + mainSize.get(a)!;
+
+  // The (negative) shift that brings `block` as close as allowed to the nodes
+  // on its left; null when nothing relevant is on its left.
+  const slide = (block: string[], reference: Set<string>): void => {
+    const inBlock = new Set(block);
+    let toReference = Number.NEGATIVE_INFINITY;
+    let toAnything = Number.NEGATIVE_INFINITY;
+    for (const member of block) {
+      const left = axis.get(member)! - crossSize.get(member)! / 2;
+      for (const other of ids) {
+        if (inBlock.has(other) || axis.get(other)! > axis.get(member)! || !overlapsMain(member, other)) continue;
+        const gap = component.get(other) === component.get(member) ? siblingGap : subworkflowGap;
+        const limit = axis.get(other)! + crossSize.get(other)! / 2 + gap - left;
+        toAnything = Math.max(toAnything, limit);
+        if (reference.has(other)) toReference = Math.max(toReference, limit);
+      }
+    }
+    if (!Number.isFinite(toReference)) return;
+    const shift = Math.min(0, Math.max(toReference, toAnything));
+    if (shift > -0.5) return;
+    for (const member of block) axis.set(member, axis.get(member)! + shift);
+  };
+
+  // Inner branches first (deepest parents), each next to its left siblings.
+  const parents = [...childrenOf.keys()].sort((a, b) => (main.get(b)! - main.get(a)!) || stableIdCompare(a, b));
+  for (const parentId of parents) {
+    const children = [...childrenOf.get(parentId)!].sort((a, b) => axis.get(a)! - axis.get(b)!);
+    const placed = new Set<string>();
+    for (const childId of children) {
+      const block = subtree(childId);
+      slide(block, placed);
+      block.forEach((member) => placed.add(member));
+    }
+  }
+
+  // Then whole branches without a parent (sub-workflows and their roots), left to right.
+  const placedRoots = new Set<string>();
+  for (const rootId of [...roots].sort((a, b) => axis.get(a)! - axis.get(b)!)) {
+    const block = subtree(rootId);
+    slide(block, placedRoots);
+    block.forEach((member) => placedRoots.add(member));
+  }
+
+  return nodes.map((node) => {
+    const id = String(node.id);
+    if (!byId.has(id)) return node;
+    const value = axis.get(id)!;
+    const current = direction === "TB" ? node.position.x : node.position.y;
+    if (Math.abs(value - current) < 0.5) return node;
+    return { ...node, position: direction === "TB" ? { ...node.position, x: value } : { ...node.position, y: value } };
+  });
+}

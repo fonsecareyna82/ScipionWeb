@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphElements, countEdgeCrossings as countEdgeLinksCrossings } from "@/utils/graph_utils";
+import { buildGraphElements, compactAfterDeletion, countEdgeCrossings as countEdgeLinksCrossings } from "@/utils/graph_utils";
 
 /** PROJECT -> 1; each step splits in two protocols that join again (e.g. two pickers and a consensus). */
 function chainOfMerges(merges: number) {
@@ -201,5 +201,46 @@ describe("workflow layout sub-workflows", () => {
       expect(Math.abs(axis("3") - axis("2")) - size).toBeLessThan(gap);
       expect(Math.abs(axis("3") - axis("2")) - size).toBeGreaterThanOrEqual(branchGap - 0.5);
     }
+  });
+});
+
+describe("closing the gap of deleted protocols", () => {
+  const node = (id: string, x: number, y: number) => ({ id, position: { x, y }, data: {} }) as any;
+  const edge = (source: string, target: string) => ({ id: `${source}-${target}`, source, target }) as any;
+  const xs = (nodes: any[]) => Object.fromEntries(nodes.map((n) => [n.id, n.position.x]));
+
+  // import (1) with three branches; the middle one (B) was just deleted.
+  const nodes = [
+    node("PROJECT", 0, 0), node("1", 0, 680),
+    node("A", -1210, 1360), node("A1", -1210, 2040),
+    node("C", 1210, 1360), node("C1", 1210, 2040), node("C2", 2420, 2040),
+  ];
+  const edges = [edge("PROJECT", "1"), edge("1", "A"), edge("A", "A1"), edge("1", "C"), edge("C", "C1"), edge("C", "C2")];
+
+  it("slides the branches on the right next to the ones on the left, keeping their shape", () => {
+    const after = xs(compactAfterDeletion(nodes, edges, "TB"));
+    // C moves to the spacing of siblings (950 px nodes, 260 px apart) ...
+    expect(after.C).toBe(-1210 + 950 + 260);
+    // ... with all its branch, which keeps its shape.
+    expect(after.C1 - after.C).toBe(0);
+    expect(after.C2 - after.C).toBe(1210);
+    // The rest stays where it was.
+    expect([after.PROJECT, after["1"], after.A, after.A1]).toEqual([0, 0, -1210, -1210]);
+  });
+
+  it("never moves anything to the right, nor a branch with nothing on its left", () => {
+    const alone = xs(compactAfterDeletion([node("1", 0, 0), node("C", 3000, 680)], [edge("1", "C")], "TB"));
+    expect(alone.C).toBe(3000);
+    const tight = [node("1", 0, 0), node("A", -605, 680), node("C", 605, 680)];
+    const unchanged = xs(compactAfterDeletion(tight, [edge("1", "A"), edge("1", "C")], "TB"));
+    expect(unchanged).toEqual({ "1": 0, A: -605, C: 605 });
+  });
+
+  it("brings a sub-workflow closer, but keeps sub-workflows apart", () => {
+    const after = xs(compactAfterDeletion(
+      [node("1", 0, 680), node("2", 0, 1360), node("9", 5000, 680), node("10", 5000, 1360)],
+      [edge("1", "2"), edge("9", "10")], "TB"));
+    expect(after["9"]).toBe(950 + 720);
+    expect(after["10"]).toBe(950 + 720);
   });
 });
