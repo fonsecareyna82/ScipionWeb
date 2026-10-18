@@ -38,8 +38,7 @@ import {
   ProjectEffectiveSettings,
   SystemVersionInfo,
   SystemUpdateCheck,
-  ExecuteProtocolWizardPayload,
-  ExecuteProtocolWizardResult,
+  RunProtocolWizardPayload,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
   WorkflowExportRequestPayload,
@@ -4676,98 +4675,20 @@ export async function resolveProtocolRelationCandidates(
 }
 
 
-export async function executeProtocolWizard(
+export async function runProtocolWizard(
   projectId: Id,
-  payload: ExecuteProtocolWizardPayload,
-): Promise<ExecuteProtocolWizardResult> {
-  const url = `${BASE_URL}/projects/${projectId}/wizards/execute`;
-
-  const response = await fetchWithAuth(url, {
+  payload: RunProtocolWizardPayload,
+): Promise<unknown> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/wizards/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      protocolId: payload.protocolId ?? null,
-      protocolClassName: payload.protocolClassName,
-      paramName: payload.paramName,
-      wizardId: payload.wizardId,
-      formValues: payload.formValues ?? {},
-      wizardInputs: payload.wizardInputs ?? {},
-    }),
+    body: JSON.stringify({ ...payload, preview: payload.preview ?? null }),
   });
-
   if (!response.ok) {
-    throw await toApiError(response, "Failed to execute protocol wizard");
+    throw await toApiError(response, "Failed to run the wizard");
   }
-
-  const raw = await safeJson<any>(response);
-
-  const paramUpdates =
-    raw && typeof raw === "object" && raw.paramUpdates && typeof raw.paramUpdates === "object"
-      ? raw.paramUpdates
-      : raw && typeof raw === "object" && raw.updates && typeof raw.updates === "object"
-        ? raw.updates
-        : {};
-
-  const kind =
-    raw && typeof raw === "object" && typeof raw.kind === "string" && raw.kind.trim()
-      ? raw.kind.trim()
-      : "unknown";
-
-  const wizardId =
-    raw && typeof raw === "object" && typeof raw.wizardId === "string" && raw.wizardId.trim()
-      ? raw.wizardId.trim()
-      : payload.wizardId;
-
-  const success =
-    raw && typeof raw === "object" && typeof raw.success === "boolean"
-      ? raw.success
-      : true;
-
-  const message =
-    raw && typeof raw === "object" && typeof raw.message === "string"
-      ? raw.message
-      : null;
-
-  const availableValues =
-    raw && typeof raw === "object" && Array.isArray(raw.availableValues)
-      ? raw.availableValues
-      : null;
-
-  const requiresUserInput =
-    raw && typeof raw === "object" && typeof raw.requiresUserInput === "boolean"
-      ? raw.requiresUserInput
-      : false;
-
-  const inputSchema =
-    raw && typeof raw === "object" && raw.inputSchema && typeof raw.inputSchema === "object"
-      ? raw.inputSchema
-      : null;
-
-  const preview =
-    raw && typeof raw === "object" && raw.preview && typeof raw.preview === "object"
-      ? raw.preview
-      : null;
-
-  const viewerState =
-    raw && typeof raw === "object" && raw.viewerState && typeof raw.viewerState === "object"
-      ? raw.viewerState
-      : null;
-
-  return {
-    success,
-    wizardId,
-    kind,
-    paramUpdates,
-    message,
-    availableValues,
-    requiresUserInput,
-    inputSchema,
-    preview,
-    viewerState,
-  };
+  return response.json();
 }
-
-// 2D Coordinates normalization helper for legacy backends that return inconsistent field names and formats
 
 export async function listCoords2dMicrographs(
   projectId: Id,

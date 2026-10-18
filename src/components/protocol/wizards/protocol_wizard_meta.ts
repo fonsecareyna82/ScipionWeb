@@ -69,24 +69,8 @@ export function getWizardTooltip(
   const wizard = getWizardDescriptor(mergedDef);
 
   if (!wizard) return "Wizard available";
-
-  const kindLabel = String(wizard.kind ?? "")
-    .replace(/_/g, " ")
-    .trim();
-
-  if (wizard.webSupported === false) {
-    return kindLabel
-      ? `Wizard available (${kindLabel}, not supported yet)`
-      : "Wizard available (not supported yet)";
-  }
-
-  if (wizard.className) {
-    return kindLabel
-      ? `Open wizard (${wizard.className} · ${kindLabel})`
-      : `Open wizard (${wizard.className})`;
-  }
-
-  return kindLabel ? `Open wizard (${kindLabel})` : "Open wizard";
+  // Every wizard runs its plugin's own code; the class name says which one.
+  return wizard.className ? `Open wizard (${wizard.className})` : "Open wizard";
 }
 
 export function buildWizardUiProps(args: {

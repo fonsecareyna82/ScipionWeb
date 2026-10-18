@@ -112,8 +112,10 @@ import {
 } from "@/utils/protocolform.protunion";
 
 import { ProjectEffectiveSettings, ProtocolWorkflowExecutionPreflight, ProtocolWorkflowExecutionScope } from "@/services/ProjectService";
-import WizardDialogHost from "./wizards/wizard-dialog-host";
-import { useProtocolWizards } from "./wizards/use_protocol_wizards";
+import WizardRuntimeDialog from "./wizards/WizardRuntimeDialog";
+import { useWizardRuntime } from "./wizards/use_wizard_runtime";
+import { getWizardDescriptor } from "./wizards/protocol_wizard_meta";
+import ProtocolViewerActionResults from "./ProtocolViewerActionResults";
 import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
 import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
@@ -2567,52 +2569,31 @@ export default function ProtocolForm({
     setExecErrorDialogOpen(true);
   }
 
-  const {
-    wizardState,
-    openingWizard,
-    interactivePreviewLoading,
-    openWizardForParam,
-    closeWizard,
-    confirmWizard,
-    setOptionsSelectedValue,
-    setInputFieldValue,
-    setMaskRadiusValue,
-    commitMaskRadiusValue,
-    setMaskRadiusSelectedIndex,
-    setMaskRadiiInnerValue,
-    commitMaskRadiiInnerValue,
-    setMaskRadiiOuterValue,
-    commitMaskRadiiOuterValue,
-    setMaskRadiiSelectedIndex,
-    setCtfDownsampleValue,
-    commitCtfDownsampleValue,
-    setCtfLowFreqValue,
-    commitCtfLowFreqValue,
-    setCtfHighFreqValue,
-    commitCtfHighFreqValue,
-    setCtfSelectedIndex,
-    setFilterLowFreqValue,
-    commitFilterLowFreqValue,
-    setFilterHighFreqValue,
-    commitFilterHighFreqValue,
-    setFilterDecayValue,
-    commitFilterDecayValue,
-    setFilterSelectedIndex,
-    setDownsamplePreviewValue,
-    commitDownsamplePreviewValue,
-    setDownsamplePreviewSelectedIndex,
-    setPointInVolumePoint,
-    setPointInVolumeVoxel,
-  } = useProtocolWizards({
+  const wizardRuntime = useWizardRuntime({
     projectId,
     protocolId: effectiveProtocolId,
     protocolClassName,
-    protocolDetails,
     svc,
     getSerializedParams,
     applyWizardParamUpdates,
     openExecErrorDialog,
   });
+  const openWizard = wizardRuntime.openWizard;
+
+  // The wand of a param runs the wizard the desktop form opens for it.
+  const openWizardForParam = useCallback(
+    (stateKey: string, paramDef?: any) => {
+      const paramName = getParamNameFromStateKey(stateKey);
+      const merged = { ...(paramDef ?? {}), ...(protocolDetails.params?.[stateKey] ?? {}) };
+      const wizard = getWizardDescriptor(merged);
+      if (!paramName || !wizard) {
+        toast.error(`No wizard found for '${paramName ?? stateKey}'.`);
+        return;
+      }
+      void openWizard(paramName, String(merged.label ?? paramName), wizard.id);
+    },
+    [openWizard, protocolDetails.params],
+  );
 
   const adoptCreatedProtocolId = (payload: any) => {
     const returnedProtocolId = String(payload?.protocolId ?? "").trim();
@@ -5083,50 +5064,38 @@ export default function ProtocolForm({
         </DialogActions>
       </Dialog>
 
-      {/* Wizard Loading Dialog */}
+      {/* Wizard: running, or the dialog it opened */}
       <WizardLoadingDialog
-        open={openingWizard.open}
-        title={openingWizard.title}
-        message={openingWizard.message}
+        open={Boolean(wizardRuntime.run && !wizardRuntime.run.dialog)}
+        title={wizardRuntime.run?.paramLabel ?? "Wizard"}
+        message="Running the wizard..."
       />
-
-      {/* Wizard selector dialog */}
-      <WizardDialogHost
-        wizardState={wizardState}
-        previewLoading={interactivePreviewLoading}
-        onClose={closeWizard}
-        onConfirm={confirmWizard}
-        onOptionsSelectedValueChange={setOptionsSelectedValue}
-        onInputValueChange={setInputFieldValue}
-        onMaskRadiusChange={setMaskRadiusValue}
-        onMaskRadiusCommit={commitMaskRadiusValue}
-        onMaskRadiusSelectedIndexChange={setMaskRadiusSelectedIndex}
-        onMaskRadiiInnerChange={setMaskRadiiInnerValue}
-        onMaskRadiiInnerCommit={commitMaskRadiiInnerValue}
-        onMaskRadiiOuterChange={setMaskRadiiOuterValue}
-        onMaskRadiiOuterCommit={commitMaskRadiiOuterValue}
-        onMaskRadiiSelectedIndexChange={setMaskRadiiSelectedIndex}
-        onCtfDownsampleChange={setCtfDownsampleValue}
-        onCtfDownsampleCommit={commitCtfDownsampleValue}
-        onCtfLowFreqChange={setCtfLowFreqValue}
-        onCtfLowFreqCommit={commitCtfLowFreqValue}
-        onCtfHighFreqChange={setCtfHighFreqValue}
-        onCtfHighFreqCommit={commitCtfHighFreqValue}
-        onCtfSelectedIndexChange={setCtfSelectedIndex}
-        onFilterLowFreqChange={setFilterLowFreqValue}
-        onFilterLowFreqCommit={commitFilterLowFreqValue}
-        onFilterHighFreqChange={setFilterHighFreqValue}
-        onFilterHighFreqCommit={commitFilterHighFreqValue}
-        onFilterDecayChange={setFilterDecayValue}
-        onFilterDecayCommit={commitFilterDecayValue}
-        onFilterSelectedIndexChange={setFilterSelectedIndex}
-        onDownsamplePreviewChange={setDownsamplePreviewValue}
-        onDownsamplePreviewCommit={commitDownsamplePreviewValue}
-        onDownsamplePreviewSelectedIndexChange={setDownsamplePreviewSelectedIndex}
-        onPointInVolumeChange={setPointInVolumePoint}
-        onPointInVolumeVoxelChange={setPointInVolumeVoxel}
-
-      />
+      {wizardRuntime.run?.dialog && (
+        <WizardRuntimeDialog
+          key={`${wizardRuntime.run.paramName}:${wizardRuntime.run.step}`}
+          dialog={wizardRuntime.run.dialog}
+          paramLabel={wizardRuntime.run.paramLabel}
+          messages={wizardRuntime.run.messages}
+          busy={wizardRuntime.run.busy}
+          previewImages={wizardRuntime.run.previewImages}
+          previewBusy={wizardRuntime.run.previewBusy}
+          onAnswer={wizardRuntime.answer}
+          onCancel={wizardRuntime.cancel}
+          onPreview={wizardRuntime.requestPreview}
+        />
+      )}
+      {wizardRuntime.views && projectId != null && (
+        <ProtocolViewerActionResults
+          service={svc}
+          projectId={String(projectId)}
+          protocolId={String(effectiveProtocolId ?? "")}
+          protocolLabel={protocolDisplayName}
+          title={wizardRuntime.views.title}
+          result={{ action: "wizard", items: wizardRuntime.views.items,
+            messages: wizardRuntime.views.messages, omittedItems: 0 }}
+          onClose={wizardRuntime.closeViews}
+        />
+      )}
 
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog

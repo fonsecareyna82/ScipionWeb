@@ -361,7 +361,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     "resolveProtocolRelationCandidates",
     "resolveProtocolRelationCandidates",
   );
-  mapFn("executeProtocolWizard", "executeProtocolWizard");
+  mapFn("runProtocolWizard", "runProtocolWizard");
   mapFn("exportProtocols", "exportProtocols");
   mapFn("writeRemoteFile", "writeRemoteFile");
   mapFn(

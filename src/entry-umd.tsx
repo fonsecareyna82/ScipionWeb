@@ -988,7 +988,7 @@ function normalizeServiceAPI(
   );
 
   // wizards
-  mapFn("executeProtocolWizard", "executeProtocolWizard");
+  mapFn("runProtocolWizard", "runProtocolWizard");
 
   // protocol export
   mapFn("exportProtocols", "exportProtocols");

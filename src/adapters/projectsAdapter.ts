@@ -52,8 +52,7 @@ import type {
   SystemVersionInfo,
   SystemUpdateCheck,
   ProjectServiceCapabilities,
-  ExecuteProtocolWizardPayload,
-  ExecuteProtocolWizardResult,
+  RunProtocolWizardPayload,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
   WorkflowExportRequestPayload,
@@ -1196,11 +1195,8 @@ const defaultService: ProjectService = {
 
   // ──────────────────────────── Wizards support ────────────────────────────
 
-  executeProtocolWizard: (
-    projectId: Id,
-    payload: ExecuteProtocolWizardPayload,
-  ): Promise<ExecuteProtocolWizardResult> =>
-    api.executeProtocolWizard(toId(projectId), payload),
+  runProtocolWizard: (projectId: Id, payload: RunProtocolWizardPayload): Promise<unknown> =>
+    api.runProtocolWizard(toId(projectId), payload),
 
   // ──────────────────────────── 2D Coordinates viewer ────────────────────────────
   listCoords2dMicrographs: (

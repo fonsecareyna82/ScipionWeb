@@ -267,6 +267,16 @@ export function describeViewerActionResult(
   };
 }
 
+/** Items and messages described the same way by other runtimes (e.g. form wizards). */
+export function describeViewerActionItems(items: unknown, messages: unknown) {
+  return {
+    items: (Array.isArray(items) ? items : []).slice(0, 32).map(item)
+      .filter((v): v is ViewerActionItem => v !== null),
+    messages: (Array.isArray(messages) ? messages : []).slice(0, 32).map(message)
+      .filter((v): v is ViewerActionMessage => v !== null),
+  };
+}
+
 /** Human explanation for Views that have no web counterpart yet. */
 export function unsupportedViewReason(reason: string): string {
   switch (reason) {

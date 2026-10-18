@@ -442,49 +442,6 @@ vi.mock("@/components/protocol/wizards/WizardLoadingDialog", () => ({
         open ? <div data-testid="wizard-loading-dialog">Wizard loading</div> : null,
 }));
 
-vi.mock("@/components/protocol/wizards/wizard-dialog-host", () => ({
-    default: () => <div data-testid="wizard-dialog-host">Wizard host</div>,
-}));
-
-vi.mock("@/components/protocol/wizards/use_protocol_wizards", () => ({
-    useProtocolWizards: () => ({
-        wizardState: { open: false, kind: "options" },
-        openingWizard: { open: false, title: "", message: "" },
-        interactivePreviewLoading: false,
-        openWizardForParam: vi.fn(),
-        closeWizard: vi.fn(),
-        confirmWizard: vi.fn(),
-        setOptionsSelectedValue: vi.fn(),
-        setInputFieldValue: vi.fn(),
-        setMaskRadiusValue: vi.fn(),
-        commitMaskRadiusValue: vi.fn(),
-        setMaskRadiusSelectedIndex: vi.fn(),
-        setMaskRadiiInnerValue: vi.fn(),
-        commitMaskRadiiInnerValue: vi.fn(),
-        setMaskRadiiOuterValue: vi.fn(),
-        commitMaskRadiiOuterValue: vi.fn(),
-        setMaskRadiiSelectedIndex: vi.fn(),
-        setCtfDownsampleValue: vi.fn(),
-        commitCtfDownsampleValue: vi.fn(),
-        setCtfLowFreqValue: vi.fn(),
-        commitCtfLowFreqValue: vi.fn(),
-        setCtfHighFreqValue: vi.fn(),
-        commitCtfHighFreqValue: vi.fn(),
-        setCtfSelectedIndex: vi.fn(),
-        setFilterLowFreqValue: vi.fn(),
-        commitFilterLowFreqValue: vi.fn(),
-        setFilterHighFreqValue: vi.fn(),
-        commitFilterHighFreqValue: vi.fn(),
-        setFilterDecayValue: vi.fn(),
-        commitFilterDecayValue: vi.fn(),
-        setFilterSelectedIndex: vi.fn(),
-        setDownsamplePreviewValue: vi.fn(),
-        commitDownsamplePreviewValue: vi.fn(),
-        setDownsamplePreviewSelectedIndex: vi.fn(),
-        setPointInVolumePoint: vi.fn(),
-        setPointInVolumeVoxel: vi.fn(),
-    }),
-}));
 
 vi.mock("@/icons", () => ({
     ChevronDownIcon: (props: any) => <svg data-testid="chevron-down-icon" {...props} />,

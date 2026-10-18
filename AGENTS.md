@@ -22,6 +22,7 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 - `src/adapters/`, `src/stores/` — data shaping and state management.
 - `src/components/`, `src/pages/`, `src/layout/` — UI. Project workflow state lives in `src/pages/Dashboard/projects/ProjectPage.tsx`; the home dashboard lives in `src/pages/Dashboard/homepage/Home.tsx`.
 - `src/components/protocol/` — forms, protocol actions, outputs, logs, and wizard dialogs. `src/utils/protocolform.*` implements shared form semantics.
+  Form wizards run the plugin's own code on the server (`POST /projects/{id}/wizards/run`, `use_wizard_runtime`); the dialogs it opens come back described (`src/utils/protocol_wizard_runtime.ts`) and `WizardRuntimeDialog` renders each kind generically (confirm, choice, form, list, preview with images/sliders/rings, file, 3D point). There is no per-wizard UI.
 - `src/components/analyze/` — metadata, CTF, volume, coordinate, and tomography viewers. Changes to request cancellation and caching must preserve isolation between viewer requests.
 - `src/components/analyze/image-preview-dialog.tsx` — shared image detail window used by metadata and CTF previews (zoom, pan, rotation, brightness/contrast, external window). Callers provide an image loader; the dialog owns cancellation and object URL cleanup independently of thumbnail requests.
 - `src/hooks/useProtocolLogs.ts` + `ProtocolLogsPanel.tsx` — log windows, history loading, global search, and full log copy.
