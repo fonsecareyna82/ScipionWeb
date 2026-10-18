@@ -557,52 +557,74 @@ function buildSubtreeAlignedPlacements(params: {
       : disconnectedRootGap;
   };
 
-  const getPairGapTotal = (
-    ids: string[],
-    getGap: (leftId: string, rightId: string) => number
-  ): number => {
-    let total = 0;
-    for (let i = 1; i < ids.length; i++) {
-      total += getGap(ids[i - 1], ids[i]);
-    }
-    return total;
+  // Contour-based packing (Reingold-Tilford): a subtree is described per level
+  // by the extent its nodes occupy, relative to its root; siblings are put as
+  // close as the level where they would collide allows, not their full widths.
+  type Contour = Map<number, [number, number]>;
+  const crossSizeOf = (id: string) => getNodePackingCrossSize({ id, direction, protocols, projectName, nodeSizeMap });
+  const relativeAxis: Record<string, number> = {};
+  const contours = new Map<string, Contour>();
+
+  const widen = (contour: Contour, level: number, low: number, high: number) => {
+    const current = contour.get(level);
+    contour.set(level, current ? [Math.min(current[0], low), Math.max(current[1], high)] : [low, high]);
   };
 
-  const spanMemo = new Map<string, number>();
+  // Offset that puts `right` beside `left` with `gap` on every shared level.
+  const separation = (left: Contour, right: Contour, gap: number): number => {
+    let offset = Number.NEGATIVE_INFINITY;
+    for (const [level, [low]] of right) {
+      const other = left.get(level);
+      if (other) offset = Math.max(offset, other[1] + gap - low);
+    }
+    return Number.isFinite(offset) ? offset : 0;
+  };
 
-  const computeSpan = (id: string, stack = new Set<string>()): number => {
-    const cached = spanMemo.get(id);
-    if (typeof cached === "number") return cached;
+  const shifted = (contour: Contour, offset: number): Contour =>
+    new Map([...contour].map(([level, [low, high]]) => [level, [low + offset, high + offset] as [number, number]]));
 
-    const nodeCrossSize = getNodePackingCrossSize({
-      id,
-      direction,
-      protocols,
-      projectName,
-      nodeSizeMap,
+  // Lay out a row of subtrees left to right; returns their centers and joint contour.
+  const packRow = (ids: string[], gapBetween: (left: string, right: string) => number) => {
+    const centers: number[] = [];
+    const joint: Contour = new Map();
+    ids.forEach((id, index) => {
+      const contour = contourOf(id);
+      const offset = index === 0 ? 0 : separation(joint, contour, gapBetween(ids[index - 1], id));
+      centers.push(offset);
+      for (const [level, [low, high]] of shifted(contour, offset)) widen(joint, level, low, high);
     });
-
-    if (stack.has(id)) {
-      spanMemo.set(id, nodeCrossSize);
-      return nodeCrossSize;
-    }
-
-    stack.add(id);
-
-    const children = layoutChildren[id] ?? [];
-    const childrenGap = getChildrenGap(id);
-    const childrenTotal =
-      children.length > 0
-        ? children.reduce((sum, childId) => sum + computeSpan(childId, stack), 0) +
-        Math.max(0, children.length - 1) * childrenGap
-        : 0;
-
-    stack.delete(id);
-
-    const span = Math.ceil(Math.max(nodeCrossSize, childrenTotal));
-    spanMemo.set(id, span);
-    return span;
+    return { centers, joint };
   };
+
+  const building = new Set<string>();
+  function contourOf(id: string): Contour {
+    const cached = contours.get(id);
+    if (cached) return cached;
+    const level = levelMap[id] ?? 0;
+    const half = crossSizeOf(id) / 2;
+    const contour: Contour = new Map([[level, [-half, half]]]);
+    const children = building.has(id) ? [] : layoutChildren[id] ?? [];
+    building.add(id);
+    if (children.length) {
+      const gap = getChildrenGap(id);
+      const { centers, joint } = packRow(children, () => gap);
+      // The parent sits over the middle of its first and last child.
+      const middle = (centers[0] + centers[centers.length - 1]) / 2;
+      children.forEach((childId, index) => { relativeAxis[childId] = centers[index] - middle; });
+      for (const [childLevel, [low, high]] of shifted(joint, -middle)) widen(contour, childLevel, low, high);
+      // An edge that skips levels needs its corridor free on the levels between.
+      children.forEach((childId) => {
+        const childLevel = levelMap[childId] ?? level + 1;
+        const childHalf = crossSizeOf(childId) / 2;
+        for (let between = level + 1; between < childLevel; between++) {
+          widen(contour, between, relativeAxis[childId] - childHalf, relativeAxis[childId] + childHalf);
+        }
+      });
+    }
+    building.delete(id);
+    contours.set(id, contour);
+    return contour;
+  }
 
   const placements: Record<string, GraphPosition> = {};
 
@@ -624,48 +646,22 @@ function buildSubtreeAlignedPlacements(params: {
       Math.max(levelSpacing, levelExtent[level - 1] + MIN_LEVEL_GAP);
   }
 
-  const placeNode = (id: string, start: number) => {
-    const span = computeSpan(id);
-    const center = start + span / 2;
+  const placeSubtree = (id: string, axis: number) => {
     const level = levelMap[id] ?? 0;
-
     placements[id] =
       direction === "TB"
-        ? { x: center, y: levelOffset[level] ?? level * spacingY }
-        : { x: levelOffset[level] ?? level * spacingX, y: center };
-
-    const children = layoutChildren[id] ?? [];
-    if (children.length === 0) return;
-
-    const childrenGap = getChildrenGap(id);
-    const childrenTotal =
-      children.reduce((sum, childId) => sum + computeSpan(childId), 0) +
-      Math.max(0, children.length - 1) * childrenGap;
-
-    let cursor = start + (span - childrenTotal) / 2;
-
-    for (const childId of children) {
-      const childSpan = computeSpan(childId);
-      placeNode(childId, cursor);
-      cursor += childSpan + childrenGap;
+        ? { x: axis, y: levelOffset[level] ?? level * spacingY }
+        : { x: levelOffset[level] ?? level * spacingX, y: axis };
+    for (const childId of layoutChildren[id] ?? []) {
+      if (!placements[childId]) placeSubtree(childId, axis + (relativeAxis[childId] ?? 0));
     }
   };
 
-  const rootTotal =
-    roots.reduce((sum, rootId) => sum + computeSpan(rootId), 0) +
-    getPairGapTotal(roots, getRootGap);
-
-  let cursor = -rootTotal / 2;
-  for (let i = 0; i < roots.length; i++) {
-    const rootId = roots[i];
-    const rootSpan = computeSpan(rootId);
-    placeNode(rootId, cursor);
-    cursor += rootSpan;
-
-    if (i < roots.length - 1) {
-      cursor += getRootGap(rootId, roots[i + 1]);
-    }
-  }
+  // Roots (PROJECT and protocols without a placed parent) side by side, centered on 0.
+  const rootRow = packRow(roots, getRootGap);
+  const rootMiddle = rootRow.centers.length
+    ? (rootRow.centers[0] + rootRow.centers[rootRow.centers.length - 1]) / 2 : 0;
+  roots.forEach((rootId, index) => placeSubtree(rootId, rootRow.centers[index] - rootMiddle));
 
   const getPlacementAxis = (id: string): number => {
     const position = placements[id];

@@ -130,3 +130,51 @@ describe("workflow layout crossings", () => {
     expect(byId(buildGraphElements("P", crossed as any))).toEqual(byId(buildGraphElements("P", crossed as any)));
   });
 });
+
+describe("workflow layout packing", () => {
+  it("tucks a short branch beside a wide one instead of beyond its full width", () => {
+    const positions = byId(buildGraphElements("P", {
+      PROJECT: { label: "P", children: ["1"] },
+      "1": { label: "import", children: ["2", "3"] },
+      "2": { label: "wide", children: ["4", "5", "6"] },
+      "3": { label: "short", children: [] },
+      "4": { label: "a", children: [] },
+      "5": { label: "b", children: [] },
+      "6": { label: "c", children: [] },
+    } as any));
+    // Side by side on their own level (950 px nodes, 260 px apart), not after
+    // the three children of the wide branch.
+    expect(Math.abs(positions["3"].x - positions["2"].x)).toBe(950 + 260);
+    // A single child still hangs straight under its parent.
+    expect(positions["5"].x).toBe(positions["2"].x);
+  });
+
+  it("never puts two protocols of a level on top of each other", () => {
+    for (const direction of ["TB", "LR"] as const) {
+      for (let seed = 1; seed <= 15; seed++) {
+        let state = seed;
+        const random = () => { state = (state * 1103515245 + 12345) % 2147483648; return state / 2147483648; };
+        const protocols: Record<string, any> = { PROJECT: { label: "P", children: [] } };
+        for (let i = 1; i <= 40; i++) protocols[String(i)] = { label: `protocol ${i}`, children: [] };
+        for (let i = 1; i <= 40; i++) {
+          const parents = i === 1 || random() < 0.1 ? ["PROJECT"] : [];
+          if (i > 1) parents.push(String(Math.max(1, i - 1 - Math.floor(random() * 6))));
+          if (i > 2 && random() < 0.25) parents.push(String(Math.max(1, i - 1 - Math.floor(random() * 6))));
+          for (const parent of new Set(parents)) protocols[parent].children.push(String(i));
+        }
+        const result = buildGraphElements("P", protocols as any, "hierarchical", direction);
+        const rows: Record<number, number[]> = {};
+        for (const node of result.nodes) {
+          if (node.id === "PROJECT") continue;
+          const [level, axis] = direction === "TB" ? [node.position.y, node.position.x] : [node.position.x, node.position.y];
+          (rows[level] ??= []).push(axis);
+        }
+        const minimum = direction === "TB" ? 950 + 260 : 520 + 220;
+        for (const axes of Object.values(rows)) {
+          axes.sort((a, b) => a - b);
+          for (let i = 1; i < axes.length; i++) expect(axes[i] - axes[i - 1]).toBeGreaterThanOrEqual(minimum - 0.5);
+        }
+      }
+    }
+  });
+});
