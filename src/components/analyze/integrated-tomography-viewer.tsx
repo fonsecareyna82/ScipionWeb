@@ -96,6 +96,15 @@ function getLinkedOutputName(link: IntegratedContextLink | null | undefined, fal
   return link?.outputName || fallbackOutputName;
 }
 
+// The class of the output each section shows, for the metadata viewer (its
+// 3D views depend on it) when the section is not the opened output itself.
+const SECTION_OUTPUT_CLASS: Record<string, string> = {
+  tomogram: "SetOfTomograms",
+  tiltSeries: "SetOfTiltSeries",
+  ctf: "SetOfCTFTomoSeries",
+  coordinates: "SetOfCoordinates3D",
+};
+
 function getSummarySize(summary?: Record<string, unknown> | null) {
   const rawSize = summary?.size;
   const size = typeof rawSize === "number" ? rawSize : Number(rawSize);
@@ -832,17 +841,33 @@ export default function IntegratedTomographyViewer({
           ? null
           : getSectionLink(metadataTargetSection as Exclude<IntegratedSection, "metadata">);
 
+      const metadataProtocolId = getLinkedProtocolId(metadataLink, protocolIdNum);
+      const metadataOutputName = getLinkedOutputName(metadataLink, outputName);
+      const isOpenedOutput = metadataProtocolId === protocolIdNum && metadataOutputName === outputName;
+      const metadataOutputClass = isOpenedOutput || !metadataLink
+        ? resolvedPointerClass
+        : SECTION_OUTPUT_CLASS[metadataTargetSection] ?? undefined;
+
       return (
         <MetadataViewer
           projectId={projectIdNum}
-          protocolId={getLinkedProtocolId(metadataLink, protocolIdNum)}
-          outputName={getLinkedOutputName(metadataLink, outputName)}
+          protocolId={metadataProtocolId}
+          outputName={metadataOutputName}
+          outputClassName={metadataOutputClass || undefined}
           embedded
         />
       );
     }
 
-    return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
+    return (
+      <MetadataViewer
+        projectId={projectIdNum}
+        protocolId={protocolIdNum}
+        outputName={outputName}
+        outputClassName={resolvedPointerClass || undefined}
+        embedded
+      />
+    );
   };
 
   const tomogramReviewLink = getSectionLink("tomogram");

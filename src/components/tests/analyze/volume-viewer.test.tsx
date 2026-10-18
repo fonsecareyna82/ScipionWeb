@@ -91,8 +91,8 @@ vi.mock("../../analyze/mesh-volume-view", () => ({
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
-    MetadataViewer: ({ outputName }: { outputName: string }) => (
-        <div>Mock MetadataViewer {outputName}</div>
+    MetadataViewer: ({ outputName, outputClassName }: { outputName: string; outputClassName?: string }) => (
+        <div>Mock MetadataViewer {outputName}{outputClassName ? ` (${outputClassName})` : ""}</div>
     ),
 }));
 
@@ -877,7 +877,7 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "Metadata" }));
 
         expect(
-            await screen.findByText("Mock MetadataViewer volumeOutput"),
+            await screen.findByText("Mock MetadataViewer volumeOutput (SetOfVolumes)"),
         ).toBeInTheDocument();
     });
 
@@ -1617,13 +1617,13 @@ describe("VolumeViewer", () => {
 
         fireEvent.click(screen.getByRole("button", { name: "Metadata" }));
         expect(
-            await screen.findByText("Mock MetadataViewer volumeOutput"),
+            await screen.findByText("Mock MetadataViewer volumeOutput (SetOfVolumes)"),
         ).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "Slices" }));
 
         expect(await screen.findByText("Y (XZ)")).toBeInTheDocument();
-        expect(screen.queryByText("Mock MetadataViewer volumeOutput")).not.toBeInTheDocument();
+        expect(screen.queryByText("Mock MetadataViewer volumeOutput (SetOfVolumes)")).not.toBeInTheDocument();
     });
     it("does not start 3D work while the viewer is inactive", async () => {
         const { rerender } = render(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active={false} />);

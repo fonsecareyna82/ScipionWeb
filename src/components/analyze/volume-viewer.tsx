@@ -2436,6 +2436,7 @@ export default function VolumeViewer({
                       projectId={projectIdNum}
                       protocolId={protocolIdNum}
                       outputName={outputName}
+                      outputClassName={pointerClass || undefined}
                       onClose={() => setViewMode("slices")}
                       embedded={true}
                     />

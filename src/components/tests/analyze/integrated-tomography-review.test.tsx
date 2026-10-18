@@ -64,7 +64,9 @@ vi.mock("../../analyze/ctftomo-viewer", () => ({
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
-  MetadataViewer: () => <div>Mock MetadataViewer</div>,
+  MetadataViewer: ({ outputName, outputClassName }: { outputName: string; outputClassName?: string }) => (
+    <div>Mock MetadataViewer {outputName} {outputClassName ?? "no class"}</div>
+  ),
 }));
 
 import IntegratedTomographyViewer from "../../analyze/integrated-tomography-viewer";
@@ -72,6 +74,30 @@ import IntegratedTomographyViewer from "../../analyze/integrated-tomography-view
 describe("IntegratedTomographyViewer reviews", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("tells the metadata viewer the class of the output, for its 3D views", async () => {
+    mocks.fetchIntegratedAnalyzeContext.mockResolvedValue({
+      root: { outputClass: "SetOfTomograms" },
+      links: {},
+      summaries: { tomogram: { size: 2 } },
+      relations: { items: [] },
+    });
+
+    render(
+      <IntegratedTomographyViewer
+        projectId={7}
+        protocolId={42}
+        outputName="outputTomograms"
+        pointerClass="SetOfTomograms"
+      />,
+    );
+
+    await screen.findByTestId("tomogram-review-panel");
+    const [openMetadata] = await screen.findAllByRole("button", { name: /^Open .* metadata$/ });
+    fireEvent.click(openMetadata);
+
+    expect(await screen.findByText("Mock MetadataViewer outputTomograms SetOfTomograms")).toBeInTheDocument();
   });
 
   it("connects the selected source tomogram to its review panel", async () => {

@@ -1507,7 +1507,11 @@ export type ProtocolRelationCandidatesResult = {
  * representatives, enhanced; 3D classes then show a lit surface ("enhanced"),
  * a projection or their central slice.
  */
-export type MetadataContrastMode = "original" | "enhanced" | "enhanced-projection" | "enhanced-slice";
+// enhanced*: class representatives; volume-*: any volume (maps, tomograms, masks).
+export type MetadataContrastMode =
+  | "original"
+  | "enhanced" | "enhanced-projection" | "enhanced-slice"
+  | "volume-surface" | "volume-projection" | "volume-slice";
 
 export type RunProtocolViewerWizardPayload = {
   viewerId: string;

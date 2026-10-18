@@ -92,10 +92,14 @@ type MetadataViewerProps = {
 type ViewMode = "table" | "gallery";
 type ClassVolumeView = "surface" | "projection" | "slice";
 const CLASS_VOLUME_VIEWS: Array<{ id: ClassVolumeView; label: string; help: string }> = [
-  { id: "surface", label: "Surface", help: "The class volume as a lit 3D surface" },
-  { id: "projection", label: "Projection", help: "The projection of the class volume" },
-  { id: "slice", label: "Slice", help: "The central slice of the class volume" },
+  { id: "surface", label: "Surface", help: "The volume as a lit 3D surface" },
+  { id: "projection", label: "Projection", help: "The projection of the volume along Z" },
+  { id: "slice", label: "Slice", help: "The central slice of the volume" },
 ];
+
+// Outputs whose images are volumes: maps, masks, tomograms, subtomograms.
+const VOLUME_OUTPUT_CLASS =
+  /^(SetOf)?(Volumes?|VolumeMasks?|Tomograms?|TomoMasks?|SubTomograms?|AverageSubTomograms?)$/i;
 
 type SelectedImageCell = {
   rowIndexInTable: number;
@@ -3629,9 +3633,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
   // One mode is shared by table cells, gallery batches and full-size previews.
   // 3D classes are drawn as a surface, a projection or a slice of their volume.
   const isClasses3D = /^SetOfClasses3D$/i.test(String(outputClassName ?? "").trim());
-  const [classVolumeView, setClassVolumeView] = useState<ClassVolumeView>("surface");
+  // Volumes open on their central slice, as before; classes on their surface.
+  const isVolumeOutput = VOLUME_OUTPUT_CLASS.test(String(outputClassName ?? "").trim());
+  const [classVolumeView, setClassVolumeView] = useState<ClassVolumeView>(isVolumeOutput ? "slice" : "surface");
   const showsClasses = supportsClassContrast && selectedTable === "objects";
-  const contrastMode: MetadataContrastMode = !showsClasses ? "original"
+  const showsVolumeViews = (showsClasses && isClasses3D) || isVolumeOutput;
+  const contrastMode: MetadataContrastMode = isVolumeOutput ? `volume-${classVolumeView}`
+    : !showsClasses ? "original"
     : !isClasses3D || classVolumeView === "surface" ? "enhanced"
       : classVolumeView === "projection" ? "enhanced-projection" : "enhanced-slice";
 
@@ -5306,12 +5314,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }}
           />
 
-          {showsClasses && isClasses3D && (
+          {showsVolumeViews && (
             <>
               <Typography variant="caption" sx={{ mr: 0.5, color: "text.secondary", fontWeight: 500 }}>
                 3D:
               </Typography>
-              <Box role="group" aria-label="3D class view" sx={{ display: "inline-flex", border: "1px solid rgba(148,163,184,0.6)",
+              <Box role="group" aria-label="3D view" sx={{ display: "inline-flex", border: "1px solid rgba(148,163,184,0.6)",
                 borderRadius: "7px", overflow: "hidden" }}>
                 {CLASS_VOLUME_VIEWS.map((view) => (
                   <Tooltip key={view.id} title={view.help}>

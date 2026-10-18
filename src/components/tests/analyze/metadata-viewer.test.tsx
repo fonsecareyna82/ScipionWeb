@@ -2040,6 +2040,36 @@ describe("MetadataViewer", () => {
             },
         );
 
+        it.each(["SetOfVolumes", "VolumeMask", "SetOfTomograms", "SetOfTomoMasks"])(
+            "offers the 3D views for the volumes of a %s, starting on the slice",
+            async (outputClassName) => {
+                mockClassImages(2);
+                renderClassViewer(outputClassName);
+
+                expect(await screen.findByRole("group", { name: "3D view" })).toBeInTheDocument();
+                await waitFor(() => {
+                    expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledWith(
+                        1, 2, "outputClasses", "objects", expect.objectContaining({ contrastMode: "volume-slice" }),
+                    );
+                });
+
+                fireEvent.click(within(screen.getByRole("group", { name: "3D view" })).getByText("Surface"));
+                await waitFor(() => {
+                    expect(serviceMocks.fetchMetadataImageCellsBatch).toHaveBeenCalledWith(
+                        1, 2, "outputClasses", "objects", expect.objectContaining({ contrastMode: "volume-surface" }),
+                    );
+                });
+            },
+        );
+
+        it("keeps the 3D views away from 2D outputs", async () => {
+            mockClassImages(2);
+            renderClassViewer("SetOfMicrographs");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            expect(screen.queryByRole("group", { name: "3D view" })).not.toBeInTheDocument();
+        });
+
         it("requests Original in batched class-member thumbnails", async () => {
             mockClassAndMemberParticleTables(2, 2);
             renderClassViewer("SetOfClasses3D");

@@ -69,7 +69,8 @@ function normalizedKind(k?: string) {
 
 function isVolumeKind(k?: string) {
   const s = normalizedKind(k);
-  return s === "volume" || s === "volumemask" || s === "setofvolumes";
+  // Masks are volumes too, the tomography ones included.
+  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "tomomask" || s === "setoftomomasks";
 }
 
 function isCoords2dKind(k?: string) {

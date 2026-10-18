@@ -3925,6 +3925,7 @@ export async function fetchMetadataImageCellObjectUrl(
 function metadataContrastParams(mode?: MetadataContrastMode): { contrastMode?: string; volumeView?: string } {
   if (!mode) return {};
   if (mode === "original") return { contrastMode: "original" };
+  if (mode.startsWith("volume-")) return { contrastMode: "volume", volumeView: mode.slice("volume-".length) };
   const view = mode === "enhanced-projection" ? "projection" : mode === "enhanced-slice" ? "slice" : "surface";
   return { contrastMode: "enhanced", volumeView: view };
 }

@@ -313,6 +313,12 @@ describe("AnalyzeOutputDialog", () => {
         );
     });
 
+    it.each(["TomoMask", "SetOfTomoMasks"])("opens a %s in the volume viewer", (className) => {
+        render(<AnalyzeOutputDialog {...makeProps({ outputRaw: { _class: className } })} />);
+
+        expect(screen.getByText("Mock VolumeViewer")).toBeInTheDocument();
+    });
+
     it("shows the fallback message for unsupported output types", () => {
         render(
             <AnalyzeOutputDialog
