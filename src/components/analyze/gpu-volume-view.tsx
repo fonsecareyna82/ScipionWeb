@@ -16,6 +16,7 @@ import {
   createVolumeOrientationGizmo,
   type VolumeOrientationGizmo,
 } from "./volume-orientation-gizmo";
+import { backgroundBehind, canvasToPng, exportScale, type VolumeImageCapture } from "./volume-image-export";
 
 export type GpuVolumeViewProps = {
   values: number[] | Float32Array;
@@ -43,6 +44,8 @@ export type GpuVolumeViewProps = {
   sliceVisibility?: VolumeSliceVisibility;
   slicePlaneOpacity?: number;
   onError?: (msg: string) => void;
+  // Set by the view: saves the current view as a PNG.
+  captureRef?: React.MutableRefObject<VolumeImageCapture | null>;
 };
 
 
@@ -620,6 +623,7 @@ export default function GpuVolumeView({
   sliceVisibility = { x: false, y: false, z: false },
   slicePlaneOpacity = 0.05,
   onError,
+  captureRef,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -638,6 +642,8 @@ export default function GpuVolumeView({
   const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => { });
 
   const onErrorRef = useRef(onError);
+  const captureRefRef = useRef(captureRef);
+  captureRefRef.current = captureRef;
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -1210,7 +1216,28 @@ export default function GpuVolumeView({
       }
     }
 
+    // Renders the view again at a multiple of its screen size. The canvas is
+    // transparent; the background shown behind it is painted in the image.
+    const capture: VolumeImageCapture = async ({ scale, transparent }) => {
+      const width = Math.max(1, mount.clientWidth);
+      const height = Math.max(1, mount.clientHeight);
+      const ratio = exportScale(width, height, scale, Math.min(8192, renderer.capabilities.maxTextureSize));
+      try {
+        renderer.setPixelRatio(ratio);
+        renderer.setSize(width, height, false);
+        mesh.updateMatrixWorld();
+        uInvModel.copy(mesh.matrixWorld).invert();
+        renderer.render(scene, camera);
+        return await canvasToPng(renderer.domElement, transparent ? null : backgroundBehind(mount));
+      } finally {
+        setRendererQuality(true);
+        requestRender();
+      }
+    };
+    if (captureRefRef.current) captureRefRef.current.current = capture;
+
     cleanupRef.current = () => {
+      if (captureRefRef.current?.current === capture) captureRefRef.current.current = null;
       if (rafRef.current != null) {
         cancelAnimationFrame(rafRef.current);
       }

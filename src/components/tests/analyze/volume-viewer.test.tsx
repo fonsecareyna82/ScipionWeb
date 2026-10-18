@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -65,8 +65,12 @@ vi.mock("../../analyze/gpu-volume-view", () => ({
     ),
 }));
 
+const meshCapture = vi.fn(async (_options: { scale: number; transparent: boolean }) => new Blob(["png"], { type: "image/png" }));
+
 vi.mock("../../analyze/mesh-volume-view", () => ({
-    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode, previewMesh, innerMesh, opacity }: any) => (
+    default: ({ resetViewKey = 0, cameraCommand, clipBounds, sliceVisibility, renderStyle, colorMode, previewMesh, innerMesh, opacity, captureRef }: any) => {
+        if (captureRef) captureRef.current = meshCapture;
+        return (
         <div
             data-testid="mock-mesh-volume"
             data-preview-triangles={previewMesh ? previewMesh.indices.length / 3 : 0}
@@ -82,7 +86,8 @@ vi.mock("../../analyze/mesh-volume-view", () => ({
         >
             Mock MeshVolumeView
         </div>
-    ),
+        );
+    },
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
@@ -839,6 +844,29 @@ describe("VolumeViewer", () => {
         await waitFor(() => {
             expect(screen.getByTestId("mock-mesh-volume")).toHaveAttribute("data-opacity", "1");
         });
+    });
+
+    it("saves the 3D view as a PNG at the chosen resolution", async () => {
+        const createObjectURL = vi.fn(() => "blob:volume");
+        Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+        renderViewer();
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(await screen.findByTestId("mock-mesh-volume")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Save 3D image" }));
+        const dialog = await screen.findByRole("dialog", { name: "Save 3D image" });
+        fireEvent.mouseDown(within(dialog).getByRole("combobox"));
+        fireEvent.click(await screen.findByText("Print (×4)", { selector: "li" }));
+        fireEvent.click(within(dialog).getByLabelText("Transparent background"));
+        fireEvent.click(within(dialog).getByRole("button", { name: "Save PNG" }));
+
+        await waitFor(() => expect(click).toHaveBeenCalled());
+        expect(meshCapture).toHaveBeenCalledWith({ scale: 4, transparent: true });
+        expect(createObjectURL).toHaveBeenCalled();
+        click.mockRestore();
     });
 
     it("switches to metadata mode when metadata is available", async () => {

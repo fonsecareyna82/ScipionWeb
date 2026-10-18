@@ -22,7 +22,7 @@ import {
 import { styled } from "@mui/material/styles";
 import { VolumeHistogramPlot } from "./volume-histogram-plot";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw, Ruler } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play, Maximize2, Minimize2, RotateCcw, Ruler, Camera } from "lucide-react";
 import MeshVolumeView, { type MeshCameraState } from "./mesh-volume-view";
 import {
   DEFAULT_MESH_RENDER_STYLE,
@@ -33,6 +33,7 @@ import {
   type MeshRenderStyle,
 } from "./mesh-render-style";
 import useLiveSurfaces from "./use-live-surfaces";
+import { downloadBlob, imageFileName, type VolumeImageCapture } from "./volume-image-export";
 import type { SurfaceGrid } from "./surface-nets";
 import GpuVolumeView, { type VolumeRayMode } from "./gpu-volume-view";
 import { useClippingSliceImages } from "./use-clipping-slice-images";
@@ -426,6 +427,12 @@ export default function VolumeViewer({
   const [innerSurfaceLevel3d, setInnerSurfaceLevel3d] = useState<number | null>(null);
   const [innerSurfaceColor3d, setInnerSurfaceColor3d] = useState("#e8a33d");
   const opacityBeforeInnerRef = useRef<number | null>(null);
+  const captureImage3dRef = useRef<VolumeImageCapture | null>(null);
+  const [imageMenuAnchor, setImageMenuAnchor] = useState<HTMLElement | null>(null);
+  const [imageScale3d, setImageScale3d] = useState(2);
+  const [imageTransparent3d, setImageTransparent3d] = useState(false);
+  const [imageSaving3d, setImageSaving3d] = useState(false);
+  const [imageError3d, setImageError3d] = useState<string | null>(null);
   const updateMeshStyle3d = useCallback(
     (patch: Partial<MeshRenderStyle>) => setMeshStyle3d((current) => ({ ...current, ...patch })),
     [],
@@ -2234,6 +2241,87 @@ export default function VolumeViewer({
               )}
 
               {viewMode === "map3d" && (
+                <Tooltip title="Save image">
+                  <IconButton
+                    size="small"
+                    aria-label="Save 3D image"
+                    onClick={(event) => {
+                      setImageError3d(null);
+                      setImageMenuAnchor(event.currentTarget);
+                    }}
+                    sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}
+                  >
+                    <Camera size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              <Popover
+                open={Boolean(imageMenuAnchor)}
+                anchorEl={imageMenuAnchor}
+                onClose={() => setImageMenuAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+              >
+                <Box
+                  role="dialog"
+                  aria-label="Save 3D image"
+                  sx={{ p: 1.5, width: 240, display: "flex", flexDirection: "column", gap: 1, "& .MuiMenuItem-root": { fontSize: "0.76rem", minHeight: 30 } }}
+                >
+                  <Typography variant="caption" sx={{ fontWeight: 700 }}>Save image (PNG)</Typography>
+                  <TextField
+                    size="small"
+                    select
+                    label="Resolution"
+                    value={imageScale3d}
+                    onChange={(event) => setImageScale3d(Number(event.target.value))}
+                    SelectProps={{ MenuProps: { disablePortal: true } }}
+                    sx={{ "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" } }}
+                  >
+                    <MenuItem value={1}>Screen (×1)</MenuItem>
+                    <MenuItem value={2}>High (×2)</MenuItem>
+                    <MenuItem value={4}>Print (×4)</MenuItem>
+                  </TextField>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <Typography variant="caption">Transparent background</Typography>
+                    <Switch
+                      size="small"
+                      checked={imageTransparent3d}
+                      onChange={(event) => setImageTransparent3d(event.target.checked)}
+                      slotProps={{ input: { "aria-label": "Transparent background" } }}
+                    />
+                  </Box>
+                  {imageError3d && <Typography variant="caption" color="error">{imageError3d}</Typography>}
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={imageSaving3d}
+                    onClick={async () => {
+                      const capture = captureImage3dRef.current;
+                      if (!capture) {
+                        setImageError3d("The 3D view is not ready yet.");
+                        return;
+                      }
+                      setImageSaving3d(true);
+                      setImageError3d(null);
+                      try {
+                        const blob = await capture({ scale: imageScale3d, transparent: imageTransparent3d });
+                        downloadBlob(blob, imageFileName(outputName, selectedVolume?.label ?? selectedId, renderMode3d));
+                        setImageMenuAnchor(null);
+                      } catch (error: any) {
+                        setImageError3d(error?.message || "Could not save the image.");
+                      } finally {
+                        setImageSaving3d(false);
+                      }
+                    }}
+                    sx={{ textTransform: "none" }}
+                  >
+                    {imageSaving3d ? "Saving…" : "Save PNG"}
+                  </Button>
+                </Box>
+              </Popover>
+
+              {viewMode === "map3d" && (
                 <Tooltip title="Reset 3D view (double-click)">
                   <IconButton
                     size="small"
@@ -2446,6 +2534,7 @@ export default function VolumeViewer({
                   regions={volumeRegions}
                   renderMode="volume"
                   rayMode={rayMode3d}
+                  captureRef={captureImage3dRef}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={0.8}
                   resetViewKey={reset3dViewKey}
@@ -2467,6 +2556,7 @@ export default function VolumeViewer({
                   previewMesh={surfacePreviewLevel != null ? liveSurfaces.preview : null}
                   innerMesh={innerSurfaceEnabled3d ? liveSurfaces.inner : null}
                   innerColor={innerSurfaceColor3d}
+                  captureRef={captureImage3dRef}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   resetViewKey={reset3dViewKey}

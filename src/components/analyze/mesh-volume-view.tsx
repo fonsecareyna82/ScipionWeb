@@ -37,6 +37,7 @@ import {
     type MeshRenderStyle,
 } from "./mesh-render-style";
 import { createClippingCaps } from "./mesh-clipping-caps";
+import { canvasToPng, exportScale, type VolumeImageCapture } from "./volume-image-export";
 
 // A surface computed in the browser (the live threshold, the inner level).
 export type MeshSurfaceArrays = {
@@ -85,6 +86,8 @@ export type MeshVolumeViewProps = {
     // A second, opaque surface at a higher level, inside a transparent mesh.
     innerMesh?: MeshSurfaceArrays | null;
     innerColor?: string;
+    // Set by the view: saves the current view as a PNG.
+    captureRef?: MutableRefObject<VolumeImageCapture | null>;
 };
 
 export type MeshCameraState = {
@@ -645,6 +648,7 @@ export default function MeshVolumeView({
     previewMesh = null,
     innerMesh = null,
     innerColor = "#e8a33d",
+    captureRef,
 }: MeshVolumeViewProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const autoRotateRef = useRef(autoRotate);
@@ -682,6 +686,8 @@ export default function MeshVolumeView({
     const applyGeometryRef = useRef<() => void>(() => undefined);
     const applyInnerRef = useRef<() => void>(() => undefined);
     const hasMesh = !!(mesh?.vertices?.length && mesh?.indices?.length);
+    const captureRefRef = useRef(captureRef);
+    captureRefRef.current = captureRef;
     const requestRenderRef = useRef<() => void>(() => undefined);
     const resetViewRef = useRef<() => void>(() => undefined);
     const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => undefined);
@@ -1134,6 +1140,36 @@ export default function MeshVolumeView({
                 setCameraFrustum(camera, width / height, orthoHalfHeight);
             };
 
+            // Renders the view again at a multiple of its screen size.
+            const capture: VolumeImageCapture = async ({ scale, transparent }) => {
+                if (!renderer || !composer) throw new Error("The 3D view is not ready.");
+                const width = Math.max(1, host.clientWidth);
+                const height = Math.max(1, host.clientHeight);
+                const ratio = exportScale(width, height, scale, Math.min(8192, renderer.capabilities.maxTextureSize));
+                const background = scene.background;
+                if (transparent) scene.background = null;
+                try {
+                    renderer.setPixelRatio(ratio);
+                    renderer.setSize(width, height, false);
+                    composer.setPixelRatio(ratio);
+                    composer.setSize(width, height);
+                    setCameraFrustum(camera, width / height, orthoHalfHeight);
+                    surfacePivot.updateMatrixWorld(true);
+                    localClipPlanes.forEach((plane, index) => {
+                        worldClipPlanes[index].copy(plane).applyMatrix4(surfacePivot.matrixWorld);
+                    });
+                    updateDepthCue();
+                    caps.update();
+                    composer.render(0);
+                    return await canvasToPng(renderer.domElement, null);
+                } finally {
+                    scene.background = background;
+                    applyRenderQuality(true);
+                    requestRender();
+                }
+            };
+            if (captureRefRef.current) captureRefRef.current.current = capture;
+
             const renderFrame = () => {
                 frameId = null;
                 if (!activeRef.current || document.visibilityState === "hidden") return;
@@ -1445,6 +1481,7 @@ export default function MeshVolumeView({
                 applyRenderStyleRef.current = () => undefined;
                 applyGeometryRef.current = () => undefined;
                 applyInnerRef.current = () => undefined;
+                if (captureRefRef.current?.current === capture) captureRefRef.current.current = null;
             };
         } catch (error: any) {
             gtaoPass?.dispose();
