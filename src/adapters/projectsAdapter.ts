@@ -53,6 +53,7 @@ import type {
   SystemUpdateCheck,
   ProjectServiceCapabilities,
   RunProtocolWizardPayload,
+  RunProtocolViewerWizardPayload,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
   WorkflowExportRequestPayload,
@@ -171,6 +172,9 @@ const defaultService: ProjectService = {
   fetchProtocolViewerRuntimePreview: (
     projectId: Id, protocolId: Id, viewerId: string, opts?: {signal?: AbortSignal},
   ) => api.fetchProtocolViewerRuntimePreview(toId(projectId), toId(protocolId), viewerId, opts),
+
+  runProtocolViewerWizard: (projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload) =>
+    api.runProtocolViewerWizard(toId(projectId), toId(protocolId), payload),
 
   runProtocolViewerAction: (
     projectId: Id, protocolId: Id, viewerId: string, action: string,

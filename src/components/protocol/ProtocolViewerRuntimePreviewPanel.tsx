@@ -1,11 +1,11 @@
 // The protocol viewer's own form, built at runtime from the plugin code.
 // Each field with a visualize handler gets an "eye" that runs it on the server.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Alert, Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, LinearProgress, MenuItem,
   TextField, Tooltip, Typography,
 } from "@mui/material";
-import { ExternalLink, Eye, Info, Monitor, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, Eye, Info, Monitor, SlidersHorizontal, Wand2 } from "lucide-react";
 import type { ProjectService, ProtocolViewerActionValues } from "@/services/ProjectService";
 import { describeProtocolViewerRuntimePreview, validRuntimeViewerId, type RuntimeViewerPreview } from "@/utils/protocol_viewer_runtime_preview";
 import { evaluateViewerCondition, initialViewerLocalValues, localViewerFieldValue } from "@/utils/protocol_viewer_reactive_form";
@@ -17,6 +17,9 @@ import ProtocolViewerActionResults, {
   hasWindowContent, isInlineItem, openVolumesTarget, ViewerLinkButton,
 } from "./ProtocolViewerActionResults";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
+import WizardRuntimeDialog from "./wizards/WizardRuntimeDialog";
+import { useWizardRuntime, type WizardRunRequest } from "./wizards/use_wizard_runtime";
 
 type Props = {
   service: ProjectService;
@@ -99,6 +102,13 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
       if (actionController.current === controller) actionController.current = null;
     }
   };
+
+  // Wizards of the viewer form (e.g. a color scale) run with the viewer.
+  const runWizard = useCallback((request: WizardRunRequest) => service.runProtocolViewerWizard!(
+    projectId, protocolId, {
+      viewerId, values: request.formValues as ProtocolViewerActionValues, paramName: request.paramName,
+      wizardId: request.wizardId, answers: request.answers, preview: request.preview,
+    }), [service, projectId, protocolId, viewerId]);
 
   const ready = shown.status === "ready" ? shown.preview : null;
   const actionLabel = (name: string) => {
@@ -191,6 +201,11 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
               preview={ready}
               runningAction={action.status === "running" ? action.action : null}
               onAction={typeof service.runProtocolViewerAction === "function" ? runAction : undefined}
+              onWizardRun={typeof service.runProtocolViewerWizard === "function" ? runWizard : undefined}
+              service={service}
+              projectId={projectId}
+              protocolId={protocolId}
+              protocolLabel={protocolLabel ?? ""}
             />
             {ready.omittedFields > 0 && (
               <Typography variant="caption" sx={{ display: "block", mt: 1.5, color: "#64748b" }}>
@@ -257,10 +272,17 @@ type FormProps = {
   preview: RuntimeViewerPreview;
   runningAction: string | null;
   onAction?: (name: string, values: ProtocolViewerActionValues) => void;
+  onWizardRun?: (request: WizardRunRequest) => Promise<unknown>;
+  service: ProjectService;
+  projectId: string;
+  protocolId: string;
+  protocolLabel: string;
 };
 
 /** Values live in this browser until an action sends them; nothing is saved. */
-function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps) {
+function RuntimeLocalViewerForm({
+  preview, runningAction, onAction, onWizardRun, service, projectId, protocolId, protocolLabel,
+}: FormProps) {
   const entries = preview.conditionalFields ?? [];
   const [values, setValues] = useState<Readonly<Record<string, unknown>>>(() =>
     initialViewerLocalValues(preview.sections, entries));
@@ -281,6 +303,45 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
     });
     if (typeof raw === "string") setDrafts(previous => ({ ...previous, [field.name]: raw }));
   };
+
+  // Wizards (the desktop's magic wand) set values of this form, as there.
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  const fieldsByName = new Map<string, Field>([
+    ...preview.sections.flatMap(section => [...section.fields, ...section.groups.flatMap(group => group.fields)]),
+    ...entries.map(entry => entry.field),
+  ].map(field => [field.name, field]));
+  const [wizardError, setWizardError] = useState<string | null>(null);
+  const wizard = useWizardRuntime({
+    projectId, protocolId, protocolClassName: null, svc: {},
+    getSerializedParams: () => actionValues(valuesRef.current),
+    applyWizardParamUpdates: (updates) => {
+      for (const [name, value] of Object.entries(updates)) {
+        const field = fieldsByName.get(name);
+        if (!field || value === null || value === undefined) continue;
+        update(field, field.control === "boolean" ? Boolean(value) : String(value));
+      }
+    },
+    openExecErrorDialog: (_title, message) => setWizardError(message),
+    runner: onWizardRun,
+  });
+
+  const wand = (field: Field) => preview.wizards?.[field.name] && onWizardRun ? (
+    <Tooltip title={`Wizard: ${field.label}`}>
+      <span>
+        <IconButton size="small" aria-label={`Wizard for ${field.label}`}
+          disabled={wizard.run !== null}
+          onClick={() => { setWizardError(null); void wizard.openWizard(field.name, field.label, preview.wizards[field.name]); }}
+          sx={{
+            width: 34, height: 34, flex: "0 0 auto", border: "1px solid rgba(148, 163, 184, 0.6)",
+            color: "#333d49", bgcolor: "#ffffff",
+            "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
+          }}>
+          <Wand2 size={16} />
+        </IconButton>
+      </span>
+    </Tooltip>
+  ) : null;
 
   const eye = (field: Field) => actions.has(field.name) && onAction ? (
     <Tooltip title={`Show: ${field.label}`}>
@@ -340,6 +401,7 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
             </Box>
           </Tooltip>
         )}
+        {wand(field)}
         {eye(field)}
       </Box>
     );
@@ -355,6 +417,25 @@ function RuntimeLocalViewerForm({ preview, runningAction, onAction }: FormProps)
 
   return (
     <Box data-testid="protocol-viewer-local-form">
+      {wizardError && (
+        <Alert severity="error" sx={{ mt: 1.5 }} onClose={() => setWizardError(null)}>
+          <Box sx={{ whiteSpace: "pre-line" }}>{wizardError}</Box>
+        </Alert>
+      )}
+      <WizardLoadingDialog open={Boolean(wizard.run && !wizard.run.dialog)}
+        title={wizard.run?.paramLabel ?? "Wizard"} message="Running the wizard..." />
+      {wizard.run?.dialog && (
+        <WizardRuntimeDialog key={`${wizard.run.paramName}:${wizard.run.step}`} dialog={wizard.run.dialog}
+          paramLabel={wizard.run.paramLabel} messages={wizard.run.messages} busy={wizard.run.busy}
+          previewImages={wizard.run.previewImages} previewBusy={wizard.run.previewBusy}
+          onAnswer={wizard.answer} onCancel={wizard.cancel} onPreview={wizard.requestPreview} />
+      )}
+      {wizard.views && (
+        <ProtocolViewerActionResults service={service} projectId={projectId} protocolId={protocolId}
+          protocolLabel={protocolLabel} title={wizard.views.title}
+          result={{ action: "wizard", items: wizard.views.items, messages: wizard.views.messages, omittedItems: 0 }}
+          onClose={wizard.closeViews} />
+      )}
       {sectionNames.map((name, index) => {
         const section = preview.sections.find(item => item.label === name);
         const direct = deferred.filter(item => item.section === name && item.group === null);

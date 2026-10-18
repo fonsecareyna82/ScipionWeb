@@ -43,6 +43,16 @@ type Args = {
   getSerializedParams: () => Record<string, unknown>;
   applyWizardParamUpdates: (updates: Record<string, unknown>) => void;
   openExecErrorDialog: (title: string, message: string) => void;
+  /** Sends one run elsewhere (e.g. a viewer form's wizard); default: the protocol form's. */
+  runner?: (request: WizardRunRequest) => Promise<unknown>;
+};
+
+export type WizardRunRequest = {
+  paramName: string;
+  wizardId: string;
+  formValues: Record<string, unknown>;
+  answers: WizardAnswer[];
+  preview: { step: number; item: number; values: Record<string, number> } | null;
 };
 
 function notify(messages: ViewerActionMessage[]) {
@@ -56,7 +66,7 @@ function notify(messages: ViewerActionMessage[]) {
 
 export function useWizardRuntime({
   projectId, protocolId, protocolClassName, svc, getSerializedParams, applyWizardParamUpdates,
-  openExecErrorDialog,
+  openExecErrorDialog, runner,
 }: Args) {
   const [run, setRun] = useState<WizardRun | null>(null);
   const [views, setViews] = useState<WizardViews | null>(null);
@@ -67,17 +77,23 @@ export function useWizardRuntime({
 
   const call = useCallback(async (current: WizardRun, answers: WizardAnswer[],
     preview: { step: number; item: number; values: Record<string, number> } | null = null): Promise<WizardReply> => {
-    if (!svc.runProtocolWizard || projectId === null) throw new Error("Wizards are not available.");
-    // A protocol not saved yet has no id: the server builds a new one from the form.
-    const savedId = /^\d+$/.test(String(protocolId ?? "").trim()) ? Number(protocolId) : null;
-    const raw = await svc.runProtocolWizard(projectId, {
-      protocolId: savedId, protocolClassName, paramName: current.paramName,
-      wizardId: current.wizardId, formValues: formRef.current, answers, preview,
-    });
+    let raw: unknown;
+    if (runner) {
+      raw = await runner({ paramName: current.paramName, wizardId: current.wizardId,
+        formValues: formRef.current, answers, preview });
+    } else {
+      if (!svc.runProtocolWizard || projectId === null) throw new Error("Wizards are not available.");
+      // A protocol not saved yet has no id: the server builds a new one from the form.
+      const savedId = /^\d+$/.test(String(protocolId ?? "").trim()) ? Number(protocolId) : null;
+      raw = await svc.runProtocolWizard(projectId, {
+        protocolId: savedId, protocolClassName, paramName: current.paramName,
+        wizardId: current.wizardId, formValues: formRef.current, answers, preview,
+      });
+    }
     const reply = describeWizardReply(raw);
     if (!reply) throw new Error("The wizard gave an answer the web does not understand.");
     return reply;
-  }, [svc, projectId, protocolId, protocolClassName]);
+  }, [svc, projectId, protocolId, protocolClassName, runner]);
 
   const finish = useCallback((current: WizardRun, reply: WizardReply) => {
     switch (reply.status) {

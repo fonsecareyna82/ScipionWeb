@@ -5,9 +5,10 @@ import ProtocolViewerDiscoveryDialog from "@/components/protocol/ProtocolViewerD
 const fetchProtocolViewerCandidates = vi.fn();
 const fetchProtocolViewerRuntimePreview = vi.fn();
 const runProtocolViewerAction = vi.fn();
+const runProtocolViewerWizard = vi.fn();
 // Stable service identity: an unstable mock re-triggers the loading effects.
 const mockProjectService = {
-  fetchProtocolViewerCandidates, fetchProtocolViewerRuntimePreview, runProtocolViewerAction,
+  fetchProtocolViewerCandidates, fetchProtocolViewerRuntimePreview, runProtocolViewerAction, runProtocolViewerWizard,
 };
 vi.mock("@/ProjectServiceContext", () => ({useProjectService: () => mockProjectService}));
 vi.mock("@/components/analyze/analyze-output-dialog", () => ({
@@ -104,6 +105,32 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     fetchProtocolViewerRuntimePreview.mockResolvedValue(runtimePreview({protocolId: "8"}));
     renderDialog();
     expect(await screen.findByText("The viewer form could not be read.")).toBeInTheDocument();
+  });
+
+  it("runs the wizards of the viewer form, like its color scale, and fills the form", async () => {
+    fetchProtocolViewerRuntimePreview.mockResolvedValue(runtimePreview({
+      sections: [{label: "Visualization", fields: [], groups: [{label: "Colored resolution", fields: [
+        field("highest", "Highest", "number", {default: "19.4"}),
+        field("lowest", "Lowest", "number", {default: "5"}),
+      ]}]}],
+      actions: [],
+      wizards: {highest: "xmipp3.wizards.ColorScaleWizard", lowest: "xmipp3.wizards.ColorScaleWizard"},
+    }));
+    runProtocolViewerWizard
+      .mockResolvedValueOnce({status: "dialog", step: 0, messages: [], dialog: {type: "form", title: "Color scale wizard",
+        fields: [{name: "lowest", label: "Lowest", kind: "number", value: 5},
+          {name: "highest", label: "Highest", kind: "number", value: 19.4}]}})
+      .mockResolvedValueOnce({status: "done", paramUpdates: {lowest: 2, highest: 6}, messages: []});
+    const result = await form();
+    fireEvent.click(within(result).getByRole("button", {name: "Wizard for Highest"}));
+    const dialog = await screen.findByRole("dialog", {name: "Color scale wizard"});
+    expect(runProtocolViewerWizard).toHaveBeenCalledWith("1", "7", expect.objectContaining({
+      viewerId, paramName: "highest", wizardId: "xmipp3.wizards.ColorScaleWizard",
+      values: {highest: 19.4, lowest: 5}, answers: []}));
+    fireEvent.change(within(dialog).getByLabelText("Lowest"), {target: {value: "2"}});
+    fireEvent.click(within(dialog).getByRole("button", {name: "Apply"}));
+    await waitFor(() => expect(within(result).getByTestId("viewer-local-lowest")).toHaveValue(2));
+    expect(within(result).getByTestId("viewer-local-highest")).toHaveValue(6);
   });
 
   it("sends the current form values with the action and renders plots, tables and text", async () => {

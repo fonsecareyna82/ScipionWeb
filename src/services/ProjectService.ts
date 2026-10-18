@@ -1465,6 +1465,15 @@ export type ProtocolRelationCandidatesResult = {
 // Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+export type RunProtocolViewerWizardPayload = {
+  viewerId: string;
+  values: ProtocolViewerActionValues;
+  paramName: string;
+  wizardId: string;
+  answers: Record<string, unknown>[];
+  preview?: { step: number; item: number; values: Record<string, number> } | null;
+};
+
 export type RunProtocolWizardPayload = {
   protocolId: Id | null;
   protocolClassName: string | null;
@@ -1718,6 +1727,11 @@ export interface ProjectService<
   fetchProtocolViewerRuntimePreview?: (
     projectId: Id, protocolId: Id, viewerId: string, opts?: {signal?: AbortSignal},
   ) => Promise<ProtocolViewerRuntimePreview>;
+
+  /** Run a wizard of a viewer's form (e.g. a color scale); replies as runProtocolWizard. */
+  runProtocolViewerWizard?: (
+    projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload,
+  ) => Promise<unknown>;
 
   /** Run one viewer action (the desktop "eye") with the current form values. */
   runProtocolViewerAction?: (

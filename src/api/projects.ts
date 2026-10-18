@@ -39,6 +39,7 @@ import {
   SystemVersionInfo,
   SystemUpdateCheck,
   RunProtocolWizardPayload,
+  RunProtocolViewerWizardPayload,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
   WorkflowExportRequestPayload,
@@ -4674,6 +4675,25 @@ export async function resolveProtocolRelationCandidates(
   };
 }
 
+
+export async function runProtocolViewerWizard(
+  projectId: Id,
+  protocolId: Id,
+  payload: RunProtocolViewerWizardPayload,
+): Promise<unknown> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/viewers/wizard`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, preview: payload.preview ?? null }),
+    },
+  );
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to run the viewer wizard");
+  }
+  return response.json();
+}
 
 export async function runProtocolWizard(
   projectId: Id,

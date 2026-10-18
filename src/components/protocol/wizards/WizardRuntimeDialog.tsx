@@ -45,7 +45,8 @@ function Shell({ title, subtitle, children, actions, onClose, busy, maxWidth = "
   return (
     <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby="wizard-runtime-title"
       className="sfw-launcher-dialog" PaperProps={{ sx: { borderRadius: "18px", overflow: "hidden" } }}>
-      <DialogTitle component="div" sx={headerSx}>
+      {/* Its own id: MUI would give it the dialog's aria-labelledby, naming the dialog after the whole header. */}
+      <DialogTitle component="div" id="wizard-runtime-header" sx={headerSx}>
         <Wand2 size={20} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography id="wizard-runtime-title" variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>

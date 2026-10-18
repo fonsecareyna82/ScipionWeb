@@ -26,6 +26,8 @@ export type RuntimeViewerPreview = {
   conditionalFields?: ViewerReactiveEntry[];
   /** Fields with a visualize handler: each gets an "eye" button. */
   actions: string[];
+  /** Fields with a wizard (e.g. a color scale): field name -> wizard id. */
+  wizards: Record<string, string>;
 };
 
 const VIEWER_ID = /^[A-Za-z_][A-Za-z0-9_.]{0,254}$/;
@@ -167,8 +169,18 @@ export function describeProtocolViewerRuntimePreview(
     ? [...new Set(data.actions.filter((name): name is string =>
         typeof name === "string" && fieldNames.has(name)))]
     : [];
+  const wizards: Record<string, string> = {};
+  if (data.wizards && typeof data.wizards === "object" && !Array.isArray(data.wizards)) {
+    for (const [name, wizardId] of Object.entries(data.wizards as Record<string, unknown>)) {
+      if (fieldNames.has(name) && typeof wizardId === "string" && wizardId.length <= 512 &&
+          /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(wizardId)) {
+        wizards[name] = wizardId;
+      }
+    }
+  }
   return {
     actions,
+    wizards,
     sections: safeSections,
     fieldsDiscovered: count(data.fieldsDiscovered),
     omittedFields: count(data.omittedFields),
