@@ -420,6 +420,13 @@ const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
 const IMAGE_BATCH_MAX_ITEMS = 32;
 
 const METADATA_IMAGE_PRIMARY_FORMAT = "webp";
+
+// The size to ask an image at: its size on screen in device pixels (up to
+// twice the CSS size), rounded up to steps of 64 so zooming reuses the cache.
+export function metadataImageRequestSize(cssSize: number, devicePixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1): number {
+  const pixels = cssSize * Math.min(2, Math.max(1, devicePixelRatio));
+  return Math.min(1024, Math.ceil(pixels / 64) * 64);
+}
 const METADATA_IMAGE_FALLBACK_FORMAT = "png";
 const METADATA_IMAGE_CACHE_VARIANT = "webp-png-fallback";
 
@@ -2261,6 +2268,8 @@ function MetadataImageCell({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const svcRef = useProjectServiceRef();
+  // Sharp on high density screens: the image is asked at the screen's pixels.
+  const requestSize = metadataImageRequestSize(size);
 
   const imageCacheKey = useMemo(
     () =>
@@ -2272,7 +2281,7 @@ function MetadataImageCell({
         columnName,
         cell.path,
         rowId ?? rowIndexInTable,
-        size,
+        requestSize,
         contrastMode,
         METADATA_IMAGE_CACHE_VARIANT,
       ].join("|"),
@@ -2285,7 +2294,7 @@ function MetadataImageCell({
       outputName,
       projectId,
       protocolId,
-      size,
+      requestSize,
       tableName,
     ],
   );
@@ -2358,13 +2367,13 @@ function MetadataImageCell({
         ),
 
       batch: {
-        groupKey: [projectId, protocolId, outputName, tableName, size, sortBy ?? "", sortAsc, contrastMode].join("|"),
+        groupKey: [projectId, protocolId, outputName, tableName, requestSize, sortBy ?? "", sortAsc, contrastMode].join("|"),
         svc: svcRef.current,
         projectId,
         protocolId,
         outputName,
         tableName,
-        size,
+        size: requestSize,
         contrastMode,
         sortBy: sortBy ?? undefined,
         asc: sortBy ? sortAsc : undefined,
@@ -2378,7 +2387,7 @@ function MetadataImageCell({
           rowId: rowId ?? undefined,
           sortBy: sortBy ?? undefined,
           asc: sortBy ? sortAsc : undefined,
-          size,
+          size: requestSize,
           contrastMode,
           applyTransform: false,
           inline: true,
