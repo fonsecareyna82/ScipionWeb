@@ -546,6 +546,7 @@ function buildSubtreeAlignedPlacements(params: {
   const siblingGap = direction === "TB" ? 260 : 220;
   const rootBranchGap = direction === "TB" ? 320 : 120;
   const disconnectedRootGap = direction === "TB" ? 360 : 150;
+  const subworkflowGap = direction === "TB" ? 720 : 360;
 
   const getChildrenGap = (parentId: string): number => {
     return parentId === "PROJECT" ? rootBranchGap : siblingGap;
@@ -1031,7 +1032,9 @@ function buildSubtreeAlignedPlacements(params: {
   }
 
 
-  if (direction === "TB") {
+  // Sub-workflows (protocols connected among themselves) in bands of their
+  // own, further apart than branches of one sub-workflow, so they stand out.
+  {
     const protocolIds = nodeIds.filter((id) => id !== "PROJECT" && Boolean(placements[id]));
     const adjacency = new Map<string, Set<string>>();
 
@@ -1104,7 +1107,7 @@ function buildSubtreeAlignedPlacements(params: {
 
     for (const block of componentBlocks) {
       const offset = Number.isFinite(previousRight)
-        ? Math.max(0, previousRight + disconnectedRootGap - block.left)
+        ? Math.max(0, previousRight + subworkflowGap - block.left)
         : 0;
 
       if (offset > 0.5) {

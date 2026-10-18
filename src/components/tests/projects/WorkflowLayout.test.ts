@@ -178,3 +178,28 @@ describe("workflow layout packing", () => {
     }
   });
 });
+
+describe("workflow layout sub-workflows", () => {
+  const twoWorkflows = {
+    PROJECT: { label: "P", children: ["1", "4"] },
+    "1": { label: "import movies", children: ["2", "3"] },
+    "2": { label: "align", children: [] },
+    "3": { label: "ctf", children: [] },
+    "4": { label: "import volumes", children: ["5"] },
+    "5": { label: "mask", children: [] },
+  } as any;
+
+  it("sets sub-workflows further apart than the branches of one", () => {
+    for (const [direction, size, gap, branchGap] of [["TB", 950, 720, 260], ["LR", 520, 360, 220]] as const) {
+      const positions = byId(buildGraphElements("P", twoWorkflows, "hierarchical", direction));
+      const axis = (id: string) => (direction === "TB" ? positions[id].x : positions[id].y);
+      const first = ["1", "2", "3"].map(axis);
+      const second = ["4", "5"].map(axis);
+      const [left, right] = Math.max(...first) < Math.min(...second) ? [first, second] : [second, first];
+      expect(Math.min(...right) - Math.max(...left) - size).toBeGreaterThanOrEqual(gap - 0.5);
+      // Inside a sub-workflow, branches keep their usual spacing.
+      expect(Math.abs(axis("3") - axis("2")) - size).toBeLessThan(gap);
+      expect(Math.abs(axis("3") - axis("2")) - size).toBeGreaterThanOrEqual(branchGap - 0.5);
+    }
+  });
+});
