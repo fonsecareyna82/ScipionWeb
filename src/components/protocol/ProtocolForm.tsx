@@ -3914,8 +3914,8 @@ export default function ProtocolForm({
       hasOutputs={hasProtocolOutputs}
       headerButtonSx={{
         ...headerActionBtnSx,
-        height: 30,
-        px: 1.25,
+        height: 34,
+        px: 1.5,
         mr: 0.5,
         borderRadius: "8px",
         textTransform: "none",

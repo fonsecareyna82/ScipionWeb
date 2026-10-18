@@ -28,8 +28,8 @@ type Props = {
 };
 
 const dockButtonSx = {
-  height: 28,
-  px: 1.1,
+  height: 32,
+  px: 1.4,
   borderRadius: "7px",
   textTransform: "none",
   fontSize: "0.75rem",
