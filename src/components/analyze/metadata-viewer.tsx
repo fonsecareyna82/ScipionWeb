@@ -60,6 +60,7 @@ import {
   Bookmark,
   LineChart as PlotterIcon,
 } from "lucide-react";
+import type { MetadataContrastMode } from "@/services/ProjectService";
 import type {
   MetadataCell,
   MetadataColumn,
@@ -89,7 +90,12 @@ type MetadataViewerProps = {
 };
 
 type ViewMode = "table" | "gallery";
-type MetadataContrastMode = "original" | "enhanced";
+type ClassVolumeView = "surface" | "projection" | "slice";
+const CLASS_VOLUME_VIEWS: Array<{ id: ClassVolumeView; label: string; help: string }> = [
+  { id: "surface", label: "Surface", help: "The class volume as a lit 3D surface" },
+  { id: "projection", label: "Projection", help: "The projection of the class volume" },
+  { id: "slice", label: "Slice", help: "The central slice of the class volume" },
+];
 
 type SelectedImageCell = {
   rowIndexInTable: number;
@@ -3612,8 +3618,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
   // Nested tables (e.g. Class001_Objects) hold member particles, potentially
   // thousands of them. Never request contrast enhancement for those images.
   // One mode is shared by table cells, gallery batches and full-size previews.
-  const contrastMode: MetadataContrastMode =
-    supportsClassContrast && selectedTable === "objects" ? "enhanced" : "original";
+  // 3D classes are drawn as a surface, a projection or a slice of their volume.
+  const isClasses3D = /^SetOfClasses3D$/i.test(String(outputClassName ?? "").trim());
+  const [classVolumeView, setClassVolumeView] = useState<ClassVolumeView>("surface");
+  const showsClasses = supportsClassContrast && selectedTable === "objects";
+  const contrastMode: MetadataContrastMode = !showsClasses ? "original"
+    : !isClasses3D || classVolumeView === "surface" ? "enhanced"
+      : classVolumeView === "projection" ? "enhanced-projection" : "enhanced-slice";
 
   const { schema, setSchema, schemaLoading, schemaError, setSchemaError } = useMetadataSchema(
     projectId,
@@ -5285,6 +5296,30 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             flexItem
             sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }}
           />
+
+          {showsClasses && isClasses3D && (
+            <>
+              <Typography variant="caption" sx={{ mr: 0.5, color: "text.secondary", fontWeight: 500 }}>
+                3D:
+              </Typography>
+              <Box role="group" aria-label="3D class view" sx={{ display: "inline-flex", border: "1px solid rgba(148,163,184,0.6)",
+                borderRadius: "7px", overflow: "hidden" }}>
+                {CLASS_VOLUME_VIEWS.map((view) => (
+                  <Tooltip key={view.id} title={view.help}>
+                    <Box component="button" type="button" aria-pressed={classVolumeView === view.id}
+                      onClick={() => setClassVolumeView(view.id)}
+                      sx={{ border: 0, px: 1, py: 0.25, cursor: "pointer", fontSize: "0.72rem", fontWeight: 600,
+                        bgcolor: classVolumeView === view.id ? "#333d49" : "transparent",
+                        color: classVolumeView === view.id ? "#fff" : "text.secondary",
+                        "&:hover": { bgcolor: classVolumeView === view.id ? "#333d49" : "rgba(148,163,184,0.15)" } }}>
+                      {view.label}
+                    </Box>
+                  </Tooltip>
+                ))}
+              </Box>
+              <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }} />
+            </>
+          )}
 
           {viewMode === "table" && schema && (
             <Tooltip title="Manage columns">

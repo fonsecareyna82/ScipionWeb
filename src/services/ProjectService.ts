@@ -1465,6 +1465,13 @@ export type ProtocolRelationCandidatesResult = {
 // Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * How metadata images are drawn: as stored ("original"), or, for class
+ * representatives, enhanced; 3D classes then show a lit surface ("enhanced"),
+ * a projection or their central slice.
+ */
+export type MetadataContrastMode = "original" | "enhanced" | "enhanced-projection" | "enhanced-slice";
+
 export type RunProtocolViewerWizardPayload = {
   viewerId: string;
   values: ProtocolViewerActionValues;
@@ -2155,7 +2162,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
-      contrastMode?: "original" | "enhanced";
+      contrastMode?: MetadataContrastMode;
       signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
@@ -2172,7 +2179,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
-      contrastMode?: "original" | "enhanced";
+      contrastMode?: MetadataContrastMode;
       sortBy?: string;
       asc?: boolean;
       signal?: AbortSignal;
@@ -2205,7 +2212,7 @@ export interface ProjectService<
       applyTransform?: boolean;
       inline?: boolean;
       format?: string;
-      contrastMode?: "original" | "enhanced";
+      contrastMode?: MetadataContrastMode;
     }
   ): string;
 

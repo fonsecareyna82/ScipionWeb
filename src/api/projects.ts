@@ -39,6 +39,7 @@ import {
   SystemVersionInfo,
   SystemUpdateCheck,
   RunProtocolWizardPayload,
+  MetadataContrastMode,
   RunProtocolViewerWizardPayload,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
@@ -3835,7 +3836,7 @@ export async function fetchMetadataImageCellObjectUrl(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
-    contrastMode?: "original" | "enhanced";
+    contrastMode?: MetadataContrastMode;
     signal?: AbortSignal;
   } = {},
 ): Promise<{ url: string; revoke: () => void }> {
@@ -3880,6 +3881,14 @@ export async function fetchMetadataImageCellObjectUrl(
   return { url: objUrl, revoke };
 }
 
+/** The server's contrast mode and 3D view for a metadata contrast mode. */
+function metadataContrastParams(mode?: MetadataContrastMode): { contrastMode?: string; volumeView?: string } {
+  if (!mode) return {};
+  if (mode === "original") return { contrastMode: "original" };
+  const view = mode === "enhanced-projection" ? "projection" : mode === "enhanced-slice" ? "slice" : "surface";
+  return { contrastMode: "enhanced", volumeView: view };
+}
+
 // Builds the URL for an image cell (used directly as <img src="...">)
 export function getMetadataImageCellUrl(
   projectId: number,
@@ -3896,7 +3905,7 @@ export function getMetadataImageCellUrl(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
-    contrastMode?: "original" | "enhanced";
+    contrastMode?: MetadataContrastMode;
   } = {},
 ): string {
   const { size = 256, applyTransform = false, inline = true, format = "png" } =
@@ -3913,7 +3922,9 @@ export function getMetadataImageCellUrl(
   params.set("applyTransform", String(applyTransform));
   params.set("inline", String(inline));
   params.set("fmt", format);
-  if (opts.contrastMode) params.set("contrastMode", opts.contrastMode);
+  const contrast = metadataContrastParams(opts.contrastMode);
+  if (contrast.contrastMode) params.set("contrastMode", contrast.contrastMode);
+  if (contrast.volumeView) params.set("volumeView", contrast.volumeView);
 
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodeURIComponent(outputName)}/metadata/tables/${encodeURIComponent(
     tableName,
@@ -3931,7 +3942,7 @@ export async function fetchMetadataImageCellsBatch(
     applyTransform?: boolean;
     inline?: boolean;
     format?: string;
-    contrastMode?: "original" | "enhanced";
+    contrastMode?: MetadataContrastMode;
     sortBy?: string;
     asc?: boolean;
     signal?: AbortSignal;
@@ -3965,7 +3976,7 @@ export async function fetchMetadataImageCellsBatch(
     applyTransform: opts.applyTransform ?? false,
     inline: opts.inline ?? true,
     fmt: opts.format ?? "png",
-    contrastMode: opts.contrastMode ?? "original",
+    ...metadataContrastParams(opts.contrastMode ?? "original"),
     sortBy: opts.sortBy ?? "id",
     asc: opts.asc ?? true,
   };
