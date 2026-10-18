@@ -40,6 +40,9 @@ function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"):
 }
 
 type Direction = "TB" | "LR";
+
+/** Free space kept between a level's largest node and the next level. */
+const MIN_LEVEL_GAP = 160;
 type GraphPosition = { x: number; y: number };
 
 export type NodeSizeMap = Record<string, { width: number; height: number }>;
@@ -446,6 +449,24 @@ function buildSubtreeAlignedPlacements(params: {
 
   const placements: Record<string, GraphPosition> = {};
 
+  // Each level starts after the tallest (TB) or widest (LR) node of the one
+  // before, and never closer than the usual spacing.
+  const levelSpacing = direction === "TB" ? spacingY : spacingX;
+  const maxLevel = Math.max(0, ...Object.values(levelMap));
+  const levelExtent: number[] = Array(maxLevel + 1).fill(0);
+  for (const id of nodeIds) {
+    const size = direction === "TB"
+      ? getEstimatedGraphNodeHeight({ id, protocols, projectName, nodeSizeMap })
+      : getNodeWidth(id, getGraphNodeLabel(id, protocols, projectName), nodeSizeMap);
+    const level = levelMap[id] ?? 0;
+    levelExtent[level] = Math.max(levelExtent[level], size);
+  }
+  const levelOffset: number[] = [0];
+  for (let level = 1; level <= maxLevel; level++) {
+    levelOffset[level] = levelOffset[level - 1] +
+      Math.max(levelSpacing, levelExtent[level - 1] + MIN_LEVEL_GAP);
+  }
+
   const placeNode = (id: string, start: number) => {
     const span = computeSpan(id);
     const center = start + span / 2;
@@ -453,8 +474,8 @@ function buildSubtreeAlignedPlacements(params: {
 
     placements[id] =
       direction === "TB"
-        ? { x: center, y: level * spacingY }
-        : { x: level * spacingX, y: center };
+        ? { x: center, y: levelOffset[level] ?? level * spacingY }
+        : { x: levelOffset[level] ?? level * spacingX, y: center };
 
     const children = layoutChildren[id] ?? [];
     if (children.length === 0) return;
@@ -1167,83 +1188,60 @@ export function buildGraphElements(
 
   // HIERARCHICAL view -> subtree-aligned layout with all real edges preserved
   const levelMap: Record<string, number> = {};
-  const levelBuckets: Record<number, string[]> = {};
-  const edgeSet = new Set<string>();
   const parentMap: Record<string, string[]> = {};
+  const childrenOf = (id: string): string[] =>
+    uniqStable(Array.isArray(protocols[id]?.children) ? protocols[id].children.map(String) : []);
 
-  const removeFromOtherBuckets = (id: string) => {
-    // removeFromOtherBuckets
-    Object.values(levelBuckets).forEach((bucket) => {
-      const idx = bucket.indexOf(id);
-      if (idx !== -1) bucket.splice(idx, 1);
-    });
-  };
+  // One depth-first pass (each protocol once): the edges, in the order they
+  // are first reached, and a topological order of the workflow.
+  const visited = new Set<string>();
+  const onStack = new Set<string>();
+  const backEdges = new Set<string>();
+  const postOrder: string[] = [];
 
-  const addToBucket = (id: string, level: number) => {
-    // addToBucket
-    if (!levelBuckets[level]) levelBuckets[level] = [];
-    levelBuckets[level].push(id);
-  };
-
-  const addParentLink = (childId: string, parentId: string) => {
-    // addParentLink
-    if (!parentMap[childId]) parentMap[childId] = [];
-    parentMap[childId].push(parentId);
-  };
-
-  const visiting = new Set<string>();
-
-  const traverse = (id: string, level: number) => {
-    // traverse
-    const currentLevel = levelMap[id];
-    if (currentLevel === undefined || level > currentLevel) {
-      levelMap[id] = level;
-      removeFromOtherBuckets(id);
-      addToBucket(id, level);
-    }
-
-    if (visiting.has(id)) return;
-    visiting.add(id);
-
-    const prot = protocols[id];
-    const children = uniqStable(Array.isArray(prot?.children) ? prot.children.map(String) : []);
-
-    for (const childId of children) {
+  const visit = (id: string) => {
+    visited.add(id);
+    onStack.add(id);
+    for (const childId of childrenOf(id)) {
       const edgeId = `${id}-${childId}`;
-      if (!edgeSet.has(edgeId)) {
-        edgeSet.add(edgeId);
-        addParentLink(childId, id);
-
-        edges.push({
-          id: edgeId,
-          source: id,
-          target: childId,
-          animated: false,
-          style: { stroke: "#CAD5E2", strokeWidth: 2 },
-          markerEnd: "url(#circle)",
-          sourceHandle: direction === "TB" ? "bottom" : "right",
-          targetHandle: direction === "TB" ? "top" : "left",
-        });
-      } else {
-        addParentLink(childId, id);
+      if (onStack.has(childId)) {
+        // A cycle: draw the edge, but it cannot order the levels.
+        backEdges.add(edgeId);
       }
-
-      const nextLevel = (levelMap[id] ?? level) + 1;
-      traverse(childId, nextLevel);
+      if (!parentMap[childId]) parentMap[childId] = [];
+      parentMap[childId].push(id);
+      edges.push({
+        id: edgeId,
+        source: id,
+        target: childId,
+        animated: false,
+        style: { stroke: "#CAD5E2", strokeWidth: 2 },
+        markerEnd: "url(#circle)",
+        sourceHandle: direction === "TB" ? "bottom" : "right",
+        targetHandle: direction === "TB" ? "top" : "left",
+      });
+      if (!visited.has(childId)) visit(childId);
     }
-
-    visiting.delete(id);
+    onStack.delete(id);
+    postOrder.push(id);
   };
 
-  traverse("PROJECT", 0);
+  // Protocols are reached from PROJECT; any not linked to it still get drawn,
+  // as roots of their own.
+  const starts = ["PROJECT", ...Object.keys(protocols).filter((id) => id !== "PROJECT").sort(stableIdCompare)];
+  for (const id of starts) {
+    if (visited.has(id)) continue;
+    levelMap[id] = id === "PROJECT" ? 0 : 1;
+    visit(id);
+  }
 
-  const sortedLevels = Object.keys(levelBuckets)
-    .map((k) => parseInt(k, 10))
-    .filter((n) => Number.isFinite(n))
-    .sort((a, b) => a - b);
-
-  for (const lvl of sortedLevels) {
-    levelBuckets[lvl] = uniqStable(levelBuckets[lvl] ?? []);
+  // Each protocol below the deepest of its parents (longest path), in linear time.
+  for (const id of [...postOrder].reverse()) {
+    const level = levelMap[id] ?? 1;
+    for (const childId of childrenOf(id)) {
+      if (backEdges.has(`${id}-${childId}`)) continue;
+      levelMap[childId] = Math.max(levelMap[childId] ?? 0, level + 1);
+    }
   }
 
   const placements = buildSubtreeAlignedPlacements({
