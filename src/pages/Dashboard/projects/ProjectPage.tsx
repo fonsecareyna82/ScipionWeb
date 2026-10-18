@@ -15,8 +15,10 @@ import ProtocolForm from "@/components/protocol/ProtocolForm";
 import WorkflowLogsDock from "@/components/projects/WorkflowLogsDock";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import {
-  buildGraphElements, compactAfterDeletion, getGraphTopologySignature, getGridRelations, type NodeSizeMap,
+  buildGraphElements, compactAfterDeletion, getGraphTopologySignature, getGridRelations, gridNeighbour,
+  gridStatusCategory, type GridStatusCategory, type NodeSizeMap,
 } from "@/utils/graph_utils";
+import GridToolbar from "@/components/projects/GridToolbar";
 import {
   isScalarOutput,
   mergeProtocolOutputsPreservingOrder,
@@ -1979,6 +1981,15 @@ export default function ProjectPage() {
   const [gridZoom, setGridZoom] = useState(DEFAULT_GRID_ZOOM);
   const gridZoomRef = useRef(gridZoom);
   gridZoomRef.current = gridZoom;
+  // Grid tools: status filter (the rest fades), whole lineage of the
+  // selection, and following the running protocols.
+  const [gridStatusFilter, setGridStatusFilter] = useState<Set<GridStatusCategory>>(() => new Set());
+  const [gridLineage, setGridLineage] = useState(false);
+  const [gridFollowRunning, setGridFollowRunning] = useState(false);
+  // Bumped when card sizes change, so rows fit their tallest card again.
+  const [gridMeasureTick, setGridMeasureTick] = useState(0);
+  const gridSizesUsedRef = useRef<NodeSizeMap>({});
+  const gridMeasureTimerRef = useRef<number | null>(null);
   const MIN_ZOOM = 0.1;
   const MAX_ZOOM = 0.8;
   const clampZoom = (z: number | undefined | null) => {
@@ -3799,6 +3810,9 @@ export default function ProjectPage() {
 
 
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
+    if (viewMode === "grid" && changes.some((change) => change.type === "dimensions")) {
+      scheduleGridRemeasure();
+    }
     if (disablePersistenceRef.current || viewMode !== "hierarchical") {
       return onNodesChange(changes);
     }
@@ -5092,10 +5106,20 @@ export default function ProjectPage() {
   // The grid has no edges: with a protocol selected, its parents and children
   // are marked and the other cards fade.
   useEffect(() => {
+    const protocols = (project?.protocols ?? {}) as Record<string, any>;
     const relations = viewMode === "grid"
-      ? getGridRelations((project?.protocols ?? {}) as any, previousNodeId)
+      ? getGridRelations(protocols, previousNodeId, { lineage: gridLineage })
       : {};
-    const relationOf = (id: string) => relations[id];
+    const filtering = viewMode === "grid" && gridStatusFilter.size > 0;
+    const relationOf = (id: string) => {
+      const relation = relations[id];
+      // The status filter fades what does not match, unless it is related to the selection.
+      if (filtering && id !== "PROJECT" && id !== previousNodeId && (!relation || relation === "dimmed") &&
+        !gridStatusFilter.has(gridStatusCategory(protocols[id]?.status))) {
+        return "dimmed";
+      }
+      return relation;
+    };
     setNodes((current) => {
       let changed = false;
       const next = current.map((node) => {
@@ -5106,7 +5130,129 @@ export default function ProjectPage() {
       });
       return changed ? next : current;
     });
-  }, [previousNodeId, viewMode, project, nodes, setNodes]);
+  }, [previousNodeId, viewMode, project, nodes, setNodes, gridLineage, gridStatusFilter]);
+
+  const gridStatusCounts = useMemo(() => {
+    const counts: Record<GridStatusCategory, number> = { running: 0, failed: 0, finished: 0, saved: 0 };
+    for (const [id, protocol] of Object.entries((project?.protocols ?? {}) as Record<string, any>)) {
+      if (id !== "PROJECT") counts[gridStatusCategory(protocol?.status)] += 1;
+    }
+    return counts;
+  }, [project]);
+
+  // The grid zoom (card size) is remembered per project.
+  const gridZoomStorageKey = projectName ? `scipionweb.gridZoom.${projectName}` : null;
+  const gridZoomLoadedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!gridZoomStorageKey) return;
+    try {
+      const stored = Number(window.localStorage.getItem(gridZoomStorageKey));
+      if (stored >= MIN_GRID_ZOOM && stored <= MAX_GRID_ZOOM) setGridZoom(stored);
+    } catch {
+      // Storage may be unavailable; the default zoom is used.
+    }
+    gridZoomLoadedForRef.current = gridZoomStorageKey;
+  }, [gridZoomStorageKey]);
+  useEffect(() => {
+    if (!gridZoomStorageKey || gridZoomLoadedForRef.current !== gridZoomStorageKey) return;
+    try {
+      window.localStorage.setItem(gridZoomStorageKey, String(gridZoom));
+    } catch {
+      // noOp
+    }
+  }, [gridZoom, gridZoomStorageKey]);
+
+  // Card sizes changed (e.g. compact cards, thumbnails): reflow once they settle.
+  const scheduleGridRemeasure = () => {
+    if (gridMeasureTimerRef.current !== null) window.clearTimeout(gridMeasureTimerRef.current);
+    gridMeasureTimerRef.current = window.setTimeout(() => {
+      gridMeasureTimerRef.current = null;
+      const used = gridSizesUsedRef.current;
+      const changed = (nodesRef.current as any[]).some((node) => {
+        const height = Number(node.measured?.height ?? node.height);
+        const previous = used[String(node.id)]?.height;
+        return height > 0 && (previous === undefined || Math.abs(previous - height) > 1);
+      });
+      if (changed) setGridMeasureTick((tick) => tick + 1);
+    }, 250);
+  };
+
+  /** Scrolls the grid so a card is in view (centered vertically when `center`). */
+  const showGridCard = (id: string, center = false) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    const node = (nodesRef.current as any[]).find((item) => String(item.id) === id);
+    const container = flowWrapperRef.current;
+    if (!inst || !node || !container) return;
+    const vp = inst.getViewport();
+    const height = Number(node.measured?.height ?? node.height) || 400;
+    const width = Number(node.measured?.width ?? node.width) || 950;
+    const margin = 48;
+    const top = node.position.y * vp.zoom + vp.y;
+    const bottom = top + height * vp.zoom;
+    const left = node.position.x * vp.zoom + vp.x;
+    const right = left + width * vp.zoom;
+    let { x, y } = vp;
+    if (center) y = container.clientHeight / 3 - node.position.y * vp.zoom;
+    else if (top < margin) y += margin - top;
+    else if (bottom > container.clientHeight - margin) y -= bottom - (container.clientHeight - margin);
+    if (left < margin) x += margin - left;
+    else if (right > container.clientWidth - margin) x -= right - (container.clientWidth - margin);
+    if (Math.abs(x - vp.x) < 0.5 && Math.abs(y - vp.y) < 0.5) return;
+    const next = { x, y, zoom: vp.zoom };
+    inst.setViewport(next, { duration: 240 });
+    setViewport(next);
+  };
+
+  // Follow running: bring the running protocols into view as they change.
+  const followedRunningRef = useRef<string>("");
+  useEffect(() => {
+    if (viewMode !== "grid" || !gridFollowRunning) {
+      followedRunningRef.current = "";
+      return;
+    }
+    const running = (nodes as any[])
+      .filter((node) => String(node.id) !== "PROJECT" && gridStatusCategory(node.data?.status) === "running")
+      .sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    const key = running.map((node) => String(node.id)).join(",");
+    if (!running.length || key === followedRunningRef.current) return;
+    followedRunningRef.current = key;
+    showGridCard(String(running[0].id), true);
+  }, [nodes, gridFollowRunning, viewMode]);
+
+  // Keyboard in the grid: arrows move the selection, Enter opens the form,
+  // Escape clears the selection, L toggles the lineage.
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const selected = selectedIdRef.current;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const nextId = gridNeighbour(nodesRef.current as any[], selected, event.key);
+        if (!nextId) return;
+        event.preventDefault();
+        if (nextId !== selected) {
+          const node = (nodesRef.current as any[]).find((item) => String(item.id) === nextId);
+          if (node) handleNodeClick(node);
+        }
+        showGridCard(nextId);
+      } else if (event.key === "Enter" && selected) {
+        const node = (nodesRef.current as any[]).find((item) => String(item.id) === selected);
+        if (node) {
+          event.preventDefault();
+          handleNodeDoubleClick(node);
+        }
+      } else if (event.key === "Escape" && selected) {
+        clearAllSelectionHard();
+      } else if (event.key === "l" || event.key === "L") {
+        setGridLineage((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   /* ------------------------ Reflow on grid width change ------------------------ */
   useEffect(() => {
@@ -5120,6 +5266,8 @@ export default function ProjectPage() {
       const height = Number(node.measured?.height ?? node.height);
       if (width > 0 && height > 0) measuredSizes[String(node.id)] = { width, height };
     }
+
+    gridSizesUsedRef.current = measuredSizes;
 
     const { nodes: newNodes } = buildGraphElements(
       project.shortName,
@@ -5152,15 +5300,13 @@ export default function ProjectPage() {
       );
 
     const seededWithLiveTicks =
-      seeded.map((node) =>
-        mergeNodeElapsedTick(
-          node as Node<StatusNodeData>,
-
-          currentNodesById.get(
-            String(node.id),
-          ),
-        )
-      );
+      seeded.map((node) => {
+        const current = currentNodesById.get(String(node.id));
+        const merged = mergeNodeElapsedTick(node as Node<StatusNodeData>, current);
+        // Keep the selection's highlight while the cards move.
+        const gridRelation = (current?.data as any)?.gridRelation;
+        return gridRelation ? { ...merged, data: { ...(merged.data as any), gridRelation } } : merged;
+      });
 
     setNodes(seededWithLiveTicks);
     setEdges([]); // grid has no edges
@@ -5175,6 +5321,7 @@ export default function ProjectPage() {
 
   }, [gridWidth,
     gridZoom,
+    gridMeasureTick,
     viewMode,
     project,
     graphDirection,
@@ -9682,6 +9829,23 @@ export default function ProjectPage() {
                   color={hostIsDark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.35)"}
                   gap={24}
                 />
+                {isGrid && (
+                  <GridToolbar
+                    counts={gridStatusCounts}
+                    statusFilter={gridStatusFilter}
+                    onToggleStatus={(status) => setGridStatusFilter((current) => {
+                      const next = new Set(current);
+                      if (next.has(status)) next.delete(status); else next.add(status);
+                      return next;
+                    })}
+                    onClearStatus={() => setGridStatusFilter(new Set())}
+                    lineage={gridLineage}
+                    onToggleLineage={() => setGridLineage((value) => !value)}
+                    followRunning={gridFollowRunning}
+                    onToggleFollowRunning={() => setGridFollowRunning((value) => !value)}
+                    dark={hostIsDark}
+                  />
+                )}
               </ReactFlow>
             </ReactFlowProvider>
           </div>

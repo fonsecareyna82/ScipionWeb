@@ -6,6 +6,7 @@ import { useReactFlow } from "reactflow";
 
 import ProtocolNodeCard, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
+import { GRID_COMPACT_ZOOM, type GridRelation } from "@/utils/graph_utils";
 
 type NodeActions = {
   onEdit?: (id: string) => void;
@@ -35,11 +36,12 @@ type NodeActions = {
   ) => void;
 };
 
-export type GridRelation = "parent" | "child" | "dimmed";
-
-const GRID_RELATION_STYLES: Partial<Record<GridRelation, { color: string; label: string }>> = {
-  parent: { color: "#f59e0b", label: "Parent" },
-  child: { color: "#8b5cf6", label: "Child" },
+const GRID_RELATION_STYLES: Partial<Record<GridRelation, { color: string; width: number; label?: string }>> = {
+  parent: { color: "#f59e0b", width: 5, label: "Parent" },
+  child: { color: "#8b5cf6", width: 5, label: "Child" },
+  // The rest of the lineage: fainter and without a label.
+  ancestor: { color: "rgba(245, 158, 11, 0.55)", width: 3 },
+  descendant: { color: "rgba(139, 92, 246, 0.55)", width: 3 },
 };
 
 export const createStatusNodeWrapper = (
@@ -110,11 +112,11 @@ export const createStatusNodeWrapper = (
           borderRadius: "1rem",
           transition: "opacity 160ms ease, outline-color 160ms ease",
           opacity: gridRelation === "dimmed" ? 0.35 : 1,
-          outline: relationStyle ? `5px dashed ${relationStyle.color}` : undefined,
+          outline: relationStyle ? `${relationStyle.width}px dashed ${relationStyle.color}` : undefined,
           outlineOffset: relationStyle ? 14 : undefined,
         }}
       >
-        {relationStyle && (
+        {relationStyle?.label && (
           <span
             style={{
               position: "absolute", top: -96, left: 0, padding: "6px 22px", borderRadius: 999,
@@ -155,6 +157,7 @@ export const createStatusNodeWrapper = (
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
           showHandles={viewMode !== "grid"}
+          compactThreshold={viewMode === "grid" ? GRID_COMPACT_ZOOM : undefined}
           service={analyzeViewerService}
           contextMenuVisibility={contextMenuVisibility}
         />

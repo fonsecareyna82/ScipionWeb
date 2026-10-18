@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphElements, getGridRelations, getGridSections } from "@/utils/graph_utils";
+import {
+  GRID_COMPACT_ZOOM, buildGraphElements, getGridRelations, getGridSections, gridNeighbour, gridStatusCategory,
+} from "@/utils/graph_utils";
 
 const workflow = {
   PROJECT: { label: "P", children: ["1", "10"] },
@@ -65,5 +67,51 @@ describe("grid view", () => {
       "1": "parent", "4": "child", "3": "dimmed", "10": "dimmed", "11": "dimmed",
     });
     expect(getGridRelations(workflow, null)).toEqual({});
+  });
+});
+
+describe("grid tools", () => {
+  const card = (id: string, x: number, y: number) => ({ id, position: { x, y } });
+  const cards = [card("1", 0, 0), card("2", 1000, 0), card("3", 2000, 0), card("4", 0, 600), card("5", 1000, 600)];
+
+  it("moves the selection with the arrow keys along rows and columns", () => {
+    expect(gridNeighbour(cards, "1", "ArrowRight")).toBe("2");
+    expect(gridNeighbour(cards, "3", "ArrowRight")).toBe("3");
+    expect(gridNeighbour(cards, "3", "ArrowDown")).toBe("5");
+    expect(gridNeighbour(cards, "4", "ArrowUp")).toBe("1");
+    expect(gridNeighbour(cards, null, "ArrowDown")).toBe("1");
+  });
+
+  it("marks the whole lineage when asked", () => {
+    const chain = {
+      PROJECT: { label: "P", children: ["1"] },
+      "1": { label: "import", children: ["2"] }, "2": { label: "align", children: ["3"] },
+      "3": { label: "ctf", children: ["4"] }, "4": { label: "pick", children: [] },
+      "9": { label: "other", children: [] },
+    } as any;
+    expect(getGridRelations(chain, "3")).toMatchObject({ "2": "parent", "4": "child", "1": "dimmed" });
+    expect(getGridRelations(chain, "3", { lineage: true })).toEqual({
+      "1": "ancestor", "2": "parent", "4": "child", "9": "dimmed",
+    });
+  });
+
+  it("groups statuses for the filter", () => {
+    expect(["running", "launched", "scheduled", "interactive"].map(gridStatusCategory)).toEqual(Array(4).fill("running"));
+    expect(["failed", "aborted"].map(gridStatusCategory)).toEqual(["failed", "failed"]);
+    expect(gridStatusCategory("finished")).toBe("finished");
+    expect(["saved", "new", undefined].map(gridStatusCategory)).toEqual(["saved", "saved", "saved"]);
+  });
+
+  it("packs rows of compact cards (no outputs) tighter", () => {
+    const withOutputs = {
+      PROJECT: { label: "P", children: ["1"] },
+      "1": { label: "import", children: ["2"], outputs: [{}, {}, {}, {}, {}] },
+      "2": { label: "next", children: [] },
+    } as any;
+    const rowGap = (zoom: number) => {
+      const nodes = buildGraphElements("P", withOutputs, "grid", "TB", 200, zoom).nodes;
+      return nodes.find((n) => n.id === "2")!.position.y - nodes.find((n) => n.id === "1")!.position.y;
+    };
+    expect(rowGap(GRID_COMPACT_ZOOM)).toBeLessThan(rowGap(GRID_COMPACT_ZOOM + 0.1));
   });
 });

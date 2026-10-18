@@ -53,6 +53,8 @@ const GRID_MARGIN = 100;
 const GRID_SECTION_GAP = 560;
 // Output lists scroll, so a card does not grow without bounds.
 const GRID_MAX_ESTIMATED_HEIGHT = 720;
+/** At this grid zoom or below, cards show only their header (no outputs). */
+export const GRID_COMPACT_ZOOM = 0.26;
 type GraphPosition = { x: number; y: number };
 
 export type NodeSizeMap = Record<string, { width: number; height: number }>;
@@ -1302,9 +1304,12 @@ export function buildGraphElements(
       GRID_CARD_WIDTH,
       ...Object.keys(protocols).map((id) => Math.ceil(nodeSizeMap?.[id]?.width ?? 0)),
     );
+    const compact = zoom <= GRID_COMPACT_ZOOM;
     const cardHeight = (id: string) => {
       const measured = nodeSizeMap?.[id]?.height;
       if (typeof measured === "number" && measured > 0) return Math.ceil(measured);
+      // Compact cards hide their outputs.
+      if (compact) return estimateNodeHeight(getGraphNodeLabel(id, protocols, projectName));
       return Math.min(GRID_MAX_ESTIMATED_HEIGHT, getEstimatedGraphNodeHeight({ id, protocols, projectName, nodeSizeMap }));
     };
     const columns = Math.max(1, Math.floor((worldWidth + GRID_GAP_X) / (cardWidth + GRID_GAP_X)));
@@ -1621,19 +1626,86 @@ export function compactAfterDeletion(nodes: Node[], edges: Edge[], direction: Di
   });
 }
 
-/** Grid view: how each protocol relates to the selected one (the grid has no edges). */
+export type GridRelation = "parent" | "child" | "ancestor" | "descendant" | "dimmed";
+
+/**
+ * Grid view: how each protocol relates to the selected one (the grid has no
+ * edges). With `lineage`, also every ancestor up to the imports and every
+ * descendant down to the end of the chain.
+ */
 export function getGridRelations(
   protocols: Record<string, ProtocolNode>,
   selectedId: string | null,
-): Record<string, "parent" | "child" | "dimmed"> {
+  options: { lineage?: boolean } = {},
+): Record<string, GridRelation> {
   if (!selectedId || !protocols[selectedId]) return {};
   const childrenOf = (id: string) =>
     Array.isArray(protocols[id]?.children) ? protocols[id].children.map(String) : [];
+  const parentsOf = new Map<string, string[]>();
+  for (const id of Object.keys(protocols)) {
+    for (const childId of childrenOf(id)) parentsOf.set(childId, [...(parentsOf.get(childId) ?? []), id]);
+  }
+  const reach = (start: string, next: (id: string) => string[]) => {
+    const found = new Set<string>();
+    const pending = [...next(start)];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (found.has(id) || id === start) continue;
+      found.add(id);
+      pending.push(...next(id));
+    }
+    return found;
+  };
+  const parents = new Set(parentsOf.get(selectedId) ?? []);
   const children = new Set(childrenOf(selectedId));
-  const relations: Record<string, "parent" | "child" | "dimmed"> = {};
+  const ancestors = options.lineage ? reach(selectedId, (id) => parentsOf.get(id) ?? []) : new Set<string>();
+  const descendants = options.lineage ? reach(selectedId, childrenOf) : new Set<string>();
+  const relations: Record<string, GridRelation> = {};
   for (const id of Object.keys(protocols)) {
     if (id === selectedId || id === "PROJECT") continue;
-    relations[id] = childrenOf(id).includes(selectedId) ? "parent" : children.has(id) ? "child" : "dimmed";
+    relations[id] = parents.has(id) ? "parent" : children.has(id) ? "child"
+      : ancestors.has(id) ? "ancestor" : descendants.has(id) ? "descendant" : "dimmed";
   }
   return relations;
+}
+
+export type GridStatusCategory = "running" | "failed" | "finished" | "saved";
+
+/** The grid's status filter groups protocol statuses in four. */
+export function gridStatusCategory(status: unknown): GridStatusCategory {
+  const value = String(status ?? "").toLowerCase();
+  if (["running", "launched", "scheduled", "interactive"].includes(value)) return "running";
+  if (["failed", "aborted"].includes(value)) return "failed";
+  if (value === "finished") return "finished";
+  return "saved";
+}
+
+/**
+ * The card an arrow key leads to in the grid: in the same row for left and
+ * right, the nearest column of the row above or below for up and down.
+ */
+export function gridNeighbour(
+  nodes: Array<{ id: string; position: { x: number; y: number } }>,
+  fromId: string | null,
+  key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown",
+): string | null {
+  const cards = nodes.filter((node) => node.id !== "PROJECT");
+  if (!cards.length) return null;
+  const ordered = [...cards].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+  const from = cards.find((node) => node.id === fromId);
+  if (!from) return ordered[0].id;
+  const sameRow = (node: { position: { y: number } }) => Math.abs(node.position.y - from.position.y) < 1;
+  if (key === "ArrowLeft" || key === "ArrowRight") {
+    const row = ordered.filter(sameRow);
+    const index = row.findIndex((node) => node.id === from.id);
+    const next = row[index + (key === "ArrowRight" ? 1 : -1)];
+    return next?.id ?? from.id;
+  }
+  const rows = [...new Set(ordered.map((node) => node.position.y))];
+  const rowIndex = rows.findIndex((y) => Math.abs(y - from.position.y) < 1);
+  const targetY = rows[rowIndex + (key === "ArrowDown" ? 1 : -1)];
+  if (targetY === undefined) return from.id;
+  const candidates = ordered.filter((node) => Math.abs(node.position.y - targetY) < 1);
+  candidates.sort((a, b) => Math.abs(a.position.x - from.position.x) - Math.abs(b.position.x - from.position.x));
+  return candidates[0]?.id ?? from.id;
 }

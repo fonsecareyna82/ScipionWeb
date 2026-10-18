@@ -1902,3 +1902,14 @@
 .projectpage-widget-root.dark .pp-chipBtn.pp-logsToggle[aria-pressed="true"]:hover:not(:disabled) {
   border-color: rgba(148, 163, 184, 0.58) !important;
 }
+
+/* Grid view: cards slide to their new place when the grid reflows. */
+[data-view-mode="grid"] .react-flow__node:not(.dragging) {
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-view-mode="grid"] .react-flow__node:not(.dragging) {
+    transition: none;
+  }
+}

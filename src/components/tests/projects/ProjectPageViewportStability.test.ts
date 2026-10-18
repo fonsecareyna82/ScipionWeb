@@ -43,7 +43,7 @@ function createHarness(viewMode: "grid" | "hierarchical") {
   const project = { shortName: "test", protocols: { "21": { status: "finished" } } };
   const context = vm.createContext({
     viewMode, graphDirection: "TB", projectName: "test", project, gridWidth: 1200,
-    gridZoom: 0.347, gridZoomRef: { current: 0.347 }, nodesLoadedOnce: true,
+    gridZoom: 0.347, gridZoomRef: { current: 0.347 }, gridSizesUsedRef: { current: {} }, nodesLoadedOnce: true,
     firstLoadRef: { current: false },
     viewportRef: { current: initialViewport },
     reactFlowInstanceRef: { current: instance },
