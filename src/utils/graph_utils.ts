@@ -314,6 +314,175 @@ function getResolvedPlacementCrossSize(params: {
     : Math.max(520, size);
 }
 
+/** Each protocol under its primary parent: the tree the layout packs. */
+function buildLayoutChildren(params: {
+  levelMap: Record<string, number>;
+  parentMap: Record<string, string[]>;
+  protocols: Record<string, ProtocolNode>;
+}): Record<string, string[]> {
+  const { levelMap, parentMap, protocols } = params;
+  const nodeIds = Object.keys(levelMap).sort((a, b) => {
+    const levelDelta = (levelMap[a] ?? 0) - (levelMap[b] ?? 0);
+    return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
+  });
+  const nodeSet = new Set(nodeIds);
+  const layoutChildren: Record<string, string[]> = {};
+
+  for (const id of nodeIds) {
+    if (id === "PROJECT") continue;
+
+    const parentId = selectPrimaryLayoutParent({ id, parentMap, levelMap, protocols });
+    if (!parentId || !nodeSet.has(parentId)) continue;
+
+    if (!layoutChildren[parentId]) layoutChildren[parentId] = [];
+    if (!layoutChildren[parentId].includes(id)) layoutChildren[parentId].push(id);
+  }
+  return layoutChildren;
+}
+
+type PlacementParams = Parameters<typeof buildSubtreeAlignedPlacements>[0];
+
+/** Workflow edges (not the ones from PROJECT) that cross, drawn as straight lines. */
+export function countEdgeCrossings(
+  links: Array<[string, string]>,
+  placements: Record<string, GraphPosition>,
+): number {
+  const segments = links
+    .filter(([source, target]) => source !== "PROJECT" && placements[source] && placements[target])
+    .map(([source, target]) => ({ source, target, a: placements[source], b: placements[target] }));
+  const side = (p: GraphPosition, q: GraphPosition, r: GraphPosition) =>
+    Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  let crossings = 0;
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const s1 = segments[i];
+      const s2 = segments[j];
+      // Edges that share a protocol meet there; that is not a crossing.
+      if (s1.source === s2.source || s1.source === s2.target ||
+        s1.target === s2.source || s1.target === s2.target) continue;
+      if (side(s1.a, s1.b, s2.a) * side(s1.a, s1.b, s2.b) < 0 &&
+        side(s2.a, s2.b, s1.a) * side(s2.a, s2.b, s1.b) < 0) crossings++;
+    }
+  }
+  return crossings;
+}
+
+const MAX_CROSSING_PASSES = 6;
+// Layouts tried when swapping neighbouring siblings (a count, not a time: the
+// result must not depend on the machine).
+const MAX_SWAP_ATTEMPTS = 120;
+// Counting crossings compares every pair of edges; beyond this it is skipped.
+const MAX_EDGES_FOR_CROSSING_REDUCTION = 1500;
+
+/**
+ * The subtree-aligned layout with fewer edge crossings: siblings (and the
+ * branches under PROJECT) are reordered by the barycenter of their other
+ * connections (secondary parents, or children placed under another branch),
+ * for a few passes, keeping the best layout. Subtrees stay packed and primary
+ * chains straight, since only sibling order changes. A preferred order given
+ * by the caller (e.g. the order already on screen) is kept as is.
+ */
+function buildPlacementsWithFewerCrossings(params: PlacementParams): Record<string, GraphPosition> {
+  const { levelMap, parentMap, protocols, direction } = params;
+  const userOrder = params.preferredChildOrder ?? {};
+  let best = buildSubtreeAlignedPlacements(params);
+
+  const links: Array<[string, string]> = [];
+  for (const [childId, parents] of Object.entries(parentMap)) {
+    for (const parentId of uniqStable(parents)) links.push([parentId, childId]);
+  }
+  if (links.length > MAX_EDGES_FOR_CROSSING_REDUCTION) return best;
+  const layoutChildren = buildLayoutChildren({ levelMap, parentMap, protocols });
+  // The caller already fixes every order (e.g. a refresh keeps the screen's).
+  if (Object.entries(layoutChildren).every(([id, children]) => children.length < 2 || userOrder[id]?.length)) {
+    return best;
+  }
+  let bestCrossings = countEdgeCrossings(links, best);
+  if (bestCrossings === 0) return best;
+
+  const subtrees = new Map<string, Set<string>>();
+  const subtreeOf = (id: string): Set<string> => {
+    const cached = subtrees.get(id);
+    if (cached) return cached;
+    const members = new Set<string>([id]);
+    subtrees.set(id, members);
+    for (const childId of layoutChildren[id] ?? []) {
+      for (const member of subtreeOf(childId)) members.add(member);
+    }
+    return members;
+  };
+  const realChildren = (id: string) =>
+    uniqStable(Array.isArray(protocols[id]?.children) ? protocols[id].children.map(String) : []);
+  const axis = (placements: Record<string, GraphPosition>, id: string) =>
+    direction === "TB" ? placements[id]?.x ?? 0 : placements[id]?.y ?? 0;
+
+  for (let pass = 0; pass < MAX_CROSSING_PASSES; pass++) {
+    const order: Record<string, string[]> = {};
+    for (const [parentId, children] of Object.entries(layoutChildren)) {
+      if (userOrder[parentId]?.length) continue;
+      const current = [...children].sort((a, b) => axis(best, a) - axis(best, b));
+      const keyed = current.map((childId, index) => {
+        const members = subtreeOf(childId);
+        const outside: number[] = [];
+        for (const member of members) {
+          for (const other of [...(parentMap[member] ?? []), ...realChildren(member)]) {
+            if (other === "PROJECT" || members.has(other) || other === parentId || !best[other]) continue;
+            outside.push(axis(best, other));
+          }
+        }
+        const key = outside.length
+          ? outside.reduce((sum, value) => sum + value, 0) / outside.length
+          : axis(best, childId);
+        return { childId, index, key };
+      });
+      keyed.sort((a, b) => (a.key - b.key) || (a.index - b.index));
+      order[parentId] = keyed.map((entry) => entry.childId);
+    }
+    const candidate = buildSubtreeAlignedPlacements({
+      ...params, preferredChildOrder: { ...order, ...userOrder },
+    });
+    const crossings = countEdgeCrossings(links, candidate);
+    if (crossings >= bestCrossings) break;
+    best = candidate;
+    bestCrossings = crossings;
+    if (crossings === 0) return best;
+  }
+
+  // Then swap neighbouring siblings while that removes crossings.
+  const order: Record<string, string[]> = {};
+  for (const [parentId, children] of Object.entries(layoutChildren)) {
+    if (userOrder[parentId]?.length || children.length < 2) continue;
+    order[parentId] = [...children].sort((a, b) => axis(best, a) - axis(best, b));
+  }
+  const parents = Object.keys(order).sort((a, b) =>
+    ((levelMap[a] ?? 0) - (levelMap[b] ?? 0)) || stableIdCompare(a, b));
+  let attempts = 0;
+  let improved = true;
+  while (improved && attempts < MAX_SWAP_ATTEMPTS && bestCrossings > 0) {
+    improved = false;
+    for (const parentId of parents) {
+      const children = order[parentId];
+      for (let i = 0; i + 1 < children.length && attempts < MAX_SWAP_ATTEMPTS; i++) {
+        const swapped = [...children];
+        [swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]];
+        attempts++;
+        const candidate = buildSubtreeAlignedPlacements({
+          ...params, preferredChildOrder: { ...order, [parentId]: swapped, ...userOrder },
+        });
+        const crossings = countEdgeCrossings(links, candidate);
+        if (crossings < bestCrossings) {
+          order[parentId] = swapped;
+          best = candidate;
+          bestCrossings = crossings;
+          improved = true;
+          break;
+        }
+      }
+    }
+  }
+  return best;
+}
+
 function buildSubtreeAlignedPlacements(params: {
   levelMap: Record<string, number>;
   parentMap: Record<string, string[]>;
@@ -342,20 +511,8 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const nodeSet = new Set(nodeIds);
-  const layoutChildren: Record<string, string[]> = {};
-  const assigned = new Set<string>();
-
-  for (const id of nodeIds) {
-    if (id === "PROJECT") continue;
-
-    const parentId = selectPrimaryLayoutParent({ id, parentMap, levelMap, protocols });
-    if (!parentId || !nodeSet.has(parentId)) continue;
-
-    if (!layoutChildren[parentId]) layoutChildren[parentId] = [];
-    if (!layoutChildren[parentId].includes(id)) layoutChildren[parentId].push(id);
-    assigned.add(id);
-  }
+  const layoutChildren = buildLayoutChildren({ levelMap, parentMap, protocols });
+  const assigned = new Set(Object.values(layoutChildren).flat());
 
   for (const parentId of Object.keys(layoutChildren)) {
     const preferredOrder = preferredChildOrder?.[parentId] ?? [];
@@ -1244,7 +1401,7 @@ export function buildGraphElements(
     }
   }
 
-  const placements = buildSubtreeAlignedPlacements({
+  const placements = buildPlacementsWithFewerCrossings({
     levelMap,
     parentMap,
     protocols,

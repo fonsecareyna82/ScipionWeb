@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphElements } from "@/utils/graph_utils";
+import { buildGraphElements, countEdgeCrossings as countEdgeLinksCrossings } from "@/utils/graph_utils";
 
 /** PROJECT -> 1; each step splits in two protocols that join again (e.g. two pickers and a consensus). */
 function chainOfMerges(merges: number) {
@@ -66,5 +66,67 @@ describe("workflow layout", () => {
     } as any);
     expect(result.nodes).toHaveLength(3);
     expect(result.edges.map((edge) => edge.id)).toEqual(["PROJECT-1", "1-2", "2-1"]);
+  });
+});
+
+describe("workflow layout crossings", () => {
+  const links = (protocols: Record<string, any>) => Object.entries(protocols)
+    .flatMap(([id, protocol]) => protocol.children.map((child: string) => [id, child] as [string, string]));
+
+  // Two branches whose children join with the other branch: in creation order
+  // the joining edges cross; swapping the branches removes the crossing.
+  const crossed = {
+    PROJECT: { label: "P", children: ["1"] },
+    "1": { label: "import", children: ["2", "3"] },
+    "2": { label: "left", children: ["4"] },
+    "3": { label: "right", children: ["5"] },
+    "4": { label: "a", children: [] },
+    "5": { label: "b", children: ["4"] },
+    "6": { label: "c", children: [] },
+  } as Record<string, any>;
+  crossed["2"].children.push("6");
+  crossed["5"].children.push("6");
+
+  // Workflows as in Scipion: chains with branches, some protocols joining recent ones.
+  function workflow(seed: number, size: number) {
+    let state = seed;
+    const random = () => { state = (state * 1103515245 + 12345) % 2147483648; return state / 2147483648; };
+    const protocols: Record<string, any> = { PROJECT: { label: "P", children: [] } };
+    for (let i = 1; i <= size; i++) protocols[String(i)] = { label: `protocol ${i}`, children: [] };
+    for (let i = 1; i <= size; i++) {
+      const parents = i === 1 || random() < 0.1 ? ["PROJECT"] : [];
+      const count = 1 + (random() < 0.25 ? 1 + Math.floor(random() * 2) : 0);
+      for (let j = 0; j < count && i > 1; j++) parents.push(String(Math.max(1, i - 1 - Math.floor(random() * 6))));
+      for (const parent of new Set(parents)) protocols[parent].children.push(String(i));
+    }
+    return protocols;
+  }
+
+  it("orders branches so that fewer edges cross", () => {
+    let creationOrder = 0;
+    let optimized = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const protocols = workflow(seed, 30);
+      // The creation order, as the layout had it before.
+      const asCreated = Object.fromEntries(Object.entries(protocols).map(([id, protocol]) => [id, protocol.children]));
+      const before = countEdgeLinksCrossings(links(protocols), byId(buildGraphElements("P", protocols as any,
+        "hierarchical", "TB", undefined, undefined, undefined, { preferredChildOrder: asCreated })));
+      const after = countEdgeLinksCrossings(links(protocols), byId(buildGraphElements("P", protocols as any)));
+      expect(after).toBeLessThanOrEqual(before);
+      creationOrder += before;
+      optimized += after;
+    }
+    expect(optimized).toBeLessThan(creationOrder * 0.7);
+  });
+
+  it("keeps the order on screen when the page gives it", () => {
+    const keep = { "1": ["3", "2"] };
+    const positions = byId(buildGraphElements("P", crossed as any, "hierarchical", "TB", undefined, undefined,
+      undefined, { preferredChildOrder: keep }));
+    expect(positions["3"].x).toBeLessThan(positions["2"].x);
+  });
+
+  it("gives the same layout every time", () => {
+    expect(byId(buildGraphElements("P", crossed as any))).toEqual(byId(buildGraphElements("P", crossed as any)));
   });
 });
