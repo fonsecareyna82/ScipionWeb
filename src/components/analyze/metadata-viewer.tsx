@@ -396,6 +396,12 @@ type MetadataActionRequestPayload = {
 const BASE_THUMB_SIZE = 200;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_PADDING = 16;
+// Rows with a matrix (e.g. the 4x4 transform of 3D coordinates) are this tall:
+// four lines of the matrix box, its padding and the cell padding. Every row of
+// the table must have the height the virtual scroll counts with.
+const MATRIX_LINES = 4;
+const MATRIX_BOX_HEIGHT = Math.ceil(MATRIX_LINES * 0.72 * 16 * 1.25) + 14;
+const MATRIX_ROW_HEIGHT = MATRIX_BOX_HEIGHT + 10;
 const EXTRA_BUFFER_ROWS = 10;
 const MIN_TABLE_WINDOW_ROWS = 60;
 
@@ -903,6 +909,9 @@ function MatrixInlineCell({ matrix }: { matrix: Array<Array<number | string>> })
         color: "#0f172a",
         px: 1,
         py: 0.75,
+        boxSizing: "border-box",
+        maxHeight: MATRIX_BOX_HEIGHT,
+        overflow: "hidden",
         borderRadius: 1.5,
         border: "1px solid rgba(148,163,184,0.25)",
         backgroundColor: "rgba(248,250,252,0.9)",
@@ -1981,8 +1990,11 @@ function useVirtualTableWindow(params: {
       if (targetOffset < 0) targetOffset = 0;
       if (targetOffset > maxOffset) targetOffset = maxOffset;
 
+      // Small moves keep the loaded rows, but the first and last rows must be
+      // reached: at either end the window goes all the way.
       const distance = Math.abs(targetOffset - windowOffset);
-      if (distance < Math.max(5, Math.floor(buffer / 2))) {
+      const atAnEnd = targetOffset === 0 || targetOffset === maxOffset;
+      if (distance === 0 || (!atAnEnd && distance < Math.max(5, Math.floor(buffer / 2)))) {
         return;
       }
 
@@ -2699,6 +2711,9 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
           flex: 1,
           minHeight: 0,
           overflow: "auto",
+          // The rows are replaced while scrolling: the browser must not move
+          // the scroll position to keep them in place (it would scroll again).
+          overflowAnchor: "none",
         }}
       >
         <Table
@@ -3022,9 +3037,19 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                                 <VectorInlineCell values={vectorValue} />
                               ) : matrixValue ? (
                                 <MatrixInlineCell matrix={matrixValue} />
+                              ) : typeof rawMatrixValue === "string" && rawMatrixValue.trim() ? (
+                                // Not a matrix the viewer can read: shown as stored.
+                                <Typography
+                                  variant="caption"
+                                  title={rawMatrixValue}
+                                  sx={{ display: "block", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                >
+                                  {rawMatrixValue}
+                                </Typography>
                               ) : (
-                                <Typography variant="caption" color="text.secondary">
-                                  matrix
+                                // The object has no matrix (e.g. particles not aligned).
+                                <Typography variant="caption" color="text.disabled" aria-label="No matrix">
+                                  —
                                 </Typography>
                               )}
                             </Box>
@@ -3820,7 +3845,17 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
 
   const showSizeLabel = !!sizeColumn;
 
-  const rowHeight = hasImageColumns ? imageThumbSize + IMAGE_ROW_PADDING : NORMAL_ROW_HEIGHT;
+  const [matrixColumnNames, setMatrixColumnNames] = useState<Set<string>>(() => new Set());
+  const matrixColumnNamesRef = useRef<Set<string>>(new Set());
+  const hasMatrixColumns = useMemo(
+    () => visibleColumns.some((column) => column.rendererType === "matrix" || matrixColumnNames.has(column.name)),
+    [visibleColumns, matrixColumnNames],
+  );
+
+  const rowHeight = Math.max(
+    hasImageColumns ? imageThumbSize + IMAGE_ROW_PADDING : NORMAL_ROW_HEIGHT,
+    hasMatrixColumns ? MATRIX_ROW_HEIGHT : NORMAL_ROW_HEIGHT,
+  );
 
   const virtualContentHeight = useMemo(() => {
     if (!totalRows || !rowHeight) return 0;
@@ -3929,8 +3964,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     }
   }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode]);
 
-  const [matrixColumnNames, setMatrixColumnNames] = useState<Set<string>>(() => new Set());
-  const matrixColumnNamesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // detectMatrixColumnsFromLoadedWindowRowsAndKeepSticky

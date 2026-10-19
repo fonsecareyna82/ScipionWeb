@@ -364,6 +364,78 @@ describe("MetadataViewer", () => {
         await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow.mock.calls.length).toBeGreaterThan(calls));
     });
 
+    it("shows the first rows again when scrolled back to the top", async () => {
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValue([{ name: "particles", alias: "Particles", rowCount: 2000 }]);
+        serviceMocks.fetchMetadataTableWindow.mockImplementation(async (_p, _r, _o, _t, options) => ({
+            offset: options.offset,
+            rows: Array.from({ length: options.limit }, (_, i) => ({ rowId: options.offset + i + 1, values: [options.offset + i + 1, `item ${options.offset + i}`] })),
+        }));
+        renderViewer();
+        expect(await screen.findByText("item 0")).toBeInTheDocument();
+        const scroll = screen.getByLabelText("Metadata rows");
+        fireEvent.scroll(scroll, { target: { scrollTop: 6400 } });
+        expect(await screen.findByText("item 200")).toBeInTheDocument();
+        // Near the top: the rows loaded start a few rows below the first one.
+        fireEvent.scroll(scroll, { target: { scrollTop: 28 * 32 } });
+        await waitFor(() => expect(screen.queryByText("item 7")).not.toBeInTheDocument());
+        expect(screen.getByText("item 8")).toBeInTheDocument();
+        // At the top the first rows show, not a gap.
+        fireEvent.scroll(scroll, { target: { scrollTop: 0 } });
+        expect(await screen.findByText("item 0")).toBeInTheDocument();
+    });
+
+    it("gives every row the height of a matrix when the table has a matrix column", async () => {
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValue([{ name: "coordinates", alias: "Coordinates", rowCount: 1 }]);
+        serviceMocks.fetchMetadataTableSchema.mockResolvedValue({
+            name: "coordinates",
+            alias: "Coordinates",
+            hasColumnId: true,
+            columns: [
+                { name: "id", alias: "Id", index: 0, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                { name: "_eulerMatrix", alias: "Matrix", index: 1, sortable: false, visible: true, rendererType: "matrix", decimals: 2, hasTransformation: false },
+            ],
+            actions: [],
+        });
+        const identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+        serviceMocks.fetchMetadataTableWindow.mockResolvedValue({
+            offset: 0,
+            rows: [{ rowId: 1, values: [1, { kind: "matrix", value: identity }] }],
+        });
+        renderViewer();
+        const [idCell] = await screen.findAllByText("1", { selector: "td" });
+        // The virtual scroll counts with the height the rows really have.
+        const height = parseFloat(getComputedStyle(idCell).height);
+        expect(height).toBeGreaterThanOrEqual(80);
+    });
+
+    it("shows matrices with non-finite entries, and no matrix as an empty cell", async () => {
+        serviceMocks.fetchOutputMetadataTables.mockResolvedValue([{ name: "particles", alias: "Particles", rowCount: 3 }]);
+        serviceMocks.fetchMetadataTableSchema.mockResolvedValue({
+            name: "particles",
+            alias: "Particles",
+            hasColumnId: true,
+            columns: [
+                { name: "id", alias: "Id", index: 0, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                { name: "_transform._matrix", alias: "Transform", index: 1, sortable: false, visible: true, rendererType: "matrix", decimals: 2, hasTransformation: false },
+            ],
+            actions: [],
+        });
+        serviceMocks.fetchMetadataTableWindow.mockResolvedValue({
+            offset: 0,
+            rows: [
+                { rowId: 1, values: [1, { kind: "matrix", value: [[1, "NaN"], ["-Inf", 1]] }] },
+                { rowId: 2, values: [2, { kind: "matrix", value: null }] },
+                { rowId: 3, values: [3, { kind: "matrix", value: "rotation unknown" }] },
+            ],
+        });
+        renderViewer();
+        expect(await screen.findByText(/\[ 1 NaN \]/)).toBeInTheDocument();
+        expect(screen.getByText(/\[ -Inf\s+1 \]/)).toBeInTheDocument();
+        expect(screen.getByLabelText("No matrix")).toBeInTheDocument();
+        expect(screen.getByText("rotation unknown")).toBeInTheDocument();
+        expect(screen.queryByText("matrix")).not.toBeInTheDocument();
+    });
+
     it("aborts a pending row request when the viewer unmounts", async () => {
         serviceMocks.fetchMetadataTableWindow.mockImplementation(() => new Promise(() => { }));
         const { unmount } = renderViewer();
