@@ -42,7 +42,8 @@ function createHarness(viewMode: "grid" | "hierarchical") {
   const newNodes = [{ ...oldNodes[0], data: { status: "finished" } }];
   const project = { shortName: "test", protocols: { "21": { status: "finished" } } };
   const context = vm.createContext({
-    viewMode, graphDirection: "TB", projectName: "test", project, gridWidth: 1200,
+    viewMode, graphDirection: "TB", projectName: "test", projectId: 7, project, gridWidth: 1200,
+    graphRevisionRef: { current: null },
     gridZoom: 0.347, gridZoomRef: { current: 0.347 }, gridSizesUsedRef: { current: {} }, nodesLoadedOnce: true,
     firstLoadRef: { current: false },
     viewportRef: { current: initialViewport },

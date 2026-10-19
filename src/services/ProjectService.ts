@@ -1510,6 +1510,12 @@ export type CreateCoords2dOutputResult = {
   message?: string;
 };
 
+/** A fingerprint of what the project graph shows. */
+export type ProjectRevision = {
+  revision: string;
+  protocols: number;
+};
+
 /** A protocol's session of Xmipp's particle picker (desktop-compatible files). */
 export type PickingSession = Coords2dMicrographsResult & {
   protocolClassName: string;
@@ -1799,6 +1805,8 @@ export interface ProjectService<
 
   /** The thumbnails of a project, from the database (never loads the project). */
   fetchProjectThumbnails?(projectId: Id, opts?: ProjectThumbnailListOptions): Promise<ProjectThumbnailList>;
+  /** A fingerprint of the project graph, to tell cheaply whether it changed elsewhere. */
+  fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
 
   /** A thumbnail image as an object URL, waiting while it is drawn; null when it has none. */
   fetchThumbnailImageObjectUrl?(url: string, opts?: { signal?: AbortSignal }): Promise<string | null>;

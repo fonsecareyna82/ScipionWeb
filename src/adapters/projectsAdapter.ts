@@ -116,6 +116,7 @@ const defaultService: ProjectService = {
 
   fetchProjectThumbnails: (projectId: Id, opts?: ProjectThumbnailListOptions) =>
     api.fetchProjectThumbnails(toId(projectId), opts),
+  fetchProjectRevision: (projectId: Id) => api.fetchProjectRevision(toId(projectId)),
 
   fetchThumbnailImageObjectUrl: (url: string, opts?: { signal?: AbortSignal }) =>
     api.fetchThumbnailImageObjectUrl(url, opts),

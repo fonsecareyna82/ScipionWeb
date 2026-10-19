@@ -62,6 +62,7 @@ import {
   OpenPickingSession,
   PickingParticles,
   PickingPickResult,
+  ProjectRevision,
   PickingSettings,
   PickingSession,
   RenameProtocolPayload,
@@ -4753,6 +4754,17 @@ export async function fetchJsonUrl(
   }
 
   return safeJson<any>(response);
+}
+
+/** A fingerprint of what the project graph shows; it changes when protocols are added, removed, renamed, relaunched or rewired. */
+export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevision> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/revision`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "The project revision could not be read");
+  const raw = await safeJson<any>(res);
+  return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
 }
 
 export async function fetchProjectThumbnails(

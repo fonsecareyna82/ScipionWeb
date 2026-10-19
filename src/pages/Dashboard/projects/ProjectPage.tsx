@@ -1,4 +1,5 @@
 import "./ProjectPage.css";
+import { useGraphRevisionWatch } from "@/hooks/useGraphRevisionWatch";
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -1830,6 +1831,12 @@ export default function ProjectPage() {
     useState<any[]>([]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isRefreshingRef = useRef(false);
+  useEffect(() => {
+    isRefreshingRef.current = isRefreshing;
+  }, [isRefreshing]);
+  // The project revision the graph shows (see the revision check below).
+  const graphRevisionRef = useRef<string | null>(null);
   const delayedRefreshTimerRef = useRef<number | null>(null);
 
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
@@ -4460,6 +4467,15 @@ export default function ProjectPage() {
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
+    // What the reloaded graph shows becomes the known revision, so this
+    // reload is not taken later for a change made elsewhere.
+    if (projectId != null && svc.fetchProjectRevision) {
+      svc.fetchProjectRevision(projectId)
+        .then(({ revision }) => {
+          if (revision) graphRevisionRef.current = revision;
+        })
+        .catch(() => undefined);
+    }
     try {
       const data = await svc.fetchProject(projectName, { includeTableMetrics: viewMode === "table" });
       setProject(data);
@@ -4710,7 +4726,7 @@ export default function ProjectPage() {
       }
     }
 
-  }, [projectName, viewMode, graphDirection, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
+  }, [projectName, projectId, viewMode, graphDirection, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   const liveProtocolIdsKey =
     useMemo(
@@ -5137,6 +5153,16 @@ export default function ProjectPage() {
       }
     };
   }, []);
+
+  // Changes made in another tab or by another user (see useGraphRevisionWatch).
+  useGraphRevisionWatch({
+    projectId,
+    fetchRevision: svc.fetchProjectRevision ? (id) => svc.fetchProjectRevision!(id) : undefined,
+    intervalSeconds: Number(workflowAutoRefreshSec ?? 15),
+    revisionRef: graphRevisionRef,
+    isBusy: () => isRefreshingRef.current,
+    onChanged: () => handleRefreshRef.current?.(),
+  });
 
   // --- Double refresh helper (immediate + delayed) ---
   const scheduleDoubleRefresh = (delayMs = 5000, alsoPlace = false) => {
