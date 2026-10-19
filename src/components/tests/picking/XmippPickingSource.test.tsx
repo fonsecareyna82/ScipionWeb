@@ -120,6 +120,34 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     expect(coordinates.map((point: { id?: string }) => point.id)).toEqual(["m0", "a0"]);
   });
 
+  it("moves a particle grabbed with the picking tool instead of adding another", async () => {
+    const source = pickingSource();
+    const { container } = render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
+      outputName="picking" source={source} />);
+    await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
+    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Particle picker" }));
+    const canvas = container.querySelector("canvas")!;
+    // jsdom has no layout: the micrograph is fitted into a canvas of no size,
+    // so the particle (100, 120) covers the point the pointer is at.
+    const at = { x: 0, y: 0 };
+
+    // A click on the particle adds nothing.
+    fireEvent.mouseDown(canvas, { clientX: at.x, clientY: at.y });
+    fireEvent.mouseUp(canvas, { clientX: at.x, clientY: at.y });
+    expect(await screen.findByText(/^1 particles?/)).toBeInTheDocument();
+
+    // Dragging it moves it.
+    fireEvent.mouseDown(canvas, { clientX: at.x, clientY: at.y });
+    fireEvent.mouseMove(canvas, { clientX: at.x + 40, clientY: at.y + 30 });
+    fireEvent.mouseUp(canvas, { clientX: at.x + 40, clientY: at.y + 30 });
+    await waitFor(() => expect(source.saveMicrograph).toHaveBeenCalled(), { timeout: 3000 });
+    const [, coordinates] = (source.saveMicrograph as any).mock.calls.at(-1);
+    expect(coordinates).toHaveLength(1);
+    expect(coordinates[0].id).toBe("m0");
+    expect([coordinates[0].x, coordinates[0].y]).not.toEqual([100, 120]);
+  });
+
   it("has no threshold when the micrograph has only manual particles", async () => {
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={pickingSource({ getThreshold: () => 0 })} />);

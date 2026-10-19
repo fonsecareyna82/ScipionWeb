@@ -826,6 +826,8 @@ function Coords2dViewer({
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
   const [toolMode, setToolMode] = useState<ToolMode>("pan");
+  // The pointer is over a particle that can be grabbed and moved.
+  const [hoveringPoint, setHoveringPoint] = useState(false);
   const [pickColor, setPickColor] = useState(DEFAULT_PICK_COLOR);
   const automaticColor = useMemo(() => shiftHue(pickColor, 0.66), [pickColor]);
   const [deletedPointIds, setDeletedPointIds] = useState<Set<string>>(() => new Set());
@@ -2500,7 +2502,9 @@ function Coords2dViewer({
         return;
       }
 
-      if (toolMode !== "pan") return;
+      // A particle is moved with the hand and with the picking tool: picking
+      // on a particle grabs it instead of adding another.
+      if (toolMode !== "pan" && toolMode !== "pick") return;
 
       const hitId = findPointAt(pointerX, pointerY);
       if (hitId && selectedMicKey) {
@@ -2530,6 +2534,8 @@ function Coords2dViewer({
 
         return;
       }
+
+      if (toolMode !== "pan") return;
 
       dragRef.current = {
         type: "pan",
@@ -2564,7 +2570,14 @@ function Coords2dViewer({
     (event: ReactMouseEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current;
 
-      if (!drag.active) return;
+      if (!drag.active) {
+        if (toolMode === "pan" || toolMode === "pick") {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const overPoint = findPointAt(event.clientX - rect.left, event.clientY - rect.top) !== null;
+          setHoveringPoint((current) => (current === overPoint ? current : overPoint));
+        }
+        return;
+      }
 
       const dx = event.clientX - drag.x;
       const dy = event.clientY - drag.y;
@@ -2613,7 +2626,7 @@ function Coords2dViewer({
         });
       }
     },
-    [erasePointAt, imageWorldSize, schedulePointMove, scheduleTransform, screenToWorld, transform.scale],
+    [erasePointAt, findPointAt, imageWorldSize, schedulePointMove, scheduleTransform, screenToWorld, toolMode, transform.scale],
   );
 
   const handleMouseUp = useCallback(
@@ -2692,6 +2705,7 @@ function Coords2dViewer({
     }
 
     dragRef.current = createDragState();
+    setHoveringPoint(false);
   }, [markMicrographUpdated, selectedMicId]);
 
   const handleHistogramRangeChange = useCallback(
@@ -3196,7 +3210,9 @@ function Coords2dViewer({
                 width: "100%",
                 height: "100%",
                 cursor:
-                  toolMode === "pan"
+                  hoveringPoint && toolMode !== "erase"
+                    ? "move"
+                    : toolMode === "pan"
                     ? "grab"
                     : toolMode === "erase"
                       ? "crosshair"
