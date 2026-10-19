@@ -1,4 +1,5 @@
 // src/layout/AppHeader.tsx
+import ProtocolActivityBell from "@/components/header/ProtocolActivityBell";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useSidebar } from "../context/SidebarContext";
@@ -125,6 +126,9 @@ const AppHeader: React.FC = () => {
             "lg:flex",
           ].join(" ")}
         >
+          {/* Runs that end in any of the user's projects */}
+          <ProtocolActivityBell />
+
           {/* Theme switch */}
           <ThemeToggleButton />
 

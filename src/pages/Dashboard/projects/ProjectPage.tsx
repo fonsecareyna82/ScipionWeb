@@ -1,6 +1,6 @@
 import "./ProjectPage.css";
 import { useGraphRevisionWatch } from "@/hooks/useGraphRevisionWatch";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import React, {
   useCallback,
   useEffect,
@@ -69,6 +69,7 @@ import {
   FocusIcon,
   TagsIcon,
   Terminal,
+  LayoutDashboard,
   AlertTriangle,
   Trash2,
   Play,
@@ -105,6 +106,9 @@ import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import ProjectProtocolTable, { ProjectProtocolTableHandle } from "@/components/projects/ProjectProtocolTable";
 import WebPickingSessions from "@/components/picking/WebPickingSessions";
 import { loadSignedNodeThumbnails, type SignedThumbnailList } from "@/utils/signed-thumbnails";
+import CompareRunsDialog, { type CompareRunCandidate } from "@/components/protocol/CompareRunsDialog";
+import ProjectOverviewPanel from "@/components/projects/ProjectOverviewPanel";
+import ParameterHistoryDialog from "@/components/protocol/ParameterHistoryDialog";
 
 
 /* --------------------- Types --------------------- */
@@ -494,6 +498,9 @@ function mergeTableElapsedTick(
         : backendElapsed,
   };
 }
+// "Compare with…" and "Parameter history" in the node menu: kept, but out of the menu for now.
+const RUN_HISTORY_MENU_ENABLED = false;
+
 interface ContextMenuState {
   visible: boolean;
   x: number; // pane-relative
@@ -505,6 +512,8 @@ type NodeActions = {
   onEdit?: (id: string) => void;
   onRename?: (id: string) => void;
   onDuplicate?: (id: string) => void;
+  onCompare?: (id: string) => void;
+  onHistory?: (id: string) => void;
   onDelete?: (id: string) => void;
   onCopyWorkflow?: (id: string) => void;
   onPasteWorkflow?: (id: string) => void;
@@ -1312,6 +1321,9 @@ export default function ProjectPage() {
   // Tags states
   const [allTags, setAllTags] = useState<ProtocolTag[]>([]);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [historyProtocolId, setHistoryProtocolId] = useState<string | null>(null);
+  const [compareRuns, setCompareRuns] = useState<{ baseId: string; otherId: string | null } | null>(null);
   const [tagFilterIds, setTagFilterIds] = useState<string[]>([]);
   const [tagAssignments, setTagAssignments] = useState<ProtocolTagAssignments>({});
 
@@ -1818,6 +1830,21 @@ export default function ProjectPage() {
   }, [openForms]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
+  const compareCandidates = useMemo<CompareRunCandidate[]>(() => (compareRuns
+    ? nodes
+      .filter((node) => String(node.id) !== "PROJECT")
+      .map((node) => {
+        const data: any = node.data ?? {};
+        return {
+          id: String(node.id),
+          label: String(data.runName || data.label || data.title || node.id),
+          title: String(data.title || data.label || ""),
+          status: String(data.status || "").toLowerCase(),
+          outputCount: Array.isArray(data.outputs) ? data.outputs.length : 0,
+        };
+      })
+    : []), [compareRuns, nodes]);
+  const closeCompareRuns = useCallback(() => setCompareRuns(null), []);
   const hasRunningProtocols = useMemo(
     () => nodes.some((node) => ["running", "launched"].includes(String(node.data?.status ?? "").toLowerCase())),
     [nodes],
@@ -3575,6 +3602,15 @@ export default function ProjectPage() {
             : [String(id)];
         duplicateNow(ids);
       },
+      // With two nodes selected, those two; otherwise the dialog offers a run of the same class.
+      onCompare: RUN_HISTORY_MENU_ENABLED ? (id) => {
+        const selected = Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT");
+        const otherId = selected.length === 2 && selected.includes(String(id))
+          ? selected.find((x) => x !== String(id)) ?? null
+          : null;
+        setCompareRuns({ baseId: String(id), otherId });
+      } : undefined,
+      onHistory: RUN_HISTORY_MENU_ENABLED ? (id) => setHistoryProtocolId(String(id)) : undefined,
       onCopyWorkflow: () => {
         void handleCopyWorkflow();
       },
@@ -6131,6 +6167,59 @@ export default function ProjectPage() {
     }
   };
 
+
+  // A link to one protocol (?protocol=<id>, from notifications and the command
+  // palette): once the graph is there, that protocol is selected and centred.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const linkedProtocolId = useMemo(
+    () => new URLSearchParams(location.search).get("protocol"),
+    [location.search],
+  );
+  const hasNodes = nodes.length > 0;
+  useEffect(() => {
+    if (!linkedProtocolId || !nodesLoadedOnce || !hasNodes) return;
+    const match = nodes.find((node) => String(node.id) === linkedProtocolId);
+    if (match) {
+      handleNodeClick({ id: match.id });
+      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      if (viewMode === "table") {
+        scrollToProtocol(match.id);
+      } else if (inst) {
+        const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(inst.getViewport().zoom);
+        inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 400 });
+      }
+    }
+    // The link is used once: coming back to the graph does not jump again.
+    const params = new URLSearchParams(location.search);
+    params.delete("protocol");
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedProtocolId, nodesLoadedOnce, hasNodes]);
+
+  // The project overview: its data is read on demand, and a run opens through the same link.
+  const overviewSources = useMemo(() => ({
+    fetchOverview: () => svc.fetchProjectOverview!(projectIdRef.current as any),
+    fetchDiskUsage: svc.fetchProjectDiskUsage
+      ? (opts?: { refresh?: boolean }) => svc.fetchProjectDiskUsage!(projectIdRef.current as any, opts)
+      : undefined,
+  }), [svc]);
+  const closeOverview = useCallback(() => setOverviewOpen(false), []);
+  const fetchLaunchesForHistory = useCallback(
+    (protocolId: string) => svc.fetchProtocolLaunches!(projectIdRef.current as any, protocolId),
+    [svc],
+  );
+  const fetchDetailsForDialogs = useCallback(
+    (name: string, protocolId: string) => svc.fetchProtocolDetails(name, protocolId),
+    [svc],
+  );
+  const closeHistory = useCallback(() => setHistoryProtocolId(null), []);
+  const openProtocolFromOverview = useCallback((protocolId: string) => {
+    setOverviewOpen(false);
+    const params = new URLSearchParams(location.search);
+    params.set("protocol", protocolId);
+    navigate({ pathname: location.pathname, search: `?${params}` }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
 
   // searchUiState
   const [searchQuery, setSearchQuery] = useState("");
@@ -9807,6 +9896,18 @@ export default function ProjectPage() {
                   <RefreshCw className={`pp-btnIcon ${isRefreshing ? "animate-spin" : ""}`} />
                 </button>
 
+                {svc.fetchProjectOverview && (
+                  <button
+                    type="button"
+                    title="Project overview"
+                    aria-label="Project overview"
+                    onClick={() => setOverviewOpen(true)}
+                    className="pp-flowControlBtn"
+                  >
+                    <LayoutDashboard className="pp-btnIcon" />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="pp-flowControlBtn pp-logsToggle"
@@ -10960,6 +11061,44 @@ export default function ProjectPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* projectOverviewPanel */}
+        {svc.fetchProjectOverview && (
+          <ProjectOverviewPanel
+            open={overviewOpen}
+            projectTitle={projectName ?? ""}
+            fetchOverview={overviewSources.fetchOverview}
+            fetchDiskUsage={overviewSources.fetchDiskUsage}
+            onOpenProtocol={openProtocolFromOverview}
+            onClose={closeOverview}
+          />
+        )}
+
+        {/* parameterHistoryDialog */}
+        {historyProtocolId && projectName && svc.fetchProtocolLaunches && (
+          <ParameterHistoryDialog
+            open
+            projectName={projectName}
+            protocolId={historyProtocolId}
+            protocolLabel={String((nodes.find((node) => String(node.id) === historyProtocolId)?.data as any)?.runName ?? "")}
+            fetchLaunches={fetchLaunchesForHistory}
+            fetchProtocolDetails={fetchDetailsForDialogs}
+            onClose={closeHistory}
+          />
+        )}
+
+        {/* compareRunsDialog */}
+        {compareRuns && projectName && (
+          <CompareRunsDialog
+            open
+            projectName={projectName}
+            baseId={compareRuns.baseId}
+            otherId={compareRuns.otherId}
+            candidates={compareCandidates}
+            fetchProtocolDetails={fetchDetailsForDialogs}
+            onClose={closeCompareRuns}
+          />
+        )}
 
         {/* tagsManagerDialog */}
         <TagsDialog

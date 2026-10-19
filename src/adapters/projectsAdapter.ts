@@ -118,6 +118,10 @@ const defaultService: ProjectService = {
   fetchProjectThumbnails: (projectId: Id, opts?: ProjectThumbnailListOptions) =>
     api.fetchProjectThumbnails(toId(projectId), opts),
   fetchProjectRevision: (projectId: Id) => api.fetchProjectRevision(toId(projectId)),
+  fetchProjectOverview: (projectId: Id) => api.fetchProjectOverview(toId(projectId)),
+  fetchProtocolLaunches: (projectId: Id, protocolId: Id) => api.fetchProtocolLaunches(toId(projectId), toId(protocolId)),
+  fetchProjectDiskUsage: (projectId: Id, opts?: { refresh?: boolean }) => api.fetchProjectDiskUsage(toId(projectId), opts),
+  fetchProtocolActivity: (since?: string | null) => api.fetchProtocolActivity(since),
 
   fetchThumbnailImageObjectUrl: (url: string, opts?: { signal?: AbortSignal }) =>
     api.fetchThumbnailImageObjectUrl(url, opts),

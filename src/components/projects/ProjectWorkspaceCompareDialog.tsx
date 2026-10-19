@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, Download, RefreshCw, X } from "lucide-react";
 import { openPrintableComparisonReport } from "./project-comparison-report";
 
@@ -19,7 +19,7 @@ type ProjectWorkspaceCompareDialogProps = {
 type ProtocolParams = Record<string, string>;
 type ProtocolParamLabels = Record<string, string>;
 
-type ProtocolSummary = {
+export type ProtocolSummary = {
   id: string;
   label: string;
   className: string;
@@ -46,7 +46,7 @@ type ComparisonFilter = "all" | "changed" | "param-diff" | "critical-param" | "o
 type ParamDiffCategory = "inputs" | "sampling" | "mask" | "reconstruction" | "compute" | "metadata" | "other";
 type ParamDiffSeverity = "critical" | "important" | "minor";
 
-type ParamDiffRow = {
+export type ParamDiffRow = {
   name: string;
   label: string;
   leftValue: string;
@@ -57,11 +57,11 @@ type ParamDiffRow = {
 
 type ParamComparisonFilter = "all" | "changed" | ParamDiffSeverity;
 
-type ParamComparisonRow = ParamDiffRow & {
+export type ParamComparisonRow = ParamDiffRow & {
   changed: boolean;
 };
 
-type ProtocolComparisonRow = {
+export type ProtocolComparisonRow = {
   key: string;
   className: string;
   leftProtocol?: ProtocolSummary;
@@ -314,7 +314,7 @@ function collectInlineParamLabels(raw: any, labels: ProtocolParamLabels): void {
   }
 }
 
-function extractProtocolParams(raw: any): ProtocolParams {
+export function extractProtocolParams(raw: any): ProtocolParams {
   const source = getProtocolParamValuesSource(raw);
 
   if (!source) return {};
@@ -326,7 +326,7 @@ function extractProtocolParams(raw: any): ProtocolParams {
   );
 }
 
-function extractProtocolParamLabels(raw: any): ProtocolParamLabels {
+export function extractProtocolParamLabels(raw: any): ProtocolParamLabels {
   const protocol = unwrapProtocolPayload(raw);
   const labels: ProtocolParamLabels = {};
 
@@ -536,7 +536,7 @@ function getParamDiffRows(
   return getParamComparisonRows(leftParams, rightParams, leftLabels, rightLabels).filter((row) => row.changed);
 }
 
-function getParamComparisonRows(
+export function getParamComparisonRows(
   leftParams: ProtocolParams,
   rightParams: ProtocolParams,
   leftLabels: ProtocolParamLabels = {},
@@ -1516,14 +1516,18 @@ function ProtocolParamsCard(props: { label: string; protocol?: ProtocolSummary }
         <span>{props.protocol.status}</span>
         <span>·</span>
         <span>{props.protocol.outputCount} outputs</span>
-        <span>·</span>
-        <span>{Object.keys(props.protocol.params).length} params in project payload</span>
+        {Object.keys(props.protocol.params).length > 0 && (
+          <>
+            <span>·</span>
+            <span>{Object.keys(props.protocol.params).length} params in project payload</span>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function ProtocolParamsComparisonDialog(props: {
+export function ProtocolParamsComparisonDialog(props: {
   open: boolean;
   row: ProtocolComparisonRow | null;
   leftTitle: string;
@@ -1532,6 +1536,8 @@ function ProtocolParamsComparisonDialog(props: {
   rightProjectName: string;
   onClose: () => void;
   fetchProtocolDetails?: (projectName: string, protocolId: string) => Promise<any>;
+  /** Shown under the title, e.g. a picker of the run to compare with. */
+  headerExtra?: ReactNode;
 }) {
   const [loadedRows, setLoadedRows] = useState<ParamComparisonRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1680,6 +1686,7 @@ function ProtocolParamsComparisonDialog(props: {
             <p className="mt-1 text-sm text-slate-300">
               {props.row.className} · <span className="font-semibold text-white">{rows.length}</span> parameters · <span className="font-semibold text-white">{changedRows.length}</span> different values · source: {detailsSourceLabel}
             </p>
+            {props.headerExtra}
           </div>
 
           <button

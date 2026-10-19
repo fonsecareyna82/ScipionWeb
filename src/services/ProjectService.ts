@@ -1510,6 +1510,79 @@ export type CreateCoords2dOutputResult = {
   message?: string;
 };
 
+/** A run of a protocol that ended (finished, failed, aborted, or waiting for the user). */
+export type ProtocolRunEvent = {
+  projectId: number;
+  projectName: string;
+  protocolId: string;
+  protocolClassName: string;
+  label: string;
+  status: "finished" | "failed" | "aborted" | "interactive" | string;
+  endedAt: string;
+};
+
+export type ProtocolActivity = {
+  /** The server time of this answer: pass it as "since" next time. */
+  now: string;
+  /** Protocols still running in the user's projects. */
+  live: number;
+  events: ProtocolRunEvent[];
+};
+
+/** The parameters a protocol was launched with, and who launched it. */
+export type ProtocolLaunch = {
+  id: number;
+  mode: string;
+  launchedAt: string;
+  user: { id: number; name: string } | null;
+  params: Record<string, unknown>;
+};
+
+/** A run in the project overview. */
+export type ProjectOverviewRun = {
+  protocolId: string;
+  protocolClassName: string;
+  label: string;
+  status: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  /** How long it ran (still runs: so far); null without step times. */
+  seconds: number | null;
+  steps: number;
+  stepsDone: number;
+};
+
+/** A project at a glance. */
+export type ProjectOverview = {
+  now: string;
+  protocols: number;
+  counts: Record<string, number>;
+  /** Sum of the run times of the runs that ended. */
+  computeSeconds: number;
+  running: ProjectOverviewRun[];
+  failed: ProjectOverviewRun[];
+  recent: ProjectOverviewRun[];
+  longest: ProjectOverviewRun[];
+};
+
+export type ProtocolDiskUsage = {
+  protocolId: string;
+  protocolClassName: string;
+  label: string;
+  status: string;
+  bytes: number;
+  files: number;
+};
+
+/** Disk usage of a project's protocols, counted in the background on the server. */
+export type ProjectDiskUsage = {
+  computedAt: string | null;
+  totalBytes: number | null;
+  protocols: ProtocolDiskUsage[];
+  /** A count runs now: ask again in a moment. */
+  computing: boolean;
+};
+
 /** A fingerprint of what the project graph shows. */
 export type ProjectRevision = {
   revision: string;
@@ -1816,6 +1889,11 @@ export interface ProjectService<
   fetchProjectThumbnails?(projectId: Id, opts?: ProjectThumbnailListOptions): Promise<ProjectThumbnailList>;
   /** A fingerprint of the project graph, to tell cheaply whether it changed elsewhere. */
   fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
+  fetchProjectOverview?(projectId: Id): Promise<ProjectOverview>;
+  fetchProtocolLaunches?(projectId: Id, protocolId: Id): Promise<ProtocolLaunch[]>;
+  fetchProjectDiskUsage?(projectId: Id, opts?: { refresh?: boolean }): Promise<ProjectDiskUsage>;
+  /** Runs of the user's projects that ended since the previous call (none on a first call). */
+  fetchProtocolActivity?(since?: string | null): Promise<ProtocolActivity>;
 
   /** A thumbnail image as an object URL, waiting while it is drawn; null when it has none. */
   fetchThumbnailImageObjectUrl?(url: string, opts?: { signal?: AbortSignal }): Promise<string | null>;

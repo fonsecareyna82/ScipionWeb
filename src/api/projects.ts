@@ -63,7 +63,11 @@ import {
   PickingParticles,
   PickingPickResult,
   ProjectRevision,
+  ProjectOverview,
+  ProtocolLaunch,
+  ProjectDiskUsage,
   BrowseOptions,
+  ProtocolActivity,
   PickingSettings,
   PickingSession,
   RenameProtocolPayload,
@@ -4790,6 +4794,19 @@ export async function fetchJsonUrl(
 }
 
 /** A fingerprint of what the project graph shows; it changes when protocols are added, removed, renamed, relaunched or rewired. */
+/** Runs of the user's projects that ended since "since" (the "now" of the previous call). */
+export async function fetchProtocolActivity(since?: string | null): Promise<ProtocolActivity> {
+  const query = since ? `?since=${encodeURIComponent(since)}` : "";
+  const res = await fetchWithAuth(`${BASE_URL}/workspace/protocol-activity${query}`, { method: "GET", cache: "no-store" });
+  if (!res.ok) throw await toApiError(res, "The protocol activity could not be read");
+  const raw = await safeJson<any>(res);
+  return {
+    now: String(raw?.now ?? ""),
+    live: Number(raw?.live ?? 0),
+    events: Array.isArray(raw?.events) ? raw.events : [],
+  };
+}
+
 export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevision> {
   const res = await fetchWithAuth(`${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/revision`, {
     method: "GET",
@@ -4798,6 +4815,52 @@ export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevisi
   if (!res.ok) throw await toApiError(res, "The project revision could not be read");
   const raw = await safeJson<any>(res);
   return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
+}
+
+export async function fetchProjectOverview(projectId: Id): Promise<ProjectOverview> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/overview`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "The project overview could not be read");
+  const raw = await safeJson<any>(res);
+  const runs = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    now: String(raw?.now ?? ""),
+    protocols: Number(raw?.protocols ?? 0),
+    counts: raw?.counts && typeof raw.counts === "object" ? raw.counts : {},
+    computeSeconds: Number(raw?.computeSeconds ?? 0),
+    running: runs(raw?.running),
+    failed: runs(raw?.failed),
+    recent: runs(raw?.recent),
+    longest: runs(raw?.longest),
+  };
+}
+
+export async function fetchProtocolLaunches(projectId: Id, protocolId: Id): Promise<ProtocolLaunch[]> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/launches`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The launch history could not be read");
+  const raw = await safeJson<any>(res);
+  return Array.isArray(raw?.launches) ? raw.launches : [];
+}
+
+export async function fetchProjectDiskUsage(projectId: Id, opts: { refresh?: boolean } = {}): Promise<ProjectDiskUsage> {
+  const query = opts.refresh ? "?refresh=true" : "";
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/disk-usage${query}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toApiError(res, "The disk usage could not be read");
+  const raw = await safeJson<any>(res);
+  return {
+    computedAt: raw?.computedAt ? String(raw.computedAt) : null,
+    totalBytes: raw?.totalBytes === null || raw?.totalBytes === undefined ? null : Number(raw.totalBytes),
+    protocols: Array.isArray(raw?.protocols) ? raw.protocols : [],
+    computing: Boolean(raw?.computing),
+  };
 }
 
 export async function fetchProjectThumbnails(

@@ -5,6 +5,8 @@ export type NodeMenuItemId =
   | "browse"
   | "rename"
   | "duplicate"
+  | "compare"
+  | "history"
   | "copyWorkflow"
   | "pasteWorkflow"
   | "delete"

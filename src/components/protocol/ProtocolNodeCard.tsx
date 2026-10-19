@@ -49,6 +49,8 @@ import {
   Pencil,
   FolderOpen,
   Copy,
+  GitCompare,
+  History,
   Trash2,
   FileUp,
   RefreshCw,
@@ -170,6 +172,8 @@ type StatusNodeProps = {
   onEdit?: (id: string) => void;
   onRename?: (id: string) => void;
   onDuplicate?: (id: string) => void;
+  onCompare?: (id: string) => void;
+  onHistory?: (id: string) => void;
   onCopyWorkflow?: (id: string) => void;
   onPasteWorkflow?: (id: string) => void;
   canPasteWorkflow?: boolean;
@@ -704,6 +708,8 @@ export default function ProtocolNodeCard({
   onEdit,
   onRename,
   onDuplicate,
+  onCompare,
+  onHistory,
   onCopyWorkflow,
   onPasteWorkflow,
   canPasteWorkflow = false,
@@ -1373,6 +1379,8 @@ export default function ProtocolNodeCard({
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
   const handleDuplicate = () => onDuplicate?.(data.id);
+  const handleCompare = () => onCompare?.(data.id);
+  const handleHistory = () => onHistory?.(data.id);
   const handleCopyWorkflow = () => {
     if (!isProjectNode) onCopyWorkflow?.(data.id);
   };
@@ -2342,6 +2350,26 @@ export default function ProtocolNodeCard({
                         </div>
                       </DropdownMenuItem>)}
 
+                    {isMenuItemVisible("compare") && onCompare && !isProjectNode && (
+                      <DropdownMenuItem onSelect={() => handleCompare()}>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <GitCompare className={styles.menuItemIcon} />
+                            <span>Compare with…</span>
+                          </span>
+                        </div>
+                      </DropdownMenuItem>)}
+
+                    {isMenuItemVisible("history") && onHistory && !isProjectNode && (
+                      <DropdownMenuItem onSelect={() => handleHistory()}>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <History className={styles.menuItemIcon} />
+                            <span>Parameter history</span>
+                          </span>
+                        </div>
+                      </DropdownMenuItem>)}
+
                     {isMenuItemVisible("copyWorkflow") && onCopyWorkflow && !isProjectNode && (
                       <DropdownMenuItem onSelect={() => handleCopyWorkflow()}>
                         <div className={styles.menuRow}>
@@ -3208,6 +3236,26 @@ export default function ProtocolNodeCard({
                 <span>Duplicate</span>
               </span>
               <ShortcutHint text={shortcuts.duplicate} />
+            </div>
+          </ContextMenuItem>)}
+
+        {isMenuItemVisible("compare") && onCompare && !isProjectNode && (
+          <ContextMenuItem onClick={handleCompare}>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <GitCompare className={styles.menuItemIcon} />
+                <span>Compare with…</span>
+              </span>
+            </div>
+          </ContextMenuItem>)}
+
+        {isMenuItemVisible("history") && onHistory && !isProjectNode && (
+          <ContextMenuItem onClick={handleHistory}>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <History className={styles.menuItemIcon} />
+                <span>Parameter history</span>
+              </span>
             </div>
           </ContextMenuItem>)}
 
