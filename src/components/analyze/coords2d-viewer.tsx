@@ -3339,6 +3339,29 @@ function Coords2dViewer({
               <Eraser size={16} />
             </Button>
           </Tooltip>
+
+          {dataSource.templates && (
+            <Tooltip title={centerParticles
+              ? "Center each new particle on the templates: on"
+              : "Center each new particle on the templates: off"}>
+              <Button
+                aria-label="Center"
+                aria-pressed={centerParticles}
+                variant={centerParticles ? "contained" : "outlined"}
+                onClick={() => setCenterParticles((current) => !current)}
+              >
+                <Crosshair size={16} />
+              </Button>
+            </Tooltip>
+          )}
+
+          {dataSource.templates && (
+            <Tooltip title="Templates: the average of the particles you pick">
+              <Button aria-label="Templates" onClick={(event) => openTemplates(event.currentTarget)}>
+                <Layers size={16} />
+              </Button>
+            </Tooltip>
+          )}
         </ButtonGroup>
 
         {toolMode === "erase" && (
@@ -3353,34 +3376,6 @@ function Coords2dViewer({
           />
         )}
 
-        {dataSource.templates && (
-          <>
-            <Tooltip title="Center each new particle on the templates (as Xmipp's picker)" describeChild>
-              <Button
-                size="small"
-                aria-pressed={centerParticles}
-                variant={centerParticles ? "contained" : "outlined"}
-                startIcon={<Crosshair size={15} />}
-                onClick={() => setCenterParticles((current) => !current)}
-                sx={{ textTransform: "none" }}
-              >
-                Center
-              </Button>
-            </Tooltip>
-
-            <Tooltip title="Templates: the average of the particles you pick" describeChild>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<Layers size={15} />}
-                onClick={(event) => openTemplates(event.currentTarget)}
-                sx={{ textTransform: "none" }}
-              >
-                Templates
-              </Button>
-            </Tooltip>
-          </>
-        )}
 
         <Divider flexItem orientation="vertical" />
 
