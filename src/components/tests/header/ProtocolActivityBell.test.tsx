@@ -59,7 +59,7 @@ describe("ProtocolActivityBell", () => {
     renderBell();
     fireEvent.click(await screen.findByRole("button", { name: /Protocol activity, 1 new/ }));
     fireEvent.click(screen.getByText("ctf consensus failed"));
-    expect(screen.getByTestId("where")).toHaveTextContent("/project/load/Workflow_2D?protocol=4");
+    expect(screen.getByTestId("where")).toHaveTextContent("/project/load/7?protocol=4");
     // Seen: no count any more.
     expect(screen.getByRole("button", { name: "Protocol activity" })).toBeInTheDocument();
   });
@@ -75,6 +75,9 @@ describe("ProtocolActivityBell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Protocol activity" }));
     expect(screen.getByRole("dialog", { name: "Protocol activity" })).toBeInTheDocument();
     fireEvent.pointerDown(screen.getByTestId("graph"));
+    expect(screen.queryByRole("dialog", { name: "Protocol activity" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Protocol activity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close protocol activity" }));
     expect(screen.queryByRole("dialog", { name: "Protocol activity" })).toBeNull();
   });
 
@@ -97,6 +100,6 @@ describe("ProtocolActivityBell", () => {
   });
 
   it("links protocols safely", () => {
-    expect(protocolLink({ projectName: "My project", protocolId: "12" })).toBe("/project/load/My%20project?protocol=12");
+    expect(protocolLink({ projectId: 7, protocolId: "12" })).toBe("/project/load/7?protocol=12");
   });
 });

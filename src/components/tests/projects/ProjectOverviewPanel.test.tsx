@@ -38,7 +38,7 @@ function renderPanel(props: Partial<React.ComponentProps<typeof ProjectOverviewP
     onClose: vi.fn(),
     ...props,
   };
-  render(<ProjectOverviewPanel open projectTitle="Workflow_2D" {...handlers} />);
+  render(<ProjectOverviewPanel open {...handlers} />);
   return handlers;
 }
 

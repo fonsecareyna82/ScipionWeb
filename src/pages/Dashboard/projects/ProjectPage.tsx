@@ -11066,7 +11066,6 @@ export default function ProjectPage() {
         {svc.fetchProjectOverview && (
           <ProjectOverviewPanel
             open={overviewOpen}
-            projectTitle={projectName ?? ""}
             fetchOverview={overviewSources.fetchOverview}
             fetchDiskUsage={overviewSources.fetchDiskUsage}
             onOpenProtocol={openProtocolFromOverview}

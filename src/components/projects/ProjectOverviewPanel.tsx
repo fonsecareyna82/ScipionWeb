@@ -11,7 +11,6 @@ import type {
 
 type Props = {
   open: boolean;
-  projectTitle: string;
   fetchOverview: () => Promise<ProjectOverview>;
   fetchDiskUsage?: (opts?: { refresh?: boolean }) => Promise<ProjectDiskUsage>;
   onOpenProtocol: (protocolId: string) => void;
@@ -69,7 +68,7 @@ function sortedStatuses(counts: Record<string, number>): string[] {
 
 function Section(props: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section className="border-t border-app-border px-5 py-4">
+    <section className="border-t border-app-border px-5 py-4 first:border-t-0">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-app-subtle">{props.title}</h3>
         {props.aside}
@@ -114,7 +113,7 @@ function timeAgo(iso: string | null, now: number): string {
 }
 
 export default function ProjectOverviewPanel({
-  open, projectTitle, fetchOverview, fetchDiskUsage, onOpenProtocol, onClose,
+  open, fetchOverview, fetchDiskUsage, onOpenProtocol, onClose,
 }: Props) {
   const [overview, setOverview] = useState<ProjectOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -179,19 +178,16 @@ export default function ProjectOverviewPanel({
       <aside
         role="dialog"
         aria-label="Project overview"
-        className="flex h-full w-[min(440px,100vw)] flex-col border-l border-app-border bg-app-surface shadow-2xl"
+        className="m-3 flex h-[calc(100%-1.5rem)] w-[min(440px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-2xl"
       >
-        <header className="flex items-start justify-between gap-3 px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-app-text">Project overview</h2>
-            <p className="truncate text-xs text-app-subtle" title={projectTitle}>{projectTitle}</p>
-          </div>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-700 bg-slate-800 px-5 py-4">
+          <h2 className="text-base font-semibold text-white">Project overview</h2>
           <div className="flex flex-none items-center gap-1">
             <button type="button" onClick={() => { void loadOverview(); void loadDisk(true); }}
-              className="rounded-lg p-2 text-app-muted hover:bg-app-hover" aria-label="Refresh the overview" title="Refresh">
+              className="rounded-lg p-2 text-slate-300 hover:bg-slate-700 hover:text-white" aria-label="Refresh the overview" title="Refresh">
               <RefreshCw className="h-4 w-4" />
             </button>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-app-muted hover:bg-app-hover" aria-label="Close the overview">
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-300 hover:bg-slate-700 hover:text-white" aria-label="Close the overview">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -199,7 +195,7 @@ export default function ProjectOverviewPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {overviewError && !overview && (
-            <p className="px-5 pb-4 text-sm text-red-600 dark:text-red-400">{overviewError}</p>
+            <p className="px-5 py-4 text-sm text-red-600 dark:text-red-400">{overviewError}</p>
           )}
 
           <Section title={`${total} protocol${total === 1 ? "" : "s"}`}
