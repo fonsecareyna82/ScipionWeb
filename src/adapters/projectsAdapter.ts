@@ -93,6 +93,7 @@ import type {
   ProtocolRelationCandidatesResult,
   ProtocolViewerActionValues,
   PickingSettings,
+  BrowseOptions,
 } from "@/services/ProjectService";
 
 import * as settingsApi from "@/api/settings";
@@ -280,11 +281,11 @@ const defaultService: ProjectService = {
   stopProtocol: (projectId: Id, ids: string[]) =>
     api.stopProtocol(toId(projectId), ids),
 
-  resolveBrowserPaths: (projectId: Id, protocolId: Id) =>
-    api.resolveBrowserPaths(toId(projectId), toId(protocolId)),
+  resolveBrowserPaths: (projectId: Id, protocolId: Id, opts?: BrowseOptions) =>
+    api.resolveBrowserPaths(toId(projectId), toId(protocolId), opts),
 
-  listRemoteDirectory: (projectId: Id, protocolId: Id, path: string) =>
-    api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
+  listRemoteDirectory: (projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions) =>
+    api.listRemoteDirectory(toId(projectId), toId(protocolId), path, opts),
 
   //previewProtocolText: (projectId: Id, protocolId: Id, path: string) =>
   //  api.previewProtocolText(toId(projectId), toId(protocolId), path),
@@ -294,7 +295,8 @@ const defaultService: ProjectService = {
     protocolId: Id,
     path: string,
     inline: boolean,
-  ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
+    opts?: BrowseOptions,
+  ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline, opts),
 
   fetchProtocolInlinePreviewBlob: (projectId: Id, protocolId: Id, path: string) =>
     api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
@@ -306,8 +308,8 @@ const defaultService: ProjectService = {
     opts?: { table?: string; signal?: AbortSignal },
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
-  previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
-    api.previewRemoteEntry(toId(projectId), toId(protocolId), path),
+  previewRemoteEntry: (projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions) =>
+    api.previewRemoteEntry(toId(projectId), toId(protocolId), path, opts),
 
   exportProtocols: (
     projectId: Id,

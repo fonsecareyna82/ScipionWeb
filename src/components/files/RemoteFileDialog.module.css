@@ -256,7 +256,7 @@
   color: inherit;
   outline: none;
 
-  font-size: 8px;
+  font-size: 13px;
 }
 
 .fileFilterInput::placeholder {
@@ -1704,4 +1704,300 @@
   box-shadow:
     inset 3px 0 0 rgba(96, 165, 250, 0.92),
     inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+/* ---------------------------------------------------------------------------
+   Folder list: fixed-height rows (the list only draws those in view), columns,
+   breadcrumbs and the hidden files toggle.
+   --------------------------------------------------------------------------- */
+
+.toolbarEnd {
+  margin-left: auto;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.breadcrumb {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  font-weight: 500;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb:hover:not(:disabled) {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.breadcrumbCurrent {
+  cursor: default;
+  opacity: 0.95;
+  font-weight: 650;
+}
+
+.breadcrumbSeparator {
+  opacity: 0.55;
+  padding: 0 2px;
+  user-select: none;
+}
+
+.fileHiddenToggle {
+  flex: none;
+  margin-left: 8px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.fileHiddenToggle:hover {
+  background: rgba(148, 163, 184, 0.14);
+  opacity: 1;
+}
+
+.fileHiddenToggleOn {
+  opacity: 1;
+  border-color: rgba(51, 160, 51, 0.55);
+  color: #2f7d2f;
+}
+
+:global(.dark) .fileHiddenToggleOn,
+:global(.projectpage-widget-root.dark) .fileHiddenToggleOn {
+  color: #86d886;
+}
+
+.fileListHeader .fileColumnButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.fileListHeader .fileColumnButton:hover,
+.fileListHeader .fileColumnActive {
+  opacity: 1;
+}
+
+.fileColumnName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fileColumnSize {
+  flex: 0 0 64px;
+  text-align: right;
+  justify-content: flex-end;
+  font-size: 11px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileColumnDate {
+  flex: 0 0 88px;
+  text-align: right;
+  justify-content: flex-end;
+  font-size: 11px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fileListHeader .fileColumnSize,
+.fileListHeader .fileColumnDate {
+  opacity: 0.75;
+}
+
+.virtualList {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: none;
+  font-size: 0.875rem;
+  color: #1f2937;
+}
+
+:global(.dark) .virtualList,
+:global(.projectpage-widget-root.dark) .virtualList {
+  color: #f9fafb;
+}
+
+.virtualList:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(51, 160, 51, 0.35);
+}
+
+.fileRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: pointer;
+  user-select: none;
+}
+
+.fileRow:hover {
+  background: #f3f4f6;
+}
+
+:global(.dark) .fileRow,
+:global(.projectpage-widget-root.dark) .fileRow {
+  border-bottom-color: #374151;
+}
+
+:global(.dark) .fileRow:hover,
+:global(.projectpage-widget-root.dark) .fileRow:hover {
+  background: rgba(31, 41, 55, 0.7);
+}
+
+.fileRowHidden {
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------------------
+   Metadata tables (STAR, XMD, CSV): one tab per data block.
+   --------------------------------------------------------------------------- */
+
+.tablePreviewShell {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.98));
+}
+
+:global(.dark) .tablePreviewShell,
+:global(.projectpage-widget-root.dark) .tablePreviewShell {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.tablePreviewHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  min-width: 0;
+}
+
+.tablePreviewTabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.tablePreviewTab {
+  flex: none;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tablePreviewTab:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.tablePreviewTabActive {
+  border-color: rgba(51, 160, 51, 0.6);
+  background: rgba(51, 160, 51, 0.12);
+  font-weight: 650;
+}
+
+.tablePreviewCount {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.tablePreviewScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tablePreviewTable {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 100%;
+}
+
+.tablePreviewTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  background: #eef2f7;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+:global(.dark) .tablePreviewTable th,
+:global(.projectpage-widget-root.dark) .tablePreviewTable th {
+  background: #1e293b;
+}
+
+.tablePreviewTable td {
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tablePreviewTable tbody tr:hover td {
+  background: rgba(148, 163, 184, 0.10);
+}
+
+.tablePreviewIndex {
+  opacity: 0.5;
+  text-align: right !important;
+  width: 1%;
 }

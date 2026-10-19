@@ -1,5 +1,6 @@
 // src/components/files/RemoteFileDialog.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// Browses the server's files: a folder list (virtualized, sortable) and a preview of the selected file.
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,9 @@ import {
 } from "@/components/ui/dialog/dialog";
 import {
   File as FileIcon,
+  FileSymlink,
   FolderOpen,
+  FolderSymlink,
   CornerUpLeft,
   RefreshCw,
   Home,
@@ -18,81 +21,47 @@ import {
   Search,
   ArrowUp,
   ArrowDown,
+  Download,
+  Eye,
+  EyeOff,
+  FolderTree,
 } from "lucide-react";
 
+import { fetchWithAuth } from "@/api/auth";
 import styles from "./RemoteFileDialog.module.css";
+import {
+  PARENT_ENTRY,
+  base64ToBlob,
+  buildAbsPathForEntry,
+  buildRelPathForEntry,
+  absoluteToRelPath,
+  entryKey,
+  formatModified,
+  getParentRelPath,
+  humanBytes,
+  isHiddenEntry,
+  isParentEntry,
+  joinAbs,
+  normalizeMimeValue,
+  normalizePosixPath,
+  normalizeRelPath,
+  sameEntry,
+  sortEntries,
+  type RemoteEntry,
+  type SortDir,
+  type SortKey,
+} from "./remote-file-paths";
+import {
+  DatabasePreview,
+  PreviewWithMeta,
+  TablePreview,
+  TextPreview,
+  type PreviewMeta,
+  type PreviewTableBlock,
+  type RemoteDatabasePreview,
+} from "./remote-preview-parts";
 
-export type RemoteEntry = {
-  name: string;
-  path: string; // relative path to root (preferred); old backend may still send only basename
-  absPath?: string; // absolute filesystem path, used when selecting an entry
-  isDir: boolean;
-  size?: number;
-  mime?: string;
-};
-
-type PreviewMeta = {
-  name?: string;
-  mime?: string;
-  width?: number;
-  height?: number;
-  depth?: number;
-  thumbWidth?: number;
-  thumbHeight?: number;
-  sizeBytes?: number;
-  voxelSize?: [number, number, number];
-  note?: string;
-
-  // allowArbitraryMetaKeys
-  [key: string]: unknown;
-};
-
-type DatabaseSummaryItem = {
-  key: string;
-  value: unknown;
-};
-
-type DatabaseTablePreview = {
-  name: string;
-  type?: string;
-  rows?: number | null;
-  columns?: number;
-  columnPreview?: Array<{
-    name: string;
-    type?: string;
-    notNull?: boolean;
-    primaryKey?: boolean;
-  }>;
-};
-
-type DatabaseSamplePreview = {
-  table?: string;
-  columns: string[];
-  rows: Array<Array<string | number | null>>;
-  truncated?: boolean;
-};
-
-type RemoteDatabasePreview = {
-  engine?: string;
-  readable?: boolean;
-  isScipion?: boolean;
-  objectClass?: string | null;
-  objectCount?: number | null;
-  summary?: DatabaseSummaryItem[];
-  tables?: DatabaseTablePreview[];
-  sample?: DatabaseSamplePreview | null;
-  warnings?: string[];
-  scipion?: {
-    objectClass?: string | null;
-    objectCount?: number | null;
-    reader?: string;
-    summary?: DatabaseSummaryItem[];
-    sample?: {
-      columns?: string[];
-      rows?: Array<Record<string, unknown>>;
-    };
-  };
-};
+export type { RemoteEntry } from "./remote-file-paths";
 
 export type RemotePreviewSource =
   | { sourceType: "url"; url: string }
@@ -104,13 +73,25 @@ export type RemotePreview =
   | { kind: "text"; mime?: string; meta?: PreviewMeta; text: string; truncated?: boolean; language?: string }
   | { kind: "image"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
   | { kind: "volume"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
-  | { kind: "table"; mime?: string; meta?: PreviewMeta; columns: string[]; rows: Array<Array<string | number | null>>; truncated?: boolean }
+  | {
+    kind: "table"; mime?: string; meta?: PreviewMeta; columns: string[];
+    rows: Array<Array<string | number | null>>; truncated?: boolean;
+    blocks?: PreviewTableBlock[]; format?: string;
+  }
   | { kind: "database"; mime?: string; meta?: PreviewMeta; database: RemoteDatabasePreview; truncated?: boolean }
   | { kind: "error"; mime?: string; meta?: PreviewMeta; message: string };
 
 type ResolveBrowserPathsResult = {
-  rootAbs?: string; // absolute browser root; used when converting absolute paths to relative
-  startPath?: string; // relative-to-root preferred ("" means root)
+  rootAbs?: string; // absolute browser root
+  startPath?: string; // relative to the root ("" means root)
+  projectRootAbs?: string | null; // the project folder, when browsing for a project
+};
+
+/** Where a picked entry is, for callers that need more than the root-relative path. */
+export type RemotePickInfo = {
+  absPath: string;
+  rootAbs: string;
+  projectRootAbs?: string | null;
 };
 
 type RemoteFileDialogMode = "select" | "save";
@@ -120,14 +101,14 @@ type RemoteFileDialogProps = {
   onClose: () => void;
   title?: string;
 
-  projectId?: string | number;
   protocolId?: string | number | null | undefined;
 
   // initialPathRel: relative to root ("" means root)
   initialPath?: string;
   resolveBrowserPaths?: () => Promise<ResolveBrowserPathsResult>;
   listRemoteDirectory: (relPath: string) => Promise<RemoteEntry[]>;
-  previewRemoteEntry?: (relPath: string) => Promise<RemotePreview | null>;
+  previewRemoteEntry?: (relPath: string, opts?: { signal?: AbortSignal }) => Promise<RemotePreview | null>;
+  /** URL of a file (root-relative path); enables the Download button. */
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
 
   mode?: RemoteFileDialogMode;
@@ -137,43 +118,69 @@ type RemoteFileDialogProps = {
   closeOnPick?: boolean;
   busy?: boolean;
 
-  portalContainer?:
-  HTMLElement |
-  null;
+  portalContainer?: HTMLElement | null;
 
-  onPick?: (path: string, entry: RemoteEntry, filename?: string) => void;
+  onPick?: (path: string, entry: RemoteEntry, filename?: string, info?: RemotePickInfo) => void;
 };
 
-type SortDir = "asc" | "desc";
+// Every row of the list has this height: the list draws only the rows in view.
+const ROW_HEIGHT = 32;
+const OVERSCAN_ROWS = 8;
+// A preview starts this long after the selection settles (arrow keys, typing).
+const PREVIEW_DELAY_MS = 160;
+// Files above this size are previewed when chosen, not when selected automatically.
+const AUTO_PREVIEW_MAX_BYTES = 16 * 1024 * 1024;
+const TYPEAHEAD_RESET_MS = 700;
+const SHOW_HIDDEN_KEY = "scipionweb.remoteFiles.showHidden";
 
-type TextPreviewToken = {
-  text: string;
-  className: string;
-};
+function readShowHidden(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
-type TextPreviewLine = {
-  tokens: TextPreviewToken[];
-};
+function isTextInputTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el) return false;
+  const tag = (el.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  return !!el.getAttribute?.("contenteditable");
+}
 
-type AnsiState = {
-  bold: boolean;
-  dim: boolean;
-  italic: boolean;
-  underline: boolean;
-  fg?: number;
-  bg?: number;
-};
+function revokeObjectUrlSafe(url: string) {
+  try {
+    if (url) URL.revokeObjectURL(url);
+  } catch {
+    // ignoreRevokeErrors
+  }
+}
 
-type TextPreviewModel = {
-  label: string;
-  lines: TextPreviewLine[];
-  lineCount: number;
-  isJson: boolean;
-  isEmpty: boolean;
-  hasAnsi: boolean;
-  sizeLabel?: string;
-};
-
+/** The portal host of the dialog (one per page, also used by the project page widget build). */
+function usePortalHost(override: HTMLElement | null | undefined): HTMLElement | null {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (override) {
+      setHost(override);
+      return;
+    }
+    if (typeof document === "undefined") return;
+    let element = document.getElementById("projectpage-portal-root") as HTMLElement | null;
+    if (!element) {
+      element = document.createElement("div");
+      element.id = "projectpage-portal-root";
+      // Out of the page layout, above everything.
+      Object.assign(element.style, { position: "fixed", left: "0", top: "0", width: "0", height: "0", zIndex: "2147483647" });
+      document.body.appendChild(element);
+    }
+    // Keeps the widget build's Tailwind scope and the page's dark mode.
+    element.classList.add("projectpage-widget-root");
+    element.classList.toggle("dark", document.documentElement.classList.contains("dark"));
+    setHost(element);
+  }, [override]);
+  return host;
+}
 
 export default function RemoteFileDialog({
   open,
@@ -192,945 +199,237 @@ export default function RemoteFileDialog({
   confirmLabel,
   closeOnPick = true,
   busy = false,
-  portalContainer:
-  portalContainerOverride,
+  portalContainer: portalContainerOverride,
 }: RemoteFileDialogProps) {
-  // directoryState (cwdRel is relative to root; "" means root)
+  // Folder state (cwdRel is relative to the root; "" is the root).
   const [cwdRel, setCwdRel] = useState<string>(initialPath);
   const [items, setItems] = useState<RemoteEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
-  // browserRootAbs is used only to convert absolute paths -> relative when needed
-  const [browserRootAbs, setBrowserRootAbs] = useState<string>("");
-
-  // protocolRootRelativeOnceResolved
+  const [rootAbs, setRootAbs] = useState<string>("");
+  const [projectRootAbs, setProjectRootAbs] = useState<string | null>(null);
   const [protocolRootRel, setProtocolRootRel] = useState<string>("");
 
-  // selectionState
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
-
-  // search / sort state
   const [filterText, setFilterText] = useState<string>("");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [showHidden, setShowHidden] = useState<boolean>(readShowHidden);
 
-  // unifiedPreviewState
+  // Preview state.
   const [preview, setPreview] = useState<RemotePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-
-  // computedImageSrcForBlob
+  const [previewDeferred, setPreviewDeferred] = useState<RemoteEntry | null>(null);
   const [previewImageSrc, setPreviewImageSrc] = useState<string>("");
   const previewObjectUrlRef = useRef<string>("");
+  const previewTimerRef = useRef<number | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
 
-  // portalContainer
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
+  const [downloading, setDownloading] = useState(false);
 
-  // hardening refs
+  // List viewport (virtualization).
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const refreshSeqRef = useRef<number>(0);
-  const previewSeqRef = useRef<number>(0);
+  const typeaheadRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
 
-  // fixedLayoutSizes
-  const dialogWidthClass = styles.dialogWidth;
-  const dialogHeightClass =
-    mode === "save"
-      ? `${styles.dialogHeight} ${styles.dialogHeightSave}`
-      : styles.dialogHeight;
-
-  const browserHeightClass =
-    mode === "save"
-      ? `${styles.browserHeight} ${styles.browserHeightSave}`
-      : styles.browserHeight;
-
-  const previewHeightClass =
-    mode === "save"
-      ? `${styles.previewHeight} ${styles.previewHeightSave}`
-      : styles.previewHeight;
-
-  // controlledFilenameInputForSaveMode
-  const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
-
-  const getEntryExtension = (entry: RemoteEntry | null) => {
-    const name = (entry?.name || "").trim();
-    const dotIndex = name.lastIndexOf(".");
-    if (dotIndex < 0 || dotIndex === name.length - 1) return "";
-    return name.slice(dotIndex + 1).toLowerCase();
-  };
-
-  const hasAnsiSequences = (s: string) => /\x1b\[[0-9;]*m/.test(s);
-
-  const createDefaultAnsiState = (): AnsiState => ({
-    bold: false,
-    dim: false,
-    italic: false,
-    underline: false,
-  });
-
-  const getAnsiStateClassName = (state: AnsiState) => {
-    const css = styles as Record<string, string>;
-    const classNames: string[] = [];
-
-    if (state.bold) classNames.push(css.ansiBold);
-    if (state.dim) classNames.push(css.ansiDim);
-    if (state.italic) classNames.push(css.ansiItalic);
-    if (state.underline) classNames.push(css.ansiUnderline);
-    if (state.fg != null) classNames.push(css[`ansiFg${state.fg}`]);
-    if (state.bg != null) classNames.push(css[`ansiBg${state.bg}`]);
-
-    return classNames.filter(Boolean).join(" ");
-  };
-
-  const applyAnsiCode = (state: AnsiState, code: number): AnsiState => {
-    if (code === 0) return createDefaultAnsiState();
-
-    const next: AnsiState = { ...state };
-
-    if (code === 1) next.bold = true;
-    else if (code === 2) next.dim = true;
-    else if (code === 3) next.italic = true;
-    else if (code === 4) next.underline = true;
-    else if (code === 22) {
-      next.bold = false;
-      next.dim = false;
-    } else if (code === 23) next.italic = false;
-    else if (code === 24) next.underline = false;
-    else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) next.fg = code;
-    else if (code === 39) next.fg = undefined;
-    else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) next.bg = code;
-    else if (code === 49) next.bg = undefined;
-
-    return next;
-  };
-
-  const tokenizeAnsiLine = (line: string, initialState: AnsiState) => {
-    const ansiRegex = /\x1b\[([0-9;]*)m/g;
-    const tokens: TextPreviewToken[] = [];
-
-    let state: AnsiState = { ...initialState };
-    let lastIndex = 0;
-    let match: RegExpExecArray | null = null;
-
-    const pushChunk = (chunk: string) => {
-      if (!chunk) return;
-      tokens.push({
-        text: chunk,
-        className: getAnsiStateClassName(state),
-      });
-    };
-
-    while ((match = ansiRegex.exec(line)) !== null) {
-      pushChunk(line.slice(lastIndex, match.index));
-
-      const rawCodes = match[1] || "0";
-      const codes = rawCodes
-        .split(";")
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value));
-
-      for (const code of codes.length ? codes : [0]) {
-        state = applyAnsiCode(state, code);
-      }
-
-      lastIndex = ansiRegex.lastIndex;
-    }
-
-    pushChunk(line.slice(lastIndex));
-
-    return {
-      tokens,
-      state,
-    };
-  };
-
-  const buildTextPreviewLines = (content: string, parseAnsi: boolean): TextPreviewLine[] => {
-    const rawLines = content.length > 0 ? content.split(/\r\n|\r|\n/) : [""];
-
-    if (!parseAnsi) {
-      return rawLines.map((line) => ({
-        tokens: [{ text: line || "\u00A0", className: "" }],
-      }));
-    }
-
-    let state = createDefaultAnsiState();
-
-    return rawLines.map((line) => {
-      const result = tokenizeAnsiLine(line, state);
-      state = result.state;
-
-      return {
-        tokens: result.tokens.length
-          ? result.tokens
-          : [{ text: "\u00A0", className: getAnsiStateClassName(state) }],
-      };
-    });
-  };
-
-  const buildTextPreviewModel = (
-    textPreview: Extract<RemotePreview, { kind: "text" }>,
-    entry: RemoteEntry | null
-  ): TextPreviewModel => {
-    const rawText = String(textPreview.text ?? "");
-    const declaredLanguage = String(textPreview.language || "").trim().toLowerCase();
-    const extension = getEntryExtension(entry);
-    const mime = normalizeMimeValue(
-      String(textPreview.mime || textPreview.meta?.mime || entry?.mime || "")
-    );
-
-    const hasAnsi = hasAnsiSequences(rawText);
-    const isLogLike =
-      declaredLanguage === "log" ||
-      ["log", "out", "err", "stdout", "stderr"].includes(extension);
-
-    const shouldTryJson =
-      !hasAnsi &&
-      (declaredLanguage === "json" ||
-        extension === "json" ||
-        mime.includes("json") ||
-        isProbablyJsonString(rawText));
-
-    let content = rawText;
-    let isJson = false;
-
-    if (shouldTryJson) {
-      try {
-        content = JSON.stringify(JSON.parse(rawText), null, 2);
-        isJson = true;
-      } catch {
-        content = rawText;
-      }
-    }
-
-    const renderedLines = buildTextPreviewLines(content, hasAnsi);
-    const lineCount = content.length > 0 ? renderedLines.length : 0;
-
-    const sizeLabel =
-      typeof textPreview.meta?.sizeBytes === "number"
-        ? humanBytes(textPreview.meta.sizeBytes)
-        : undefined;
-
-    const label = isJson
-      ? "JSON"
-      : hasAnsi
-        ? isLogLike
-          ? "ANSI LOG"
-          : "ANSI"
-        : isLogLike
-          ? "LOG"
-          : (declaredLanguage || extension || "text").toUpperCase();
-
-    return {
-      label,
-      lines: renderedLines,
-      lineCount,
-      isJson,
-      isEmpty: content.length === 0,
-      hasAnsi,
-      sizeLabel,
-    };
-  };
+  const portalContainer = usePortalHost(portalContainerOverride);
 
   useEffect(() => {
-    if (!open) return;
-    setSaveFilename(defaultFilename || "");
+    if (open) setSaveFilename(defaultFilename || "");
   }, [open, defaultFilename]);
 
   useEffect(() => {
-    if (
-      portalContainerOverride
-    ) {
-      setPortalContainer(
-        portalContainerOverride,
-      );
-
-      return;
-    }
-
-    // ensureDialogPortalRootExists
-    const doc =
-      typeof document !==
-        "undefined"
-        ? document
-        : null;
-
-    if (!doc) {
-      return;
-    }
-
-    let host =
-      doc.getElementById(
-        "projectpage-portal-root",
-      ) as HTMLElement | null;
-
-    if (!host) {
-      host =
-        doc.createElement(
-          "div",
-        );
-
-      host.id =
-        "projectpage-portal-root";
-
-      // keepTailwindScopeForWidgetBuild
-      host.classList.add(
-        "projectpage-widget-root",
-      );
-
-      // avoidAffectingHostLayout
-      host.style.position =
-        "fixed";
-
-      host.style.left =
-        "0";
-
-      host.style.top =
-        "0";
-
-      host.style.width =
-        "0";
-
-      host.style.height =
-        "0";
-
-      host.style.zIndex =
-        "2147483647";
-
-      doc.body.appendChild(
-        host,
-      );
-    } else {
-      host.classList.add(
-        "projectpage-widget-root",
-      );
-    }
-
-    // keepDarkModeConsistentIfNeeded
-    if (
-      doc.documentElement
-        .classList.contains(
-          "dark",
-        )
-    ) {
-      host.classList.add(
-        "dark",
-      );
-    } else {
-      host.classList.remove(
-        "dark",
-      );
-    }
-
-    setPortalContainer(
-      host,
-    );
-  }, [
-    portalContainerOverride,
-  ]);
-
-  /** normalizePosixPath */
-  const normalizePosixPath = (p: string) => (p || "").replace(/\\/g, "/").replace(/\/+/g, "/").trim();
-
-  /** isAbsolutePath */
-  const isAbsolutePath = (p: string) => {
-    const raw = normalizePosixPath(p || "");
-    if (!raw) return false;
-    return raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
-  };
-
-  /** normalizeRelPath */
-  const normalizeRelPath = (p: string) => {
-    const raw = normalizePosixPath(p || "").replace(/^\/+/g, "");
-    if (!raw) return "";
-
-    const parts = raw.split("/").filter(Boolean);
-    const out: string[] = [];
-
-    for (const part of parts) {
-      if (part === ".") continue;
-      if (part === "..") {
-        if (out.length > 0) out.pop();
-        continue; // clampNeverGoAboveRoot
-      }
-      out.push(part);
-    }
-
-    return out.join("/");
-  };
-
-  /** joinRelPaths */
-  const joinRelPaths = (baseRel: string, leaf: string) => {
-    const b = normalizeRelPath(baseRel || "");
-    const l = normalizeRelPath(leaf || "");
-    if (!b) return l;
-    if (!l) return b;
-    return normalizeRelPath(`${b}/${l}`);
-  };
-
-  /** getParentRelPath */
-  const getParentRelPath = (relPath: string): string | null => {
-    const r = normalizeRelPath(relPath || "");
-    if (!r) return null;
-    const parts = r.split("/").filter(Boolean);
-    if (parts.length <= 1) return "";
-    return parts.slice(0, -1).join("/");
-  };
-
-  /** absoluteToRelPath */
-  const absoluteToRelPath = (absPath: string) => {
-    const abs = normalizePosixPath(absPath || "");
-    const root = normalizePosixPath(browserRootAbs || "");
-
-    if (!abs || !root) return "";
-
-    const rootClean = root.replace(/\/+$/g, "");
-    const absClean = abs.replace(/\/+$/g, "");
-
-    if (absClean === rootClean) return "";
-
-    if (absClean.startsWith(`${rootClean}/`)) {
-      return normalizeRelPath(absClean.slice(rootClean.length + 1));
-    }
-
-    return "";
-  };
-
-  /** buildRelPathForEntry */
-  const buildRelPathForEntry = (entry: RemoteEntry) => {
-    const rawPath = normalizePosixPath(entry?.path || "");
-    const entryName = normalizeRelPath(entry?.name || "");
-
-    if (rawPath) {
-      if (isAbsolutePath(rawPath)) {
-        const relFromAbs = absoluteToRelPath(rawPath);
-        if (relFromAbs) return relFromAbs;
-
-        const leafFromAbs = rawPath.split("/").filter(Boolean).pop() || entryName;
-        return joinRelPaths(cwdRel, leafFromAbs);
-      }
-
-      const safeRel = normalizeRelPath(rawPath);
-      if (!safeRel) return "";
-
-      // Old backend contract: only basename in entry.path
-      if (safeRel === entryName) {
-        return joinRelPaths(cwdRel, safeRel);
-      }
-
-      // New backend contract: full relative path
-      return safeRel;
-    }
-
-    return joinRelPaths(cwdRel, entryName);
-  };
-
-  /** buildPickPathForEntry */
-  const buildPickPathForEntry = (entry: RemoteEntry) => {
-    const absPath = normalizePosixPath(entry?.absPath || "");
-    if (absPath && isAbsolutePath(absPath)) return absPath;
-
-    const rawPath = normalizePosixPath(entry?.path || "");
-    if (rawPath && isAbsolutePath(rawPath)) return rawPath;
-
-    const relPath = buildRelPathForEntry(entry);
-    if (!relPath && browserRootAbs) return normalizePosixPath(browserRootAbs);
-
-    if (browserRootAbs) {
-      const root = normalizePosixPath(browserRootAbs).replace(/\/+$/g, "");
-      return relPath ? `${root}/${relPath}` : root;
-    }
-
-    return relPath;
-  };
-
-  /** sameEntry */
-  const sameEntry = (a: RemoteEntry | null | undefined, b: RemoteEntry | null | undefined) => {
-    if (!a || !b) return false;
-
-    const aAbs = normalizePosixPath(a.absPath || "");
-    const bAbs = normalizePosixPath(b.absPath || "");
-    if (aAbs || bAbs) return aAbs === bAbs;
-
-    const aPath = normalizePosixPath(a.path || "");
-    const bPath = normalizePosixPath(b.path || "");
-    return aPath === bPath && a.name === b.name && a.isDir === b.isDir;
-  };
-
-  /** revokeObjectUrlSafe */
-  const revokeObjectUrlSafe = (url: string) => {
     try {
-      if (url) URL.revokeObjectURL(url);
+      window.localStorage.setItem(SHOW_HIDDEN_KEY, showHidden ? "1" : "0");
     } catch {
-      // ignoreRevokeErrors
+      // Without storage the choice lasts the session.
     }
-  };
+  }, [showHidden]);
 
-  const humanBytes = (n?: number) => {
-    // humanBytesBinaryUnits
-    if (n == null || !Number.isFinite(n)) return undefined;
+  // -- preview ---------------------------------------------------------------
 
-    const abs = Math.abs(n);
-
-    const kb = 1024;
-    const mb = kb * 1024;
-    const gb = mb * 1024;
-    const tb = gb * 1024;
-
-    const fmt = (value: number, unit: string) => {
-      const decimals = value >= 10 ? 1 : 2;
-      return `${value.toFixed(decimals)} ${unit}`;
-    };
-
-    if (abs < kb) return `${Math.round(n)} B`;
-    if (abs < mb) return fmt(n / kb, "KB");
-    if (abs < gb) return fmt(n / mb, "MB");
-    if (abs < tb) return fmt(n / gb, "GB");
-    return fmt(n / tb, "TB");
-  };
-
-  type MetaPair = { key: string; rawValue: unknown };
-
-  function extractPixelSize(value: unknown): number | undefined {
-    // extractPixelSizeBestEffort
-    if (value == null) return undefined;
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : undefined;
+  const cancelPendingPreview = useCallback(() => {
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
     }
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+  }, []);
 
-    if (Array.isArray(value)) {
-      const first = value.length > 0 ? Number((value as any)[0]) : NaN;
-      return Number.isFinite(first) ? first : undefined;
-    }
-
-    if (typeof value === "string") {
-      const s = value.trim();
-      if (!s) return undefined;
-
-      // allowCommaSeparatedLikeHeader
-      const firstToken = s.split(",")[0]?.trim() ?? "";
-      const num = Number(firstToken);
-      return Number.isFinite(num) ? num : undefined;
-    }
-
-    return undefined;
-  }
-
-  function buildMetaPairs(meta: PreviewMeta | undefined): MetaPair[] {
-    // metaPairsWithUiTransforms
-    const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
-    const view: Record<string, unknown> = { ...raw };
-
-    // hideMimeFieldsInUi
-    for (const k of Object.keys(view)) {
-      const kLower = k.toLowerCase();
-
-      // hide "mime" and any "*Mime" variants (payloadMime, responseMime, semanticMime, etc.)
-      if (kLower === "mime" || kLower.endsWith("mime")) {
-        delete view[k];
-      }
-    }
-
-    // sizeBytes -> size (humanReadable) and hideRaw
-    const sizeBytesRaw = view.sizeBytes;
-    const sizeBytesNum =
-      typeof sizeBytesRaw === "number"
-        ? sizeBytesRaw
-        : typeof sizeBytesRaw === "string"
-          ? Number(sizeBytesRaw)
-          : undefined;
-
-    if (typeof sizeBytesNum === "number" && Number.isFinite(sizeBytesNum)) {
-      const h = humanBytes(sizeBytesNum);
-      if (h) view.size = h;
-      delete view.sizeBytes;
-    }
-
-    // voxelSize -> pixelSize (singleValue) and hideRaw
-    const pixelSize = extractPixelSize(view.voxelSize);
-    if (typeof pixelSize === "number" && Number.isFinite(pixelSize)) {
-      // keepReasonablePrecisionForDisplay
-      const rounded = Math.round(pixelSize * 1e6) / 1e6;
-      view.pixelSize = rounded;
-      delete view.voxelSize;
-    }
-
-    const keys = Object.keys(view).sort((a, b) => a.localeCompare(b));
-
-    const out: MetaPair[] = [];
-    for (const k of keys) {
-      const v = view[k];
-      if (v === undefined) continue;
-      out.push({ key: k, rawValue: v });
-    }
-
-    return out;
-  }
-
-  function isProbablyJsonString(s: string): boolean {
-    // bestEffortJsonStringHeuristic
-    const t = (s || "").trim();
-    if (!t) return false;
-    if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
-      return true;
-    }
-    return false;
-  }
-
-  function safeJsonStringify(v: unknown): string {
-    // safeJsonStringifyNoThrow
-    try {
-      return JSON.stringify(v, null, 2);
-    } catch {
-      return String(v);
-    }
-  }
-
-  function toInlineString(v: unknown): string {
-    // metaInlineString
-    if (v === undefined) return "";
-    if (v === null) return "null";
-    if (typeof v === "string") return v;
-    if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
-    if (typeof v === "boolean") return v ? "true" : "false";
-    if (Array.isArray(v)) return v.map((x) => toInlineString(x)).join(", ");
-    if (typeof v === "object") return "[object]";
-    return String(v);
-  }
-
-  function shouldCollapseMetaValue(v: unknown): boolean {
-    // collapseRule: objects/arrays or large json-like strings
-    if (v == null) return false;
-
-    if (typeof v === "object") return true;
-
-    if (typeof v === "string") {
-      const t = v.trim();
-      if (t.length < 120) return false;
-      return isProbablyJsonString(t);
-    }
-
-    return false;
-  }
-
-  function buildMetaPreviewLabel(v: unknown): string {
-    // labelShownOnSummaryLine
-    if (v == null) return "null";
-    if (typeof v === "string") {
-      const t = v.trim();
-      if (!t) return '""';
-      // keepLabelCompact
-      return t.length > 80 ? `${t.slice(0, 80)}…` : t;
-    }
-    if (Array.isArray(v)) return `Array(${v.length})`;
-    if (typeof v === "object") {
-      try {
-        const keys = Object.keys(v as any);
-        return `Object(${keys.length})`;
-      } catch {
-        return "Object";
-      }
-    }
-    return String(v);
-  }
-
-  function MetaValueRenderer({ value }: { value: unknown }) {
-    const collapsible = shouldCollapseMetaValue(value);
-
-    if (!collapsible) {
-      return <span className={styles.metaValue}>{toInlineString(value)}</span>;
-    }
-
-    const previewLabel = buildMetaPreviewLabel(value);
-
-    // stringJsonCase: show parsed pretty if possible
-    let pretty = "";
-    if (typeof value === "string") {
-      const t = value.trim();
-      if (isProbablyJsonString(t)) {
-        try {
-          pretty = JSON.stringify(JSON.parse(t), null, 2);
-        } catch {
-          pretty = t;
-        }
-      } else {
-        pretty = value;
-      }
-    } else {
-      pretty = safeJsonStringify(value);
-    }
-
-    return (
-      <details className={styles.metaDetails}>
-        <summary className={styles.metaSummary}>
-          <span className={styles.metaChevron}>▸</span>
-          <span className={styles.metaSummaryText}>{previewLabel}</span>
-          <span className={styles.metaHint}>details</span>
-        </summary>
-
-        <pre className={styles.metaJsonBlock}>{pretty}</pre>
-      </details>
-    );
-  }
-
-  const renderMetaFooter = (meta: PreviewMeta | undefined) => {
-    const pairs = buildMetaPairs(meta);
-    if (!pairs.length) return null;
-
-    return (
-      <div className={styles.previewFooter}>
-        <div className={styles.metaGrid}>
-          {pairs.map((p) => (
-            <div key={p.key} className={styles.metaItem}>
-              <span className={styles.metaKey}>{p.key}:</span>
-              <MetaValueRenderer value={p.rawValue} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderTwoRowPreview = (content: React.ReactNode, meta: PreviewMeta | undefined) => {
-    return (
-      <div className={styles.previewStack}>
-        <div className={styles.previewMain}>{content}</div>
-        {renderMetaFooter(meta)}
-      </div>
-    );
-  };
-
-  /** clearPreviewState */
-  const clearPreviewState = () => {
-    previewSeqRef.current += 1;
+  const clearPreviewState = useCallback(() => {
+    cancelPendingPreview();
     setPreview(null);
     setPreviewLoading(false);
     setPreviewError(null);
+    setPreviewDeferred(null);
+  }, [cancelPendingPreview]);
 
-    revokeObjectUrlSafe(previewObjectUrlRef.current);
-    previewObjectUrlRef.current = "";
-    setPreviewImageSrc("");
-  };
+  const relPathOf = useCallback(
+    (entry: RemoteEntry) => buildRelPathForEntry(entry, cwdRel, rootAbs),
+    [cwdRel, rootAbs],
+  );
 
-  /** refresh */
-  const refresh = async (relPath: string) => {
+  /** Preview a file, a moment after the selection settles; earlier requests are cancelled. */
+  const requestPreview = useCallback((entry: RemoteEntry, automatic: boolean) => {
+    cancelPendingPreview();
+    setPreviewError(null);
+    setPreviewDeferred(null);
+    if (!previewRemoteEntry || entry.isDir || isParentEntry(entry)) {
+      setPreview(null);
+      setPreviewLoading(false);
+      return;
+    }
+    if (automatic && typeof entry.size === "number" && entry.size > AUTO_PREVIEW_MAX_BYTES) {
+      // A big file is only rendered when the user asks for it.
+      setPreview(null);
+      setPreviewLoading(false);
+      setPreviewDeferred(entry);
+      return;
+    }
+    setPreview(null);
+    setPreviewLoading(true);
+    const relPath = relPathOf(entry);
+    previewTimerRef.current = window.setTimeout(() => {
+      previewTimerRef.current = null;
+      const controller = new AbortController();
+      previewAbortRef.current = controller;
+      previewRemoteEntry(relPath, { signal: controller.signal })
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setPreview(result || { kind: "none", note: "No preview available." });
+        })
+        .catch((e: unknown) => {
+          if (controller.signal.aborted) return;
+          const message = e instanceof Error ? e.message : "Failed to load preview";
+          setPreviewError(message);
+        })
+        .finally(() => {
+          if (previewAbortRef.current === controller) {
+            previewAbortRef.current = null;
+            setPreviewLoading(false);
+          }
+        });
+    }, PREVIEW_DELAY_MS);
+  }, [cancelPendingPreview, previewRemoteEntry, relPathOf]);
+
+  useEffect(() => () => cancelPendingPreview(), [cancelPendingPreview]);
+
+  // Image sources (object URLs are released with their preview).
+  useEffect(() => {
+    if (!preview || (preview.kind !== "image" && preview.kind !== "volume")) {
+      setPreviewImageSrc("");
+      return;
+    }
+    const src = preview.source as RemotePreviewSource | undefined;
+    if (src?.sourceType === "url" && typeof src.url === "string") {
+      setPreviewImageSrc(src.url);
+      return;
+    }
+    let blob: Blob | null = null;
+    if (src?.sourceType === "blob" && src.blob instanceof Blob) blob = src.blob;
+    if (src?.sourceType === "base64" && typeof src.dataBase64 === "string") {
+      try {
+        blob = base64ToBlob(src.dataBase64, normalizeMimeValue(String(src.mime || preview.mime || "image/png")) || "image/png");
+      } catch {
+        blob = null;
+      }
+    }
+    if (!blob) {
+      setPreviewImageSrc("");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    previewObjectUrlRef.current = url;
+    setPreviewImageSrc(url);
+    return () => {
+      revokeObjectUrlSafe(url);
+      if (previewObjectUrlRef.current === url) previewObjectUrlRef.current = "";
+    };
+  }, [preview]);
+
+  // -- folders ---------------------------------------------------------------
+
+  const refresh = useCallback(async (relPath: string) => {
     const seq = ++refreshSeqRef.current;
-
     try {
       setLoading(true);
       setError(null);
-
       const safeRel = normalizeRelPath(relPath || "");
       const listing = await listRemoteDirectory(safeRel);
-
-      // ignoreStaleRefreshResults
       if (refreshSeqRef.current !== seq) return;
-
       setItems(Array.isArray(listing) ? listing : []);
       setCwdRel(safeRel);
-
-      // resetSelectionAndPreviewOnDirectoryChange
       setSelected(null);
       clearPreviewState();
+      setScrollTop(0);
+      if (listRef.current) listRef.current.scrollTop = 0;
     } catch (e: unknown) {
       if (refreshSeqRef.current !== seq) return;
-      const msg = e instanceof Error ? e.message : "Failed to list directory contents";
-      setError(msg);
+      setError(e instanceof Error ? e.message : "Failed to list directory contents");
     } finally {
       if (refreshSeqRef.current === seq) setLoading(false);
     }
-  };
+  }, [clearPreviewState, listRemoteDirectory]);
 
-  const enterDir = (entry: RemoteEntry) => {
-    if (!entry.isDir) return;
-    const nextRelDir = buildRelPathForEntry(entry);
-    void refresh(nextRelDir);
-  };
-
-  const goUp = () => {
+  const goUp = useCallback(() => {
     const parentRel = getParentRelPath(cwdRel);
-    if (parentRel === null) return;
-    void refresh(parentRel);
-  };
+    if (parentRel !== null) void refresh(parentRel);
+  }, [cwdRel, refresh]);
 
-  const goRoot = () => {
-    void refresh("");
-  };
-
-  const goProtocolRoot = () => {
-    if (!protocolRootRel) return;
-    void refresh(protocolRootRel);
-  };
-
-  /** loadUnifiedPreview */
-  const loadUnifiedPreview = async (entry: RemoteEntry) => {
-    if (!previewRemoteEntry) {
-      clearPreviewState();
+  const enterDir = useCallback((entry: RemoteEntry) => {
+    if (!entry.isDir) return;
+    if (isParentEntry(entry)) {
+      goUp();
       return;
     }
-    if (entry.isDir) {
-      clearPreviewState();
-      return;
-    }
+    void refresh(relPathOf(entry));
+  }, [goUp, refresh, relPathOf]);
 
-    const seq = ++previewSeqRef.current;
-
-    setPreview(null);
-    setPreviewLoading(true);
-    setPreviewError(null);
-
-    revokeObjectUrlSafe(previewObjectUrlRef.current);
-    previewObjectUrlRef.current = "";
-    setPreviewImageSrc("");
-
-    try {
-      const relPath = buildRelPathForEntry(entry);
-      const p = await previewRemoteEntry(relPath);
-
-      // ignoreStalePreviewResults
-      if (previewSeqRef.current !== seq) return;
-
-      setPreview(p || { kind: "none", note: "No preview available." });
-    } catch (e: unknown) {
-      if (previewSeqRef.current !== seq) return;
-      const msg = e instanceof Error ? e.message : "Failed to load preview";
-      setPreviewError(msg);
-      setPreview({ kind: "error", message: msg });
-    } finally {
-      if (previewSeqRef.current === seq) setPreviewLoading(false);
-    }
-  };
-
-  const handleSelectEntry = (entry: RemoteEntry) => {
-    setSelected(entry);
-
-    if (mode === "save" && !entry.isDir && entry.name) {
-      setSaveFilename(entry.name);
-    }
-
-    void loadUnifiedPreview(entry);
-  };
-
-  const handleEntryDoubleClick = (entry: RemoteEntry) => {
-    if (entry.isDir) {
-      enterDir(entry);
-      return;
-    }
-
-    handleSelectEntry(entry);
-
-    if (mode !== "select" || !onPick) return;
-
-    const pickPath = buildRelPathForEntry(entry);
-    onPick(pickPath, entry);
-
-    if (closeOnPick) onClose();
-  };
-
-  const handlePick = () => {
-    if (!onPick) return;
-
-    if (mode === "save") {
-      const filename = String(saveFilename ?? "").trim();
-      if (!filename) return;
-
-      const entry = selected ?? buildSyntheticCurrentDirEntry();
-      const directoryPath = buildSaveDirectoryPath();
-
-      onPick(directoryPath, entry, filename);
-
-      if (closeOnPick) onClose();
-      return;
-    }
-
-    if (!selected) return;
-
-    const pickPath = buildRelPathForEntry(selected);
-    onPick(pickPath, selected);
-
-    if (closeOnPick) onClose();
-  };
-
-  const handleDialogClick: React.MouseEventHandler = (e) => {
-    e.stopPropagation();
-  };
-
-  /** isTextInputTarget */
-  const isTextInputTarget = (t: EventTarget | null) => {
-    const el = t as HTMLElement | null;
-    if (!el) return false;
-    const tag = (el.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return true;
-    return !!el.getAttribute?.("contenteditable");
-  };
-
-  /** moveSelectionBy */
-  const moveSelectionBy = (delta: number, visibleList: RemoteEntry[]) => {
-    if (!visibleList.length) return;
-
-    const currIndex = selected
-      ? visibleList.findIndex((e) => sameEntry(e, selected))
-      : -1;
-
-    const baseIndex = currIndex >= 0 ? currIndex : delta > 0 ? -1 : visibleList.length;
-    const nextIndex = Math.max(0, Math.min(visibleList.length - 1, baseIndex + delta));
-    const next = visibleList[nextIndex];
-    if (next) handleSelectEntry(next);
-  };
-
-  /** focusSearch */
-  const focusSearch = () => {
-    try {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    } catch {
-      // ignoreFocusErrors
-    }
-  };
-
+  // Open: where to start; closed: everything back to its initial state.
   useEffect(() => {
     let mounted = true;
-
+    if (!open) {
+      refreshSeqRef.current += 1;
+      setItems([]);
+      setCwdRel(normalizeRelPath(initialPath || ""));
+      setProtocolRootRel("");
+      setRootAbs("");
+      setProjectRootAbs(null);
+      setSelected(null);
+      setFilterText("");
+      clearPreviewState();
+      setError(null);
+      return;
+    }
     const boot = async () => {
-      if (!open) {
-        // resetStateWhenClosed
-        refreshSeqRef.current += 1;
-        previewSeqRef.current += 1;
-
-        setItems([]);
-        setCwdRel(normalizeRelPath(initialPath || ""));
-        setProtocolRootRel("");
-        setBrowserRootAbs("");
-        setSelected(null);
-        setFilterText("");
-
-        clearPreviewState();
-        setError(null);
-        return;
-      }
-
       let startRel = normalizeRelPath(initialPath || "");
-      let rootAbs = "";
-
+      let root = "";
+      let projectRoot: string | null = null;
       if (resolveBrowserPaths) {
         try {
           const resolved = await resolveBrowserPaths();
           if (!mounted) return;
-
-          const startRaw = normalizePosixPath(resolved?.startPath || "");
-          startRel = normalizeRelPath(startRaw);
-          rootAbs = normalizePosixPath(resolved?.rootAbs || "");
-        } catch {
-          // ignoreResolveErrorsAndFallbackToInitialPath
-          startRel = normalizeRelPath(initialPath || "");
-          rootAbs = "";
+          startRel = normalizeRelPath(normalizePosixPath(resolved?.startPath || ""));
+          root = normalizePosixPath(resolved?.rootAbs || "");
+          projectRoot = resolved?.projectRootAbs ? normalizePosixPath(resolved.projectRootAbs) : null;
+        } catch (e: unknown) {
+          if (!mounted) return;
+          setError(e instanceof Error ? e.message : "The server did not say where to browse");
+          return;
         }
       }
-
-      setBrowserRootAbs(rootAbs);
+      setRootAbs(root);
+      setProjectRootAbs(projectRoot);
       setProtocolRootRel(startRel);
       await refresh(startRel);
     };
-
     void boot();
     return () => {
       mounted = false;
@@ -1138,369 +437,256 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  useEffect(() => {
-    // syncPreviewImageSrcFromModel
-    if (!preview || (preview.kind !== "image" && preview.kind !== "volume")) {
-      revokeObjectUrlSafe(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = "";
-      setPreviewImageSrc("");
-      return;
-    }
+  // -- visible rows ------------------------------------------------------------
 
-    const src = preview.source as any;
-
-    // urlSource
-    if (src?.sourceType === "url" && typeof src.url === "string") {
-      revokeObjectUrlSafe(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = "";
-      setPreviewImageSrc(src.url);
-      return;
-    }
-
-    // blobSource
-    if (src?.sourceType === "blob" && src.blob instanceof Blob) {
-      revokeObjectUrlSafe(previewObjectUrlRef.current);
-      const objUrl = URL.createObjectURL(src.blob);
-      previewObjectUrlRef.current = objUrl;
-      setPreviewImageSrc(objUrl);
-
-      return () => {
-        revokeObjectUrlSafe(objUrl);
-        if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
-      };
-    }
-
-    // base64Source
-    if (src?.sourceType === "base64" && typeof src.dataBase64 === "string") {
-      const effectiveMime =
-        normalizeMimeValue(String(src.mime || preview.mime || "image/png")) || "image/png";
-
-      try {
-        const blob = base64ToBlob(src.dataBase64, effectiveMime);
-
-        revokeObjectUrlSafe(previewObjectUrlRef.current);
-        const objUrl = URL.createObjectURL(blob);
-        previewObjectUrlRef.current = objUrl;
-        setPreviewImageSrc(objUrl);
-
-        return () => {
-          revokeObjectUrlSafe(objUrl);
-          if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
-        };
-      } catch (e) {
-        // keepUiStableOnBadPayload
-        revokeObjectUrlSafe(previewObjectUrlRef.current);
-        previewObjectUrlRef.current = "";
-        setPreviewImageSrc("");
-        return;
-      }
-    }
-
-    // unknownSourceTypeFallback
-    revokeObjectUrlSafe(previewObjectUrlRef.current);
-    previewObjectUrlRef.current = "";
-    setPreviewImageSrc("");
-  }, [preview]);
-
-  function normalizeMimeValue(v: string): string {
-    // normalizeMimeLikeHeaderValue
-    const raw = (v || "").trim().toLowerCase();
-    if (!raw) return "";
-    return raw.split(";")[0].trim();
-  }
-
-  function base64ToBlob(dataBase64OrDataUrl: string, mime: string): Blob {
-    // extractBase64Payload
-    let base64 = (dataBase64OrDataUrl || "").trim();
-
-    // handleDataUrlPrefix
-    if (base64.startsWith("data:")) {
-      const commaIndex = base64.indexOf(",");
-      if (commaIndex >= 0) base64 = base64.slice(commaIndex + 1);
-    }
-
-    // normalizeUrlSafeBase64
-    base64 = base64.replace(/-/g, "+").replace(/_/g, "/");
-
-    // addPaddingIfNeeded
-    const mod = base64.length % 4;
-    if (mod === 2) base64 += "==";
-    else if (mod === 3) base64 += "=";
-
-    const binaryStr = atob(base64);
-    const len = binaryStr.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
-    }
-
-    return new Blob([bytes], { type: mime || "application/octet-stream" });
-  }
-
-  const parentRel = getParentRelPath(cwdRel);
-  const showParentEntry = parentRel !== null && !loading && !error;
-  const parentEntry = useMemo<RemoteEntry>(() => ({ name: "..", path: "..", isDir: true }), []);
-
-  const breadcrumbs = useMemo(() => {
-    const rel = normalizeRelPath(cwdRel || "");
-    const parts = rel ? rel.split("/").filter(Boolean) : [];
-    const crumbs: { label: string; relPath: string }[] = [{ label: ".", relPath: "" }];
-
-    let acc = "";
-    for (const p of parts) {
-      acc = acc ? `${acc}/${p}` : p;
-      crumbs.push({ label: p, relPath: acc });
-    }
-    return crumbs;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwdRel]);
+  const hiddenCount = useMemo(() => items.filter(isHiddenEntry).length, [items]);
 
   const visibleItems = useMemo(() => {
     const needle = (filterText || "").trim().toLowerCase();
+    const shown = items.filter((entry) => (showHidden || !isHiddenEntry(entry))
+      && (!needle || (entry.name || "").toLowerCase().includes(needle)));
+    return sortEntries(shown, sortKey, sortDir);
+  }, [items, filterText, showHidden, sortKey, sortDir]);
 
-    const filtered = !needle ? items : items.filter((e) => (e.name || "").toLowerCase().includes(needle));
+  const parentRel = getParentRelPath(cwdRel);
+  const showParentEntry = parentRel !== null && !loading && !error;
+  const rows = useMemo(
+    () => (showParentEntry ? [PARENT_ENTRY, ...visibleItems] : visibleItems),
+    [showParentEntry, visibleItems],
+  );
+  const selectedIndex = selected ? rows.findIndex((entry) => sameEntry(entry, selected) || (isParentEntry(selected) && isParentEntry(entry))) : -1;
 
-    const dirMult = sortDir === "asc" ? 1 : -1;
+  useLayoutEffect(() => {
+    const element = listRef.current;
+    if (!element) return;
+    const measure = () => setViewportHeight(element.clientHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [open, error]);
 
-    const sorted = [...filtered].sort((a, b) => {
-      // foldersFirstAlways
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+  // Rows in view (all of them while the list has no size yet, e.g. before layout).
+  const firstRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
+  const rowsInView = viewportHeight > 0 ? Math.ceil(viewportHeight / ROW_HEIGHT) + 2 * OVERSCAN_ROWS : 60;
+  const lastRow = Math.min(rows.length, firstRow + rowsInView);
 
-      // nameOnlySort
-      const na = (a.name || "").toLowerCase();
-      const nb = (b.name || "").toLowerCase();
-      if (na === nb) return 0;
-      return na < nb ? -1 * dirMult : 1 * dirMult;
-    });
+  const scrollRowIntoView = useCallback((index: number) => {
+    const element = listRef.current;
+    if (!element || index < 0) return;
+    const top = index * ROW_HEIGHT;
+    const height = element.clientHeight || viewportHeight;
+    let next = element.scrollTop;
+    if (top < next || !height) next = top; // Not measured yet: the row goes to the top.
+    else if (top + ROW_HEIGHT > next + height) next = top + ROW_HEIGHT - height;
+    element.scrollTop = next;
+    // What the list draws follows the scroll even where the browser does not report it.
+    setScrollTop(next);
+  }, [viewportHeight]);
 
-    return sorted;
-  }, [items, filterText, sortDir]);
+  // -- selection ---------------------------------------------------------------
 
+  const selectEntry = useCallback((entry: RemoteEntry, automatic = false) => {
+    setSelected(entry);
+    if (mode === "save" && !entry.isDir && entry.name) setSaveFilename(entry.name);
+    requestPreview(entry, automatic);
+  }, [mode, requestPreview]);
+
+  // The first entry is selected when a folder opens or the filter hides the selection.
   useEffect(() => {
-    // autoSelectFirstVisibleEntry
     if (!open || loading || error) return;
-
-    const firstVisible = visibleItems[0] ?? null;
-
-    if (!firstVisible) {
-      if (selected) {
+    const first = visibleItems[0] ?? null;
+    if (!first) {
+      if (selected && !isParentEntry(selected)) {
         setSelected(null);
         clearPreviewState();
       }
       return;
     }
-
-    const stillThere = selected
-      ? visibleItems.some((e) => sameEntry(e, selected))
-      : false;
-
-    if (!stillThere) {
-      handleSelectEntry(firstVisible);
-    }
-
+    const stillThere = selected ? isParentEntry(selected) || visibleItems.some((e) => sameEntry(e, selected)) : false;
+    if (!stillThere) selectEntry(first, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, loading, error, visibleItems]);
 
+  const pickInfo = useCallback((entry: RemoteEntry): RemotePickInfo => ({
+    absPath: buildAbsPathForEntry(entry, cwdRel, rootAbs),
+    rootAbs,
+    projectRootAbs,
+  }), [cwdRel, projectRootAbs, rootAbs]);
+
+  const currentDirAbs = useCallback(() => joinAbs(rootAbs, cwdRel), [cwdRel, rootAbs]);
+
+  const saveDirectoryPath = useCallback(() => {
+    if (!selected) return currentDirAbs();
+    if (isParentEntry(selected)) return joinAbs(rootAbs, getParentRelPath(cwdRel) ?? "");
+    const picked = buildAbsPathForEntry(selected, cwdRel, rootAbs);
+    if (selected.isDir) return picked;
+    const parent = normalizePosixPath(picked).replace(/\/+$/g, "").replace(/\/[^/]+$/g, "");
+    return parent || currentDirAbs();
+  }, [currentDirAbs, cwdRel, rootAbs, selected]);
+
+  const handlePick = useCallback(() => {
+    if (!onPick) return;
+    if (mode === "save") {
+      const filename = String(saveFilename ?? "").trim();
+      if (!filename) return;
+      const parts = normalizeRelPath(cwdRel || "").split("/").filter(Boolean);
+      const entry = selected ?? { name: parts[parts.length - 1] || ".", path: cwdRel || "", absPath: currentDirAbs(), isDir: true };
+      onPick(saveDirectoryPath(), entry, filename);
+      if (closeOnPick) onClose();
+      return;
+    }
+    if (!selected) return;
+    onPick(relPathOf(selected), selected, undefined, pickInfo(selected));
+    if (closeOnPick) onClose();
+  }, [closeOnPick, currentDirAbs, cwdRel, mode, onClose, onPick, pickInfo, relPathOf, saveDirectoryPath, saveFilename, selected]);
+
+  const handleEntryDoubleClick = useCallback((entry: RemoteEntry) => {
+    if (entry.isDir) {
+      enterDir(entry);
+      return;
+    }
+    selectEntry(entry);
+    if (mode !== "select" || !onPick) return;
+    onPick(relPathOf(entry), entry, undefined, pickInfo(entry));
+    if (closeOnPick) onClose();
+  }, [closeOnPick, enterDir, mode, onClose, onPick, pickInfo, relPathOf, selectEntry]);
+
+  const moveSelectionTo = useCallback((index: number) => {
+    if (!rows.length) return;
+    const next = rows[Math.max(0, Math.min(rows.length - 1, index))];
+    if (!next) return;
+    selectEntry(next);
+    scrollRowIntoView(rows.indexOf(next));
+  }, [rows, scrollRowIntoView, selectEntry]);
+
+  const downloadSelected = useCallback(async () => {
+    if (!buildDownloadUrl || !selected || selected.isDir) return;
+    setDownloading(true);
+    try {
+      const response = await fetchWithAuth(buildDownloadUrl(relPathOf(selected), false));
+      if (!response.ok) throw new Error(`The file could not be downloaded (${response.status})`);
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = selected.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => revokeObjectUrlSafe(url), 30000);
+    } catch (e: unknown) {
+      setPreviewError(e instanceof Error ? e.message : "The file could not be downloaded");
+    } finally {
+      setDownloading(false);
+    }
+  }, [buildDownloadUrl, relPathOf, selected]);
+
+  // -- keyboard ---------------------------------------------------------------
+
   const onKeyDown: React.KeyboardEventHandler = (e) => {
     if (!open) return;
-
-    // doNotHijackTypingInInputs
-    if (isTextInputTarget(e.target)) {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
-        e.preventDefault();
-        focusSearch();
-      }
-      return;
-    }
-
     if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
-      focusSearch();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
       return;
     }
+    if (isTextInputTarget(e.target)) return;
+    const pageRows = Math.max(1, Math.floor((viewportHeight || ROW_HEIGHT * 10) / ROW_HEIGHT) - 1);
+    const handled = (() => {
+      switch (e.key) {
+        case "Backspace": goUp(); return true;
+        case "ArrowDown": moveSelectionTo(selectedIndex < 0 ? 0 : selectedIndex + 1); return true;
+        case "ArrowUp": moveSelectionTo(selectedIndex < 0 ? rows.length - 1 : selectedIndex - 1); return true;
+        case "PageDown": moveSelectionTo(Math.max(0, selectedIndex) + pageRows); return true;
+        case "PageUp": moveSelectionTo(Math.max(0, selectedIndex) - pageRows); return true;
+        case "Home": moveSelectionTo(0); return true;
+        case "End": moveSelectionTo(rows.length - 1); return true;
+        case "Enter":
+          if (!selected) return true;
+          if (selected.isDir) enterDir(selected);
+          else handlePick();
+          return true;
+        default:
+          break;
+      }
+      // Typing a name jumps to it, as in a file manager.
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
+        const now = Date.now();
+        const typed = now - typeaheadRef.current.at > TYPEAHEAD_RESET_MS ? e.key : typeaheadRef.current.text + e.key;
+        typeaheadRef.current = { text: typed, at: now };
+        const match = rows.findIndex((entry) => !isParentEntry(entry) && entry.name.toLowerCase().startsWith(typed.toLowerCase()));
+        if (match >= 0) moveSelectionTo(match);
+        return true;
+      }
+      return false;
+    })();
+    if (handled) e.preventDefault();
+  };
 
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
+  // -- toolbar and breadcrumbs ----------------------------------------------------
+
+  const projectRootRel = projectRootAbs && rootAbs ? absoluteToRelPath(projectRootAbs, rootAbs) : "";
+  const showProjectButton = !!projectRootAbs && !!rootAbs && normalizePosixPath(projectRootAbs) !== normalizePosixPath(rootAbs)
+    && (projectRootRel !== "" || rootAbs === "/");
+
+  const breadcrumbs = useMemo(() => {
+    const parts = cwdRel ? normalizeRelPath(cwdRel).split("/").filter(Boolean) : [];
+    const rootLabel = rootAbs === "/" ? "/" : (normalizePosixPath(rootAbs).split("/").filter(Boolean).pop() || ".");
+    const crumbs = [{ label: rootLabel, relPath: "" }];
+    let acc = "";
+    for (const part of parts) {
+      acc = acc ? `${acc}/${part}` : part;
+      crumbs.push({ label: part, relPath: acc });
     }
+    return crumbs;
+  }, [cwdRel, rootAbs]);
 
-    if (e.key === "Backspace") {
-      e.preventDefault();
-      goUp();
-      return;
-    }
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      moveSelectionBy(1, visibleItems);
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      moveSelectionBy(-1, visibleItems);
-      return;
-    }
-
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (!selected) return;
-      if (selected.isDir) enterDir(selected);
-      else handlePick();
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      // Newest and biggest first is what one usually looks for.
+      setSortDir(key === "name" ? "asc" : "desc");
     }
   };
 
-  const toggleSortDir = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-  const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
+  const SortIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
+  const sortHeader = (key: SortKey, label: string, className: string) => (
+    <button
+      type="button"
+      className={[styles.fileColumnButton, className, sortKey === key ? styles.fileColumnActive : ""].join(" ")}
+      onClick={() => toggleSort(key)}
+      aria-label={`Sort by ${label.toLowerCase()}`}
+      aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <span>{label}</span>
+      {sortKey === key && <SortIcon className={styles.iconXs} />}
+    </button>
+  );
 
-  const formatDatabaseValue = (value: unknown): string => {
-    if (value === null || value === undefined) return "—";
-    if (typeof value === "boolean") return value ? "yes" : "no";
-    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "—";
-    if (typeof value === "string") return value || "—";
-
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  };
-
-  const renderDatabasePreview = (
-    dbPreview: Extract<RemotePreview, { kind: "database" }>,
-  ) => {
-    const database = dbPreview.database || {};
-    const meta = dbPreview.meta || {};
-    const summary = Array.isArray(database.summary) ? database.summary : [];
-    const tables = Array.isArray(database.tables) ? database.tables : [];
-    const warnings = Array.isArray(database.warnings) ? database.warnings : [];
-    const sample = database.sample || null;
-
-    const title = database.isScipion
-      ? "Scipion SQLite database"
-      : "SQLite database";
-
-    const objectClass = database.objectClass || database.scipion?.objectClass || meta.objectClass;
-    const objectCount = database.objectCount ?? database.scipion?.objectCount;
-
-    return (
-      <div className={styles.databasePreviewShell}>
-        <div className={styles.databasePreviewHeader}>
-          <div className={styles.databasePreviewTitleBlock}>
-            <div className={styles.databasePreviewTitle}>{title}</div>
-            <div className={styles.databasePreviewSubtitle}>
-              {objectClass ? `${objectClass}` : database.engine || "sqlite"}
-              {objectCount !== undefined && objectCount !== null ? ` · ${objectCount} items` : ""}
-            </div>
-          </div>
-
-          <div className={styles.databasePreviewBadgeRow}>
-            <span className={styles.databasePreviewBadge}>
-              {database.readable === false ? "Unreadable" : "Readable"}
-            </span>
-            {database.isScipion && (
-              <span className={styles.databasePreviewBadgeAccent}>Scipion</span>
-            )}
-          </div>
-        </div>
-
-        {warnings.length > 0 && (
-          <div className={styles.databaseWarnings}>
-            {warnings.map((warning, index) => (
-              <div key={index} className={styles.databaseWarning}>
-                {warning}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className={styles.databaseSummaryGrid}>
-          {summary.map((item, index) => (
-            <div key={`${item.key}-${index}`} className={styles.databaseSummaryCard}>
-              <div className={styles.databaseSummaryKey}>{item.key}</div>
-              <div className={styles.databaseSummaryValue}>{formatDatabaseValue(item.value)}</div>
-            </div>
-          ))}
-        </div>
-
-        {tables.length > 0 && (
-          <div className={styles.databaseSection}>
-            <div className={styles.databaseSectionTitle}>Tables</div>
-
-            <div className={styles.databaseTableScroll}>
-              <table className={styles.databaseTable}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Rows</th>
-                    <th>Columns</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((table) => (
-                    <tr key={table.name}>
-                      <td title={table.name}>{table.name}</td>
-                      <td>{table.type || "table"}</td>
-                      <td>{table.rows === null || table.rows === undefined ? "—" : table.rows}</td>
-                      <td>{table.columns ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {sample && Array.isArray(sample.columns) && sample.columns.length > 0 && (
-          <div className={styles.databaseSection}>
-            <div className={styles.databaseSectionTitle}>
-              Sample rows{sample.table ? ` · ${sample.table}` : ""}
-            </div>
-
-            <div className={styles.databaseTableScroll}>
-              <table className={styles.databaseTable}>
-                <thead>
-                  <tr>
-                    {sample.columns.map((column) => (
-                      <th key={column}>{column}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sample.rows || []).map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {sample.columns.map((_, colIndex) => (
-                        <td key={colIndex}>{formatDatabaseValue(row[colIndex])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {sample.truncated && (
-              <div className={styles.databaseSampleHint}>Showing a limited sample.</div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // -- preview body ---------------------------------------------------------------
 
   const renderPreviewBody = () => {
     if (!selected) return <div className={styles.centerPlaceholder}>Select a file or folder.</div>;
-
     if (selected.isDir) {
       return (
         <div className={styles.centerPlaceholder}>
-          Double-click a folder to enter it. Select to pick this folder.
+          {isParentEntry(selected) ? "The folder above." : "Double-click or press Enter to open the folder; Select picks it."}
         </div>
       );
     }
-
+    if (previewDeferred && sameEntry(previewDeferred, selected)) {
+      return (
+        <div className={styles.centerPlaceholder}>
+          <div>{selected.name} is {humanBytes(selected.size) ?? "large"}.</div>
+          <button type="button" className={styles.ppChipBtn} onClick={() => requestPreview(selected, false)}>
+            Preview it
+          </button>
+        </div>
+      );
+    }
     if (previewLoading) {
       return (
         <div className={styles.inlineLoading}>
@@ -1509,7 +695,6 @@ export default function RemoteFileDialog({
         </div>
       );
     }
-
     if (previewError) {
       return (
         <div className={styles.errorBox}>
@@ -1518,12 +703,10 @@ export default function RemoteFileDialog({
         </div>
       );
     }
-
     if (!preview || preview.kind === "none") {
-      const note = (preview as any)?.note || "No preview available.";
-      return renderTwoRowPreview(<div className={styles.centerPlaceholder}>{note}</div>, (preview as any)?.meta);
+      const note = (preview as { note?: string } | null)?.note || "No preview available.";
+      return <PreviewWithMeta meta={preview?.meta}><div className={styles.centerPlaceholder}>{note}</div></PreviewWithMeta>;
     }
-
     if (preview.kind === "error") {
       return (
         <div className={styles.errorBox}>
@@ -1533,159 +716,54 @@ export default function RemoteFileDialog({
       );
     }
     if (preview.kind === "text") {
-      const model = buildTextPreviewModel(preview, selected);
-
-      const content = (
-        <div className={styles.textPreviewShell}>
-          <div className={styles.textPreviewHeader}>
-            <div className={styles.textPreviewHeaderLeft}>
-              <span className={styles.textPreviewBadge}>{model.label}</span>
-              <span className={styles.textPreviewMeta}>
-                {model.lineCount === 1 ? "1 line" : `${model.lineCount} lines`}
-              </span>
-              {model.sizeLabel && <span className={styles.textPreviewMeta}>{model.sizeLabel}</span>}
-            </div>
-
-            {preview.truncated && (
-              <span className={styles.textPreviewTruncated}>Truncated preview</span>
+      return (
+        <PreviewWithMeta meta={preview.meta}>
+          <TextPreview preview={preview} entry={selected} truncated={preview.truncated}
+            note={typeof preview.meta?.note === "string" ? preview.meta.note : undefined} />
+        </PreviewWithMeta>
+      );
+    }
+    if (preview.kind === "table") {
+      const blocks: PreviewTableBlock[] = preview.blocks?.length
+        ? preview.blocks
+        : [{ name: preview.format || "table", kind: "loop", columns: preview.columns, rows: preview.rows, totalRows: null }];
+      return (
+        <PreviewWithMeta meta={preview.meta}>
+          <TablePreview key={entryKey(selected)} blocks={blocks} format={preview.format} />
+        </PreviewWithMeta>
+      );
+    }
+    if (preview.kind === "database") {
+      return (
+        <PreviewWithMeta meta={preview.meta}>
+          <DatabasePreview database={preview.database || {}} meta={preview.meta} />
+        </PreviewWithMeta>
+      );
+    }
+    if (preview.kind === "image" || preview.kind === "volume") {
+      return (
+        <PreviewWithMeta meta={preview.meta}>
+          <div className={styles.imageCanvas}>
+            {previewImageSrc ? (
+              <div className={styles.imageFrameResponsive}>
+                <img src={previewImageSrc} alt={selected.name} className={styles.previewImage} />
+              </div>
+            ) : (
+              <div className={styles.centerPlaceholder}>No image preview available.</div>
             )}
           </div>
-
-          {model.isEmpty ? (
-            <div className={styles.textPreviewEmpty}>Empty text file.</div>
-          ) : (
-            <div className={styles.textPreviewCodeScroll}>
-              <code className={styles.textPreviewCode}>
-                {model.lines.map((line, idx) => (
-                  <span key={idx} className={styles.textPreviewLine}>
-                    <span className={styles.textPreviewLineNumber}>{idx + 1}</span>
-                    <span className={styles.textPreviewLineContent}>
-                      {line.tokens.map((token, tokenIdx) => (
-                        <span key={tokenIdx} className={token.className}>
-                          {token.text}
-                        </span>
-                      ))}
-                    </span>
-                  </span>
-                ))}
-              </code>
-            </div>
-          )}
-        </div>
+        </PreviewWithMeta>
       );
-
-      return renderTwoRowPreview(content, preview.meta);
     }
-
-    if (preview.kind === "table") {
-      const content = (
-        <div className={styles.textPreviewBox} style={{ height: "100%", padding: 0 }}>
-          <div style={{ height: "100%", overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {preview.columns.map((c) => (
-                    <th
-                      key={c}
-                      style={{
-                        textAlign: "left",
-                        padding: "8px 10px",
-                        borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
-                        position: "sticky",
-                        top: 0,
-                        background: "rgba(15, 23, 42, 0.25)",
-                        backdropFilter: "blur(6px)",
-                        zIndex: 1,
-                      }}
-                    >
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.rows.map((row, idx) => (
-                  <tr key={idx}>
-                    {row.map((cell, j) => (
-                      <td
-                        key={j}
-                        style={{
-                          padding: "8px 10px",
-                          borderBottom: "1px solid rgba(148, 163, 184, 0.10)",
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
-                          overflow: "hidden",
-                          maxWidth: 240,
-                        }}
-                        title={cell === null ? "" : String(cell)}
-                      >
-                        {cell === null ? "" : String(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-
-      return renderTwoRowPreview(content, preview.meta);
-    }
-
-    if (preview.kind === "database") {
-      const content = renderDatabasePreview(preview);
-      return renderTwoRowPreview(content, preview.meta);
-    }
-
-    if (preview.kind === "image" || preview.kind === "volume") {
-      const content = (
-        <div className={styles.imageCanvas}>
-          {!previewImageSrc && <div className={styles.centerPlaceholder}>No image preview available.</div>}
-
-          {!!previewImageSrc && (
-            <div className={styles.imageFrameResponsive}>
-              <img src={previewImageSrc} alt={selected.name} className={styles.previewImage} />
-            </div>
-          )}
-        </div>
-      );
-
-      return renderTwoRowPreview(content, preview.meta);
-    }
-
     return <div className={styles.centerPlaceholder}>No preview available.</div>;
   };
 
-  const buildCurrentDirectoryPickPath = () => {
-    const root = normalizePosixPath(browserRootAbs || "").replace(/\/+$/g, "");
-    if (root) {
-      return cwdRel ? `${root}/${cwdRel}` : root;
-    }
-    return cwdRel || "";
-  };
+  // -- layout -----------------------------------------------------------------------
 
-  const buildSyntheticCurrentDirEntry = (): RemoteEntry => {
-    const parts = normalizeRelPath(cwdRel || "").split("/").filter(Boolean);
-    const name = parts[parts.length - 1] || ".";
-    return {
-      name,
-      path: cwdRel || "",
-      absPath: buildCurrentDirectoryPickPath(),
-      isDir: true,
-    };
-  };
-
-  const buildSaveDirectoryPath = () => {
-    if (!selected) return buildCurrentDirectoryPickPath();
-
-    const picked = buildPickPathForEntry(selected);
-    if (selected.isDir) return picked;
-
-    const normalized = normalizePosixPath(picked);
-    const parent = normalized.replace(/\/+$/g, "").replace(/\/[^/]+$/g, "");
-    return parent || buildCurrentDirectoryPickPath();
-  };
+  const dialogHeightClass = mode === "save" ? `${styles.dialogHeight} ${styles.dialogHeightSave}` : styles.dialogHeight;
+  const browserHeightClass = mode === "save" ? `${styles.browserHeight} ${styles.browserHeightSave}` : styles.browserHeight;
+  const previewHeightClass = mode === "save" ? `${styles.previewHeight} ${styles.previewHeightSave}` : styles.previewHeight;
+  const canDownload = !!buildDownloadUrl && !!selected && !selected.isDir;
 
   return (
     <Dialog
@@ -1698,20 +776,17 @@ export default function RemoteFileDialog({
         container={portalContainer}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        // preventCloseOnOutsideClick
-        onInteractOutside={(e) => {
-          e.preventDefault();
-        }}
-        onClick={handleDialogClick}
-        className={[dialogWidthClass, dialogHeightClass, styles.dialogContent, styles.dialogLayout].join(" ")}
+        onInteractOutside={(e) => e.preventDefault()}
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        className={[styles.dialogWidth, dialogHeightClass, styles.dialogContent, styles.dialogLayout].join(" ")}
       >
         <DialogHeader className={styles.headerBar}>
           <DialogTitle className={styles.headerTitle}>
             <span className={styles.headerTitleText}>{title}</span>
           </DialogTitle>
-
           <DialogDescription className={styles.srOnly}>
-            Remote file browser dialog. Use Enter/double-click to open folders, and Select to choose a file or folder.
+            Remote file browser. Arrow keys move, Enter opens a folder or picks a file, Backspace goes up,
+            typing a name jumps to it.
           </DialogDescription>
         </DialogHeader>
 
@@ -1721,33 +796,41 @@ export default function RemoteFileDialog({
             Up
           </button>
 
-          <button type="button" onClick={goRoot} className={styles.ppChipBtn}>
+          <button type="button" onClick={() => void refresh("")} className={styles.ppChipBtn}>
             <Home className={styles.iconSm} />
             Root
           </button>
 
-          {protocolId !== null && protocolId !== undefined && (
-            <button
-              type="button"
-              onClick={goProtocolRoot}
-              className={styles.ppChipBtn}
-              title="Back to the protocol start directory"
-            >
+          {showProjectButton && (
+            <button type="button" onClick={() => void refresh(projectRootRel)} className={styles.ppChipBtn}
+              title="Go to the project folder">
+              <FolderTree className={styles.iconSm} />
+              Project folder
+            </button>
+          )}
+
+          {protocolId !== null && protocolId !== undefined && !!protocolRootRel && (
+            <button type="button" onClick={() => void refresh(protocolRootRel)} className={styles.ppChipBtn}
+              title="Back to the protocol start directory">
               <FolderOpen className={styles.iconSm} />
               Protocol folder
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => void refresh(cwdRel || "")}
-            disabled={loading}
-            title="Refresh this directory"
-            className={styles.ppChipBtn}
-          >
+          <button type="button" onClick={() => void refresh(cwdRel || "")} disabled={loading}
+            title="Refresh this directory" className={styles.ppChipBtn}>
             {loading ? <Loader2 className={styles.iconSpinSm} /> : <RefreshCw className={styles.iconSm} />}
             Refresh
           </button>
+
+          {buildDownloadUrl && (
+            <button type="button" onClick={() => void downloadSelected()} disabled={!canDownload || downloading}
+              title={canDownload ? `Download ${selected?.name}` : "Select a file to download it"}
+              className={[styles.ppChipBtn, styles.toolbarEnd].join(" ")}>
+              {downloading ? <Loader2 className={styles.iconSpinSm} /> : <Download className={styles.iconSm} />}
+              Download
+            </button>
+          )}
         </div>
 
         <div className={[styles.bodyGrid, browserHeightClass].join(" ")}>
@@ -1755,47 +838,26 @@ export default function RemoteFileDialog({
             <div className={styles.panelHeader}>
               <div className={styles.panelHeaderLeft}>
                 <div className={styles.panelHeaderTitle}>Directory</div>
-
-                <div
-                  className={styles.panelHeaderPath}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 0,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {breadcrumbs.map((c, idx) => {
+                <nav className={styles.breadcrumbs} aria-label="Location">
+                  {breadcrumbs.map((crumb, idx) => {
                     const isLast = idx === breadcrumbs.length - 1;
                     return (
-                      <React.Fragment key={`${c.relPath}-${idx}`}>
+                      <React.Fragment key={`${crumb.relPath}-${idx}`}>
                         <button
                           type="button"
-                          onClick={() => void refresh(c.relPath)}
-                          disabled={loading || !!error || isLast}
-                          title={c.relPath ? `Go to ./${c.relPath}` : "Go to root"}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            margin: 0,
-                            cursor: isLast ? "default" : "pointer",
-                            color: "inherit",
-                            opacity: isLast ? 0.9 : 0.7,
-                            fontWeight: isLast ? 600 : 500,
-                          }}
+                          onClick={() => void refresh(crumb.relPath)}
+                          disabled={loading || isLast}
+                          title={crumb.relPath ? joinAbs(rootAbs, crumb.relPath) : rootAbs || "Root"}
+                          className={[styles.breadcrumb, isLast ? styles.breadcrumbCurrent : ""].join(" ")}
                         >
-                          {c.label}
+                          {crumb.label}
                         </button>
-
-                        {!isLast && <span style={{ opacity: 0.55, padding: "0 2px", userSelect: "none" }}>/</span>}
+                        {!isLast && <span className={styles.breadcrumbSeparator}>/</span>}
                       </React.Fragment>
                     );
                   })}
-                </div>
+                </nav>
               </div>
-
               {error && (
                 <span className={styles.panelError}>
                   <AlertCircle className={styles.iconXs} />
@@ -1808,7 +870,6 @@ export default function RemoteFileDialog({
               <div className={styles.fileListControls}>
                 <div className={styles.fileFilterRow}>
                   <Search className={styles.fileFilterIcon} />
-
                   <input
                     ref={searchInputRef}
                     value={filterText}
@@ -1817,93 +878,82 @@ export default function RemoteFileDialog({
                     aria-label="Filter file names"
                     className={styles.fileFilterInput}
                   />
+                  <button
+                    type="button"
+                    className={[styles.fileHiddenToggle, showHidden ? styles.fileHiddenToggleOn : ""].join(" ")}
+                    onClick={() => setShowHidden((current) => !current)}
+                    aria-pressed={showHidden}
+                    aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
+                    title={showHidden ? "Hide hidden files" : `Show hidden files${hiddenCount ? ` (${hiddenCount})` : ""}`}
+                  >
+                    {showHidden ? <Eye className={styles.iconSm} /> : <EyeOff className={styles.iconSm} />}
+                  </button>
                 </div>
 
                 <div className={styles.fileListHeader}>
-                  <div className={styles.fileListHeaderTitle}>Name</div>
-
-                  <button
-                    type="button"
-                    onClick={toggleSortDir}
-                    title={sortDir === "asc" ? "Ascending" : "Descending"}
-                    aria-label={`Sort ${sortDir === "asc" ? "ascending" : "descending"}`}
-                    className={styles.fileListSortButton}
-                  >
-                    <SortDirIcon className={styles.iconSm} />
-                  </button>
+                  {sortHeader("name", "Name", styles.fileColumnName)}
+                  {sortHeader("size", "Size", styles.fileColumnSize)}
+                  {sortHeader("mtime", "Modified", styles.fileColumnDate)}
                 </div>
               </div>
             )}
 
             <div className={styles.panelBody}>
-              {error && (
+              {error ? (
                 <div className={styles.errorBox}>
                   <AlertCircle className={styles.iconSm} />
                   <span>{error}</span>
                 </div>
-              )}
-
-              {!error && (
-                <ul className={styles.list}>
-                  {showParentEntry && (
-                    <li className={styles.listItem} key="..">
-                      {(() => {
-                        const isSel = sameEntry(selected, parentEntry);
+              ) : loading ? (
+                <div className={styles.loadingRow}>
+                  <Loader2 className={styles.iconSpinSmMut} />
+                  <span>Loading…</span>
+                </div>
+              ) : (
+                <div
+                  ref={listRef}
+                  className={styles.virtualList}
+                  role="listbox"
+                  aria-label="Files"
+                  tabIndex={0}
+                  aria-activedescendant={selectedIndex >= 0 ? `remote-entry-${selectedIndex}` : undefined}
+                  onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+                >
+                  {rows.length === 0 ? (
+                    <div className={styles.centerPlaceholder}>
+                      {filterText ? "No file matches the filter." : hiddenCount && !showHidden ? "Only hidden files here." : "Empty folder."}
+                    </div>
+                  ) : (
+                    <div style={{ height: rows.length * ROW_HEIGHT, position: "relative" }}>
+                      {rows.slice(firstRow, lastRow).map((entry, offset) => {
+                        const index = firstRow + offset;
+                        const isSel = index === selectedIndex;
+                        const parent = isParentEntry(entry);
+                        const Icon = entry.isDir ? (entry.isLink ? FolderSymlink : FolderOpen) : entry.isLink ? FileSymlink : FileIcon;
                         return (
-                          <button
-                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                            onClick={() => handleSelectEntry(parentEntry)}
-                            onDoubleClick={goUp}
-                            type="button"
-                            title="Double-click to go up"
+                          <div
+                            key={parent ? ".." : entryKey(entry)}
+                            id={`remote-entry-${index}`}
+                            role="option"
+                            aria-selected={isSel}
+                            className={[styles.fileRow, isSel ? styles.rowBtnSelected : "", isHiddenEntry(entry) ? styles.fileRowHidden : ""].join(" ")}
+                            style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT }}
+                            onClick={() => selectEntry(entry)}
+                            onDoubleClick={() => (parent ? goUp() : handleEntryDoubleClick(entry))}
+                            title={parent ? "Double-click to go up" : entry.isLink ? `${entry.name} (link)` : entry.name}
                           >
-                            <FolderOpen className={styles.iconSmMut} />
-                            <span className={styles.truncate}>..</span>
-                          </button>
+                            <Icon className={styles.iconSmMut} />
+                            <span className={[styles.truncate, styles.fileColumnName].join(" ")}>{entry.name}</span>
+                            <span className={styles.fileColumnSize}>
+                              {!entry.isDir && typeof entry.size === "number" ? humanBytes(entry.size) ?? "" : ""}
+                            </span>
+                            <span className={styles.fileColumnDate}>{parent ? "" : formatModified(entry.mtime)}</span>
+                          </div>
                         );
-                      })()}
-                    </li>
+                      })}
+                    </div>
                   )}
-
-                  {loading && (
-                    <li className={styles.loadingRow} key="loading">
-                      <Loader2 className={styles.iconSpinSmMut} />
-                      <span>Loading…</span>
-                    </li>
-                  )}
-
-                  {!loading &&
-                    visibleItems.map((entry) => {
-                      const isSel = sameEntry(selected, entry);
-                      const entryKey = `${entry.absPath ?? entry.path}-${entry.name}-${entry.isDir ? "d" : "f"}`;
-
-                      return (
-                        <li key={entryKey} className={styles.listItem}>
-                          <button
-                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                            onClick={() => handleSelectEntry(entry)}
-                            onDoubleClick={() => handleEntryDoubleClick(entry)}
-                            type="button"
-                          >
-                            {entry.isDir ? (
-                              <>
-                                <FolderOpen className={styles.iconSmMut} />
-                                <span className={styles.truncate}>{entry.name}</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileIcon className={styles.iconSmMut} />
-                                <span className={styles.truncate}>{entry.name}</span>
-                                <span className={styles.fileSize}>
-                                  {typeof entry.size === "number" ? humanBytes(entry.size) ?? "" : ""}
-                                </span>
-                              </>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                </ul>
+                </div>
               )}
             </div>
           </div>
@@ -1928,25 +978,14 @@ export default function RemoteFileDialog({
         )}
 
         <div className={styles.footer}>
-          <button
-            type="button"
-            className={styles.ppDialogBtn}
-            onClick={onClose}
-            disabled={busy}
-          >
+          <button type="button" className={styles.ppDialogBtn} onClick={onClose} disabled={busy}>
             Close
           </button>
-
           <button
             type="button"
             className={[styles.ppDialogBtn, styles.ppDialogBtnPrimary].join(" ")}
             onClick={handlePick}
-            disabled={
-              busy ||
-              (mode === "save"
-                ? !String(saveFilename ?? "").trim()
-                : !selected)
-            }
+            disabled={busy || (mode === "save" ? !String(saveFilename ?? "").trim() : !selected)}
           >
             {confirmLabel ?? (mode === "save" ? "Save" : "Select")}
           </button>

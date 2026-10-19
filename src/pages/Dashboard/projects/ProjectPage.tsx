@@ -10999,11 +10999,10 @@ export default function ProjectPage() {
             open={fileDialogOpen}
             onClose={() => setFileDialogOpen(false)}
             title={`Browsing — ${plabel}`}
-            projectId={projId}
             protocolId={pid}
             resolveBrowserPaths={() => svc.resolveBrowserPaths(projId, pid.toString())}
             listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
-            previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, pid.toString(), p)}
+            previewRemoteEntry={(p, opts) => svc.previewRemoteEntry(projId, pid.toString(), p, opts)}
             buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
             onPick={() => {
               setFileDialogOpen(false);

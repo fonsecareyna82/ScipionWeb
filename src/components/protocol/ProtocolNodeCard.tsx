@@ -3469,7 +3469,6 @@ export default function ProtocolNodeCard({
           open
           onClose={handleCloseExportBrowser}
           title="Export protocols"
-          projectId={-1}
           protocolId={-1}
           mode="save"
           defaultFilename={exportDefaultFilename}

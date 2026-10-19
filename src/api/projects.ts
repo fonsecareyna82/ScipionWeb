@@ -63,6 +63,7 @@ import {
   PickingParticles,
   PickingPickResult,
   ProjectRevision,
+  BrowseOptions,
   PickingSettings,
   PickingSession,
   RenameProtocolPayload,
@@ -2048,45 +2049,37 @@ export interface RemoteListing {
 }
 
 export type ResolveBrowserPathsResult = {
-  rootAbs?: string; // absolute root boundary; default "/home"
+  rootAbs?: string; // absolute root boundary
   startPath?: string; // relative-to-root preferred ("" means root); absolute allowed
   protocolRoot?: string; // relative preferred; absolute allowed
+  projectRootAbs?: string | null; // the project folder, absolute
 };
+
+function scopeQuery(opts?: BrowseOptions): string {
+  return opts?.scope && opts.scope !== "project" ? `&scope=${encodeURIComponent(opts.scope)}` : "";
+}
 
 export async function resolveBrowserPaths(
   projectId: Id,
   protocolId: Id,
+  opts?: BrowseOptions,
 ): Promise<ResolveBrowserPathsResult> {
   if (!protocolId || protocolId === "undefined" || protocolId === "null") {
     protocolId = "fake-protocol-id-for-browser-paths-resolution";
   }
+  const query = scopeQuery(opts).replace(/^&/, "?");
   const res = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/start-path`,
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/start-path${query}`,
   );
   if (!res.ok) throw await toApiError(res, "Failed to resolve browser paths");
 
-  const j = await safeJson<{
-    // new contract
-    rootAbs?: string;
-    startPath?: string;
-    protocolRoot?: string;
-  }>(res);
-
-  // preferNewContract
-  if (j && (j.rootAbs || j.startPath || j.protocolRoot)) {
-    return {
-      rootAbs: j.rootAbs || "/home",
-      startPath: j.startPath ?? "",
-      protocolRoot: j.protocolRoot,
-    };
-  }
-
-  // legacyFallback
-  const legacyPath = "/";
+  const j = await safeJson<ResolveBrowserPathsResult>(res);
+  if (!j?.rootAbs) throw new Error("The server did not say where to browse");
   return {
-    rootAbs: "/home",
-    startPath: legacyPath,
-    protocolRoot: legacyPath,
+    rootAbs: j.rootAbs,
+    startPath: j.startPath ?? "",
+    protocolRoot: j.protocolRoot,
+    projectRootAbs: j.projectRootAbs ?? null,
   };
 }
 
@@ -2097,6 +2090,7 @@ export async function listProtocolDir(
   projectId: Id,
   protocolId: Id,
   path: string,
+  opts?: BrowseOptions,
 ): Promise<ListProtocolDirResponse> {
   if (!protocolId || protocolId === "undefined" || protocolId === "null") {
     protocolId = "fake-protocol-id-for-browser-paths-resolution";
@@ -2104,7 +2098,8 @@ export async function listProtocolDir(
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/list?path=${encodeURIComponent(
       path,
-    )}`,
+    )}${scopeQuery(opts)}`,
+    { signal: opts?.signal },
   );
   if (!res.ok) throw await toApiError(res, "Failed to list directory");
   return await safeJson<ListProtocolDirResponse>(res);
@@ -2114,8 +2109,9 @@ export async function listRemoteDirectory(
   projectId: Id,
   protocolId: Id,
   path: string,
+  opts?: BrowseOptions,
 ): Promise<RemoteEntry[]> {
-  const payload = await listProtocolDir(projectId, protocolId, path);
+  const payload = await listProtocolDir(projectId, protocolId, path, opts);
 
   // normalizeFsListResponse
   if (Array.isArray(payload)) return payload;
@@ -2141,11 +2137,12 @@ export function buildProtocolDownloadUrl(
   protocolId: Id,
   path: string,
   inline = false,
+  opts?: BrowseOptions,
 ): string {
   const q = inline ? "&inline=true" : "";
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(
     path,
-  )}${q}`;
+  )}${q}${scopeQuery(opts)}`;
 }
 
 export async function fetchProtocolInlinePreviewBlob(
@@ -2314,11 +2311,12 @@ export async function previewRemoteEntry(
   projectId: Id,
   protocolId: Id,
   path: string,
+  opts?: BrowseOptions,
 ): Promise<any> {
   const enc = encodeURIComponent;
-  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/preview?path=${enc(path)}`;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/preview?path=${enc(path)}${scopeQuery(opts)}`;
 
-  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store", signal: opts?.signal });
 
   if (res.status === 404 || res.status === 204 || res.status === 415) return null;
 
@@ -2404,7 +2402,22 @@ export async function previewRemoteEntry(
         : [],
     );
 
-    return finalizePreviewForGui({ kind, mime: semanticMime, meta, truncated, columns, rows });
+    // STAR/XMD files: one block per data_ block.
+    const blocks = Array.isArray(data?.blocks)
+      ? data.blocks.map((block: any) => ({
+        name: String(block?.name ?? ""),
+        kind: block?.kind === "pairs" ? "pairs" : "loop",
+        columns: Array.isArray(block?.columns) ? block.columns.map((c: any) => String(c)) : [],
+        rows: Array.isArray(block?.rows) ? block.rows.map((r: any) => (Array.isArray(r) ? r.map((c: any) => (c == null ? null : String(c))) : [])) : [],
+        totalRows: typeof block?.totalRows === "number" ? block.totalRows : null,
+        truncated: block?.truncated === true,
+      }))
+      : undefined;
+
+    return finalizePreviewForGui({
+      kind, mime: semanticMime, meta, truncated, columns, rows, blocks,
+      format: typeof data?.format === "string" ? data.format : undefined,
+    });
   }
 
   if (kind === "database") {

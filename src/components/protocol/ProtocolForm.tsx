@@ -42,6 +42,7 @@ import ParamRow from "./ParamRow";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
+import { pathForProtocolParam } from "@/components/files/remote-file-paths";
 import ExecuteModeButton from "./ExecuteModeButton";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
@@ -4342,18 +4343,20 @@ export default function ProtocolForm({
             })
           }
           title={`Select file for: ${pathDialog.title ?? pathDialog.stateKey}`}
-          projectId={projectId}
           protocolId={effectiveProtocolId}
-          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, effectiveProtocolId)}
-          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, effectiveProtocolId, p)}
-          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, effectiveProtocolId, p)}
-          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projectId, effectiveProtocolId, p, !!inline)}
-          onPick={(relativePath) => {
+          // A form may point anywhere (imports read data from other disks): the whole
+          // filesystem, read only, starting in the protocol folder.
+          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, effectiveProtocolId, { scope: "filesystem" })}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, effectiveProtocolId, p, { scope: "filesystem" })}
+          previewRemoteEntry={(p, opts) => svc.previewRemoteEntry(projectId, effectiveProtocolId, p, { ...opts, scope: "filesystem" })}
+          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projectId, effectiveProtocolId, p, !!inline, { scope: "filesystem" })}
+          onPick={(relativePath, _entry, _filename, info) => {
             const stateKey = pathDialog.stateKey;
+            const value = info ? pathForProtocolParam(info.absPath, info.projectRootAbs) : relativePath;
 
             if (stateKey) {
               setProtocolDetails((prev: any) =>
-                setScalarParamValue(prev, stateKey, relativePath)
+                setScalarParamValue(prev, stateKey, value)
               );
             }
 

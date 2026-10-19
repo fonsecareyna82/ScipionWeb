@@ -1657,7 +1657,16 @@ export type ResolveBrowserPathsResult = {
   rootAbs?: string;
   startPath?: string;
   protocolRoot?: string;
+  /** The project folder, absolute (when browsing for a project). */
+  projectRootAbs?: string | null;
 };
+
+/**
+ * Where the file browser looks: inside the project (default), or the whole
+ * filesystem, read only (the files a protocol form points to, e.g. imports).
+ */
+export type BrowseScope = "project" | "filesystem";
+export type BrowseOptions = { scope?: BrowseScope; signal?: AbortSignal };
 
 export type ExportProtocolsRequestPayload = {
   protocolIds: Id[];
@@ -1958,14 +1967,15 @@ export interface ProjectService<
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>;
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>;
   stopProtocol(projectId: Id, ids: string[]): Promise<TProject>;
-  resolveBrowserPaths(projectId: Id, protocolId: Id): Promise<ResolveBrowserPathsResult>;
-  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<any[]>;
-  previewRemoteEntry(projectId: Id, protocolId: Id, path: string): Promise<any | null>;
+  resolveBrowserPaths(projectId: Id, protocolId: Id, opts?: BrowseOptions): Promise<ResolveBrowserPathsResult>;
+  listRemoteDirectory(projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions): Promise<any[]>;
+  previewRemoteEntry(projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions): Promise<any | null>;
   buildProtocolDownloadUrl(
     projectId: string,
     protocolId: string,
     path: string,
-    inline: boolean
+    inline: boolean,
+    opts?: BrowseOptions,
   ): string;
   fetchProtocolInlinePreviewBlob(
     projectId: string,
@@ -1978,11 +1988,6 @@ export interface ProjectService<
     path: string,
     opts?: { table?: string; signal?: AbortSignal }
   ): Promise<any>;
-  previewRemoteEntry(
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-  ): Promise<any | null>;
 
 
   getNextProtocolSuggestions(
