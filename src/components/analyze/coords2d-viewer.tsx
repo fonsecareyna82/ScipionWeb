@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -28,6 +29,7 @@ import {
   Menu,
   MenuItem,
   Paper,
+  Popover,
   Slider,
   Table,
   TableBody,
@@ -35,6 +37,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -50,6 +53,11 @@ import {
   ImageMinus,
   LocateFixed,
   ChevronRight,
+  Crosshair,
+  Eye,
+  EyeOff,
+  Keyboard,
+  Layers,
   Plus,
   RotateCcw,
   Save,
@@ -97,6 +105,24 @@ export type Coords2dDataSource = {
     train: (micId: Id) => Promise<void>;
     /** Learn from this micrograph's corrections and autopick the next one. */
     next: (micId: Id, nextMicId: Id | null) => Promise<void>;
+    /** Percentage of each micrograph the automatic picking explores. */
+    getAutopickPercent?: () => number | undefined;
+    setAutopickPercent?: (percent: number) => Promise<void>;
+  };
+  /**
+   * Templates the picked particles are averaged into (Xmipp's picker): a new
+   * particle can be centered on them, and the picked and moved ones join them.
+   */
+  templates?: {
+    /** Where a particle just picked goes (centered when asked); it joins the templates. */
+    pick: (micId: Id, x: number, y: number, center: boolean) => Promise<{ x: number; y: number }>;
+    /** A particle the user moved joins the templates. */
+    moved: (micId: Id, x: number, y: number) => Promise<void>;
+    /** The templates side by side; null while there are none. */
+    fetchImage: (opts?: { size?: number; signal?: AbortSignal }) =>
+      Promise<(ObjectUrlResult & { count: number }) | null>;
+    getNumber: () => number | undefined;
+    setNumber: (count: number) => Promise<void>;
   };
 };
 
@@ -155,7 +181,38 @@ type Bounds2d = {
 };
 
 type ToolMode = "pan" | "pick" | "erase";
-type ShapeMode = "circle" | "square";
+// Markers drawn for each particle (several at once, as in Xmipp's picker).
+type MarkerShape = "circle" | "square" | "center";
+type MarkerShapes = Record<MarkerShape, boolean>;
+
+// Per-viewer preferences kept in the browser.
+const CENTER_PARTICLES_KEY = "scipionweb.coords2d.centerParticles";
+const ERASER_SIZE_KEY = "scipionweb.coords2d.eraserSize";
+// As Xmipp's picker.
+const DEFAULT_ERASER_SIZE = 100;
+const TEMPLATES_NUMBER_MAXIMUM = 20;
+
+function readStoredNumber(key: string, fallback: number): number {
+  try {
+    const value = Number(window.localStorage.getItem(key));
+    return window.localStorage.getItem(key) !== null && Number.isFinite(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeValue(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Preferences are a convenience: without storage they last the session.
+  }
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 type ConfirmationAction = "close" | "create-output" | null;
 
 type ImageFilters = {
@@ -824,7 +881,15 @@ function Coords2dViewer({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
-  const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
+  const [shapes, setShapes] = useState<MarkerShapes>({ circle: true, square: false, center: false });
+  // Space hides and shows every marker, as in Xmipp's picker.
+  const [markersVisible, setMarkersVisible] = useState(true);
+  // New particles are centered on the templates (Xmipp's "Center").
+  const [centerParticles, setCenterParticles] = useState(() => readStoredNumber(CENTER_PARTICLES_KEY, 1) !== 0);
+  const [eraserSize, setEraserSize] = useState(() =>
+    Math.max(0, Math.round(readStoredNumber(ERASER_SIZE_KEY, DEFAULT_ERASER_SIZE))));
+  // Where the pointer is on the canvas (screen pixels), to draw the eraser.
+  const [pointerScreen, setPointerScreen] = useState<{ x: number; y: number } | null>(null);
   const [toolMode, setToolMode] = useState<ToolMode>("pan");
   // The pointer is over a particle that can be grabbed and moved.
   const [hoveringPoint, setHoveringPoint] = useState(false);
@@ -2338,25 +2403,52 @@ function Coords2dViewer({
       ctx.fillRect(0, 0, size.width, size.height);
     }
 
-    visiblePoints.forEach((point, index) => {
-      const pointId = getPointId(point, index);
-      const screen = worldToScreen(point.x, point.y);
-      const radiusPx = Math.max(2, (boxSize / 2) * transform.scale);
-      const selected = pointId === selectedPointId;
+    if (markersVisible) {
+      visiblePoints.forEach((point, index) => {
+        const pointId = getPointId(point, index);
+        const screen = worldToScreen(point.x, point.y);
+        const radiusPx = Math.max(2, (boxSize / 2) * transform.scale);
+        const selected = pointId === selectedPointId;
 
-      ctx.strokeStyle = selected ? "#ffff00" : isAutomaticPoint(point) ? automaticColor : pickColor;
-      ctx.lineWidth = selected ? 2.5 : 1.2;
+        ctx.strokeStyle = selected ? "#ffff00" : isAutomaticPoint(point) ? automaticColor : pickColor;
+        ctx.lineWidth = selected ? 2.5 : 1.2;
+        ctx.beginPath();
+
+        if (shapes.circle) {
+          ctx.moveTo(screen.x + radiusPx, screen.y);
+          ctx.arc(screen.x, screen.y, radiusPx, 0, Math.PI * 2);
+        }
+        if (shapes.square) {
+          ctx.rect(screen.x - radiusPx, screen.y - radiusPx, radiusPx * 2, radiusPx * 2);
+        }
+        if (shapes.center) {
+          const arm = Math.max(3, Math.min(radiusPx * 0.3, 10));
+          ctx.moveTo(screen.x - arm, screen.y);
+          ctx.lineTo(screen.x + arm, screen.y);
+          ctx.moveTo(screen.x, screen.y - arm);
+          ctx.lineTo(screen.x, screen.y + arm);
+        }
+
+        ctx.stroke();
+      });
+    }
+
+    if (toolMode === "erase" && pointerScreen) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-
-      if (shapeMode === "circle") {
-        ctx.arc(screen.x, screen.y, radiusPx, 0, Math.PI * 2);
-      } else {
-        ctx.rect(screen.x - radiusPx, screen.y - radiusPx, radiusPx * 2, radiusPx * 2);
-      }
-
+      ctx.arc(pointerScreen.x, pointerScreen.y, Math.max(4, (eraserSize / 2) * transform.scale), 0, Math.PI * 2);
       ctx.stroke();
-    });
+      ctx.restore();
+    }
   }, [
+    eraserSize,
+    markersVisible,
+    pointerScreen,
+    shapes,
+    toolMode,
     activeImageFilter,
     bounds.maxX,
     bounds.maxY,
@@ -2367,7 +2459,6 @@ function Coords2dViewer({
     pickColor,
     automaticColor,
     selectedPointId,
-    shapeMode,
     size.height,
     size.width,
     transform.scale,
@@ -2380,6 +2471,84 @@ function Coords2dViewer({
     setSelectedMicId(micId);
     setSelectedPointId(null);
   }, []);
+
+  useEffect(() => storeValue(CENTER_PARTICLES_KEY, centerParticles ? "1" : "0"), [centerParticles]);
+  useEffect(() => storeValue(ERASER_SIZE_KEY, String(eraserSize)), [eraserSize]);
+  useEffect(() => {
+    if (toolMode !== "erase") setPointerScreen(null);
+  }, [toolMode]);
+
+  const toggleShape = useCallback((shape: MarkerShape) => {
+    setShapes((current) => {
+      const next = { ...current, [shape]: !current[shape] };
+      // At least one marker, as Xmipp's picker keeps.
+      return next.circle || next.square || next.center ? next : current;
+    });
+  }, []);
+
+  // The templates window (Xmipp's Window > Templates).
+  const [templatesAnchorEl, setTemplatesAnchorEl] = useState<HTMLElement | null>(null);
+  const [templatesImage, setTemplatesImage] = useState<{ url: string; count: number } | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesNumber, setTemplatesNumber] = useState<number | null>(null);
+  const templatesRevokeRef = useRef<(() => void) | null>(null);
+
+  const loadTemplatesImage = useCallback(async () => {
+    const templates = dataSource.templates;
+    if (!templates) return;
+    setTemplatesLoading(true);
+    try {
+      const result = await templates.fetchImage({ size: 96 });
+      templatesRevokeRef.current?.();
+      templatesRevokeRef.current = result ? result.revoke : null;
+      setTemplatesImage(result ? { url: result.url, count: result.count } : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The templates could not be loaded");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [dataSource.templates]);
+
+  useEffect(() => () => templatesRevokeRef.current?.(), []);
+
+  const openTemplates = useCallback((anchor: HTMLElement) => {
+    setTemplatesAnchorEl(anchor);
+    setTemplatesNumber(dataSource.templates?.getNumber() ?? 1);
+    void loadTemplatesImage();
+  }, [dataSource.templates, loadTemplatesImage]);
+
+  const applyTemplatesNumber = useCallback(async (count: number) => {
+    const templates = dataSource.templates;
+    if (!templates || !Number.isFinite(count)) return;
+    const value = clamp(Math.round(count), 1, TEMPLATES_NUMBER_MAXIMUM);
+    setTemplatesNumber(value);
+    if (value === templates.getNumber()) return;
+    try {
+      await savePendingChanges();
+      await templates.setNumber(value);
+      await loadTemplatesImage();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The number of templates could not be changed");
+    }
+  }, [dataSource.templates, loadTemplatesImage, savePendingChanges]);
+
+  const [autopickPercent, setAutopickPercent] = useState<number | null>(null);
+  useEffect(() => {
+    if (!loadingMicrographs) setAutopickPercent(dataSource.supervised?.getAutopickPercent?.() ?? null);
+  }, [dataSource.supervised, loadingMicrographs]);
+
+  const applyAutopickPercent = useCallback(async (percent: number) => {
+    const supervised = dataSource.supervised;
+    if (!supervised?.setAutopickPercent || !Number.isFinite(percent)) return;
+    const value = clamp(Math.round(percent), 1, 100);
+    setAutopickPercent(value);
+    if (value === supervised.getAutopickPercent?.()) return;
+    try {
+      await supervised.setAutopickPercent(value);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The explored percentage could not be saved");
+    }
+  }, [dataSource.supervised]);
 
   const toggleFilter = useCallback((key: keyof ImageFilters) => {
     setFilters((current) => ({
@@ -2412,30 +2581,89 @@ function Coords2dViewer({
     setTotalPicks((current) => Math.max(0, current + delta));
   }, []);
 
-  const erasePointAt = useCallback(
-    (screenX: number, screenY: number) => {
+  const deletePoints = useCallback(
+    (pointIds: string[]) => {
       if (!selectedMicId) return;
-
-      const hitId = findPointAt(screenX, screenY);
-      if (!hitId) return;
-      if (erasedDuringDragRef.current.has(hitId)) return;
-      if (deletedPointIdsRef.current.has(hitId)) return;
-
-      erasedDuringDragRef.current.add(hitId);
+      const removed = pointIds.filter((pointId) => !deletedPointIdsRef.current.has(pointId));
+      if (!removed.length) return;
 
       setDeletedPointIds((current) => {
         const next = new Set(current);
-        next.add(hitId);
+        removed.forEach((pointId) => next.add(pointId));
         deletedPointIdsRef.current = next;
         return next;
       });
 
-      setSelectedPointId((current) => (current === hitId ? null : current));
+      setSelectedPointId((current) => (current !== null && removed.includes(current) ? null : current));
       markMicrographUpdated(selectedMicId);
-      updateMicrographParticleCount(selectedMicId, -1);
+      updateMicrographParticleCount(selectedMicId, -removed.length);
     },
-    [findPointAt, markMicrographUpdated, selectedMicId, updateMicrographParticleCount],
+    [markMicrographUpdated, selectedMicId, updateMicrographParticleCount],
   );
+
+  // As Xmipp's eraser: every particle whose box the eraser touches.
+  const erasePointAt = useCallback(
+    (screenX: number, screenY: number) => {
+      if (!selectedMicId) return;
+
+      const world = screenToWorld(screenX, screenY);
+      const reach = Math.max(eraserSize / 2 + boxSize / 2, 8 / Math.max(0.0001, transform.scale));
+      const hits: string[] = [];
+      visiblePointsRef.current.forEach((point, index) => {
+        const pointId = getPointId(point, index);
+        if (erasedDuringDragRef.current.has(pointId) || deletedPointIdsRef.current.has(pointId)) return;
+        if (previewHiddenPointIdsRef.current.has(pointId)) return;
+        if (Math.hypot(point.x - world.x, point.y - world.y) <= reach) hits.push(pointId);
+      });
+      if (!hits.length) {
+        const hitId = findPointAt(screenX, screenY);
+        if (hitId && !erasedDuringDragRef.current.has(hitId)) hits.push(hitId);
+      }
+      hits.forEach((pointId) => erasedDuringDragRef.current.add(pointId));
+      deletePoints(hits);
+    },
+    [boxSize, deletePoints, eraserSize, findPointAt, screenToWorld, selectedMicId, transform.scale],
+  );
+
+  const selectMicrographBy = useCallback((step: number) => {
+    if (selectedMicId == null) return;
+    const index = micrographs.findIndex((micrograph) => toStringId(micrograph.id) === toStringId(selectedMicId));
+    const target = micrographs[index + step];
+    if (target) handleSelectMicrograph(target.id);
+  }, [handleSelectMicrograph, micrographs, selectedMicId]);
+
+  // Xmipp's picker keys, while the micrograph has the focus.
+  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLCanvasElement>) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || isTypingTarget(event.target)) return;
+    const key = event.key;
+    if (key === "e" || key === "E") {
+      setToolMode((current) => (current === "erase" ? "pick" : "erase"));
+    } else if (key === "r" || key === "R") {
+      selectMicrographBy(1);
+    } else if (key === "w" || key === "W") {
+      selectMicrographBy(-1);
+    } else if (key === " ") {
+      setMarkersVisible((current) => !current);
+    } else if ((key === "Delete" || key === "Backspace") && selectedPointId) {
+      deletePoints([selectedPointId]);
+    } else if (key.startsWith("Arrow") && selectedPoint && selectedMicKey && selectedMicId != null) {
+      const dx = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
+      const dy = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
+      let x = selectedPoint.x + dx;
+      let y = selectedPoint.y + dy;
+      if (imageWorldSize) {
+        x = clamp(x, 0, imageWorldSize.width);
+        y = clamp(y, 0, imageWorldSize.height);
+      }
+      schedulePointMove(selectedMicKey, selectedPointId!, { ...selectedPoint, x, y } as ViewerPoint);
+      markMicrographUpdated(selectedMicId);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }, [deletePoints, imageWorldSize, markMicrographUpdated, schedulePointMove, selectMicrographBy,
+    selectedMicId, selectedMicKey, selectedPoint, selectedPointId]);
+
 
   const scheduleTransform = useCallback((nextTransform: ViewTransform) => {
     pendingTransformRef.current = nextTransform;
@@ -2480,6 +2708,39 @@ function Coords2dViewer({
     [bounds.minX, bounds.minY, screenToWorld, toolMode],
   );
 
+  // A particle just picked goes where the templates center it (Xmipp's "Center"),
+  // unless the user moved or deleted it in the meantime.
+  const centerPickedPoint = useCallback(
+    (micId: Id, micKey: string, point: ViewerPoint) => {
+      const templates = dataSource.templates;
+      if (!templates) return;
+      const pointId = toStringId(point.id);
+      templates.pick(micId, Math.round(point.x), Math.round(point.y), centerParticles)
+        .then((centered) => {
+          if (centered.x === Math.round(point.x) && centered.y === Math.round(point.y)) return;
+          let moved = false;
+          setPointsByMicId((current) => {
+            const points = current[micKey];
+            if (!points) return current;
+            return {
+              ...current,
+              [micKey]: points.map((candidate) => {
+                if (toStringId(candidate.id) !== pointId) return candidate;
+                if (candidate.x !== point.x || candidate.y !== point.y) return candidate;
+                moved = true;
+                return { ...candidate, x: centered.x, y: centered.y };
+              }),
+            };
+          });
+          if (moved) markMicrographUpdated(micId);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "The particle could not be centered");
+        });
+    },
+    [centerParticles, dataSource.templates, markMicrographUpdated],
+  );
+
   const handleMouseDown = useCallback(
     (event: ReactMouseEvent<HTMLCanvasElement>) => {
       const rect = event.currentTarget.getBoundingClientRect();
@@ -2487,6 +2748,18 @@ function Coords2dViewer({
       const pointerY = event.clientY - rect.top;
 
       dragRef.current = createDragState();
+      event.currentTarget.focus({ preventScroll: true });
+
+      // Shift + click deletes the particle under the pointer, with any tool (as Xmipp's picker).
+      if (event.shiftKey && toolMode !== "erase") {
+        const hitId = findPointAt(pointerX, pointerY);
+        if (hitId) {
+          deletePoints([hitId]);
+          // Swallows the click: it must not pick a new particle on release.
+          dragRef.current = { ...createDragState(), type: "erase" };
+          return;
+        }
+      }
 
       if (toolMode === "erase") {
         erasedDuringDragRef.current = new Set();
@@ -2555,6 +2828,7 @@ function Coords2dViewer({
       };
     },
     [
+      deletePoints,
       erasePointAt,
       findPointAt,
       screenToWorld,
@@ -2569,6 +2843,11 @@ function Coords2dViewer({
   const handleMouseMove = useCallback(
     (event: ReactMouseEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current;
+
+      if (toolMode === "erase") {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPointerScreen({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+      }
 
       if (!drag.active) {
         if (toolMode === "pan" || toolMode === "pick") {
@@ -2642,6 +2921,19 @@ function Coords2dViewer({
       if (drag.type === "point") {
         if (drag.moved && selectedMicId) {
           markMicrographUpdated(selectedMicId);
+          const templates = dataSource.templates;
+          if (templates) {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const world = screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
+            let x = drag.initialPointX + world.x - drag.startWorldX;
+            let y = drag.initialPointY + world.y - drag.startWorldY;
+            if (imageWorldSize) {
+              x = clamp(x, 0, imageWorldSize.width);
+              y = clamp(y, 0, imageWorldSize.height);
+            }
+            // A moved particle joins the templates, as in Xmipp's picker.
+            templates.moved(selectedMicId, Math.round(x), Math.round(y)).catch(() => undefined);
+          }
         }
 
         return;
@@ -2675,6 +2967,7 @@ function Coords2dViewer({
         setSelectedPointId(toStringId(point.id));
         markMicrographUpdated(selectedMicId);
         updateMicrographParticleCount(selectedMicId, 1);
+        if (dataSource.templates) centerPickedPoint(selectedMicId, selectedMicKey, point);
         return;
       }
 
@@ -2682,6 +2975,8 @@ function Coords2dViewer({
       setSelectedPointId(hitId);
     },
     [
+      centerPickedPoint,
+      dataSource.templates,
       findPointAt,
       imageWorldSize,
       markMicrographUpdated,
@@ -2706,6 +3001,7 @@ function Coords2dViewer({
 
     dragRef.current = createDragState();
     setHoveringPoint(false);
+    setPointerScreen(null);
   }, [markMicrographUpdated, selectedMicId]);
 
   const handleHistogramRangeChange = useCallback(
@@ -2970,20 +3266,34 @@ function Coords2dViewer({
         </Typography>
 
         <ButtonGroup size="small" variant="outlined">
-          <Button
-            variant={shapeMode === "circle" ? "contained" : "outlined"}
-            onClick={() => setShapeMode("circle")}
-          >
-            <Circle size={16} />
-          </Button>
+          <Tooltip title="Circle">
+            <Button aria-label="Circle marker" aria-pressed={shapes.circle}
+              variant={shapes.circle ? "contained" : "outlined"} onClick={() => toggleShape("circle")}>
+              <Circle size={16} />
+            </Button>
+          </Tooltip>
 
-          <Button
-            variant={shapeMode === "square" ? "contained" : "outlined"}
-            onClick={() => setShapeMode("square")}
-          >
-            <Square size={16} />
-          </Button>
+          <Tooltip title="Box (what gets extracted)">
+            <Button aria-label="Box marker" aria-pressed={shapes.square}
+              variant={shapes.square ? "contained" : "outlined"} onClick={() => toggleShape("square")}>
+              <Square size={16} />
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Centre cross">
+            <Button aria-label="Centre marker" aria-pressed={shapes.center}
+              variant={shapes.center ? "contained" : "outlined"} onClick={() => toggleShape("center")}>
+              <Plus size={16} />
+            </Button>
+          </Tooltip>
         </ButtonGroup>
+
+        <Tooltip title={markersVisible ? "Hide the markers (Space)" : "Show the markers (Space)"}>
+          <IconButton size="small" aria-label={markersVisible ? "Hide markers" : "Show markers"}
+            onClick={() => setMarkersVisible((current) => !current)}>
+            {markersVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+          </IconButton>
+        </Tooltip>
 
         <Divider flexItem orientation="vertical" />
 
@@ -3021,7 +3331,7 @@ function Coords2dViewer({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Eraser">
+          <Tooltip title="Eraser (E)">
             <Button
               variant={toolMode === "erase" ? "contained" : "outlined"}
               onClick={() => setToolMode("erase")}
@@ -3030,6 +3340,47 @@ function Coords2dViewer({
             </Button>
           </Tooltip>
         </ButtonGroup>
+
+        {toolMode === "erase" && (
+          <TextField
+            size="small"
+            type="number"
+            label="Eraser (px)"
+            value={eraserSize}
+            onChange={(event) => setEraserSize(Math.max(0, Math.round(Number(event.target.value) || 0)))}
+            inputProps={{ min: 0, step: 10, "aria-label": "Eraser size" }}
+            sx={{ width: 104, "& input": { py: 0.6, fontSize: "0.8rem" } }}
+          />
+        )}
+
+        {dataSource.templates && (
+          <>
+            <Tooltip title="Center each new particle on the templates (as Xmipp's picker)" describeChild>
+              <Button
+                size="small"
+                aria-pressed={centerParticles}
+                variant={centerParticles ? "contained" : "outlined"}
+                startIcon={<Crosshair size={15} />}
+                onClick={() => setCenterParticles((current) => !current)}
+                sx={{ textTransform: "none" }}
+              >
+                Center
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Templates: the average of the particles you pick" describeChild>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Layers size={15} />}
+                onClick={(event) => openTemplates(event.currentTarget)}
+                sx={{ textTransform: "none" }}
+              >
+                Templates
+              </Button>
+            </Tooltip>
+          </>
+        )}
 
         <Divider flexItem orientation="vertical" />
 
@@ -3054,6 +3405,21 @@ function Coords2dViewer({
           </Tooltip>
         </ButtonGroup>
 
+
+        <Tooltip
+          title={(
+            <Box component="span" sx={{ display: "block", fontSize: "0.75rem", lineHeight: 1.6 }}>
+              Click: pick, or select a particle · Drag a particle: move it<br />
+              Shift + click: delete a particle · Delete: delete the selected one<br />
+              Arrows: move the selected particle · Space: hide or show the markers<br />
+              E: eraser / picker · R / W: next / previous micrograph
+            </Box>
+          )}
+        >
+          <IconButton size="small" aria-label="Keyboard shortcuts">
+            <Keyboard size={16} />
+          </IconButton>
+        </Tooltip>
 
         <Box sx={{ flex: 1 }} />
 
@@ -3097,9 +3463,70 @@ function Coords2dViewer({
                 </Button>
               </Tooltip>
             </ButtonGroup>
+
+            {dataSource.supervised.setAutopickPercent && autopickPercent !== null && (
+              <Tooltip title="Percentage of each micrograph the automatic picking explores" describeChild>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Explore (%)"
+                  value={autopickPercent}
+                  onChange={(event) => setAutopickPercent(Number(event.target.value))}
+                  onBlur={() => void applyAutopickPercent(autopickPercent)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void applyAutopickPercent(autopickPercent);
+                  }}
+                  inputProps={{ min: 1, max: 100, "aria-label": "Explore percentage" }}
+                  sx={{ width: 96, "& input": { py: 0.6, fontSize: "0.8rem" } }}
+                />
+              </Tooltip>
+            )}
           </>
         )}
       </Box>
+
+      <Popover
+        open={Boolean(templatesAnchorEl)}
+        anchorEl={templatesAnchorEl}
+        onClose={() => setTemplatesAnchorEl(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        slotProps={{ paper: { sx: { p: 1.5, maxWidth: 560 } } }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+          Templates
+        </Typography>
+        <Box sx={{ minHeight: 96, display: "flex", alignItems: "center", mb: 1.25, overflowX: "auto" }}>
+          {templatesLoading ? (
+            <CircularProgress size={20} />
+          ) : templatesImage ? (
+            <Box component="img" src={templatesImage.url} alt="Picking templates"
+              sx={{ height: 96, imageRendering: "auto", borderRadius: 1 }} />
+          ) : (
+            <Typography variant="body2" sx={{ color: "text.secondary", maxWidth: 360 }}>
+              The templates appear once you pick particles by hand: each one averages the particles
+              aligned to it.
+            </Typography>
+          )}
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <TextField
+            size="small"
+            type="number"
+            label="Number of templates"
+            value={templatesNumber ?? 1}
+            onChange={(event) => setTemplatesNumber(Number(event.target.value))}
+            onBlur={() => templatesNumber !== null && void applyTemplatesNumber(templatesNumber)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && templatesNumber !== null) void applyTemplatesNumber(templatesNumber);
+            }}
+            inputProps={{ min: 1, max: TEMPLATES_NUMBER_MAXIMUM, "aria-label": "Number of templates" }}
+            sx={{ width: 160 }}
+          />
+          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+            Changing it rebuilds them from your manual particles.
+          </Typography>
+        </Box>
+      </Popover>
 
       {error ? (
         <Alert severity="error" sx={{ borderRadius: 0 }} onClose={() => setError(null)}>
@@ -3205,7 +3632,11 @@ function Coords2dViewer({
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleCanvasMouseLeave}
+              onKeyDown={handleCanvasKeyDown}
+              tabIndex={0}
+              aria-label="Micrograph"
               style={{
+                outline: "none",
                 display: "block",
                 width: "100%",
                 height: "100%",

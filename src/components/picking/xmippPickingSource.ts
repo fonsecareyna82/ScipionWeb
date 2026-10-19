@@ -17,10 +17,16 @@ function required<T>(method: T | undefined, name: string): T {
 export function xmippPickingSource(service: ProjectService, projectId: Id, protocolId: Id): Coords2dDataSource {
   // Per micrograph, the score below which automatic particles are hidden.
   const thresholds = new Map<string, number>();
+  // Settings of the session, as its last listing gave them.
+  const settings: { templatesNum?: number; autopickPercent?: number } = {};
   return {
     key: `picking:${projectId}:${protocolId}`,
-    listMicrographs: () =>
-      required(service.fetchPickingSession, "session").call(service, projectId, protocolId),
+    listMicrographs: async () => {
+      const session = await required(service.fetchPickingSession, "session").call(service, projectId, protocolId);
+      settings.templatesNum = session.templatesNum;
+      settings.autopickPercent = session.autopickPercent;
+      return session;
+    },
     fetchCoordinates: async (micId) => {
       const particles = await required(service.fetchPickingParticles, "particles")
         .call(service, projectId, protocolId, micId);
@@ -49,6 +55,26 @@ export function xmippPickingSource(service: ProjectService, projectId: Id, proto
       train: (micId) => service.trainPickingClassifier!(projectId, protocolId, micId),
       next: (micId, nextMicId) =>
         service.correctPickingAndAutopickNext!(projectId, protocolId, micId, nextMicId),
+      getAutopickPercent: () => settings.autopickPercent,
+      setAutopickPercent: async (percent) => {
+        await required(service.savePickingSettings, "settings")
+          .call(service, projectId, protocolId, { autopickPercent: percent });
+        settings.autopickPercent = percent;
+      },
+    } : undefined,
+    templates: service.pickPickingParticle && service.pickingParticleMoved && service.fetchPickingTemplatesObjectUrl ? {
+      pick: async (micId, x, y, center) => {
+        const result = await service.pickPickingParticle!(projectId, protocolId, micId, x, y, center);
+        return { x: result.x, y: result.y };
+      },
+      moved: (micId, x, y) => service.pickingParticleMoved!(projectId, protocolId, micId, x, y),
+      fetchImage: (opts) => service.fetchPickingTemplatesObjectUrl!(projectId, protocolId, opts),
+      getNumber: () => settings.templatesNum,
+      setNumber: async (count) => {
+        await required(service.savePickingSettings, "settings")
+          .call(service, projectId, protocolId, { templatesNum: count });
+        settings.templatesNum = count;
+      },
     } : undefined,
   };
 }

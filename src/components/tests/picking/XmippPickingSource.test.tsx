@@ -205,3 +205,147 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     expect(screen.queryByRole("button", { name: "Train" })).not.toBeInTheDocument();
   });
 });
+
+describe("Xmipp picker tools in the coordinates viewer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    try { window.localStorage.clear(); } catch { /* no storage */ }
+  });
+
+  function templatesSource(overrides: Partial<NonNullable<Coords2dDataSource["templates"]>> = {}) {
+    return {
+      pick: vi.fn().mockImplementation(async (_micId, x, y) => ({ x: x + 3, y: y - 2 })),
+      moved: vi.fn().mockResolvedValue(undefined),
+      fetchImage: vi.fn().mockResolvedValue({ url: "blob:templates", revoke: vi.fn(), count: 2,
+        originalWidth: null, originalHeight: null }),
+      getNumber: vi.fn().mockReturnValue(2),
+      setNumber: vi.fn().mockResolvedValue(undefined),
+      ...overrides,
+    };
+  }
+
+  function renderPicker(source: Coords2dDataSource) {
+    return render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
+      outputName="picking" source={source} />);
+  }
+
+  it("maps the templates and the explored percentage to the picking session", async () => {
+    const service = {
+      fetchPickingSession: vi.fn().mockResolvedValue({ micrographs: [], templatesNum: 3, autopickPercent: 60 }),
+      pickPickingParticle: vi.fn().mockResolvedValue({ x: 12, y: 13, centered: true, templatesFilled: 1, templatesReady: true }),
+      pickingParticleMoved: vi.fn().mockResolvedValue(undefined),
+      fetchPickingTemplatesObjectUrl: vi.fn().mockResolvedValue(null),
+      savePickingSettings: vi.fn().mockResolvedValue(undefined),
+      trainPickingClassifier: vi.fn(),
+      correctPickingAndAutopickNext: vi.fn(),
+    } as unknown as ProjectService;
+    const source = xmippPickingSource(service, "7", "116");
+    await source.listMicrographs();
+    expect(source.templates!.getNumber()).toBe(3);
+    expect(source.supervised!.getAutopickPercent!()).toBe(60);
+    expect(await source.templates!.pick("4", 10, 11, true)).toEqual({ x: 12, y: 13 });
+    expect(service.pickPickingParticle).toHaveBeenCalledWith("7", "116", "4", 10, 11, true);
+    await source.templates!.moved("4", 5, 6);
+    expect(service.pickingParticleMoved).toHaveBeenCalledWith("7", "116", "4", 5, 6);
+    expect(await source.templates!.fetchImage({ size: 96 })).toBeNull();
+    await source.templates!.setNumber(4);
+    await source.supervised!.setAutopickPercent!(80);
+    expect(service.savePickingSettings).toHaveBeenCalledWith("7", "116", { templatesNum: 4 });
+    expect(service.savePickingSettings).toHaveBeenCalledWith("7", "116", { autopickPercent: 80 });
+    expect(source.templates!.getNumber()).toBe(4);
+    expect(source.supervised!.getAutopickPercent!()).toBe(80);
+  });
+
+  it("centers a new particle on the templates and saves it there", async () => {
+    const templates = templatesSource();
+    const source = pickingSource({ fetchCoordinates: vi.fn().mockResolvedValue([]), templates });
+    const { container } = renderPicker(source);
+    await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
+    fireEvent.click(screen.getByRole("button", { name: "Particle picker" }));
+    const canvas = container.querySelector("canvas")!;
+    fireEvent.mouseDown(canvas, { clientX: 0, clientY: 0 });
+    fireEvent.mouseUp(canvas, { clientX: 0, clientY: 0 });
+    await waitFor(() => expect(templates.pick).toHaveBeenCalled());
+    const [micId, x, y, center] = templates.pick.mock.calls[0];
+    expect([micId, center]).toEqual(["4", true]);
+    await waitFor(() => expect(source.saveMicrograph).toHaveBeenCalled(), { timeout: 3000 });
+    const [, coordinates] = (source.saveMicrograph as any).mock.calls.at(-1);
+    expect(coordinates).toHaveLength(1);
+    expect([coordinates[0].x, coordinates[0].y]).toEqual([x + 3, y - 2]);
+  });
+
+  it("can pick without centering, and a moved particle joins the templates", async () => {
+    const templates = templatesSource();
+    const source = pickingSource({ templates });
+    const { container } = renderPicker(source);
+    await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
+    const centerButton = await screen.findByRole("button", { name: "Center" });
+    expect(centerButton).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(centerButton);
+    expect(centerButton).toHaveAttribute("aria-pressed", "false");
+    const canvas = container.querySelector("canvas")!;
+    // Dragging the existing particle (jsdom: it covers the pointer).
+    fireEvent.mouseDown(canvas, { clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(canvas, { clientX: 30, clientY: 20 });
+    fireEvent.mouseUp(canvas, { clientX: 30, clientY: 20 });
+    await waitFor(() => expect(templates.moved).toHaveBeenCalled());
+    expect(templates.moved.mock.calls[0][0]).toBe("4");
+    expect(templates.pick).not.toHaveBeenCalled();
+  });
+
+  it("deletes with Shift + click and with the Delete key, and hides markers with Space", async () => {
+    const source = pickingSource({
+      fetchCoordinates: vi.fn().mockResolvedValue([
+        { id: "m0", micId: "4", x: 100, y: 120 },
+        { id: "m1", micId: "4", x: 300, y: 320 },
+      ]),
+    });
+    const { container } = renderPicker(source);
+    await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
+    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    const canvas = container.querySelector("canvas")!;
+    // A click selects a particle; Delete removes it.
+    fireEvent.mouseDown(canvas, { clientX: 0, clientY: 0 });
+    fireEvent.mouseUp(canvas, { clientX: 0, clientY: 0 });
+    expect(await screen.findByText(/^x=/)).toBeInTheDocument();
+    fireEvent.keyDown(canvas, { key: "Delete" });
+    await waitFor(() => expect(source.saveMicrograph).toHaveBeenCalled(), { timeout: 3000 });
+    expect((source.saveMicrograph as any).mock.calls.at(-1)[1]).toHaveLength(1);
+    // Shift + click removes the other one.
+    fireEvent.mouseDown(canvas, { clientX: 0, clientY: 0, shiftKey: true });
+    fireEvent.mouseUp(canvas, { clientX: 0, clientY: 0, shiftKey: true });
+    await waitFor(() => expect((source.saveMicrograph as any).mock.calls.at(-1)[1]).toEqual([]), { timeout: 3000 });
+
+    fireEvent.keyDown(canvas, { key: " " });
+    expect(screen.getByRole("button", { name: "Show markers" })).toBeInTheDocument();
+    fireEvent.keyDown(canvas, { key: "e" });
+    expect(screen.getByRole("spinbutton", { name: "Eraser size" })).toHaveValue(100);
+  });
+
+  it("shows the templates and rebuilds them with another number", async () => {
+    const templates = templatesSource();
+    const source = pickingSource({ templates });
+    renderPicker(source);
+    fireEvent.click(await screen.findByRole("button", { name: "Templates" }));
+    expect(await screen.findByAltText("Picking templates")).toHaveAttribute("src", "blob:templates");
+    const number = screen.getByRole("spinbutton", { name: "Number of templates" });
+    expect(number).toHaveValue(2);
+    fireEvent.change(number, { target: { value: "4" } });
+    fireEvent.keyDown(number, { key: "Enter" });
+    await waitFor(() => expect(templates.setNumber).toHaveBeenCalledWith(4));
+    await waitFor(() => expect(templates.fetchImage).toHaveBeenCalledTimes(2));
+  });
+
+  it("saves the explored percentage of the automatic picking", async () => {
+    const setAutopickPercent = vi.fn().mockResolvedValue(undefined);
+    const source = pickingSource({
+      supervised: { train: vi.fn(), next: vi.fn(), getAutopickPercent: () => 50, setAutopickPercent },
+    });
+    renderPicker(source);
+    const explore = await screen.findByRole("spinbutton", { name: "Explore percentage" });
+    expect(explore).toHaveValue(50);
+    fireEvent.change(explore, { target: { value: "70" } });
+    fireEvent.blur(explore);
+    await waitFor(() => expect(setAutopickPercent).toHaveBeenCalledWith(70));
+  });
+});

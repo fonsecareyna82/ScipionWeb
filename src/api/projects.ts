@@ -61,6 +61,8 @@ import {
   CreateCoords2dOutputResult,
   OpenPickingSession,
   PickingParticles,
+  PickingPickResult,
+  PickingSettings,
   PickingSession,
   RenameProtocolPayload,
   ExternalViewerDescriptor,
@@ -5128,11 +5130,57 @@ export async function savePickingParticles(
   if (!response.ok) throw await toApiError(response, "The picked particles could not be saved");
 }
 
-export async function savePickingSettings(projectId: Id, protocolId: Id, particleSize: number): Promise<void> {
+export async function savePickingSettings(
+  projectId: Id, protocolId: Id, settings: number | PickingSettings,
+): Promise<void> {
+  // A number is the particle size (the viewer's box size).
+  const body = typeof settings === "number" ? { particleSize: settings } : settings;
   const response = await fetchWithAuth(pickingUrl(projectId, protocolId, "/settings"), {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ particleSize }),
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
-  if (!response.ok) throw await toApiError(response, "The particle size could not be saved");
+  if (!response.ok) throw await toApiError(response, "The picker settings could not be saved");
+}
+
+/** A particle just picked: where it goes once centered on the templates (it also joins them). */
+export async function pickPickingParticle(
+  projectId: Id, protocolId: Id, micId: Id, x: number, y: number, center: boolean,
+): Promise<PickingPickResult> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/pick`),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x, y, center }) },
+  );
+  if (!response.ok) throw await toApiError(response, "The particle could not be centered");
+  return safeJson<PickingPickResult>(response);
+}
+
+/** A manual particle moved by the user joins the templates. */
+export async function pickingParticleMoved(projectId: Id, protocolId: Id, micId: Id, x: number, y: number): Promise<void> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/micrographs/${encodeURIComponent(String(micId))}/moved`),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x, y }) },
+  );
+  if (!response.ok) throw await toApiError(response, "The templates could not be updated");
+}
+
+/** The picker's templates side by side; null while there are none. */
+export async function fetchPickingTemplatesObjectUrl(
+  projectId: Id, protocolId: Id, opts: { size?: number; signal?: AbortSignal } = {},
+): Promise<(ObjectUrlResult & { count: number }) | null> {
+  const response = await fetchWithAuth(
+    pickingUrl(projectId, protocolId, `/templates/image?size=${opts.size ?? 128}`),
+    { method: "GET", cache: "no-store", signal: opts.signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw await toApiError(response, "The templates could not be loaded");
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  return {
+    url: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+    originalWidth: null,
+    originalHeight: null,
+    count: Number(response.headers.get("X-Templates-Count")) || 0,
+  };
 }
 
 export async function fetchPickingMicrographImageObjectUrl(

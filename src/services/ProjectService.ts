@@ -1515,6 +1515,8 @@ export type PickingSession = Coords2dMicrographsResult & {
   protocolClassName: string;
   mode: string;
   autopickPercent: number;
+  templatesNum?: number;
+  templatesReady?: boolean;
   micrographs: Array<Coords2dMicrograph & {
     manualParticles: number;
     automaticParticles: number;
@@ -1529,6 +1531,25 @@ export type OpenPickingSession = {
   sessionId: string;
   kind: "xmipp-picking";
   label: string;
+};
+
+/** Settings of a picking session (as config.xmd keeps them). */
+export type PickingSettings = {
+  particleSize?: number;
+  /** Templates the picked particles are averaged into (Xmipp's default is 1). */
+  templatesNum?: number;
+  /** Percentage of each micrograph the automatic picking explores. */
+  autopickPercent?: number;
+};
+
+/** Where a picked particle goes once centered on the templates. */
+export type PickingPickResult = {
+  x: number;
+  y: number;
+  centered: boolean;
+  /** Templates filled so far (manual mode), null otherwise. */
+  templatesFilled: number | null;
+  templatesReady: boolean;
 };
 
 export type PickingParticles = {
@@ -2696,7 +2717,12 @@ export interface ProjectService<
   fetchPickingParticles?(projectId: Id, protocolId: Id, micId: Id): Promise<PickingParticles>;
   savePickingParticles?(projectId: Id, protocolId: Id, micId: Id,
     coordinates: Array<{ id?: string; x: number; y: number }>, threshold?: number): Promise<void>;
-  savePickingSettings?(projectId: Id, protocolId: Id, particleSize: number): Promise<void>;
+  savePickingSettings?(projectId: Id, protocolId: Id, settings: number | PickingSettings): Promise<void>;
+  pickPickingParticle?(projectId: Id, protocolId: Id, micId: Id, x: number, y: number,
+    center: boolean): Promise<PickingPickResult>;
+  pickingParticleMoved?(projectId: Id, protocolId: Id, micId: Id, x: number, y: number): Promise<void>;
+  fetchPickingTemplatesObjectUrl?(projectId: Id, protocolId: Id,
+    opts?: { size?: number; signal?: AbortSignal }): Promise<(ObjectUrlResult & { count: number }) | null>;
   fetchPickingMicrographImageObjectUrl?(projectId: Id, protocolId: Id, micId: Id,
     opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal }): Promise<ObjectUrlResult>;
   createPickingCoordinates?(projectId: Id, protocolId: Id): Promise<CreateCoords2dOutputResult>;

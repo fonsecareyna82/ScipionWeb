@@ -92,6 +92,7 @@ import type {
   ProtocolRelationCandidatesPayload,
   ProtocolRelationCandidatesResult,
   ProtocolViewerActionValues,
+  PickingSettings,
 } from "@/services/ProjectService";
 
 import * as settingsApi from "@/api/settings";
@@ -1310,8 +1311,14 @@ const defaultService: ProjectService = {
   savePickingParticles: (projectId: Id, protocolId: Id, micId: Id,
     coordinates: Array<{ id?: string; x: number; y: number }>, threshold?: number) =>
     api.savePickingParticles(toId(projectId), toId(protocolId), toId(micId), coordinates, threshold),
-  savePickingSettings: (projectId: Id, protocolId: Id, particleSize: number) =>
-    api.savePickingSettings(toId(projectId), toId(protocolId), particleSize),
+  savePickingSettings: (projectId: Id, protocolId: Id, settings: number | PickingSettings) =>
+    api.savePickingSettings(toId(projectId), toId(protocolId), settings),
+  pickPickingParticle: (projectId: Id, protocolId: Id, micId: Id, x: number, y: number, center: boolean) =>
+    api.pickPickingParticle(toId(projectId), toId(protocolId), toId(micId), x, y, center),
+  pickingParticleMoved: (projectId: Id, protocolId: Id, micId: Id, x: number, y: number) =>
+    api.pickingParticleMoved(toId(projectId), toId(protocolId), toId(micId), x, y),
+  fetchPickingTemplatesObjectUrl: (projectId: Id, protocolId: Id, opts?: { size?: number; signal?: AbortSignal }) =>
+    api.fetchPickingTemplatesObjectUrl(toId(projectId), toId(protocolId), opts),
   fetchPickingMicrographImageObjectUrl: (projectId: Id, protocolId: Id, micId: Id,
     opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal }) =>
     api.fetchPickingMicrographImageObjectUrl(toId(projectId), toId(protocolId), toId(micId), opts),
