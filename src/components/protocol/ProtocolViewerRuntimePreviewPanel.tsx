@@ -132,7 +132,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
 
   return (
     <Box component="section" aria-label="Viewer options" sx={{
-      flex: 1, minHeight: 0, display: "flex", flexDirection: "column", bgcolor: "#ffffff",
+      flex: 1, minHeight: 0, display: "flex", flexDirection: "column", bgcolor: "var(--app-n-0)",
     }}>
       <ColumnHeader icon={<SlidersHorizontal size={15} />} title="Options" subtitle={viewerName} />
       <Box sx={{ height: 3 }}>{action.status === "running" && <LinearProgress aria-label="Preparing the result" />}</Box>
@@ -154,7 +154,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <strong>{actionLabel(doneResult!.action)}</strong>
-                <Box sx={{ fontSize: "0.78rem", wordBreak: "break-all", color: "#475569" }}>{link.url}</Box>
+                <Box sx={{ fontSize: "0.78rem", wordBreak: "break-all", color: "var(--app-n-600)" }}>{link.url}</Box>
               </Box>
               <ViewerLinkButton url={link.url} />
             </Box>
@@ -168,11 +168,11 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <strong>{actionLabel(doneResult!.action)}</strong>
-                  <Box sx={{ fontSize: "0.8rem", color: "#475569" }}>Opened in {program} on this computer.</Box>
+                  <Box sx={{ fontSize: "0.8rem", color: "var(--app-n-600)" }}>Opened in {program} on this computer.</Box>
                 </Box>
                 {item.kind === "volumes" && (
                   <Button size="small" variant="outlined" onClick={() => setWebVolumes(item)}
-                    sx={{ textTransform: "none", flex: "0 0 auto", color: "#333d49", borderColor: "#94a3b8" }}>
+                    sx={{ textTransform: "none", flex: "0 0 auto", color: "#333d49", borderColor: "var(--app-n-400)" }}>
                     Show in the web volume viewer
                   </Button>
                 )}
@@ -195,7 +195,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
         {ready && (
           <Box data-testid="protocol-viewer-runtime-preview">
             {ready.sections.length === 0 && !ready.conditionalFields?.length && (
-              <Typography variant="body2" sx={{ py: 2, color: "#64748b" }}>This viewer has no options to show.</Typography>
+              <Typography variant="body2" sx={{ py: 2, color: "var(--app-n-500)" }}>This viewer has no options to show.</Typography>
             )}
             <RuntimeLocalViewerForm
               preview={ready}
@@ -208,7 +208,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
               protocolLabel={protocolLabel ?? ""}
             />
             {ready.omittedFields > 0 && (
-              <Typography variant="caption" sx={{ display: "block", mt: 1.5, color: "#64748b" }}>
+              <Typography variant="caption" sx={{ display: "block", mt: 1.5, color: "var(--app-n-500)" }}>
                 {ready.omittedFields} options of this viewer cannot be shown on the web.
               </Typography>
             )}
@@ -243,12 +243,12 @@ type ColumnHeaderProps = { icon: ReactNode; title: string; subtitle?: string; ac
 function ColumnHeader({ icon, title, subtitle, action }: ColumnHeaderProps) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, pt: 1.5, pb: 1, minHeight: 48 }}>
-      <Box sx={{ color: "#475569", display: "flex" }}>{icon}</Box>
+      <Box sx={{ color: "var(--app-n-600)", display: "flex" }}>{icon}</Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "#64748b" }}>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "var(--app-n-500)" }}>
           {title}
         </Typography>
-        {subtitle && <Typography noWrap sx={{ fontSize: "0.88rem", fontWeight: 600, color: "#0f172a" }}>{subtitle}</Typography>}
+        {subtitle && <Typography noWrap sx={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--app-n-900)" }}>{subtitle}</Typography>}
       </Box>
       {action}
     </Box>
@@ -334,7 +334,7 @@ function RuntimeLocalViewerForm({
           onClick={() => { setWizardError(null); void wizard.openWizard(field.name, field.label, preview.wizards[field.name]); }}
           sx={{
             width: 34, height: 34, flex: "0 0 auto", border: "1px solid rgba(148, 163, 184, 0.6)",
-            color: "#333d49", bgcolor: "#ffffff",
+            color: "#333d49", bgcolor: "var(--app-n-0)",
             "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
           }}>
           <Wand2 size={16} />
@@ -352,7 +352,7 @@ function RuntimeLocalViewerForm({
           sx={{
             width: 34, height: 34, flex: "0 0 auto", border: "1px solid",
             borderColor: runningAction === field.name ? "#333d49" : "rgba(148, 163, 184, 0.6)",
-            color: "#333d49", bgcolor: runningAction === field.name ? "#eef2f6" : "#ffffff",
+            color: "#333d49", bgcolor: runningAction === field.name ? "var(--app-n-150)" : "var(--app-n-0)",
             "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
           }}>
           {runningAction === field.name ? <CircularProgress size={16} /> : <Eye size={17} />}
@@ -369,7 +369,7 @@ function RuntimeLocalViewerForm({
       (values[field.name] === undefined || values[field.name] === null ? "" : String(values[field.name]));
     let control;
     if (!EDITABLE.has(field.control)) {
-      control = <Typography sx={{ flex: 1, fontSize: "0.88rem", fontWeight: 500, color: "#1e293b" }}>{field.label}</Typography>;
+      control = <Typography sx={{ flex: 1, fontSize: "0.88rem", fontWeight: 500, color: "var(--app-n-800)" }}>{field.label}</Typography>;
     } else if (field.control === "boolean") {
       control = (
         <FormControlLabel sx={{ flex: 1 }} control={<Checkbox checked={values[field.name] === true}
@@ -396,7 +396,7 @@ function RuntimeLocalViewerForm({
         {field.help && (
           <Tooltip title={<Box sx={{ whiteSpace: "pre-line" }}>{field.help}</Box>} placement="right">
             <Box component="span" aria-label={`Help for ${field.label}`} tabIndex={0}
-              sx={{ display: "flex", color: "#94a3b8", cursor: "help", "&:hover": { color: "#475569" } }}>
+              sx={{ display: "flex", color: "var(--app-n-400)", cursor: "help", "&:hover": { color: "var(--app-n-600)" } }}>
               <Info size={15} />
             </Box>
           </Tooltip>
@@ -444,7 +444,7 @@ function RuntimeLocalViewerForm({
             .map(item => item.group as string)])];
         return (
           <Box key={`${index}-${name}`} sx={{ mt: index === 0 ? 0.5 : 2 }}>
-            <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: "#334155", pb: 0.5,
+            <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--app-n-700)", pb: 0.5,
               borderBottom: "1px solid rgba(148, 163, 184, 0.35)" }}>{name}</Typography>
             {section?.fields.map(field => renderField(field))}
             {direct.map(entry => renderField(entry.field))}
@@ -453,7 +453,7 @@ function RuntimeLocalViewerForm({
               const additional = deferred.filter(item => item.section === name && item.group === groupName);
               return (
                 <Box key={`${groupIndex}-${groupName}`} sx={{ pl: 1.5, mt: 1.5, borderLeft: "2px solid rgba(148, 163, 184, 0.45)" }}>
-                  <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "#475569" }}>{groupName}</Typography>
+                  <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--app-n-600)" }}>{groupName}</Typography>
                   {group?.fields.map(field => renderField(field))}
                   {additional.map(entry => renderField(entry.field))}
                 </Box>

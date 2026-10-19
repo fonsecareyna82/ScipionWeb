@@ -243,7 +243,7 @@ export default function ShareProjectModal({
           "relative flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border shadow-2xl",
           "border-gray-300/90 bg-white",
           "ring-1 ring-inset ring-black/[0.08]",
-          "dark:border-gray-700 dark:bg-slate-900",
+          "dark:border-gray-700 dark:bg-gray-900",
           "dark:ring-white/[0.08]",
         )}
         onMouseDown={(e) => e.stopPropagation()}
@@ -251,7 +251,7 @@ export default function ShareProjectModal({
         <div className="relative flex h-full flex-col">
           <div className="flex items-start justify-between border-b border-gray-300/80 px-5 pb-3 pt-4 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                 <Users className="h-5 w-5" />
               </div>
               <div>
@@ -277,7 +277,7 @@ export default function ShareProjectModal({
                 className={classNames(
                   "inline-flex items-center justify-center rounded-xl border p-2 transition",
                   "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                   submitting ? "opacity-60" : "",
                 )}
                 aria-label="Close"
@@ -303,7 +303,7 @@ export default function ShareProjectModal({
                     "w-full rounded-xl border px-8 py-2.5 text-sm font-medium outline-none transition",
                     "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                     "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                   )}
                 />
               </div>
@@ -316,7 +316,7 @@ export default function ShareProjectModal({
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-3">
-            <div className="rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
+            <div className="rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
               {loadingUsers && (
                 <div className="py-6 text-center text-sm leading-6 text-gray-700 dark:text-gray-300">
                   Loading users...
@@ -341,7 +341,7 @@ export default function ShareProjectModal({
                       ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"
                       : u.alreadyShared
                         ? "border-sky-300/80 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200"
-                        : "border-gray-300/80 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200";
+                        : "border-gray-300/80 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200";
 
                     const canRevoke = Boolean(u.alreadyShared && !u.isOwner);
 
@@ -419,7 +419,7 @@ export default function ShareProjectModal({
                 className={classNames(
                   "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
                   "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                 )}
               >
                 Cancel
@@ -440,7 +440,7 @@ export default function ShareProjectModal({
 
           {revokeTarget && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35">
-              <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-red-300/80 bg-white px-5 py-4 text-sm shadow-2xl dark:border-red-800/70 dark:bg-slate-900">
+              <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-red-300/80 bg-white px-5 py-4 text-sm shadow-2xl dark:border-red-800/70 dark:bg-gray-900">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200">
                     <UserMinus className="h-4 w-4" />
@@ -470,7 +470,7 @@ export default function ShareProjectModal({
                     className={classNames(
                       "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
                       "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                     )}
                   >
                     Cancel

@@ -244,14 +244,14 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, onShare, c
 
   const baseItemClass = "px-4 py-2.5 outline-none flex items-center gap-2 text-sm font-medium";
   const enabledItemClass =
-    "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-slate-800/70 dark:focus:bg-slate-800/70";
+    "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-gray-800/70 dark:focus:bg-slate-800/70";
   const disabledItemClass = "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
 
   const triggerClass = classNames(
     crispText,
     "flex h-9 w-9 items-center justify-center rounded-xl border transition",
     "border-gray-300/80 bg-white text-gray-700 shadow-sm hover:border-gray-400 hover:shadow-md",
-    "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:border-gray-600",
+    "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600",
     isMenuOpen ? "border-indigo-500/40 ring-2 ring-indigo-500/15" : "",
   );
 
@@ -266,7 +266,7 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, onShare, c
         crispText,
         "fixed z-[10000] w-44 overflow-hidden rounded-xl border shadow-2xl",
         "border-gray-300/90 bg-white",
-        "dark:border-gray-700 dark:bg-slate-900",
+        "dark:border-gray-700 dark:bg-gray-900",
       )}
       style={{ left: menuPos.left, top: menuPos.top }}
       onMouseDown={(e) => {

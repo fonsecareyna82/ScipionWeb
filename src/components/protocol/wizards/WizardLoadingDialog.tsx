@@ -53,7 +53,7 @@ export default function WizardLoadingDialog({
           display: "flex",
           alignItems: "center",
           gap: 1.5,
-          background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+          background: "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
         }}
       >
         <CircularProgress size={22} />

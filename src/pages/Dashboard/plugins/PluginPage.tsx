@@ -213,7 +213,7 @@ function CardShell(props: {
                 crispText,
                 "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
                 "border-gray-300/90 bg-white",
-                "dark:border-gray-700 dark:bg-slate-900",
+                "dark:border-gray-700 dark:bg-gray-900",
                 "lg:p-6",
             )}
         >
@@ -265,11 +265,11 @@ function InfoCard(props: {
                 crispText,
                 "rounded-2xl border p-4 shadow-sm",
                 "border-gray-300/80 bg-white",
-                "dark:border-gray-700 dark:bg-slate-900",
+                "dark:border-gray-700 dark:bg-gray-900",
             )}
         >
             <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                     {props.icon}
                 </div>
                 <div className="text-sm font-semibold text-gray-950 dark:text-white">{props.title}</div>
@@ -286,7 +286,7 @@ function StatPill(props: { label: string; value: ReactNode }) {
                 crispText,
                 "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold",
                 "border-gray-300/80 bg-white text-gray-700",
-                "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
             )}
         >
             <span className="text-gray-600 dark:text-gray-300">{props.label}</span>
@@ -339,7 +339,7 @@ function SecondaryButton(props: {
                 crispText,
                 "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
                 "border-gray-300/80 bg-white text-gray-800 shadow-sm hover:border-gray-400 hover:shadow-md",
-                "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
+                "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:border-gray-600",
                 "disabled:cursor-not-allowed disabled:opacity-60",
                 props.className,
             )}
@@ -454,9 +454,9 @@ function LogViewer(props: {
             ) : null}
 
             <div className="overflow-hidden rounded-2xl border border-gray-300/80 shadow-sm dark:border-gray-700">
-                <div className="flex items-center justify-between border-b border-gray-300/80 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-3 dark:border-gray-700 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800">
+                <div className="flex items-center justify-between border-b border-gray-300/80 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-3 dark:border-gray-700 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800">
                     <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
                             <FileText className="h-4 w-4" />
                         </div>
 
@@ -483,7 +483,7 @@ function LogViewer(props: {
                     className={classNames(
                         "overflow-auto px-4 py-4",
                         props.expanded ? "max-h-[560px]" : "max-h-[320px]",
-                        "bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950",
+                        "bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950",
                     )}
                 >
                     {parsedSegments.length > 0 ? (
@@ -507,7 +507,7 @@ function LogViewer(props: {
                             ))}
                         </pre>
                     ) : (
-                        <div className="rounded-xl border border-dashed border-gray-300/80 bg-white/70 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:bg-slate-900/60 dark:text-gray-400">
+                        <div className="rounded-xl border border-dashed border-gray-300/80 bg-white/70 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400">
                             Waiting for log output...
                         </div>
                     )}
@@ -1458,7 +1458,7 @@ export default function PluginPage() {
                                     crispText,
                                     "inline-flex flex-wrap items-center gap-2 rounded-2xl border p-1.5 shadow-sm",
                                     "border-gray-300/80 bg-gray-50/90",
-                                    "dark:border-gray-700 dark:bg-slate-950/70",
+                                    "dark:border-gray-700 dark:bg-gray-950/70",
                                 )}
                             >
                                 <label
@@ -1467,7 +1467,7 @@ export default function PluginPage() {
                                         "group inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition",
                                         skipBinaries
                                             ? "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-200"
-                                            : "border-transparent bg-white text-gray-700 hover:border-gray-300/80 dark:bg-slate-900 dark:text-gray-200 dark:hover:border-gray-700",
+                                            : "border-transparent bg-white text-gray-700 hover:border-gray-300/80 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-700",
                                         isInstalling || isRemoving
                                             ? "cursor-not-allowed opacity-60"
                                             : "cursor-pointer",
@@ -1487,7 +1487,7 @@ export default function PluginPage() {
                                             "inline-flex h-5 w-5 items-center justify-center rounded-md border text-[11px] font-bold transition",
                                             skipBinaries
                                                 ? "border-sky-600 bg-sky-600 text-white"
-                                                : "border-gray-300 bg-white text-transparent group-hover:border-gray-400 dark:border-gray-600 dark:bg-slate-950",
+                                                : "border-gray-300 bg-white text-transparent group-hover:border-gray-400 dark:border-gray-600 dark:bg-gray-950",
                                         )}
                                     >
                                         ✓
@@ -1555,10 +1555,10 @@ export default function PluginPage() {
                             <img
                                 src={plugin.fullLogo}
                                 alt={`${plugin.name} logo`}
-                                className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-white object-contain p-3 shadow-sm dark:border-gray-700 dark:bg-slate-900"
+                                className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-white object-contain p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900"
                             />
                         ) : (
-                            <div className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-slate-800" />
+                            <div className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-800" />
                         )}
                     </div>
 
@@ -1571,7 +1571,7 @@ export default function PluginPage() {
                         </div>
 
                         {currentTask ? (
-                            <div className="mt-4 rounded-xl border border-gray-300/80 bg-gray-50/80 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-slate-800/70 dark:text-gray-300">
+                            <div className="mt-4 rounded-xl border border-gray-300/80 bg-gray-50/80 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
                                 <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white">
                                     <ExecuteIcon className="h-4 w-4 animate-spin" />
                                     Active task: {getPluginTaskOperationLabel(currentTask.operation)}
@@ -1610,7 +1610,7 @@ export default function PluginPage() {
                             </div>
                         ) : null}
 
-                        <div className="mt-5 rounded-xl border border-gray-300/80 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-slate-900">
+                        <div className="mt-5 rounded-xl border border-gray-300/80 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Summary</div>
                             <div className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300">{plugin.summary ?? "General"}</div>
                         </div>
@@ -1629,7 +1629,7 @@ export default function PluginPage() {
                             {plugin.author.split(",").map((name, index) => (
                                 <span
                                     key={index}
-                                    className="inline-block max-w-full truncate rounded-full border border-gray-300/80 bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-white"
+                                    className="inline-block max-w-full truncate rounded-full border border-gray-300/80 bg-gray-100 px-3 py-1 text-xs font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                     title={name.trim()}
                                 >
                                     {name.trim()}
@@ -1667,7 +1667,7 @@ export default function PluginPage() {
                     subtitle={`${installedBinaryCount} installed / ${binaries.length} available`}
                 >
                     <div className="overflow-hidden rounded-xl border border-gray-300/80 dark:border-gray-700">
-                        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] gap-4 border-b border-gray-300/80 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-slate-950/50 dark:text-gray-400 md:grid">
+                        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] gap-4 border-b border-gray-300/80 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950/50 dark:text-gray-400 md:grid">
                             <div>Binary</div>
                             <div>Version</div>
                             <div>Status</div>
@@ -1701,7 +1701,7 @@ export default function PluginPage() {
                                 return (
                                     <div
                                         key={binary.target}
-                                        className="grid gap-3 bg-white px-4 py-4 dark:bg-slate-900 md:grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] md:items-center md:gap-4"
+                                        className="grid gap-3 bg-white px-4 py-4 dark:bg-gray-900 md:grid-cols-[minmax(0,1fr)_minmax(120px,0.45fr)_auto_auto] md:items-center md:gap-4"
                                     >
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
@@ -1731,7 +1731,7 @@ export default function PluginPage() {
                                                     Installed
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex rounded-full border border-gray-300 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-300">
+                                                <span className="inline-flex rounded-full border border-gray-300 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
                                                     Available
                                                 </span>
                                             )}

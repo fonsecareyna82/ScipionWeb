@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/scipion_logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // The theme before the first paint (no light flash in dark mode); ThemeContext takes over.
+      (function () {
+        try {
+          var preference = localStorage.getItem("theme");
+          var dark = preference === "dark"
+            || (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="dark:bg-gray-900">
     <div id="root"></div>

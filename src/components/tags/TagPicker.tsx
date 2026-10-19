@@ -48,7 +48,7 @@ function createPlaceholderTag(id: string): ProtocolTag {
   return {
     id,
     title: id,
-    color: "#9ca3af",
+    color: "var(--app-n-400)",
   } as ProtocolTag;
 }
 

@@ -1,4 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
+import { createAppTheme } from "@/theme/muiTheme";
 import {
   memo,
   useCallback,
@@ -15,7 +16,6 @@ import {
 } from "@mui/material";
 
 import {
-  createTheme,
   ThemeProvider as MuiThemeProvider,
 } from "@mui/material/styles";
 
@@ -223,12 +223,8 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const muiTheme =
     useMemo(
       () =>
-        createTheme({
-          palette: {
-            mode:
-              appTheme,
-          },
-
+        // The app theme, with the portals of an external window when open.
+        createAppTheme(appTheme, {
           ...(externalPortalContainer
             ? {
               components: {

@@ -1,5 +1,6 @@
 // src/entry-umd.tsx
 import "./index.css";
+import "./styles/theme-tokens.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -85,8 +86,8 @@ class WidgetErrorBoundary extends React.Component<
     return (
       <pre
         style={{
-          color: "#b91c1c",
-          background: "#fee2e2",
+          color: "var(--app-red-700)",
+          background: "var(--app-red-100)",
           padding: 12,
           borderRadius: 8,
           whiteSpace: "pre-wrap",
@@ -576,7 +577,7 @@ const defaultMockService: Partial<ProjectService> = {
       id: `tag-${Date.now()}`,
       title: payload.title,
       description: payload.description,
-      color: payload.color ?? "#9ca3af",
+      color: payload.color ?? "var(--app-n-400)",
     } as any;
   },
 
@@ -589,7 +590,7 @@ const defaultMockService: Partial<ProjectService> = {
       id: tagId,
       title: payload.title ?? "Updated tag",
       description: payload.description,
-      color: payload.color ?? "#9ca3af",
+      color: payload.color ?? "var(--app-n-400)",
     } as any;
   },
 

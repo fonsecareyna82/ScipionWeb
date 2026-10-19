@@ -58,7 +58,7 @@ export default function PluginListTable({
       <div className={classNames("min-h-0 flex-1 overflow-auto overscroll-contain", maxHeightClassName)}>
         <div className={classNames(
           listGridClassName,
-          "sticky top-0 z-20 border-b border-gray-200/70 bg-gray-50/95 px-4 py-3 text-xs font-semibold text-gray-600 backdrop-blur dark:border-gray-800/70 dark:bg-slate-950/95 dark:text-gray-300",
+          "sticky top-0 z-20 border-b border-gray-200/70 bg-gray-50/95 px-4 py-3 text-xs font-semibold text-gray-600 backdrop-blur dark:border-gray-800/70 dark:bg-gray-950/95 dark:text-gray-300",
         )}>
           <div className="flex items-center justify-center">
             <input
@@ -187,7 +187,7 @@ export default function PluginListTable({
                       event.stopPropagation();
                       onOpenDetails(plugin);
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 dark:text-white"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     Details

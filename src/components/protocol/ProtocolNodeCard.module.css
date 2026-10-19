@@ -26,7 +26,7 @@
   max-width: var(--swNodeWidth);
 
   border-radius: 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--app-n-300);
 
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
   transition: box-shadow 160ms ease-in-out;
@@ -234,7 +234,7 @@
 .shortcutHint {
   margin-left: 24px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--app-n-500);
   font-variant-numeric: tabular-nums;
 }
 
@@ -304,7 +304,7 @@
   border-bottom: 1px solid #166534;
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
-  background: #f0fdf4;
+  background: var(--app-green-50);
 
   height: var(--swOutputsHeaderHeight);
   flex: 0 0 auto;
@@ -340,10 +340,10 @@
   padding: 4px 12px;
   border-radius: 9999px;
 
-  border: 1px solid #9ca3af;
+  border: 1px solid var(--app-n-400);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 
-  background: linear-gradient(to right, #e5e7eb, #d1d5db);
+  background: linear-gradient(to right, var(--app-n-200), var(--app-n-300));
   line-height: 1.2;
 
   min-height: var(--swOutputRowHeight);
@@ -362,9 +362,9 @@
   min-width: 0;
   min-height: 48px;
   padding: 8px 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--app-n-200);
   border-radius: 8px;
-  background: #f1f5f9;
+  background: var(--app-n-100);
   line-height: 1.2;
   cursor: grab;
 }
@@ -374,7 +374,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #64748b;
+  color: var(--app-n-500);
   font-size: 26px;
   font-weight: 500;
 }
@@ -384,7 +384,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #334155;
+  color: var(--app-n-700);
   font-size: 30px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -522,7 +522,7 @@
   padding: 22px 8px;
   border-radius: 10px;
   border: 1px dashed rgba(31, 41, 55, 0.28);
-  background: rgba(248, 250, 252, 0.92);
+  background: color-mix(in srgb, var(--app-n-50) 92%, transparent);
   color: rgba(31, 41, 55, 0.68);
   font-size: clamp(1.65rem, 1vw, 1.05rem);
   font-weight: 700;
@@ -673,7 +673,7 @@
   font-size: 1.18rem;
   line-height: 1.1;
 
-  color: #64748b;
+  color: var(--app-n-500);
 }
 
 .outputThumbMetaPrimary {
@@ -687,7 +687,7 @@
   font-weight: 700;
   text-align: right;
 
-  color: #475569;
+  color: var(--app-n-600);
 }
 
 .outputThumbTileMany .outputThumbText {
@@ -779,7 +779,7 @@
 
 .progressFill {
   height: 12px;
-  background: #fff;
+  background: var(--app-n-0);
   transition: width 500ms ease;
 }
 
@@ -796,14 +796,14 @@
   margin-left: 24px;
 
   font-size: 2rem;
-  color: #111827;
+  color: var(--app-n-900);
 
 }
 
 .timeIcon {
   width: 40px;
   height: 40px;
-  color: #6b7280;
+  color: var(--app-n-500);
 }
 
 /* React Flow handles: scoped to this card only */
@@ -848,9 +848,9 @@
 
 .menuContent {
   width: 15rem;
-  background-color: var(--color-popover, #fff);
-  color: var(--color-popover-foreground, #111827);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background-color: var(--color-popover, var(--app-n-0));
+  color: var(--color-popover-foreground, var(--app-n-900));
+  border: 1px solid var(--color-border, var(--app-n-200));
   border-radius: 0.5rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
   padding: 0.25rem;
@@ -858,8 +858,8 @@
 
 /* Radix state for hovered/focused items */
 .menuContent [data-highlighted] {
-  background-color: var(--color-accent, #f3f4f6);
-  color: var(--color-accent-foreground, #111827);
+  background-color: var(--color-accent, var(--app-n-100));
+  color: var(--color-accent-foreground, var(--app-n-900));
   outline: none;
 }
 
@@ -870,9 +870,9 @@
 .subMenuContent {
   width: 25rem;
   margin-bottom: 1.5rem;
-  background-color: var(--color-popover, #fff);
-  color: var(--color-popover-foreground, #111827);
-  border: 1px solid var(--color-border, #e5e7eb);
+  background-color: var(--color-popover, var(--app-n-0));
+  color: var(--color-popover-foreground, var(--app-n-900));
+  border: 1px solid var(--color-border, var(--app-n-200));
   border-radius: 0.5rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
   padding: 0.25rem;
@@ -881,7 +881,7 @@
 /* Radix state for hovered/focused items */
 .subMenuContent [data-highlighted] {
   background-color: var(--color-accent, #03318b);
-  color: var(--color-accent-foreground, #111827);
+  color: var(--color-accent-foreground, var(--app-n-900));
   outline: none;
 }
 
@@ -947,7 +947,7 @@
   width: 40px;
   height: 40px;
   flex: 0 0 auto;
-  color: #6b7280;
+  color: var(--app-n-500);
 }
 
 .timeRow {
@@ -1254,7 +1254,7 @@
 .progressFill {
   display: block;
   height: 12px;
-  background: #fff;
+  background: var(--app-n-0);
   transition: width 500ms ease;
 }
 
@@ -1306,42 +1306,43 @@
     0 14px 34px rgba(0, 0, 0, 0.34);
 }
 
+/* Each status keeps its light-theme hue: a deep tint of it, and its vivid colour on the border. */
 :global(.dark) .status-running,
 :global(.dark) .status-scheduled,
 :global(.dark) .status-interactive {
-  background-color: #211f14 !important;
+  background-color: #1f1c10 !important;
   background-image:
-    radial-gradient(circle at top left, rgba(250, 204, 21, 0.10), transparent 34%),
-    linear-gradient(135deg, #262315, #151923) !important;
-  border-color: rgba(234, 179, 8, 0.22);
+    radial-gradient(circle at top left, rgba(250, 204, 21, 0.20), transparent 46%),
+    linear-gradient(135deg, rgba(234, 179, 8, 0.20), rgba(234, 179, 8, 0.07)) !important;
+  border-color: rgba(250, 204, 21, 0.62);
 }
 
 :global(.dark) .status-finished {
-  background-color: #11231e !important;
+  background-color: #0f1f19 !important;
   background-image:
-    radial-gradient(circle at top left, rgba(34, 197, 94, 0.09), transparent 34%),
-    linear-gradient(135deg, #142821, #111827) !important;
-  border-color: rgba(34, 197, 94, 0.20);
+    radial-gradient(circle at top left, rgba(74, 222, 128, 0.17), transparent 46%),
+    linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.06)) !important;
+  border-color: rgba(74, 222, 128, 0.55);
 }
 
 :global(.dark) .status-failed,
 :global(.dark) .status-aborted {
-  background-color: #251820 !important;
+  background-color: #23131a !important;
   background-image:
-    radial-gradient(circle at top left, rgba(248, 113, 113, 0.10), transparent 34%),
-    linear-gradient(135deg, #2c1c24, #151923) !important;
-  border-color: rgba(248, 113, 113, 0.22);
+    radial-gradient(circle at top left, rgba(248, 113, 113, 0.20), transparent 46%),
+    linear-gradient(135deg, rgba(239, 68, 68, 0.20), rgba(239, 68, 68, 0.07)) !important;
+  border-color: rgba(248, 113, 113, 0.62);
 }
 
 :global(.dark) .status-saved,
 :global(.dark) .status-launched,
 :global(.dark) .status-new,
 :global(.dark) .status-root {
-  background-color: #162033 !important;
+  background-color: #111d2e !important;
   background-image:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.08), transparent 34%),
-    linear-gradient(135deg, #1b2537, #111827) !important;
-  border-color: rgba(56, 189, 248, 0.18);
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.17), transparent 46%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.17), rgba(14, 165, 233, 0.05)) !important;
+  border-color: rgba(56, 189, 248, 0.52);
 }
 
 :global(.dark) .header {
@@ -1556,28 +1557,28 @@
 
 /* Keep thumbnail mode neutral so previews remain visually dominant */
 .card[data-thumbnail-mode="true"] {
-  background-color: #f8f8f8 !important;
+  background-color: var(--app-n-50) !important;
   background-image: none !important;
   border-color: rgba(15, 23, 42, 0.14);
 }
 
 .card[data-thumbnail-mode="true"] .header {
-  background: #eef0f3;
+  background: var(--app-n-150);
   border-bottom-color: rgba(15, 23, 42, 0.14);
 }
 
 .card[data-thumbnail-mode="true"] .footer {
-  background: #f8f8f8;
+  background: var(--app-n-50);
   border-top-color: rgba(15, 23, 42, 0.10);
 }
 
 .card[data-thumbnail-mode="true"] .sectionHeader {
-  background: #f6f7f9;
+  background: var(--app-n-100);
   border-bottom-color: rgba(15, 23, 42, 0.10);
 }
 
 .card[data-thumbnail-mode="true"] .sectionTitle {
-  color: #111827;
+  color: var(--app-n-900);
 }
 
 :global(.dark) .card[data-thumbnail-mode="true"] {
@@ -1661,4 +1662,34 @@
 
 :global(.dark) .card[data-thumbnail-mode="true"].inPathSelection::after {
   box-shadow: 0 0 0 8px rgba(251, 113, 133, 0.24);
+}
+
+
+/* The unwanted part of a split (e.g. discarded micrographs): a dashed border of its own colour. */
+.outputDiscarded {
+  /* Thick: the node is drawn scaled down in the graph. */
+  border: 4px dashed rgba(220, 38, 38, 0.75) !important;
+}
+
+.outputIconDiscarded {
+  color: #dc2626;
+  stroke-width: 2.6;
+}
+
+:global(.dark) .outputIconDiscarded {
+  color: #f87171;
+}
+
+:global(.dark) .outputDiscarded {
+  border-color: rgba(248, 113, 113, 0.7) !important;
+}
+
+/* Thumbnail tiles have no border of their own: the same dashed line as an outline. */
+.outputThumbTile.outputDiscarded {
+  outline: 4px dashed rgba(220, 38, 38, 0.75);
+  outline-offset: -4px;
+}
+
+:global(.dark) .outputThumbTile.outputDiscarded {
+  outline-color: rgba(248, 113, 113, 0.65);
 }

@@ -73,7 +73,7 @@ export default function ProtocolHelpDialog({
             color: "white",
             borderRadius: 1,
             "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
-            "&:focus-visible": { outline: "2px solid rgba(255,255,255,0.55)", outlineOffset: 2 },
+            "&:focus-visible": { outline: "2px solid color-mix(in srgb, var(--app-n-0) 55%, transparent)", outlineOffset: 2 },
           }}
         >
           <CloseIcon fontSize="small" />

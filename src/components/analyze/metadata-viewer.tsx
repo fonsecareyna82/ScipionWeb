@@ -440,11 +440,11 @@ export function metadataImageRequestSize(cssSize: number, devicePixelRatio = typ
 const METADATA_IMAGE_FALLBACK_FORMAT = "png";
 const METADATA_IMAGE_CACHE_VARIANT = "webp-png-fallback";
 
-const HEADER_BG = "#f3f4f6";
+const HEADER_BG = "var(--app-n-100)";
 
-const DIALOG_HEADER_BG = "#e5e7eb";
-const DIALOG_ROW_ODD_BG = "#f9fafb";
-const DIALOG_ROW_EVEN_BG = "#ffffff";
+const DIALOG_HEADER_BG = "var(--app-n-200)";
+const DIALOG_ROW_ODD_BG = "var(--app-n-50)";
+const DIALOG_ROW_EVEN_BG = "var(--app-n-0)";
 
 const DEFAULT_SUBSET_NAME = "create subset";
 
@@ -462,7 +462,7 @@ const headerCellSx = {
   ...baseCellSx,
   fontWeight: 600,
   background: HEADER_BG,
-  color: "#0f172a",
+  color: "var(--app-n-900)",
   position: "sticky" as const,
   top: 0,
   zIndex: 1,
@@ -848,12 +848,12 @@ function VectorInlineCell({ values }: { values: Array<number | string> }) {
         fontSize: "0.72rem",
         lineHeight: 1.25,
         whiteSpace: "nowrap",
-        color: "#0f172a",
+        color: "var(--app-n-900)",
         px: 1,
         py: 0.75,
         borderRadius: 1.5,
         border: "1px solid rgba(148,163,184,0.25)",
-        backgroundColor: "rgba(248,250,252,0.9)",
+        backgroundColor: "color-mix(in srgb, var(--app-n-50) 90%, transparent)",
         fontVariantNumeric: "tabular-nums",
         overflow: "hidden",
         textOverflow: "ellipsis",
@@ -906,7 +906,7 @@ function MatrixInlineCell({ matrix }: { matrix: Array<Array<number | string>> })
         fontSize: "0.72rem",
         lineHeight: 1.25,
         whiteSpace: "pre",
-        color: "#0f172a",
+        color: "var(--app-n-900)",
         px: 1,
         py: 0.75,
         boxSizing: "border-box",
@@ -914,7 +914,7 @@ function MatrixInlineCell({ matrix }: { matrix: Array<Array<number | string>> })
         overflow: "hidden",
         borderRadius: 1.5,
         border: "1px solid rgba(148,163,184,0.25)",
-        backgroundColor: "rgba(248,250,252,0.9)",
+        backgroundColor: "color-mix(in srgb, var(--app-n-50) 90%, transparent)",
         fontVariantNumeric: "tabular-nums",
       }}
     >
@@ -2815,7 +2815,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                             sx={{
                               display: "flex",
                               alignItems: "center",
-                              color: isActive ? "#1d4ed8" : "rgba(15,23,42,0.55)",
+                              color: isActive ? "var(--app-blue-700)" : "rgba(15,23,42,0.55)",
                             }}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -2876,7 +2876,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
                     "&:hover": {
                       backgroundColor: isHighlightedRow
                         ? "rgba(191,219,254,0.95)"
-                        : "rgba(248,250,252,1)",
+                        : "color-mix(in srgb, var(--app-n-50) 100%, transparent)",
                     },
                     "&:hover td": {
                       transition: "background-color 120ms ease-out",
@@ -3328,7 +3328,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     border: isSelected
                       ? "2px dashed #dc2626"
                       : "1px solid rgba(148,163,184,0.45)",
-                    background: isSelected ? "rgba(254,226,226,0.55)" : "#f9fafb",
+                    background: isSelected ? "rgba(254,226,226,0.55)" : "var(--app-n-50)",
                     boxShadow: isSelected ? "0 0 0 1px rgba(220,38,38,0.25)" : "none",
                     transition:
                       "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",
@@ -5708,14 +5708,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
           gap: 1,
           flexWrap: "wrap",
           background:
-            "linear-gradient(180deg, rgba(248,250,252,0.95) 0%, rgba(241,245,249,0.95) 100%)",
+            "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 95%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 95%, transparent) 100%)",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
           <Typography
             variant="caption"
             sx={{
-              color: "#334155",
+              color: "var(--app-n-700)",
               px: 1,
               py: 0.5,
               borderRadius: 1,
@@ -5729,7 +5729,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
           <Typography
             variant="caption"
             sx={{
-              color: "#334155",
+              color: "var(--app-n-700)",
               px: 1,
               py: 0.5,
               borderRadius: 1,
@@ -6166,7 +6166,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
           sx={{
             p: 0,
             background:
-              "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.92) 100%)",
+              "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 98%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 92%, transparent) 100%)",
           }}
         >
           <Box
@@ -6243,7 +6243,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                     p: 1.5,
                     borderRadius: 2.5,
                     borderColor: "rgba(15,23,42,0.08)",
-                    background: "rgba(255,255,255,0.86)",
+                    background: "color-mix(in srgb, var(--app-n-0) 86%, transparent)",
                     boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
                   }}
                 >
@@ -6268,7 +6268,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                         py: 0.65,
                         borderRadius: 999,
                         bgcolor: "rgba(14,165,233,0.10)",
-                        color: "#075985",
+                        color: "var(--app-sky-800)",
                         border: "1px solid rgba(14,165,233,0.20)",
                         fontSize: "0.8rem",
                         fontWeight: 800,
@@ -6292,7 +6292,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                     p: 1.5,
                     borderRadius: 2.5,
                     borderColor: "rgba(15,23,42,0.08)",
-                    background: "rgba(255,255,255,0.92)",
+                    background: "color-mix(in srgb, var(--app-n-0) 92%, transparent)",
                     boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
                   }}
                 >
@@ -6411,7 +6411,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                     p: 1.5,
                     borderRadius: 2.5,
                     borderColor: "rgba(15,23,42,0.08)",
-                    background: "rgba(255,255,255,0.92)",
+                    background: "color-mix(in srgb, var(--app-n-0) 92%, transparent)",
                     boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
                   }}
                 >
@@ -6547,7 +6547,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             px: 2.25,
             py: 1.5,
             gap: 1,
-            background: "#f8fafc",
+            background: "var(--app-n-50)",
             borderTop: "1px solid rgba(15,23,42,0.08)",
           }}
         >
@@ -6686,7 +6686,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             px: 2,
             py: 2,
             background:
-              "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(241,245,249,0.96) 100%)",
+              "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 96%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 96%, transparent) 100%)",
           }}
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -6709,7 +6709,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
               sx={{
                 "& .MuiOutlinedInput-root": {
                   borderRadius: 2,
-                  backgroundColor: "#fff",
+                  backgroundColor: "var(--app-n-0)",
                 },
               }}
             />
@@ -6744,7 +6744,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             py: 1.25,
             justifyContent: "space-between",
             gap: 1,
-            backgroundColor: "rgba(248,250,252,0.72)",
+            backgroundColor: "color-mix(in srgb, var(--app-n-50) 72%, transparent)",
             borderTop: "1px solid rgba(148,163,184,0.18)",
           }}
         >
@@ -6765,7 +6765,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                 borderRadius: 2,
                 fontWeight: 600,
                 borderColor: "rgba(148,163,184,0.35)",
-                color: "#334155",
+                color: "var(--app-n-700)",
                 "&:hover": {
                   borderColor: "rgba(100,116,139,0.55)",
                   backgroundColor: "rgba(148,163,184,0.06)",

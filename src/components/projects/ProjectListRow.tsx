@@ -65,7 +65,7 @@ function getStatusToneClasses(raw?: string | null): string {
   if (!value) {
     return classNames(
       "border-gray-300/80 bg-white text-gray-700",
-      "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
+      "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
     );
   }
 
@@ -128,7 +128,7 @@ function DialogShell(props: { children: React.ReactNode; onClose: () => void }) 
           crispText,
           "w-full max-w-lg rounded-2xl border p-5 shadow-2xl",
           "border-gray-300/90 bg-white text-gray-950",
-          "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+          "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
         )}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -257,7 +257,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           crispText,
           "group grid cursor-pointer grid-cols-1 gap-3 rounded-2xl border px-4 py-4 transition-all duration-200",
           "border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md",
-          "dark:border-slate-800 dark:bg-slate-950/70 dark:hover:border-slate-700",
+          "dark:border-gray-800 dark:bg-gray-950/70 dark:hover:border-slate-700",
           "xl:grid-cols-[minmax(260px,1fr)_200px_320px_280px_280px_52px] xl:items-center",
           isSelected ? "border-indigo-400 ring-2 ring-indigo-500/15 dark:border-indigo-600" : "",
         )}
@@ -333,7 +333,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           >
             {statusLabel}
           </span>
-          <span className="inline-flex rounded-full border border-slate-300/80 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          <span className="inline-flex rounded-full border border-slate-300/80 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200">
             {accessLabel}
           </span>
         </div>
@@ -346,7 +346,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
               event.stopPropagation();
               handleOpen();
             }}
-            className="hidden h-9 items-center gap-2 rounded-xl border border-slate-300/80 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 xl:inline-flex"
+            className="hidden h-9 items-center gap-2 rounded-xl border border-slate-300/80 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:shadow-md dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 xl:inline-flex"
           >
             Open
           </button>
@@ -377,7 +377,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
               <input
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-gray-950 dark:text-white"
               />
             </div>
 
@@ -389,7 +389,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
                 value={newDescription}
                 onChange={(event) => setNewDescription(event.target.value)}
                 rows={3}
-                className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-gray-950 dark:text-white"
               />
             </div>
 
@@ -400,7 +400,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             <button
               type="button"
               onClick={() => setIsRenaming(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 dark:hover:bg-gray-800"
             >
               Cancel
             </button>
@@ -428,7 +428,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             <button
               type="button"
               onClick={() => setShowDeleteModal(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 dark:hover:bg-gray-800"
             >
               Cancel
             </button>

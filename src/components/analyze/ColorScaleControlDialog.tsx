@@ -65,14 +65,14 @@ const wizardDialogTitleSx = {
 const wizardDialogContentSx = {
   px: 2.5,
   py: 2.5,
-  background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+  background: "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
   borderColor: "rgba(15,23,42,0.08)",
 };
 
 const wizardDialogActionsSx = {
   px: 2.5,
   py: 2,
-  backgroundColor: "#ffffff",
+  backgroundColor: "var(--app-n-0)",
   borderTop: "1px solid rgba(15,23,42,0.08)",
   justifyContent: "flex-end",
   gap: 1.25,
@@ -332,7 +332,7 @@ export default function ColorScaleControlDialog({
           sx={{
             borderRadius: "18px",
             border: "1px solid rgba(15,23,42,0.10)",
-            backgroundColor: "#ffffff",
+            backgroundColor: "var(--app-n-0)",
             overflow: "hidden",
           }}
         >
@@ -341,7 +341,7 @@ export default function ColorScaleControlDialog({
               px: 2,
               py: 1.5,
               borderBottom: "1px solid rgba(15,23,42,0.08)",
-              backgroundColor: "rgba(248,250,252,0.9)",
+              backgroundColor: "color-mix(in srgb, var(--app-n-50) 90%, transparent)",
             }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -426,7 +426,7 @@ export default function ColorScaleControlDialog({
                   "& .MuiSlider-thumb": {
                     width: 16,
                     height: 16,
-                    backgroundColor: "#ffffff",
+                    backgroundColor: "var(--app-n-0)",
                     border: "1px solid rgba(15,23,42,0.18)",
                   },
                   "& .MuiSlider-track": {
@@ -434,7 +434,7 @@ export default function ColorScaleControlDialog({
                   },
                   "& .MuiSlider-rail": {
                     opacity: 1,
-                    backgroundColor: "#d1d5db",
+                    backgroundColor: "var(--app-n-300)",
                   },
                 }}
               />
@@ -525,7 +525,7 @@ export default function ColorScaleControlDialog({
                         <Typography
                           variant="body2"
                           sx={{
-                            color: selected ? "#ffffff" : "#111827",
+                            color: selected ? "#ffffff" : "var(--app-n-900)",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",

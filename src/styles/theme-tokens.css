@@ -1,0 +1,199 @@
+/*
+ * The colours of the interface, for the light and the dark theme.
+ *
+ * One source for everything: Tailwind (bg-app-surface, text-app-muted...),
+ * CSS modules and MUI sx (var(--app-surface)), and the MUI theme
+ * (src/theme/tokens.ts mirrors these values; a test keeps them equal).
+ * Scientific images (micrographs, volumes, colour maps) keep their own colours.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Page, panels on it, and panels inside panels. */
+  --app-bg: #f9fafb;
+  --app-surface: #ffffff;
+  --app-surface-2: #f8fafc;
+  --app-surface-3: #f1f5f9;
+  /* Hover and selection backgrounds. */
+  --app-hover: #f1f5f9;
+  --app-selected: #e0e7ff;
+
+  --app-border: #e2e8f0;
+  --app-border-strong: #cbd5e1;
+
+  --app-text: #0f172a;
+  --app-text-muted: #475569;
+  --app-text-subtle: #64748b;
+  --app-text-disabled: #94a3b8;
+
+  --app-accent: #2563eb;
+  --app-accent-soft: #dbeafe;
+  --app-success: #16a34a;
+  --app-warning: #d97706;
+  --app-danger: #dc2626;
+
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
+  /* Behind images and viewers' canvases. */
+  --app-canvas: #e2e8f0;
+
+  /* Neutral scale: light values as they were; inverted in the dark theme. */
+  --app-n-0: #ffffff;
+  --app-n-25: #fcfcfd;
+  --app-n-50: #f8fafc;
+  --app-n-100: #f1f5f9;
+  --app-n-150: #e9eef5;
+  --app-n-200: #e2e8f0;
+  --app-n-300: #cbd5e1;
+  --app-n-400: #94a3b8;
+  --app-n-500: #64748b;
+  --app-n-600: #475569;
+  --app-n-700: #334155;
+  --app-n-800: #1e293b;
+  --app-n-900: #0f172a;
+
+  /* Tints of alerts and selections: light values as they were; deep tints and light text in dark. */
+  --app-red-50: #fef2f2;
+  --app-red-100: #fee2e2;
+  --app-red-200: #fecaca;
+  --app-red-700: #b91c1c;
+  --app-red-800: #991b1b;
+  --app-red-900: #7f1d1d;
+  --app-amber-50: #fffbeb;
+  --app-amber-100: #fef3c7;
+  --app-amber-200: #fde68a;
+  --app-amber-700: #b45309;
+  --app-amber-800: #92400e;
+  --app-amber-900: #78350f;
+  --app-yellow-50: #fefce8;
+  --app-yellow-100: #fef9c3;
+  --app-yellow-200: #fef08a;
+  --app-yellow-700: #a16207;
+  --app-yellow-800: #854d0e;
+  --app-yellow-900: #713f12;
+  --app-green-50: #f0fdf4;
+  --app-green-100: #dcfce7;
+  --app-green-200: #bbf7d0;
+  --app-green-700: #15803d;
+  --app-green-800: #166534;
+  --app-green-900: #14532d;
+  --app-emerald-50: #ecfdf5;
+  --app-emerald-100: #d1fae5;
+  --app-emerald-200: #a7f3d0;
+  --app-emerald-700: #047857;
+  --app-emerald-800: #065f46;
+  --app-emerald-900: #064e3b;
+  --app-blue-50: #eff6ff;
+  --app-blue-100: #dbeafe;
+  --app-blue-200: #bfdbfe;
+  --app-blue-700: #1d4ed8;
+  --app-blue-800: #1e40af;
+  --app-blue-900: #1e3a8a;
+  --app-indigo-50: #eef2ff;
+  --app-indigo-100: #e0e7ff;
+  --app-indigo-200: #c7d2fe;
+  --app-indigo-700: #4338ca;
+  --app-indigo-800: #3730a3;
+  --app-indigo-900: #312e81;
+  --app-sky-50: #f0f9ff;
+  --app-sky-100: #e0f2fe;
+  --app-sky-200: #bae6fd;
+  --app-sky-700: #0369a1;
+  --app-sky-800: #075985;
+  --app-sky-900: #0c4a6e;
+}
+
+:root.dark,
+.dark .projectpage-widget-root,
+.projectpage-widget-root.dark {
+  color-scheme: dark;
+
+  --app-bg: #101828;
+  --app-surface: #1a2231;
+  --app-surface-2: #1d2939;
+  --app-surface-3: #243145;
+  --app-hover: #243145;
+  --app-selected: #263a5e;
+
+  --app-border: #2b3648;
+  --app-border-strong: #344054;
+
+  --app-text: #e4e7ec;
+  --app-text-muted: #98a2b3;
+  --app-text-subtle: #7c879a;
+  --app-text-disabled: #566072;
+
+  --app-accent: #60a5fa;
+  --app-accent-soft: #1e3a5f;
+  --app-success: #4ade80;
+  --app-warning: #fbbf24;
+  --app-danger: #f87171;
+
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.45);
+  --app-canvas: #0c111d;
+
+  /* Neutral scale: light values as they were; inverted in the dark theme. */
+  --app-n-0: #1a2231;
+  --app-n-25: #1c2536;
+  --app-n-50: #1d2939;
+  --app-n-100: #243145;
+  --app-n-150: #28354b;
+  --app-n-200: #2b3648;
+  --app-n-300: #3a4a63;
+  --app-n-400: #7c879a;
+  --app-n-500: #98a2b3;
+  --app-n-600: #b4bdcb;
+  --app-n-700: #ccd3dd;
+  --app-n-800: #e4e7ec;
+  --app-n-900: #f2f4f7;
+
+  /* Tints of alerts and selections: light values as they were; deep tints and light text in dark. */
+  --app-red-50: rgba(239, 68, 68, 0.10);
+  --app-red-100: rgba(239, 68, 68, 0.16);
+  --app-red-200: rgba(239, 68, 68, 0.30);
+  --app-red-700: #fca5a5;
+  --app-red-800: #fecaca;
+  --app-red-900: #fee2e2;
+  --app-amber-50: rgba(245, 158, 11, 0.10);
+  --app-amber-100: rgba(245, 158, 11, 0.16);
+  --app-amber-200: rgba(245, 158, 11, 0.30);
+  --app-amber-700: #fcd34d;
+  --app-amber-800: #fde68a;
+  --app-amber-900: #fef3c7;
+  --app-yellow-50: rgba(234, 179, 8, 0.10);
+  --app-yellow-100: rgba(234, 179, 8, 0.16);
+  --app-yellow-200: rgba(234, 179, 8, 0.30);
+  --app-yellow-700: #fde047;
+  --app-yellow-800: #fef08a;
+  --app-yellow-900: #fef9c3;
+  --app-green-50: rgba(34, 197, 94, 0.10);
+  --app-green-100: rgba(34, 197, 94, 0.16);
+  --app-green-200: rgba(34, 197, 94, 0.30);
+  --app-green-700: #86efac;
+  --app-green-800: #bbf7d0;
+  --app-green-900: #dcfce7;
+  --app-emerald-50: rgba(16, 185, 129, 0.10);
+  --app-emerald-100: rgba(16, 185, 129, 0.16);
+  --app-emerald-200: rgba(16, 185, 129, 0.30);
+  --app-emerald-700: #6ee7b7;
+  --app-emerald-800: #a7f3d0;
+  --app-emerald-900: #d1fae5;
+  --app-blue-50: rgba(59, 130, 246, 0.10);
+  --app-blue-100: rgba(59, 130, 246, 0.16);
+  --app-blue-200: rgba(59, 130, 246, 0.30);
+  --app-blue-700: #93c5fd;
+  --app-blue-800: #bfdbfe;
+  --app-blue-900: #dbeafe;
+  --app-indigo-50: rgba(99, 102, 241, 0.10);
+  --app-indigo-100: rgba(99, 102, 241, 0.16);
+  --app-indigo-200: rgba(99, 102, 241, 0.30);
+  --app-indigo-700: #a5b4fc;
+  --app-indigo-800: #c7d2fe;
+  --app-indigo-900: #e0e7ff;
+  --app-sky-50: rgba(14, 165, 233, 0.10);
+  --app-sky-100: rgba(14, 165, 233, 0.16);
+  --app-sky-200: rgba(14, 165, 233, 0.30);
+  --app-sky-700: #7dd3fc;
+  --app-sky-800: #bae6fd;
+  --app-sky-900: #e0f2fe;
+}

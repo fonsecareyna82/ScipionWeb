@@ -185,7 +185,7 @@ export default function InstallDevelPluginDialog({
                     "min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm font-medium outline-none transition",
                     "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400",
                     "focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/15",
-                    "dark:border-gray-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-gray-500",
+                    "dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500",
                   )}
                   disabled={installing}
                 />
@@ -211,7 +211,7 @@ export default function InstallDevelPluginDialog({
                   className={classNames(
                     "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
                     "border-gray-300 bg-white text-gray-800 shadow-sm hover:border-gray-400 hover:shadow-md",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:border-gray-600",
                     "disabled:cursor-not-allowed disabled:opacity-60",
                   )}
                 >
@@ -221,8 +221,8 @@ export default function InstallDevelPluginDialog({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-300/80 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-slate-950/60">
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200/80 bg-white p-3 text-sm dark:border-gray-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-gray-300/80 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-950/60">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200/80 bg-white p-3 text-sm dark:border-gray-800 dark:bg-gray-900">
                 <input
                   type="checkbox"
                   checked={skipBinaries}
@@ -282,12 +282,12 @@ export default function InstallDevelPluginDialog({
             ) : null}
           </div>
 
-          <DialogFooter className="border-t border-gray-200 bg-gray-50/80 px-6 py-4 dark:border-gray-800 dark:bg-slate-950/80">
+          <DialogFooter className="border-t border-gray-200 bg-gray-50/80 px-6 py-4 dark:border-gray-800 dark:bg-gray-950/80">
             <button
               type="button"
               onClick={onClose}
               disabled={installing}
-              className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md disabled:opacity-60 dark:border-gray-700 dark:bg-slate-900 dark:text-white"
+              className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             >
               Cancel
             </button>

@@ -479,7 +479,7 @@ const ParamRow = ({
                 borderRadius: 2,
                 "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
                 "&:focus-visible": {
-                  outline: "2px solid rgba(255,255,255,0.55)",
+                  outline: "2px solid color-mix(in srgb, var(--app-n-0) 55%, transparent)",
                   outlineOffset: 2,
                 },
               }}

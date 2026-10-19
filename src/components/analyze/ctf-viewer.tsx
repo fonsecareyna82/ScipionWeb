@@ -906,7 +906,7 @@ export default function CtfViewer({
                         },
                         line: {
                             width: 0.5,
-                            color: "#374151",
+                            color: "var(--app-n-700)",
                         },
                     },
                 },
@@ -944,7 +944,7 @@ export default function CtfViewer({
                         size: 13,
                         color: "rgba(250,204,21,0.95)",
                         line: {
-                            color: "#111827",
+                            color: "var(--app-n-900)",
                             width: 2,
                         },
                     },
@@ -1215,7 +1215,7 @@ export default function CtfViewer({
                         hovertemplate,
                         marker: {
                             size: 7,
-                            color: "#6b7280",
+                            color: "var(--app-n-500)",
                             symbol: "x",
                         },
                         yaxis: "y",
@@ -1236,7 +1236,7 @@ export default function CtfViewer({
                         size: 11,
                         color: "rgba(250,204,21,0.95)",
                         line: {
-                            color: "#111827",
+                            color: "var(--app-n-900)",
                             width: 2,
                         },
                     };
@@ -1520,7 +1520,7 @@ export default function CtfViewer({
                         p: 0.75,
                         flexShrink: 0,
                         borderBottom:
-                            "1px solid #e5e7eb",
+                            "1px solid var(--app-n-200)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -1603,7 +1603,7 @@ export default function CtfViewer({
                     display: "flex",
                     flexDirection: "column",
                     borderRight:
-                        "1px solid #e5e7eb",
+                        "1px solid var(--app-n-200)",
                 }}
             >
                 <Paper
@@ -1613,7 +1613,7 @@ export default function CtfViewer({
                         p: 0.75,
                         flexShrink: 0,
                         borderBottom:
-                            "1px solid #e5e7eb",
+                            "1px solid var(--app-n-200)",
                         display: "flex",
                         alignItems: "center",
                         gap: 1,
@@ -2025,7 +2025,7 @@ export default function CtfViewer({
                             px: 1,
                             py: 0.5,
                             borderBottom:
-                                "1px solid #e5e7eb",
+                                "1px solid var(--app-n-200)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent:
@@ -2112,8 +2112,8 @@ export default function CtfViewer({
                             gridTemplateColumns:
                                 "0.65fr 0.65fr 1.15fr 1.2fr 1.3fr",
                             gap: 1.25,
-                            borderBottom: "1px solid #e5e7eb",
-                            bgcolor: "#fafafa",
+                            borderBottom: "1px solid var(--app-n-200)",
+                            bgcolor: "var(--app-n-50)",
                             flexShrink: 0,
                         }}
                     >
@@ -2222,7 +2222,7 @@ export default function CtfViewer({
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 1,
-                                borderBottom: "1px solid #e5e7eb",
+                                borderBottom: "1px solid var(--app-n-200)",
                                 bgcolor: "background.paper",
                                 flexShrink: 0,
                             }}

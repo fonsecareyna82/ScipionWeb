@@ -2051,7 +2051,7 @@ export default function VolumeViewer({
         <Box
           sx={{
             width: 240,
-            borderRight: "1px solid #eee",
+            borderRight: "1px solid var(--app-n-100)",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
@@ -2143,7 +2143,7 @@ export default function VolumeViewer({
         <Paper
           elevation={0}
           square
-          sx={{ p: 0.75, borderBottom: "1px solid #eee", flexShrink: 0 }}
+          sx={{ p: 0.75, borderBottom: "1px solid var(--app-n-100)", flexShrink: 0 }}
         >
           <Box
             sx={{

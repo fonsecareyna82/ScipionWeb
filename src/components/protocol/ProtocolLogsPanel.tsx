@@ -254,8 +254,8 @@ export default function ProtocolLogsPanel({
           key={`match-${matchIndex++}`}
           data-testid="log-search-match"
           style={{
-            background: ordinal === currentMatch ? '#f59e0b' : '#fef08a',
-            color: '#111827',
+            background: ordinal === currentMatch ? '#f59e0b' : 'var(--app-yellow-200)',
+            color: 'var(--app-n-900)',
           }}
         >
           {clean.slice(start, start + searchQuery.length)}

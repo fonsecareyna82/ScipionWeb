@@ -123,7 +123,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
           "relative w-full max-w-md overflow-hidden rounded-2xl border p-5 shadow-2xl",
           "border-gray-300/90 bg-white",
           "ring-1 ring-inset ring-black/[0.08]",
-          "dark:border-gray-700 dark:bg-slate-900",
+          "dark:border-gray-700 dark:bg-gray-900",
           "dark:ring-white/[0.08]",
         )}
         onMouseDown={(e) => e.stopPropagation()}
@@ -131,7 +131,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
         <div className="relative">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                 <PlusCircle className="h-5 w-5" />
               </div>
               <div>
@@ -157,7 +157,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
               className={classNames(
                 "inline-flex items-center justify-center rounded-xl border p-2 transition",
                 "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                 loading ? "opacity-60" : "",
               )}
               aria-label="Close"
@@ -180,7 +180,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
                   "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
                   "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                   "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                 )}
                 aria-invalid={!!errorMsg}
                 aria-describedby={errorMsg ? "new-project-error" : undefined}
@@ -200,7 +200,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
                   "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none transition",
                   "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                   "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                 )}
                 rows={3}
                 maxLength={2000}
@@ -224,7 +224,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
                 className={classNames(
                   "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
                   "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                 )}
               >
                 Cancel

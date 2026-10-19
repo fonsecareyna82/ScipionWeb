@@ -3023,7 +3023,7 @@ export default function Coords3dViewer({
         <Box
           sx={{
             width: 270,
-            borderRight: "1px solid #e5e7eb",
+            borderRight: "1px solid var(--app-n-200)",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
@@ -3100,7 +3100,7 @@ export default function Coords3dViewer({
           <Paper
             elevation={0}
             square
-            sx={{ p: 0.75, borderBottom: "1px solid #e5e7eb", flexShrink: 0 }}
+            sx={{ p: 0.75, borderBottom: "1px solid var(--app-n-200)", flexShrink: 0 }}
           >
             <Box
               sx={{
@@ -4320,7 +4320,7 @@ export default function Coords3dViewer({
                                     height: 20,
                                     borderRadius: "50%",
                                     cursor: "pointer",
-                                    border: isSelected ? "2px solid #111827" : "1px solid #d1d5db",
+                                    border: isSelected ? "2px solid var(--app-n-900)" : "1px solid var(--app-n-300)",
                                     boxShadow: isSelected ? 1 : "none",
                                     backgroundColor: c.value,
                                   }}

@@ -1451,7 +1451,7 @@ export default function GpuVolumeView({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "rgba(255,255,255,0.92)",
+            background: "color-mix(in srgb, var(--app-n-0) 92%, transparent)",
             zIndex: 2,
             fontSize: 14,
           }}

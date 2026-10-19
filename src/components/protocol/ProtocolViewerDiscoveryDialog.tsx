@@ -21,7 +21,7 @@ type Props = {
 };
 
 const HEADER_BG = "#333d49";
-const SURFACE_BG = "#f8fafc";
+const SURFACE_BG = "var(--app-n-50)";
 const BORDER = "rgba(148, 163, 184, 0.45)";
 
 function viewerDisplayName(viewer: ProtocolViewerCandidate): string {
@@ -173,7 +173,7 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
             Analyze protocol results
           </Typography>
           {subtitle && (
-            <Typography noWrap sx={{ fontSize: "0.78rem", color: "#cbd5e1" }}>{subtitle}</Typography>
+            <Typography noWrap sx={{ fontSize: "0.78rem", color: "var(--app-n-300)" }}>{subtitle}</Typography>
           )}
         </Box>
         <Tooltip title="Close">
@@ -187,11 +187,11 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
       <DialogContent sx={{ p: 0, bgcolor: SURFACE_BG, display: "flex", minHeight: 0, flex: 1 }}>
         {showSidebar && (
           <Box component="nav" aria-label="Protocol viewers" sx={{
-            width: 248, flex: "0 0 auto", bgcolor: "#ffffff", borderRight: `1px solid ${BORDER}`,
+            width: 248, flex: "0 0 auto", bgcolor: "var(--app-n-0)", borderRight: `1px solid ${BORDER}`,
             overflowY: "auto", py: 1.25,
           }}>
             <Typography sx={{ px: 2, pb: 1, fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6,
-              textTransform: "uppercase", color: "#64748b" }}>
+              textTransform: "uppercase", color: "var(--app-n-500)" }}>
               Viewers
             </Typography>
             {viewers.map((viewer, index) => {
@@ -210,18 +210,18 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
                     all: "unset", boxSizing: "border-box", cursor: "pointer", width: "100%",
                     display: "flex", alignItems: "center", gap: 1, px: 2, py: 1,
                     borderLeft: "3px solid", borderColor: isExpanded ? HEADER_BG : "transparent",
-                    bgcolor: isExpanded ? "#eef2f6" : "transparent",
-                    "&:hover": { bgcolor: isExpanded ? "#eef2f6" : "#f1f5f9" },
+                    bgcolor: isExpanded ? "var(--app-n-150)" : "transparent",
+                    "&:hover": { bgcolor: isExpanded ? "var(--app-n-150)" : "var(--app-n-100)" },
                     "&:focus-visible": { outline: `2px solid ${HEADER_BG}`, outlineOffset: -2 },
                   }}
                 >
                   <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: isExpanded ? 700 : 600, color: "#0f172a" }}>
+                    <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: isExpanded ? 700 : 600, color: "var(--app-n-900)" }}>
                       {displayName}
                     </Typography>
-                    {plugin && <Typography noWrap sx={{ fontSize: "0.72rem", color: "#64748b" }}>{plugin}</Typography>}
+                    {plugin && <Typography noWrap sx={{ fontSize: "0.72rem", color: "var(--app-n-500)" }}>{plugin}</Typography>}
                     {!runtimePreviewAvailable && (
-                      <Typography sx={{ fontSize: "0.72rem", color: "#b45309" }}>Web integration pending</Typography>
+                      <Typography sx={{ fontSize: "0.72rem", color: "var(--app-amber-700)" }}>Web integration pending</Typography>
                     )}
                   </Box>
                   <ChevronRight size={15} color={isExpanded ? HEADER_BG : "#94a3b8"} />
@@ -238,7 +238,7 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
       <Divider />
 
       <DialogActions sx={{ px: 2.25, py: 1.25, bgcolor: SURFACE_BG, justifyContent: "space-between", gap: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "#475569", minWidth: 0 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "var(--app-n-600)", minWidth: 0 }}>
           {runtimePreviewAvailable ? <Eye size={16} /> : <Info size={16} />}
           <Typography sx={{ fontSize: "0.8rem" }}>
             {runtimePreviewAvailable
@@ -264,8 +264,8 @@ function CenteredState({ icon, title, text, action }: CenteredStateProps) {
       gap: 1, p: 4, textAlign: "center",
     }}>
       {icon}
-      <Typography sx={{ fontWeight: 600, color: "#1e293b" }}>{title}</Typography>
-      {text && <Typography variant="body2" sx={{ color: "#64748b", maxWidth: 420 }}>{text}</Typography>}
+      <Typography sx={{ fontWeight: 600, color: "var(--app-n-800)" }}>{title}</Typography>
+      {text && <Typography variant="body2" sx={{ color: "var(--app-n-500)", maxWidth: 420 }}>{text}</Typography>}
       {action}
     </Box>
   );
@@ -276,9 +276,9 @@ function StaticViewerDetails({ viewer }: { viewer: ProtocolViewerCandidate }) {
   return (
     <Box sx={{ overflowY: "auto", p: 2.5 }}>
       <Paper variant="outlined" sx={{ p: 2, borderColor: BORDER }} data-testid="protocol-viewer-details">
-        <Typography sx={{ fontWeight: 700, color: "#0f172a" }}>{viewerDisplayName(viewer)}</Typography>
-        <Typography variant="body2" sx={{ color: "#475569" }}>Contract: {preview.status}</Typography>
-        <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#64748b" }}>
+        <Typography sx={{ fontWeight: 700, color: "var(--app-n-900)" }}>{viewerDisplayName(viewer)}</Typography>
+        <Typography variant="body2" sx={{ color: "var(--app-n-600)" }}>Contract: {preview.status}</Typography>
+        <Typography variant="caption" sx={{ display: "block", mb: 1, color: "var(--app-n-500)" }}>
           Static preview only. No controls or visualization actions are executable.
         </Typography>
         {!preview.hasStaticForm && (

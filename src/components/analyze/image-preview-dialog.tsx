@@ -522,7 +522,7 @@ export function ImagePreviewDialog({
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              backgroundColor: "#e2e8f0",
+              backgroundColor: "var(--app-n-200)",
             }}
           >
 
@@ -535,7 +535,7 @@ export function ImagePreviewDialog({
                   alignItems: "center",
                   flexWrap: "wrap",
                   gap: 1.5,
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "var(--app-n-0)",
                   borderBottom: "1px solid rgba(148,163,184,0.24)",
                 }}
               >
@@ -555,7 +555,7 @@ export function ImagePreviewDialog({
                   <Typography
                     data-testid="preview-zoom-level"
                     variant="caption"
-                    sx={{ minWidth: 40, textAlign: "center", color: "#475569", fontWeight: 650 }}
+                    sx={{ minWidth: 40, textAlign: "center", color: "var(--app-n-600)", fontWeight: 650 }}
                   >
                     {Math.round(zoom * 100)}%
                   </Typography>
@@ -642,7 +642,7 @@ export function ImagePreviewDialog({
                   size="small"
                   disabled={!previewUrl}
                   onClick={resetView}
-                  sx={{ ml: "auto", textTransform: "none", fontWeight: 650, color: "#475569" }}
+                  sx={{ ml: "auto", textTransform: "none", fontWeight: 650, color: "var(--app-n-600)" }}
                 >
                   Reset
                 </Button>
@@ -668,13 +668,13 @@ export function ImagePreviewDialog({
                 background: `
               radial-gradient(
                 circle at 50% 38%,
-                rgba(255,255,255,0.98) 0%,
-                rgba(248,250,252,0.96) 38%,
-                rgba(226,232,240,0.96) 100%
+                color-mix(in srgb, var(--app-n-0) 98%, transparent) 0%,
+                color-mix(in srgb, var(--app-n-50) 96%, transparent) 38%,
+                color-mix(in srgb, var(--app-n-200) 96%, transparent) 100%
               )
             `,
                 boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(148,163,184,0.22)",
+                  "inset 0 1px 0 color-mix(in srgb, var(--app-n-0) 90%, transparent), inset 0 -1px 0 rgba(148,163,184,0.22)",
               }}
             >
               <Box
@@ -723,7 +723,7 @@ export function ImagePreviewDialog({
                     px: 3,
                     py: 2.5,
                     borderRadius: "16px",
-                    backgroundColor: "rgba(255,255,255,0.82)",
+                    backgroundColor: "color-mix(in srgb, var(--app-n-0) 82%, transparent)",
                     border: "1px solid rgba(148,163,184,0.25)",
                     boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
                     backdropFilter: "blur(8px)",
@@ -740,7 +740,7 @@ export function ImagePreviewDialog({
                   <Typography
                     variant="caption"
                     sx={{
-                      color: "#64748b",
+                      color: "var(--app-n-500)",
                       fontWeight: 600,
                     }}
                   >
@@ -864,7 +864,7 @@ export function ImagePreviewDialog({
                   alignItems: "center",
                   flexWrap: "wrap",
                   gap: 0.9,
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "var(--app-n-0)",
                   borderTop: "1px solid rgba(148,163,184,0.24)",
                 }}
               >
@@ -875,13 +875,13 @@ export function ImagePreviewDialog({
                       px: 1.15,
                       py: 0.55,
                       borderRadius: "9px",
-                      backgroundColor: highlight ? "#eef2ff" : "#f8fafc",
-                      border: `1px solid ${highlight ? "#c7d2fe" : "#e2e8f0"}`,
+                      backgroundColor: highlight ? "var(--app-indigo-50)" : "var(--app-n-50)",
+                      border: `1px solid ${highlight ? "var(--app-indigo-200)" : "var(--app-n-200)"}`,
                     }}
                   >
-                    <Typography variant="caption" sx={{ color: highlight ? "#4338ca" : "#64748b" }}>
+                    <Typography variant="caption" sx={{ color: highlight ? "var(--app-indigo-700)" : "var(--app-n-500)" }}>
                       {label}{" "}
-                      <Box component="span" sx={{ color: highlight ? "inherit" : "#0f172a", fontWeight: 750 }}>
+                      <Box component="span" sx={{ color: highlight ? "inherit" : "var(--app-n-900)", fontWeight: 750 }}>
                         {value}
                       </Box>
                     </Typography>
@@ -894,7 +894,7 @@ export function ImagePreviewDialog({
                       xs: 0,
                       sm: "auto",
                     },
-                    color: "#64748b",
+                    color: "var(--app-n-500)",
                   }}
                 >
                   <Typography

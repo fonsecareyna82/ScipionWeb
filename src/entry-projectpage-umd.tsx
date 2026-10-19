@@ -1,5 +1,6 @@
 // src/entry-projectpage-umd.tsx
 import "./pages/Dashboard/projects/ProjectPage.css";
+import "./styles/theme-tokens.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -22,6 +23,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
 import { DragProvider } from "./components/protocol/DragContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { AppMuiThemeProvider } from "./theme/AppMuiThemeProvider";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
@@ -46,8 +48,8 @@ class WidgetErrorBoundary extends React.Component<
     return (
       <pre
         style={{
-          color: "#b91c1c",
-          background: "#fee2e2",
+          color: "var(--app-red-700)",
+          background: "var(--app-red-100)",
           padding: 12,
           borderRadius: 8,
           whiteSpace: "pre-wrap",
@@ -648,6 +650,7 @@ export function mountProjectPageWidget({
         <QueryClientProviderV5 client={qcV5}>
           <CacheProvider value={emotionCache}>
             <ThemeProvider>
+              <AppMuiThemeProvider>
               <MemoryRouter initialEntries={[initialPath]}>
                 <HelmetProvider>
                   <WidgetErrorBoundary>
@@ -660,6 +663,7 @@ export function mountProjectPageWidget({
                   </WidgetErrorBoundary>
                 </HelmetProvider>
               </MemoryRouter>
+              </AppMuiThemeProvider>
             </ThemeProvider>
           </CacheProvider>
         </QueryClientProviderV5>

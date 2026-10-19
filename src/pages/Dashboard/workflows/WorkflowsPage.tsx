@@ -282,7 +282,7 @@ function WorkflowGraphPreview({ workflow }: { workflow: ProjectWorkflow }) {
   }
 
   return (
-    <div className="h-[520px] overflow-hidden rounded-xl border border-gray-300/80 bg-gray-50 dark:border-gray-700 dark:bg-slate-950">
+    <div className="h-[520px] overflow-hidden rounded-xl border border-gray-300/80 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -314,7 +314,7 @@ function CardShell(props: { title: string; subtitle?: string; right?: ReactNode;
         crispText,
         "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
         "border-gray-300/90 bg-white",
-        "dark:border-gray-700 dark:bg-slate-900",
+        "dark:border-gray-700 dark:bg-gray-900",
         "lg:p-6",
       )}
     >
@@ -343,7 +343,7 @@ function StatPill(props: { label: string; value: ReactNode; accent?: "indigo" | 
         crispText,
         "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium",
         "border-gray-300/80 bg-white text-gray-900",
-        "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+        "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
       )}
     >
       <span className="text-gray-700 dark:text-gray-300">{props.label}</span>
@@ -398,7 +398,7 @@ function SecondaryButton(props: {
         crispText,
         "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
         "border-gray-300/80 bg-white text-gray-900 shadow-sm hover:border-gray-400 hover:shadow-md",
-        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
+        "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:border-gray-600",
         "disabled:cursor-not-allowed disabled:opacity-60",
         props.className,
       )}
@@ -478,11 +478,11 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
-      <div className="border-b border-gray-200/90 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-slate-800/70">
+    <div className="overflow-hidden rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <div className="border-b border-gray-200/90 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+            <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
               <FileText className="h-4 w-4" />
             </div>
 
@@ -497,7 +497,7 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
           </div>
 
           {workflow.source ? (
-            <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+            <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
               {workflow.source}
             </span>
           ) : null}
@@ -523,7 +523,7 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
             {details.map((line, index) => (
               <div
                 key={`${workflow.id}-description-detail-${index}`}
-                className="rounded-xl border border-gray-200/90 bg-white px-3 py-2 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-slate-950/40 dark:text-gray-200"
+                className="rounded-xl border border-gray-200/90 bg-white px-3 py-2 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-200"
               >
                 {line}
               </div>
@@ -532,7 +532,7 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
         ) : null}
 
         {pluginNames.length ? (
-          <div className="rounded-xl border border-gray-200/90 bg-white p-3 dark:border-gray-700 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-gray-200/90 bg-white p-3 dark:border-gray-700 dark:bg-gray-950/40">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">
               Required plugins
             </div>
@@ -551,7 +551,7 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
         ) : null}
 
         {metadataLines.length ? (
-          <details className="rounded-xl border border-gray-200/90 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-slate-950/40">
+          <details className="rounded-xl border border-gray-200/90 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950/40">
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">
               ScipionWeb metadata
             </summary>
@@ -560,7 +560,7 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
               {metadataLines.map((line, index) => (
                 <div
                   key={`${workflow.id}-metadata-${index}`}
-                  className="break-words rounded-lg bg-white px-2.5 py-1.5 font-mono text-[11px] leading-5 text-gray-700 dark:bg-slate-900 dark:text-gray-300"
+                  className="break-words rounded-lg bg-white px-2.5 py-1.5 font-mono text-[11px] leading-5 text-gray-700 dark:bg-gray-900 dark:text-gray-300"
                 >
                   {line}
                 </div>
@@ -720,7 +720,7 @@ export default function WorkflowsPage() {
                     "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
                     "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                     "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                     "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                   )}
                 />
@@ -735,13 +735,13 @@ export default function WorkflowsPage() {
               </div>
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-300/90 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-300/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
               <div
                 className={classNames(
                   crispText,
                   "grid grid-cols-12 gap-3 border-b px-4 py-3.5",
                   "border-gray-300/80 bg-gray-100 text-gray-800",
-                  "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
+                  "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
                 )}
               >
                 <div className="col-span-4 text-sm font-semibold tracking-[0.01em]">Workflow</div>
@@ -775,8 +775,8 @@ export default function WorkflowsPage() {
                         key={wf.id}
                         className={classNames(
                           "grid grid-cols-12 gap-3 px-4 py-3.5 transition",
-                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
-                          isSelected ? "bg-gray-100 dark:bg-slate-800" : "",
+                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
+                          isSelected ? "bg-gray-100 dark:bg-gray-800" : "",
                         )}
                       >
                         <button
@@ -861,7 +861,7 @@ export default function WorkflowsPage() {
             subtitle={selectedWorkflow ? "Selected workflow overview." : "Select a workflow to preview it."}
           >
             {!selectedWorkflow ? (
-              <div className="rounded-2xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200">
+              <div className="rounded-2xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
                 No workflow selected.
               </div>
             ) : (
@@ -869,7 +869,7 @@ export default function WorkflowsPage() {
 
                 <WorkflowDescriptionCard workflow={selectedWorkflow} />
 
-                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
+                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1068,7 +1068,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
           "min-h-[520px] max-h-[520px]",
           "border-gray-300/90 bg-white",
           "ring-1 ring-inset ring-black/[0.10]",
-          "dark:border-gray-600 dark:bg-slate-900 dark:ring-white/[0.10]",
+          "dark:border-gray-600 dark:bg-gray-900 dark:ring-white/[0.10]",
         )}
       >
         <div className="relative flex h-full flex-col px-6 pt-6 pb-5">
@@ -1078,7 +1078,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
             className={classNames(
               "absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
               "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-              "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+              "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
             )}
             aria-label="Close"
           >
@@ -1090,7 +1090,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
             <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{workflow.name}</p>
           </div>
 
-          <div className="rounded-xl border border-gray-300/80 bg-white p-1 dark:border-gray-700 dark:bg-slate-900">
+          <div className="rounded-xl border border-gray-300/80 bg-white p-1 dark:border-gray-700 dark:bg-gray-900">
             <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
@@ -1098,8 +1098,8 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                 className={classNames(
                   "rounded-lg px-3 py-2 text-sm font-medium transition",
                   mode === "create"
-                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800/60",
+                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-gray-800 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/60",
                 )}
               >
                 Create new
@@ -1110,8 +1110,8 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                 className={classNames(
                   "rounded-lg px-3 py-2 text-sm font-medium transition",
                   mode === "select"
-                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800/60",
+                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-gray-800 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/60",
                 )}
               >
                 Select project
@@ -1134,7 +1134,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                       "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
                       "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                     )}
                   />
                 </div>
@@ -1151,7 +1151,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                       "w-full resize-none rounded-xl border px-3 py-2.5 text-sm leading-6 text-gray-900 outline-none transition placeholder:text-gray-400",
                       "border-gray-300/80 bg-white",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                     )}
                   />
                   <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
@@ -1170,7 +1170,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                     "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
                     "border-gray-300/80 bg-white text-gray-950",
                     "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
                   )}
                   disabled={projectsLoading || !!projectsError}
                 >

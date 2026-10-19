@@ -1,4 +1,5 @@
 // src/components/outputSelectorDialog.tsx
+import { ambiguousOutputQualifiers, type OutputQualifier } from "@/utils/output-qualifiers";
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import {
   Dialog,
@@ -62,6 +63,13 @@ interface Output {
 function getPointerClass(o: Output): string {
   // getPointerClass
   return getPointerClassLabel(o);
+}
+
+/** The output's name (the selector may only have its reference, "<protocol>.<output>"). */
+function outputNameOf(o: Output): string {
+  const direct = String(o.name ?? "").trim();
+  if (direct) return direct;
+  return String(o.key ?? o.value ?? "").split(".").pop()?.trim() ?? "";
 }
 
 function getParamClass(o: Output): string {
@@ -285,6 +293,23 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       : undefined;
     return getPointerOutputCompatibility(expectedClass, member, parentOutput);
   };
+
+  // Outputs of the same type of one protocol (e.g. good and discarded
+  // micrographs) are told apart by a qualifier from their names.
+  const outputQualifiers = useMemo(() => {
+    const byProducer = new Map<string, Output[]>();
+    for (const output of allOutputs ?? []) {
+      const producer = String(output.parentId ?? "");
+      byProducer.set(producer, [...(byProducer.get(producer) ?? []), output]);
+    }
+    const result = new Map<string, OutputQualifier>();
+    byProducer.forEach((outputs, producer) => {
+      ambiguousOutputQualifiers(outputs.map((output) => ({
+        name: outputNameOf(output), pointerClass: getPointerClass(output), info: output.info,
+      }))).forEach((qualifier, name) => result.set(`${producer}|${name}`, qualifier));
+    });
+    return result;
+  }, [allOutputs]);
 
   const matchingOutputs = useMemo(() => {
     // matchingOutputs
@@ -794,17 +819,32 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 </TableCell>
 
                       <TableCell>
-                        <Tooltip title={o.info || ""} disableHoverListener={!o.info}>
-                          <Typography
-                            variant="body2"
-                            noWrap
-                            sx={{
-                              color: alpha(theme.palette.text.primary, 0.88),
-                            }}
-                          >
-                            {o.info || "—"}
-                          </Typography>
-                        </Tooltip>
+                        {(() => {
+                          const qualifier = outputQualifiers.get(`${String(o.parentId ?? "")}|${outputNameOf(o)}`);
+                          const title = [qualifier?.text, outputNameOf(o), o.info].filter(Boolean).join(" · ");
+                          return (
+                            <Tooltip title={title} disableHoverListener={!title}>
+                              <Box sx={{
+                                minWidth: 0,
+                                // The unwanted part of a split: dashed border of its own colour.
+                                ...(qualifier?.negative ? {
+                                  px: 1, py: 0.25, borderRadius: 1.5,
+                                  border: "2px dashed rgba(220, 38, 38, 0.6)",
+                                } : {}),
+                              }}>
+                                <Typography
+                                  variant="body2"
+                                  noWrap
+                                  sx={{
+                                    color: alpha(theme.palette.text.primary, 0.88),
+                                  }}
+                                >
+                                  {o.info || "—"}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                          );
+                        })()}
                       </TableCell>
 
                       {!multiSelect && (

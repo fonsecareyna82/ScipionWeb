@@ -281,7 +281,7 @@ function buildStepGraph(steps: ProtocolStep[]): { nodes: Node<StepGraphData>[]; 
                     type: "bezier",
                     animated: false,
                     style: {
-                        stroke: "#9ca3af",
+                        stroke: "var(--app-n-400)",
                         strokeWidth: 1.2,
                         strokeLinecap: "round",
                     },

@@ -198,7 +198,7 @@ function getStatusToneClasses(raw?: string): string {
   if (!value) {
     return classNames(
       "border-gray-300/80 bg-white/90 text-gray-700",
-      "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
+      "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
     );
   }
 
@@ -1033,7 +1033,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     "relative min-h-[248px] cursor-pointer overflow-hidden rounded-[22px] border p-4 transition-all duration-300 md:p-5",
     "border-slate-200/90 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_26%),linear-gradient(145deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))]",
     "shadow-[0_12px_40px_rgba(15,23,42,0.07)] border-slate-300 hover:border-slate-500",
-    "dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_24%),linear-gradient(145deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))]",
+    "dark:border-gray-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_24%),linear-gradient(145deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))]",
     !isSelected ? "hover:border-slate-300 dark:hover:border-slate-700 " : "",
     !isRenaming && !isSelected
       ? "hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(15,23,42,0.12)]"
@@ -1088,7 +1088,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent" />
             <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-indigo-300/25 blur-3xl dark:bg-indigo-500/12" />
             <div className="absolute -left-8 bottom-4 h-24 w-24 rounded-full bg-cyan-200/30 blur-3xl dark:bg-cyan-500/10" />
-            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/55 to-transparent dark:from-slate-950/20 dark:to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/55 to-transparent dark:from-gray-950/20 dark:to-transparent" />
           </div>
 
           <div className="relative flex h-full flex-col">
@@ -1096,7 +1096,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               className={classNames(
                 "-mx-4 -mt-4 mb-0 rounded-t-[22px] border-b px-4 pb-3.5 pt-4 md:-mx-5 md:-mt-7 md:px-5 md:pt-5",
                 "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))]",
-                "dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.78))]",
+                "dark:border-gray-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.78))]",
               )}
             >
               <div className="flex items-start justify-between gap-3">
@@ -1127,7 +1127,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                         className={classNames(
                           "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold",
                           "border-slate-300/80 bg-white/90 text-slate-700",
-                          "dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+                          "dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200",
                         )}
                       >
                         {accessLabel}
@@ -1181,10 +1181,10 @@ export default function ProjectCard(props: ProjectCardProps) {
                   "overflow-hidden rounded-[20px] border",
                   "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(248,250,252,0.96))]",
                   "shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_10px_24px_rgba(15,23,42,0.06)]",
-                  "dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.56),rgba(2,6,23,0.82))]",
+                  "dark:border-gray-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.56),rgba(2,6,23,0.82))]",
                 )}
               >
-                <div className="relative h-[268px] w-full bg-slate-50/80 dark:bg-slate-900/70">
+                <div className="relative h-[268px] w-full bg-slate-50/80 dark:bg-gray-900/70">
                   {showGalleryLoading ? (
                     <div className="h-full overflow-hidden px-2.5 py-2.5">
                       <div className="flex h-full min-w-max items-stretch gap-2.5">
@@ -1194,19 +1194,19 @@ export default function ProjectCard(props: ProjectCardProps) {
                             className={classNames(
                               "h-full w-[284px] shrink-0 overflow-hidden rounded-[18px] border",
                               "border-slate-200/80 bg-white/95",
-                              "dark:border-slate-800 dark:bg-slate-950/90",
+                              "dark:border-gray-800 dark:bg-gray-950/90",
                             )}
                           >
-                            <div className="h-[34px] border-b border-slate-200/80 bg-slate-50 dark:border-slate-800 dark:bg-slate-900" />
-                            <div className="h-[calc(100%-34px)] animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
+                            <div className="h-[34px] border-b border-slate-200/80 bg-slate-50 dark:border-gray-800 dark:bg-gray-900" />
+                            <div className="h-[calc(100%-34px)] animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800" />
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : showGallery ? (
                     <>
-                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
-                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
 
                       <div className="h-full overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin]">
                         <div className="flex h-full min-w-max items-stretch gap-3">
@@ -1225,7 +1225,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                   className={classNames(
                                     "grid h-full grid-rows-[auto,1fr,auto] overflow-hidden rounded-[20px] border transition",
                                     "border-gray-200/90 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)]",
-                                    "dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_8px_24px_rgba(0,0,0,0.26)]",
+                                    "dark:border-gray-800 dark:bg-gray-950 dark:shadow-[0_8px_24px_rgba(0,0,0,0.26)]",
                                     "group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]",
                                   )}
                                 >
@@ -1233,7 +1233,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                     className={classNames(
                                       "flex items-center justify-between gap-2 border-b px-3 py-1.5",
                                       "border-gray-200/80 bg-gray-50",
-                                      "dark:border-slate-800 dark:bg-slate-900",
+                                      "dark:border-gray-800 dark:bg-gray-900",
                                     )}
                                   >
                                     <div className="truncate text-[12px]  text-gray-800 dark:text-slate-200">
@@ -1249,7 +1249,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                           className={classNames(
                                             "min-w-0 flex-1 overflow-hidden rounded-[14px] border",
                                             "border-gray-200 bg-gray-50",
-                                            "dark:border-slate-800 dark:bg-slate-900",
+                                            "dark:border-gray-800 dark:bg-gray-900",
                                           )}
                                           title={output.outputName ?? output.outputClassName ?? "Output"}
                                         >
@@ -1259,7 +1259,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                               alt={output.outputName ?? output.outputClassName ?? "Output"}
                                             />
                                           ) : (
-                                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
+                                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800" />
                                           )}
                                         </div>
                                       ))}
@@ -1270,7 +1270,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                     className={classNames(
                                       "border-t px-3 py-1.5",
                                       "border-gray-200/80 bg-white",
-                                      "dark:border-slate-800 dark:bg-slate-950",
+                                      "dark:border-gray-800 dark:bg-gray-950",
                                     )}
                                   >
 
@@ -1295,8 +1295,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                     </>
                   ) : showProjectFallback ? (
                     <>
-                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-slate-50 via-slate-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
-                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-slate-50 via-slate-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-slate-50 via-slate-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-slate-50 via-slate-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
 
                       <div className="h-full overflow-x-auto overflow-y-hidden px-2.5 py-2.5 [scrollbar-width:thin]">
                         <div className="flex h-full min-w-max items-stretch">
@@ -1304,7 +1304,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                             className={classNames(
                               "h-full overflow-hidden rounded-[18px] border",
                               "border-slate-200/90 bg-white/95 shadow-[0_10px_28px_rgba(15,23,42,0.08)]",
-                              "dark:border-slate-800 dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(0,0,0,0.24)]",
+                              "dark:border-gray-800 dark:bg-gray-950/95 dark:shadow-[0_12px_28px_rgba(0,0,0,0.24)]",
                             )}
                           >
                             <img
@@ -1334,7 +1334,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               <div
                 className={classNames(
                   "flex flex-wrap items-center justify-between gap-2.5 border-t pt-3",
-                  "border-slate-200/80 dark:border-slate-800",
+                  "border-slate-200/80 dark:border-gray-800",
                 )}
               >
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -1343,7 +1343,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                       className={classNames(
                         "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
                         "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-slate-800 dark:bg-slate-900/88 dark:text-slate-300",
+                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
                       )}
                     >
                       <CalendarIcon className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
@@ -1357,7 +1357,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                       className={classNames(
                         "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
                         "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-slate-800 dark:bg-slate-900/88 dark:text-slate-300",
+                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
                       )}
                     >
                       <CalendarIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-300" />
@@ -1373,7 +1373,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                       className={classNames(
                         "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
                         "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-slate-800 dark:bg-slate-900/88 dark:text-slate-300",
+                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
                       )}
                     >
                       <StorageIcon className="h-3.5 w-3.5 text-cyan-700 dark:text-cyan-300" />
@@ -1413,7 +1413,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                   crispText,
                   "absolute inset-0 z-20 overflow-hidden rounded-[28px] border",
                   "border-gray-300/90 bg-white",
-                  "dark:border-gray-700 dark:bg-slate-900",
+                  "dark:border-gray-700 dark:bg-gray-900",
                 )}
                 role="dialog"
                 aria-modal="true"
@@ -1430,7 +1430,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between gap-3 border-b border-gray-300/80 px-4 py-3 dark:border-gray-700">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 dark:border-gray-700 dark:bg-slate-800">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
                         {icon}
                       </div>
                       <div className="min-w-0">
@@ -1449,7 +1449,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                       className={classNames(
                         "inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
                         "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                        "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                        "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                       )}
                       aria-label="Close"
                     >
@@ -1471,7 +1471,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                             "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none",
                             "border-gray-300/80 bg-white text-gray-950",
                             "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+                            "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
                           )}
                           autoFocus
                         />
@@ -1489,7 +1489,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                             "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none",
                             "border-gray-300/80 bg-white text-gray-950",
                             "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+                            "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
                           )}
                         />
                       </label>
@@ -1502,14 +1502,14 @@ export default function ProjectCard(props: ProjectCardProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 border-t border-gray-300/80 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900">
+                  <div className="flex items-center justify-end gap-2 border-t border-gray-300/80 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
                     <button
                       type="button"
                       onClick={() => setIsRenaming(false)}
                       className={classNames(
                         "rounded-xl border px-4 py-2 text-sm font-semibold transition",
                         "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                        "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                        "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
                       )}
                     >
                       Cancel
@@ -1550,7 +1550,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               role="menu"
               tabIndex={-1}
               onKeyDown={onContextMenuKeyDown}
-              className="fixed w-48 overflow-hidden rounded-xl border border-gray-300/90 bg-white shadow-2xl dark:border-gray-700 dark:bg-slate-900"
+              className="fixed w-48 overflow-hidden rounded-xl border border-gray-300/90 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onClick={(e) => {
                 e.preventDefault();
@@ -1569,7 +1569,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
                 const baseItemClass = "flex items-center gap-2 px-4 py-2.5 outline-none text-sm";
                 const enabledItemClass =
-                  "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-slate-800/70 dark:focus:bg-slate-800/70";
+                  "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-gray-800/70 dark:focus:bg-slate-800/70";
                 const disabledItemClass =
                   "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
 
@@ -1689,7 +1689,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="w-full max-w-sm rounded-2xl border border-gray-300/90 bg-white p-6 shadow-2xl subpixel-antialiased dark:border-gray-700 dark:bg-slate-900"
+              className="w-full max-w-sm rounded-2xl border border-gray-300/90 bg-white p-6 shadow-2xl subpixel-antialiased dark:border-gray-700 dark:bg-gray-900"
               onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
               <h2 className="mb-4 text-lg font-semibold text-gray-950 dark:text-white">
@@ -1703,7 +1703,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                   type="button"
                   onClick={() => setShowDeleteModal(false)}
                   disabled={deleting}
-                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
+                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
                 >
                   Cancel
                 </button>

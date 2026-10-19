@@ -149,7 +149,7 @@ export function renderPointerParamRow({
           fontSize: 12,
           padding: "8px 10px",
           lineHeight: 1.2,
-          color: "#111827",
+          color: "var(--app-n-900)",
           WebkitTextFillColor: "#111827",
           opacity: 1,
           userSelect: isReadOnly ? "none" : "text",

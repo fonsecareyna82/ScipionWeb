@@ -1,4 +1,5 @@
 // src/pages/settingspage.tsx
+import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/Grid";
@@ -310,6 +311,7 @@ function sanitizeUserSettings(
     theme:
       theme === "light"
         || theme === "dark"
+        || theme === "system"
         ? theme
         : defaultUserSettings.theme,
 
@@ -472,6 +474,7 @@ function getViewModeMeta(
 export default function SettingsPage() {
   const svc = useProjectService() as any;
   const muiTheme = useTheme();
+  const { setPreference: setThemePreference } = useAppTheme();
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
@@ -1191,6 +1194,8 @@ export default function SettingsPage() {
       const saved = sanitizeUserSettings(savedRaw);
       setUserBase(saved);
       setUserDraft(saved);
+      // The saved theme is the one shown (also the header's toggle uses it).
+      setThemePreference(saved.theme);
       toast.success("User settings saved.");
     } catch (e: any) {
       const msg = getErrorMsg(e);
@@ -1199,7 +1204,7 @@ export default function SettingsPage() {
     } finally {
       setUserLoading(false);
     }
-  }, [svc, userBase, userDraft]);
+  }, [setThemePreference, svc, userBase, userDraft]);
 
   const handleSaveInstance = useCallback(async () => {
     // handleSaveInstance
@@ -1571,6 +1576,9 @@ export default function SettingsPage() {
                     </MenuItem>
                     <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="dark">
                       Dark
+                    </MenuItem>
+                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="system">
+                      System (follow the operating system)
                     </MenuItem>
                   </Select>
                 </FormControl>

@@ -6012,7 +6012,7 @@ export default function ProjectPage() {
       scheduled: "#f7f3bf",
       new: "#1E90FF",
     };
-    return { backgroundColor: colorMap[status ?? ""] ?? "#eee" };
+    return { backgroundColor: colorMap[status ?? ""] ?? "var(--app-n-100)" };
   };
 
   const statusColorMap: Record<string, string> = {
@@ -9869,7 +9869,7 @@ export default function ProjectPage() {
                 defaultViewport={viewport}
                 defaultEdgeOptions={{
                   type: "default",
-                  style: { stroke: "#999", strokeWidth: 2 },
+                  style: { stroke: "var(--app-n-400)", strokeWidth: 2 },
                   markerEnd: { type: MarkerType.ArrowClosed },
                 }}
                 onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
@@ -10272,12 +10272,12 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-gray-900/40 dark:text-slate-300">
                 The selected protocol will be kept, but all dependent results may become outdated and need to be executed again.
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-gray-900/35">
               <button
                 type="button"
                 onClick={() => setDlgResetFrom({ open: false, id: null })}
@@ -10625,7 +10625,7 @@ export default function ProjectPage() {
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-gray-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -10738,12 +10738,12 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-gray-900/40 dark:text-slate-300">
                 Existing results may be reused when possible, but affected protocols can still update their outputs.
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-gray-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -10868,12 +10868,12 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-gray-900/40 dark:text-slate-300">
                 The stop request is graceful when possible. Running work may be interrupted, and affected outputs may remain incomplete.
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-gray-900/35">
               <button
                 type="button"
                 onClick={(e) => {

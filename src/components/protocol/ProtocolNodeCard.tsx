@@ -1,4 +1,5 @@
 // src/components/protocol/ProtocolNodeCard.tsx
+import { ambiguousOutputQualifiers } from "@/utils/output-qualifiers";
 import { useCallback, useEffect, useMemo, useRef, useState, JSX } from "react";
 import toast from "react-hot-toast";
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography, Link, Tooltip } from "@mui/material";
@@ -54,6 +55,7 @@ import {
   Play,
   RotateCcw,
   ArrowUpRight,
+  Ban,
   Square,
   ArrowLeft,
   ArrowRight,
@@ -1518,6 +1520,16 @@ export default function ProtocolNodeCard({
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
+  // Outputs of the same type (e.g. good and discarded micrographs) get a short
+  // qualifier from their names; the unwanted part of a split is dimmed.
+  const outputQualifiers = useMemo(
+    () => ambiguousOutputQualifiers(outputsArray
+      .map((outputObj: unknown) => normalizeOutputItem(outputObj))
+      .filter((value: NormalizedOutput | null): value is NormalizedOutput => !!value)
+      .map((value: NormalizedOutput) => ({ name: value.name, pointerClass: value.pointerClass, info: value.info }))),
+    [outputsArray],
+  );
+
   const outputThumbnails =
     (data.outputThumbnails ?? {}) as Record<string, any>;
 
@@ -2524,7 +2536,7 @@ export default function ProtocolNodeCard({
                     key={String(t.id)}
                     className={styles.tagChip}
                     title={(t as any)?.description || t.title}
-                    style={{ backgroundColor: t.color || "#9ca3af" }}
+                    style={{ backgroundColor: t.color || "var(--app-n-400)" }}
                   >
                     <span className={styles.tagChipText}>{t.title}</span>
                   </span>
@@ -2601,6 +2613,12 @@ export default function ProtocolNodeCard({
                             String(
                               value.name ?? ""
                             );
+
+                          const qualifier = outputName ? outputQualifiers.get(outputName) ?? null : null;
+                          // What tells it apart and its technical name, at hand without taking room.
+                          const outputTitle = outputName && !isScalar
+                            ? [qualifier?.text, outputName, labelText].filter(Boolean).join(" · ")
+                            : labelText;
 
                           const isViewerEnabled =
                             canOpenViewer &&
@@ -2801,10 +2819,11 @@ export default function ProtocolNodeCard({
                                   outputThumbSizeClassName,
                                   !hasThumbnail ? styles.outputThumbTileMissing : "",
                                   isDragging ? styles.outputPillDragging : "",
+                                  qualifier?.negative ? styles.outputDiscarded : "",
                                   "nodrag",
                                 ].filter(Boolean).join(" ")}
                                 draggable
-                                title={labelText}
+                                title={outputTitle}
                                 onMouseDown={handleOutputMouseDown}
                                 onClick={handleOpenOutput}
                                 onDragStart={handleOutputDragStart}
@@ -2865,9 +2884,11 @@ export default function ProtocolNodeCard({
                           return (
                             <div
                               key={pillKey}
-                              className={[styles.outputPill, isDragging ? styles.outputPillDragging : "", "nodrag"]
+                              className={[styles.outputPill, isDragging ? styles.outputPillDragging : "",
+                                qualifier?.negative ? styles.outputDiscarded : "", "nodrag"]
                                 .filter(Boolean)
                                 .join(" ")}
+                              title={outputTitle}
                               draggable
                               onMouseDown={handleOutputMouseDown}
                               onClick={(e: ReactMouseEvent<HTMLDivElement>) => {
@@ -2878,7 +2899,12 @@ export default function ProtocolNodeCard({
                               onDragStart={handleOutputDragStart}
                               onDragEnd={handleOutputDragEnd}
                             >
-                              <ArrowUpRight className={styles.outputIcon} />
+                              {qualifier?.negative ? (
+                                // Same place and size as the arrow: seen at any zoom, the row unchanged.
+                                <Ban className={`${styles.outputIcon} ${styles.outputIconDiscarded}`} aria-label={qualifier.text} />
+                              ) : (
+                                <ArrowUpRight className={styles.outputIcon} />
+                              )}
                               <span className={styles.outputText}>{labelText}</span>
 
                               {!isOutputWithoutViewerClass(value.pointerClass) && (
@@ -2930,7 +2956,7 @@ export default function ProtocolNodeCard({
                     <span
                       className={styles.statusBadge}
                       style={{
-                        backgroundColor: statusBadgeColors[data.status] || "#999",
+                        backgroundColor: statusBadgeColors[data.status] || "var(--app-n-400)",
                       }}
                     >
                       {data.status}
@@ -3410,7 +3436,7 @@ export default function ProtocolNodeCard({
                 color: "white",
                 borderRadius: 1,
                 "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
-                "&:focus-visible": { outline: "2px solid rgba(255,255,255,0.55)", outlineOffset: 2 },
+                "&:focus-visible": { outline: "2px solid color-mix(in srgb, var(--app-n-0) 55%, transparent)", outlineOffset: 2 },
               }}
             >
               <CloseIcon fontSize="small" />

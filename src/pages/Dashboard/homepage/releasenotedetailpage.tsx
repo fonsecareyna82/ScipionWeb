@@ -74,13 +74,13 @@ export function getReleaseBadgeClasses(badge: ReleaseBadge): string {
       return classNames(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
         "bg-gray-100 text-gray-700",
-        "dark:bg-slate-800 dark:text-gray-300",
+        "dark:bg-gray-800 dark:text-gray-300",
       );
     default:
       return classNames(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
         "bg-gray-100 text-gray-700",
-        "dark:bg-slate-800 dark:text-gray-300",
+        "dark:bg-gray-800 dark:text-gray-300",
       );
   }
 }
@@ -91,7 +91,7 @@ function getChangeTypeClasses(kind: ReleaseItemKind): string {
     case "note":
       return classNames(
         "border-gray-300 bg-white text-gray-700",
-        "dark:border-gray-600 dark:bg-slate-900 dark:text-gray-300",
+        "dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300",
       );
     case "fixed":
       return classNames(
@@ -116,7 +116,7 @@ function getChangeTypeClasses(kind: ReleaseItemKind): string {
     default:
       return classNames(
         "border-gray-300 bg-white text-gray-700",
-        "dark:border-gray-600 dark:bg-slate-900 dark:text-gray-300",
+        "dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300",
       );
   }
 }
@@ -181,7 +181,7 @@ function TopActionButton(props: {
         "inline-flex items-center gap-2 rounded-[10px] px-5 py-3 text-sm font-semibold transition",
         props.primary
           ? "bg-blue-600 text-white hover:bg-blue-700"
-          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700",
+          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-gray-800 dark:text-blue-300 dark:hover:bg-slate-700",
       )}
     >
       {props.icon}
@@ -233,9 +233,9 @@ export default function ReleaseNoteDetailPage() {
       <>
         <PageMeta title="Release not found | Scipion" description="Release note not found" />
 
-        <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-slate-950 md:px-6 md:py-8">
+        <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-gray-950 md:px-6 md:py-8">
           <div className="mx-auto w-full max-w-5xl">
-            <div className="rounded-[10px] border border-gray-200 bg-white px-6 py-8 dark:border-gray-700 dark:bg-slate-900">
+            <div className="rounded-[10px] border border-gray-200 bg-white px-6 py-8 dark:border-gray-700 dark:bg-gray-900">
               <h1 className="text-2xl font-bold tracking-[-0.02em] text-slate-950 dark:text-white">
                 Release not found
               </h1>
@@ -248,7 +248,7 @@ export default function ReleaseNoteDetailPage() {
                   to="/release-notes"
                   className={classNames(
                     "inline-flex items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-gray-50",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800",
                   )}
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -266,7 +266,7 @@ export default function ReleaseNoteDetailPage() {
     <>
       <PageMeta title={`${release.title} | Scipion`} description={release.title} />
 
-      <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-slate-950 md:px-6 md:py-8">
+      <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-gray-950 md:px-6 md:py-8">
         <div className="mx-auto w-full max-w-5xl">
           <div className="mb-8 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <Link to="/release-notes" className="hover:text-slate-700 dark:hover:text-slate-200">
@@ -322,7 +322,7 @@ export default function ReleaseNoteDetailPage() {
             </div>
           </div>
 
-          <div className="mt-8 rounded-[10px] border border-gray-200 bg-white px-6 py-5 dark:border-gray-700 dark:bg-slate-900">
+          <div className="mt-8 rounded-[10px] border border-gray-200 bg-white px-6 py-5 dark:border-gray-700 dark:bg-gray-900">
             {release.items.map((item, index) => (
               <ChangeRow key={`${release.version}-${item.kind}-${index}`} item={item} />
             ))}
@@ -333,7 +333,7 @@ export default function ReleaseNoteDetailPage() {
               to="/release-notes"
               className={classNames(
                 "inline-flex items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-gray-50",
-                "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800",
+                "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800",
               )}
             >
               <ArrowLeft className="h-4 w-4" />

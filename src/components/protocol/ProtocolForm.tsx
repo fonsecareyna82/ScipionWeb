@@ -1,4 +1,5 @@
 // src/components/ProtocolForm.tsx
+import { createAppTheme } from "@/theme/muiTheme";
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import * as React from "react";
 import toast from "react-hot-toast";
@@ -22,7 +23,6 @@ import {
   Select,
 } from "@mui/material";
 import {
-  createTheme,
   ThemeProvider as MuiThemeProvider,
 } from "@mui/material/styles";
 import {
@@ -540,12 +540,8 @@ export default function ProtocolForm({
   const protocolMuiTheme =
     useMemo(
       () =>
-        createTheme({
-          palette: {
-            mode:
-              appTheme,
-          },
-
+        // The app theme, with the portals of an external window when open.
+        createAppTheme(appTheme, {
           ...(externalPortalContainer
             ? {
               components: {
@@ -3455,7 +3451,7 @@ export default function ProtocolForm({
             key={stableKey}
             sx={{
               mb: 2,
-              border: "1px dashed #ccc",
+              border: "1px dashed var(--app-n-300)",
               borderRadius: 1,
               p: 1,
               backgroundColor: (theme) => (theme.palette.mode === "dark" ? "#2c2c2c" : "#f9fafb"),
@@ -4136,7 +4132,7 @@ export default function ProtocolForm({
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
-            backgroundColor: "#f9fafb",
+            backgroundColor: "var(--app-n-50)",
             borderRadius: 2,
             boxShadow: "0px 2px 6px rgba(0,0,0,0.2)",
             p: 1,
@@ -4156,7 +4152,7 @@ export default function ProtocolForm({
                 minHeight: 48,
               },
               "& .Mui-selected": {
-                backgroundColor: "white",
+                backgroundColor: "var(--app-n-0)",
                 borderRadius: 1,
               },
             }}
@@ -4538,8 +4534,8 @@ export default function ProtocolForm({
                       fontSize: "0.72rem",
                       fontWeight: 700,
                       textTransform: "capitalize",
-                      backgroundColor: protocol.active ? "#ffedd5" : "#f1f5f9",
-                      color: protocol.active ? "#c2410c" : "#64748b",
+                      backgroundColor: protocol.active ? "#ffedd5" : "var(--app-n-100)",
+                      color: protocol.active ? "#c2410c" : "var(--app-n-500)",
                     }}
                   >
                     {protocol.status}
@@ -4803,7 +4799,7 @@ export default function ProtocolForm({
             px: 2.5,
             py: 2.5,
             background:
-              "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+              "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
             borderColor: "rgba(15,23,42,0.08)",
           }}
         >
@@ -4812,7 +4808,7 @@ export default function ProtocolForm({
               sx={{
                 p: 1.75,
                 borderRadius: "20px",
-                backgroundColor: "#ffffff",
+                backgroundColor: "var(--app-n-0)",
                 border: "1px solid rgba(15,23,42,0.08)",
                 boxShadow: "0 10px 26px rgba(15,23,42,0.06)",
               }}
@@ -4822,7 +4818,7 @@ export default function ProtocolForm({
                 sx={{
                   mb: 1,
                   fontWeight: 700,
-                  color: "#334155",
+                  color: "var(--app-n-700)",
                   letterSpacing: "0.01em",
                 }}
               >
@@ -4838,7 +4834,7 @@ export default function ProtocolForm({
                   onChange={(e) => handleQueueDraftQueueChange(String(e.target.value))}
                   sx={{
                     borderRadius: "14px",
-                    backgroundColor: "#ffffff",
+                    backgroundColor: "var(--app-n-0)",
                     "& .MuiOutlinedInput-notchedOutline": {
                       borderColor: "rgba(15,23,42,0.12)",
                     },
@@ -4882,7 +4878,7 @@ export default function ProtocolForm({
                     sx={{
                       p: 1.5,
                       borderRadius: "18px",
-                      backgroundColor: "#ffffff",
+                      backgroundColor: "var(--app-n-0)",
                       border: "1px solid rgba(15,23,42,0.08)",
                       boxShadow: "0 8px 22px rgba(15,23,42,0.05)",
                       transition:
@@ -4900,7 +4896,7 @@ export default function ProtocolForm({
                         display: "block",
                         mb: 0.9,
                         fontWeight: 700,
-                        color: "#64748b",
+                        color: "var(--app-n-500)",
                         letterSpacing: "0.03em",
                         textTransform: "uppercase",
                       }}
@@ -4932,7 +4928,7 @@ export default function ProtocolForm({
                       sx={{
                         "& .MuiOutlinedInput-root": {
                           borderRadius: "14px",
-                          backgroundColor: "#ffffff",
+                          backgroundColor: "var(--app-n-0)",
                           "& .MuiOutlinedInput-notchedOutline": {
                             borderColor: "rgba(15,23,42,0.12)",
                           },
@@ -4957,7 +4953,7 @@ export default function ProtocolForm({
           sx={{
             px: 2.5,
             py: 2,
-            backgroundColor: "#ffffff",
+            backgroundColor: "var(--app-n-0)",
             borderTop: "1px solid rgba(15,23,42,0.08)",
             justifyContent: "space-between",
             alignItems: "center",

@@ -11,8 +11,8 @@ export const GRID_STATUS_FILTERS: Array<{ id: GridStatusCategory; label: string;
   { id: "failed", label: "Failed", color: "#ef4444" },
   { id: "aborted", label: "Aborted", color: "#f97316" },
   { id: "finished", label: "Finished", color: "#22c55e" },
-  { id: "saved", label: "Saved", color: "#94a3b8" },
-  { id: "new", label: "New", color: "#cbd5e1" },
+  { id: "saved", label: "Saved", color: "var(--app-n-400)" },
+  { id: "new", label: "New", color: "var(--app-n-300)" },
 ];
 
 type Props = {

@@ -1152,7 +1152,7 @@ export default function CTFTomoViewer({
       const selectedMarker = {
         size: 10,
         color: "rgba(250,204,21,0.9)",
-        line: { color: "#111827", width: 2 },
+        line: { color: "var(--app-n-900)", width: 2 },
         symbol: "circle",
       };
 
@@ -1410,7 +1410,7 @@ export default function CTFTomoViewer({
           elevation={0}
           sx={{
             p: 0.75,
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: "1px solid var(--app-n-200)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -1472,7 +1472,7 @@ export default function CTFTomoViewer({
             minWidth: 0,
             display: "flex",
             flexDirection: "column",
-            borderRight: "1px solid #e5e7eb",
+            borderRight: "1px solid var(--app-n-200)",
           }}
         >
           <Paper
@@ -1480,7 +1480,7 @@ export default function CTFTomoViewer({
             elevation={0}
             sx={{
               p: 0.75,
-              borderBottom: "1px solid #e5e7eb",
+              borderBottom: "1px solid var(--app-n-200)",
               display: "flex",
               alignItems: "center",
               gap: 1,
@@ -1751,8 +1751,8 @@ export default function CTFTomoViewer({
                               colSpan={6}
                               sx={{
                                 p: 0,
-                                borderBottom: "1px solid #dbe3ea",
-                                backgroundColor: "#fafafa",
+                                borderBottom: "1px solid var(--app-n-200)",
+                                backgroundColor: "var(--app-n-50)",
                               }}
                             >
                               <Box
@@ -1768,8 +1768,8 @@ export default function CTFTomoViewer({
                                     top: -2,
                                     width: 18,
                                     height: 24,
-                                    borderLeft: "2px solid #d1d5db",
-                                    borderBottom: "2px solid #d1d5db",
+                                    borderLeft: "2px solid var(--app-n-300)",
+                                    borderBottom: "2px solid var(--app-n-300)",
                                     borderBottomLeftRadius: "6px",
                                   },
                                 }}
@@ -1784,7 +1784,7 @@ export default function CTFTomoViewer({
                                       fontSize: "0.72rem",
                                       fontWeight: 600,
                                       py: 0.5,
-                                      backgroundColor: "#f3f4f6",
+                                      backgroundColor: "var(--app-n-100)",
                                     },
                                     "& td": {
                                       fontSize: "0.75rem",
@@ -1990,7 +1990,7 @@ export default function CTFTomoViewer({
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--app-n-200)",
               borderRadius: 1.5,
               overflow: "hidden",
               bgcolor: "background.paper",
@@ -2000,7 +2000,7 @@ export default function CTFTomoViewer({
               sx={{
                 px: 1,
                 py: 0.5,
-                borderBottom: "1px solid #e5e7eb",
+                borderBottom: "1px solid var(--app-n-200)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -2055,7 +2055,7 @@ export default function CTFTomoViewer({
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--app-n-200)",
               borderRadius: 1.5,
               overflow: "hidden",
               bgcolor: "background.paper",
@@ -2065,7 +2065,7 @@ export default function CTFTomoViewer({
               sx={{
                 px: 1,
                 py: 0.5,
-                borderBottom: "1px solid #e5e7eb",
+                borderBottom: "1px solid var(--app-n-200)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",

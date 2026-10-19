@@ -208,7 +208,7 @@ function getIconToneClasses(tone: IconTone): string {
     default:
       return classNames(
         "bg-gray-100 ring-gray-200 text-gray-900",
-        "dark:bg-slate-800 dark:ring-gray-700 dark:text-white",
+        "dark:bg-gray-800 dark:ring-gray-700 dark:text-white",
       );
   }
 }
@@ -230,7 +230,7 @@ function Surface(props: {
         crispText,
         "overflow-hidden rounded-[10px] border",
         "border-gray-300/85 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]",
-        "dark:border-gray-700 dark:bg-slate-900",
+        "dark:border-gray-700 dark:bg-gray-900",
         props.className,
       )}
     >
@@ -284,7 +284,7 @@ function HeroAction(props: {
     <div
       className={classNames(
         "group flex items-start gap-3 rounded-2xl px-3 py-3 transition",
-        "hover:bg-white/90 dark:hover:bg-slate-900/90",
+        "hover:bg-white/90 dark:hover:bg-gray-900/90",
       )}
     >
       <div
@@ -336,7 +336,7 @@ function ResourceLink(props: {
     <div
       className={classNames(
         "group flex items-center justify-between gap-3 rounded-2xl px-3 py-3 transition",
-        "hover:bg-gray-100/80 dark:hover:bg-slate-800/70",
+        "hover:bg-gray-100/80 dark:hover:bg-gray-800/70",
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -552,11 +552,11 @@ export default function Home() {
                   className={classNames(
                     "rounded-[10px] border px-5 py-5",
                     "border-indigo-200/70 bg-gradient-to-br from-indigo-50 via-white to-sky-50",
-                    "dark:border-indigo-900/50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-950",
+                    "dark:border-indigo-900/50 dark:bg-gradient-to-br dark:from-gray-900 dark:via-gray-900 dark:to-gray-950",
                     "lg:px-6 lg:py-6",
                   )}
                 >
-                  <div className="inline-flex items-center gap-2 rounded-[10px] border border-indigo-200/80 bg-white/80 px-3 py-1 text-xs font-semibold tracking-[0.02em] text-black-700 dark:border-indigo-800 dark:bg-slate-900/80 dark:text-indigo-200">
+                  <div className="inline-flex items-center gap-2 rounded-[10px] border border-indigo-200/80 bg-white/80 px-3 py-1 text-xs font-semibold tracking-[0.02em] text-black-700 dark:border-indigo-800 dark:bg-gray-900/80 dark:text-indigo-200">
                     <Sparkles className="h-3.5 w-3.5" />
                     Scipion {installedVersion} — Flavius
                   </div>
@@ -595,7 +595,7 @@ export default function Home() {
                               className={classNames(
                                 "inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition",
                                 "border-amber-300 bg-white/90 text-amber-950 hover:bg-white",
-                                "dark:border-amber-700 dark:bg-slate-950/70 dark:text-amber-100 dark:hover:bg-slate-900",
+                                "dark:border-amber-700 dark:bg-gray-950/70 dark:text-amber-100 dark:hover:bg-gray-900",
                               )}
                             >
                               {copiedUpdateCommand ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -635,7 +635,7 @@ export default function Home() {
                       className={classNames(
                         "inline-flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm font-semibold transition",
                         "border-gray-300/80 bg-white text-gray-950 hover:bg-gray-50",
-                        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/80",
+                        "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800/80",
                       )}
                     >
                       <BookOpen className="h-4 w-4" />
@@ -643,7 +643,7 @@ export default function Home() {
                     </Link>
                   </div>
 
-                  <div className="mt-6 border-t border-white/70 pt-4 dark:border-slate-800">
+                  <div className="mt-6 border-t border-white/70 pt-4 dark:border-gray-800">
                     <SectionLabel>Workspace actions</SectionLabel>
                     <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
                       <HeroAction
@@ -685,7 +685,7 @@ export default function Home() {
                     className={classNames(
                       "rounded-[10px] border px-4 py-4",
                       "border-gray-300/80 bg-gray-50/75",
-                      "dark:border-gray-700 dark:bg-slate-950/40",
+                      "dark:border-gray-700 dark:bg-gray-950/40",
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -696,7 +696,7 @@ export default function Home() {
                         className={classNames(
                           "inline-flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1.5 text-xs font-semibold transition",
                           "border-gray-300/80 bg-white text-gray-800 hover:bg-gray-50",
-                          "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800/80",
+                          "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800/80",
                           updateLoading ? "pointer-events-none opacity-70" : "",
                         )}
                       >
@@ -775,7 +775,7 @@ export default function Home() {
                     className={classNames(
                       "rounded-[10px] border px-4 py-4",
                       "border-gray-300/80 bg-gray-50/75",
-                      "dark:border-gray-700 dark:bg-slate-950/40",
+                      "dark:border-gray-700 dark:bg-gray-950/40",
                     )}
                   >
                     <SectionLabel>Resources</SectionLabel>
@@ -827,7 +827,7 @@ export default function Home() {
                       "w-full rounded-[10px] border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
                       "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                       "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                     )}
                   />
@@ -839,7 +839,7 @@ export default function Home() {
                   className={classNames(
                     "inline-flex items-center justify-center gap-2 rounded-[10px] border px-3 py-2.5 text-sm font-medium transition",
                     "border-gray-300/80 bg-white text-gray-950 hover:bg-gray-50",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/80",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800/80",
                     projectsLoading ? "pointer-events-none opacity-70" : "",
                   )}
                 >
@@ -857,7 +857,7 @@ export default function Home() {
                   className={classNames(
                     "inline-flex items-center justify-center gap-2 rounded-[10px] border px-3 py-2.5 text-sm font-medium transition",
                     "border-gray-300/80 bg-white text-gray-950 hover:bg-gray-50",
-                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/80",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800/80",
                   )}
                 >
                   <FolderKanban className="h-4 w-4 text-indigo-700 dark:text-indigo-300" />
@@ -867,11 +867,11 @@ export default function Home() {
             }
           >
             {projectsLoading && projects.length === 0 ? (
-              <div className="rounded-[10px] border border-gray-300/80 bg-white px-4 py-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+              <div className="rounded-[10px] border border-gray-300/80 bg-white px-4 py-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
                 Loading projects…
               </div>
             ) : recentProjects.length === 0 && pinnedProjects.length === 0 ? (
-              <div className="rounded-[10px] border border-gray-300/80 bg-white px-4 py-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+              <div className="rounded-[10px] border border-gray-300/80 bg-white px-4 py-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
                 No projects match your search.
               </div>
             ) : (
@@ -887,7 +887,7 @@ export default function Home() {
                   </div>
 
                   {pinnedProjects.length === 0 ? (
-                    <div className="rounded-[10px] border border-dashed border-gray-300/90 bg-gray-50/80 px-4 py-3 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-950/40 dark:text-gray-300">
+                    <div className="rounded-[10px] border border-dashed border-gray-300/90 bg-gray-50/80 px-4 py-3 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-300">
                       No pinned projects yet. Pin a project from the list below.
                     </div>
                   ) : (
@@ -898,7 +898,7 @@ export default function Home() {
                           className={classNames(
                             "flex items-center justify-between gap-3 rounded-[10px] border px-4 py-4 transition",
                             "border-gray-300/75 bg-gradient-to-br from-white to-gray-50 hover:border-gray-400",
-                            "dark:border-gray-700 dark:bg-gradient-to-br dark:from-slate-900 dark:to-slate-950 dark:hover:border-gray-600",
+                            "dark:border-gray-700 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-950 dark:hover:border-gray-600",
                           )}
                         >
                           <div className="min-w-0">
@@ -958,11 +958,11 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-[10px] border border-gray-300/85 bg-white dark:border-gray-700 dark:bg-slate-900">
+                  <div className="overflow-hidden rounded-[10px] border border-gray-300/85 bg-white dark:border-gray-700 dark:bg-gray-900">
                     <div
                       className={classNames(
                         "grid grid-cols-12 gap-0 px-4 py-3.5",
-                        "bg-gray-50 text-gray-700 dark:bg-slate-800/70 dark:text-gray-200",
+                        "bg-gray-50 text-gray-700 dark:bg-gray-800/70 dark:text-gray-200",
                       )}
                     >
                       <div className="col-span-5 text-xs font-semibold uppercase tracking-[0.12em]">Project</div>
@@ -982,7 +982,7 @@ export default function Home() {
                             key={p.id}
                             className={classNames(
                               "grid grid-cols-12 items-center gap-0 px-4 py-4 transition",
-                              "hover:bg-gray-50 dark:hover:bg-slate-800/60",
+                              "hover:bg-gray-50 dark:hover:bg-gray-800/60",
                             )}
                           >
                             <div className="col-span-5 min-w-0">
@@ -994,7 +994,7 @@ export default function Home() {
                                     "inline-flex items-center justify-center rounded-[10px] p-2 transition",
                                     isPinned
                                       ? "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/45"
-                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-slate-700",
+                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-slate-700",
                                   )}
                                   title={isPinned ? "Unpin" : "Pin"}
                                 >

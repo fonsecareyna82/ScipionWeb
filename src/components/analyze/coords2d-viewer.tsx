@@ -293,14 +293,14 @@ const MAX_BOX_SIZE = 240;
 const PARTICLE_GALLERY_SIZE = 74;
 
 const PANEL_BORDER = "1px solid rgba(148,163,184,0.4)";
-const VIEWER_BG = "#f8fafc";
-const HEADER_BG = "#f3f4f6";
-const TOOLBAR_BG = "rgba(248,250,252,0.95)";
-const CANVAS_OUTER_BG = "#e5e7eb";
+const VIEWER_BG = "var(--app-n-50)";
+const HEADER_BG = "var(--app-n-100)";
+const TOOLBAR_BG = "color-mix(in srgb, var(--app-n-50) 95%, transparent)";
+const CANVAS_OUTER_BG = "var(--app-n-200)";
 const CANVAS_BG = "#d1d5db";
 const ROW_SELECTED = "rgba(219,234,254,0.95)";
 const ROW_SELECTED_HOVER = "rgba(191,219,254,0.95)";
-const ROW_SELECTED_TEXT = "#0f172a";
+const ROW_SELECTED_TEXT = "var(--app-n-900)";
 const DEFAULT_PICK_COLOR = "#06b6d4";
 
 /** Automatic particles use the pick color moved around the hue circle, as Xmipp's picker. */
@@ -3055,14 +3055,14 @@ function Coords2dViewer({
           alignItems: "center",
           gap: 0.25,
           borderBottom: PANEL_BORDER,
-          bgcolor: "#f3f4f6",
+          bgcolor: "var(--app-n-100)",
         }}
       >
         <Button
           size="small"
           disabled
           startIcon={<FileText size={14} />}
-          sx={{ minWidth: 42, color: "#111827" }}
+          sx={{ minWidth: 42, color: "var(--app-n-900)" }}
         >
           File
         </Button>
@@ -3071,7 +3071,7 @@ function Coords2dViewer({
           size="small"
           startIcon={<SlidersHorizontal size={14} />}
           onClick={(event) => setFiltersAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 58, color: "#111827" }}
+          sx={{ minWidth: 58, color: "var(--app-n-900)" }}
         >
           Filters
         </Button>
@@ -3080,7 +3080,7 @@ function Coords2dViewer({
           size="small"
           startIcon={<Wrench size={14} />}
           onClick={(event) => setToolsAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 50, color: "#111827" }}
+          sx={{ minWidth: 50, color: "var(--app-n-900)" }}
         >
           Tools
         </Button>
@@ -3089,7 +3089,7 @@ function Coords2dViewer({
           size="small"
           startIcon={<Grid3X3 size={14} />}
           onClick={(event) => setWindowsAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 68, color: "#111827" }}
+          sx={{ minWidth: 68, color: "var(--app-n-900)" }}
         >
           Window
         </Button>
@@ -3670,7 +3670,7 @@ function Coords2dViewer({
                   bottom: 12,
                   px: 1,
                   py: 0.5,
-                  bgcolor: "rgba(255,255,255,0.86)",
+                  bgcolor: "color-mix(in srgb, var(--app-n-0) 86%, transparent)",
                   border: PANEL_BORDER,
                   pointerEvents: "none",
                 }}
@@ -3687,7 +3687,7 @@ function Coords2dViewer({
                   bottom: 12,
                   px: 1,
                   py: 0.5,
-                  bgcolor: "rgba(255,255,255,0.86)",
+                  bgcolor: "color-mix(in srgb, var(--app-n-0) 86%, transparent)",
                   border: PANEL_BORDER,
                   pointerEvents: "none",
                 }}
@@ -3758,7 +3758,7 @@ function Coords2dViewer({
             borderRadius: 1.5,
             overflow: "hidden",
             border: PANEL_BORDER,
-            bgcolor: "#d7d7d7",
+            bgcolor: "var(--app-n-300)",
           }}
         >
           <Box
@@ -3768,7 +3768,7 @@ function Coords2dViewer({
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              bgcolor: "#f3f4f6",
+              bgcolor: "var(--app-n-100)",
               borderBottom: PANEL_BORDER,
             }}
           >
@@ -3784,7 +3784,7 @@ function Coords2dViewer({
             </IconButton>
           </Box>
 
-          <Box sx={{ p: 1.25, bgcolor: "#ffffff" }}>
+          <Box sx={{ p: 1.25, bgcolor: "var(--app-n-0)" }}>
             {histogramComputing ? (
               <Box sx={{ height: 370, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <CircularProgress size={26} />
@@ -3860,7 +3860,7 @@ function Coords2dViewer({
             borderRadius: 1.5,
             overflow: "hidden",
             border: PANEL_BORDER,
-            bgcolor: "#ffffff",
+            bgcolor: "var(--app-n-0)",
           }}
         >
           <Box
@@ -3870,7 +3870,7 @@ function Coords2dViewer({
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              bgcolor: "#f3f4f6",
+              bgcolor: "var(--app-n-100)",
               borderBottom: PANEL_BORDER,
               cursor: "default",
             }}
@@ -3887,7 +3887,7 @@ function Coords2dViewer({
           <Box
             sx={{
               p: 0.75,
-              bgcolor: "#ffffff",
+              bgcolor: "var(--app-n-0)",
               overflow: "auto",
               maxHeight: "calc(92vh - 42px)",
             }}

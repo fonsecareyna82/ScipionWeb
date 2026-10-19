@@ -6,6 +6,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The interface colours (src/styles/theme-tokens.css) as Tailwind colours:
+   bg-app-surface, text-app-muted, border-app-border... follow the theme. */
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-app-surface: var(--app-surface);
+  --color-app-surface-2: var(--app-surface-2);
+  --color-app-surface-3: var(--app-surface-3);
+  --color-app-hover: var(--app-hover);
+  --color-app-selected: var(--app-selected);
+  --color-app-border: var(--app-border);
+  --color-app-border-strong: var(--app-border-strong);
+  --color-app-text: var(--app-text);
+  --color-app-muted: var(--app-text-muted);
+  --color-app-subtle: var(--app-text-subtle);
+  --color-app-disabled: var(--app-text-disabled);
+  --color-app-accent: var(--app-accent);
+  --color-app-accent-soft: var(--app-accent-soft);
+}
+
 @font-face {
   font-family: "Outfit";
   src: url("./assets/fonts/Outfit-Variable.ttf") format("truetype");

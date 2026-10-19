@@ -158,7 +158,7 @@ export default function ProtocolViewerActionResults({
         >
           <Box data-testid="protocol-viewer-action-results" sx={{
             display: "flex", flexDirection: "column", gap: 1.25, p: 2, height: "100%",
-            overflowY: "auto", boxSizing: "border-box", bgcolor: "#f8fafc",
+            overflowY: "auto", boxSizing: "border-box", bgcolor: "var(--app-n-50)",
           }}>
             {result.messages.map((message, index) => (
               <Alert key={`message-${index}`} severity={message.level}>
@@ -196,11 +196,11 @@ export default function ProtocolViewerActionResults({
 }
 
 const CARD_SX = {
-  p: 1.5, borderRadius: 1.5, borderColor: "rgba(148, 163, 184, 0.45)", bgcolor: "#ffffff",
+  p: 1.5, borderRadius: 1.5, borderColor: "rgba(148, 163, 184, 0.45)", bgcolor: "var(--app-n-0)",
 } as const;
 
 function CardTitle({ children }: { children: ReactNode }) {
-  return <Typography sx={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a", mb: 1 }}>{children}</Typography>;
+  return <Typography sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)", mb: 1 }}>{children}</Typography>;
 }
 
 const FORMAT_ICONS = { metadata: Table2, image: ImageIcon, text: FileText, file: File } as const;
@@ -276,8 +276,8 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={ImageIcon} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "#64748b", wordBreak: "break-all" }}>{item.path}</Typography>
+            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.path}</Typography>
           </Box>
           <OpenButton onClick={() => onOpenImage(item.title, item.path)} />
         </Paper>
@@ -292,12 +292,12 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={item.output ? Database : FORMAT_ICONS[item.format]} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "#64748b", wordBreak: "break-all" }}>{location}</Typography>
+            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{location}</Typography>
           </Box>
           {openable
             ? <OpenButton onClick={() => onOpen(item)} />
-            : <Typography sx={{ fontSize: "0.75rem", color: "#64748b" }}>No web viewer for this file type yet.</Typography>}
+            : <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)" }}>No web viewer for this file type yet.</Typography>}
         </Paper>
       );
     }
@@ -306,8 +306,8 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={Box3D} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "#64748b", wordBreak: "break-all" }}>{item.paths.join(", ")}</Typography>
+            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.paths.join(", ")}</Typography>
           </Box>
           <OpenButton onClick={() => onOpen(item)} />
         </Paper>
@@ -316,7 +316,7 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
       return (
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={ExternalLink} />
-          <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.8rem", color: "#334155", wordBreak: "break-all" }}>
+          <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.8rem", color: "var(--app-n-700)", wordBreak: "break-all" }}>
             {item.url}
           </Typography>
           <ViewerLinkButton url={item.url} />
@@ -336,7 +336,7 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
 function FileIcon({ icon: Icon }: { icon: typeof File }) {
   return (
     <Box sx={{ width: 36, height: 36, borderRadius: 1.5, display: "grid", placeItems: "center", flex: "0 0 auto",
-      bgcolor: "#eef2f6", color: "#333d49" }}>
+      bgcolor: "var(--app-n-150)", color: "#333d49" }}>
       <Icon size={18} />
     </Box>
   );

@@ -164,7 +164,7 @@ export default function ImportProjectDialog({
   const textFieldSx = {
     "& .MuiOutlinedInput-root": {
       borderRadius: 1,
-      backgroundColor: "rgba(255,255,255,0.96)",
+      backgroundColor: "color-mix(in srgb, var(--app-n-0) 96%, transparent)",
       color: theme.palette.text.primary,
       transition: "background-color 0.15s ease, border-color 0.15s ease",
 
@@ -212,7 +212,7 @@ export default function ImportProjectDialog({
     },
 
     ".dark & .MuiInputBase-input::placeholder": {
-      color: "#94a3b8",
+      color: "var(--app-n-400)",
       opacity: 1,
     },
 

@@ -91,12 +91,12 @@
   );
 
   border-radius: 16px;
-  border: 1px solid var(--pdBorder, rgba(229, 231, 235, 1));
+  border: 1px solid var(--pdBorder, color-mix(in srgb, var(--app-n-200) 100%, transparent));
 
-  background: var(--pdCard, #ffffff);
-  background-color: var(--pdCard, #ffffff);
+  background: var(--pdCard, var(--app-n-0));
+  background-color: var(--pdCard, var(--app-n-0));
 
-  color: var(--pdInk, #374151);
+  color: var(--pdInk, var(--app-n-700));
   box-shadow: var(--pdShadow, 0 18px 42px rgba(15, 23, 42, 0.22));
 
   overflow: hidden;
@@ -194,17 +194,17 @@ button.closeButton:hover {
 /* Root selector */
 .rootSelectWrap {
   padding: 10px 14px;
-  border-bottom: 1px solid var(--pdBorder, rgba(229, 231, 235, 1));
+  border-bottom: 1px solid var(--pdBorder, color-mix(in srgb, var(--app-n-200) 100%, transparent));
 }
 
 select.rootSelect {
   width: 100%;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid var(--pdBorder, rgba(229, 231, 235, 1));
+  border: 1px solid var(--pdBorder, color-mix(in srgb, var(--app-n-200) 100%, transparent));
 
   background: var(--pdCardMuted, rgba(148, 163, 184, 0.10));
-  color: var(--pdInk, #374151);
+  color: var(--pdInk, var(--app-n-700));
 
   padding: 0 10px;
   outline: none;
@@ -223,8 +223,8 @@ select.rootSelect:focus {
 }
 
 select.rootSelect option {
-  background: #ffffff;
-  color: #111827;
+  background: var(--app-n-0);
+  color: var(--app-n-900);
 }
 
 .drawerRoot.dark select.rootSelect option {
@@ -235,7 +235,7 @@ select.rootSelect option {
 /* Search */
 .searchWrap {
   padding: 10px 14px;
-  border-bottom: 1px solid var(--pdBorder, rgba(229, 231, 235, 1));
+  border-bottom: 1px solid var(--pdBorder, color-mix(in srgb, var(--app-n-200) 100%, transparent));
 }
 
 .searchField {
@@ -249,7 +249,7 @@ select.rootSelect option {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--pdInkMuted, #4b5563);
+  color: var(--pdInkMuted, var(--app-n-600));
   pointer-events: none;
 }
 
@@ -265,9 +265,9 @@ input.searchInput {
   height: 36px;
   border-radius: 10px;
 
-  border: 1px solid var(--pdBorder, rgba(229, 231, 235, 1));
+  border: 1px solid var(--pdBorder, color-mix(in srgb, var(--app-n-200) 100%, transparent));
   background: var(--pdCardMuted, rgba(148, 163, 184, 0.10));
-  color: var(--pdInk, #374151);
+  color: var(--pdInk, var(--app-n-700));
 
   padding: 0 10px 0 38px;
   outline: none;
@@ -304,6 +304,6 @@ input.searchInput:focus {
 /* Empty state */
 .emptyState {
   padding: 12px 14px;
-  color: var(--pdInkMuted, #4b5563);
+  color: var(--pdInkMuted, var(--app-n-600));
   font-size: 13px;
 }

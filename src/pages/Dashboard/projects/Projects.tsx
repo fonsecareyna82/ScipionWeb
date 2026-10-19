@@ -496,7 +496,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         crispText,
         "flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto rounded-2xl border px-3 py-2 shadow-sm",
         "border-gray-300/90 bg-white",
-        "dark:border-gray-700 dark:bg-slate-900",
+        "dark:border-gray-700 dark:bg-gray-900",
       )}
       aria-label="Project workspaces"
     >
@@ -519,7 +519,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 "group inline-flex max-w-[260px] shrink-0 items-center overflow-hidden rounded-xl border text-sm transition",
                 active
                   ? "border-indigo-400 bg-indigo-50 text-indigo-900 shadow-sm dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100"
-                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800",
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800",
               )}
             >
               <button
@@ -557,7 +557,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         crispText,
         "inline-flex rounded-xl border p-1 shadow-sm",
         "border-gray-300/80 bg-gray-100/80",
-        "dark:border-gray-700 dark:bg-slate-950",
+        "dark:border-gray-700 dark:bg-gray-950",
       )}
       aria-label="Projects view mode"
     >
@@ -603,11 +603,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
               className={classNames(
                 "h-[92px] animate-pulse rounded-2xl border px-4 py-4 shadow-sm",
                 "border-gray-300/80 bg-white",
-                "dark:border-gray-700 dark:bg-slate-900",
+                "dark:border-gray-700 dark:bg-gray-900",
               )}
             >
               <div className="h-5 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
-              <div className="mt-3 h-4 w-2/3 rounded bg-gray-100 dark:bg-slate-800" />
+              <div className="mt-3 h-4 w-2/3 rounded bg-gray-100 dark:bg-gray-800" />
             </div>
           ))}
         </div>
@@ -622,12 +622,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             className={classNames(
               "h-[210px] animate-pulse rounded-2xl border p-5 shadow-sm",
               "border-gray-300/80 bg-white",
-              "dark:border-gray-700 dark:bg-slate-900",
+              "dark:border-gray-700 dark:bg-gray-900",
             )}
           >
             <div className="h-5 w-2/3 rounded bg-gray-200 dark:bg-slate-700" />
             <div className="mt-3 h-4 w-1/2 rounded bg-gray-200 dark:bg-slate-700" />
-            <div className="mt-6 h-12 rounded bg-gray-100 dark:bg-slate-800" />
+            <div className="mt-6 h-12 rounded bg-gray-100 dark:bg-gray-800" />
             <div className="mt-3 h-4 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
           </div>
         ))}
@@ -708,7 +708,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         crispText,
         "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border p-5 shadow-sm",
         "border-gray-300/90 bg-white",
-        "dark:border-gray-700 dark:bg-slate-900",
+        "dark:border-gray-700 dark:bg-gray-900",
         "lg:p-6",
       )}
     >
@@ -719,7 +719,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
               <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
                 Projects
               </h3>
-              <span className="rounded-full border border-gray-300/80 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+              <span className="rounded-full border border-gray-300/80 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                 {stats.total}
               </span>
             </div>
@@ -751,7 +751,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                     crispText,
                     "absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl",
                     "border-gray-300/90 bg-white",
-                    "dark:border-gray-700 dark:bg-slate-900",
+                    "dark:border-gray-700 dark:bg-gray-900",
                   )}
                 >
                   <ul className="text-sm text-gray-800 dark:text-gray-200">
@@ -760,7 +760,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         type="button"
                         className={classNames(
                           "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
+                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
                         )}
                         onClick={() => {
                           setShowDropdown(false);
@@ -777,7 +777,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         type="button"
                         className={classNames(
                           "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
+                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
                         )}
                         onClick={() => {
                           setShowDropdown(false);
@@ -794,7 +794,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         type="button"
                         className={classNames(
                           "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
+                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
                         )}
                         onClick={() => {
                           setShowDropdown(false);
@@ -826,7 +826,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                   "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
                   "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                   "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
                   "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                 )}
               />
@@ -851,7 +851,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           )}
 
           {!loading && !loadError && filteredProjects.length === 0 && (
-            <div className="rounded-2xl border border-gray-300/80 bg-white p-6 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+            <div className="rounded-2xl border border-gray-300/80 bg-white p-6 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
               No projects found.
             </div>
           )}

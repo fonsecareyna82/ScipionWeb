@@ -1,5 +1,6 @@
 // src/entry-protocoldetail-umd.tsx
 import "./index.css";
+import "./styles/theme-tokens.css";
 
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -80,8 +81,8 @@ class WidgetErrorBoundary extends React.Component<{ children: React.ReactNode },
     return (
       <pre
         style={{
-          color: "#b91c1c",
-          background: "#fee2e2",
+          color: "var(--app-red-700)",
+          background: "var(--app-red-100)",
           padding: 12,
           borderRadius: 8,
           whiteSpace: "pre-wrap",
@@ -157,7 +158,7 @@ function ProtocolDetailWrapper({
   }
   if (error || !detail) {
     return (
-      <div style={{ padding: 16, color: "#b91c1c", fontFamily: "system-ui" }}>
+      <div style={{ padding: 16, color: "var(--app-red-700)", fontFamily: "system-ui" }}>
         {error || "Failed to load protocol."}
       </div>
     );

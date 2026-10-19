@@ -91,7 +91,7 @@ const protocolStatusColors:
     },
     interactive: {
         backgroundColor: "#FFC107",
-        color: "#1F2937",
+        color: "var(--app-n-800)",
     },
     scheduled: {
         backgroundColor: "#918516",
@@ -118,7 +118,7 @@ function getProtocolStatusSx(
         normalizedStatus
         ]
         ?? {
-            backgroundColor: "#6B7280",
+            backgroundColor: "var(--app-n-500)",
             color: "#FFFFFF",
         }
     );

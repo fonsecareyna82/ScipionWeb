@@ -1958,7 +1958,7 @@ export default function TiltSeriesViewer({
           elevation={0}
           sx={{
             p: 1.5,
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: "1px solid var(--app-n-200)",
             display: "flex",
             alignItems: "center",
             gap: 1,
@@ -2023,7 +2023,7 @@ export default function TiltSeriesViewer({
             minWidth: 0,
             display: "flex",
             flexDirection: "column",
-            borderRight: "1px solid #e5e7eb",
+            borderRight: "1px solid var(--app-n-200)",
           }}
         >
           <Paper
@@ -2031,7 +2031,7 @@ export default function TiltSeriesViewer({
             elevation={0}
             sx={{
               p: 0.75,
-              borderBottom: "1px solid #e5e7eb",
+              borderBottom: "1px solid var(--app-n-200)",
               display: "flex",
               alignItems: "center",
               gap: 1,
@@ -2274,8 +2274,8 @@ export default function TiltSeriesViewer({
                               colSpan={6}
                               sx={{
                                 p: 0,
-                                borderBottom: "1px solid #dbe3ea",
-                                backgroundColor: "#fafafa",
+                                borderBottom: "1px solid var(--app-n-200)",
+                                backgroundColor: "var(--app-n-50)",
                               }}
                             >
                               <Box
@@ -2291,8 +2291,8 @@ export default function TiltSeriesViewer({
                                     top: -2,
                                     width: 18,
                                     height: 24,
-                                    borderLeft: "2px solid #d1d5db",
-                                    borderBottom: "2px solid #d1d5db",
+                                    borderLeft: "2px solid var(--app-n-300)",
+                                    borderBottom: "2px solid var(--app-n-300)",
                                     borderBottomLeftRadius: "6px",
                                   },
                                 }}
@@ -2307,7 +2307,7 @@ export default function TiltSeriesViewer({
                                       fontSize: "0.72rem",
                                       fontWeight: 600,
                                       py: 0.5,
-                                      backgroundColor: "#f3f4f6",
+                                      backgroundColor: "var(--app-n-100)",
                                     },
                                     "& td": {
                                       fontSize: "0.75rem",
@@ -2325,7 +2325,7 @@ export default function TiltSeriesViewer({
                                         fontSize: "0.72rem",
                                         fontWeight: 600,
                                         py: 0.5,
-                                        backgroundColor: "#f3f4f6",
+                                        backgroundColor: "var(--app-n-100)",
                                       },
                                       "& td": {
                                         fontSize: "0.75rem",
@@ -2540,7 +2540,7 @@ export default function TiltSeriesViewer({
             elevation={0}
             sx={{
               p: 0.75,
-              borderBottom: "1px solid #e5e7eb",
+              borderBottom: "1px solid var(--app-n-200)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -2602,7 +2602,7 @@ export default function TiltSeriesViewer({
               sx={{
                 px: 1.5,
                 py: 0.5,
-                borderBottom: "1px solid #e5e7eb",
+                borderBottom: "1px solid var(--app-n-200)",
                 bgcolor: "background.paper",
                 display: "flex",
                 alignItems: "center",
@@ -2661,7 +2661,7 @@ export default function TiltSeriesViewer({
             sx={{
               px: 1.5,
               py: 0.5,
-              borderBottom: "1px solid #e5e7eb",
+              borderBottom: "1px solid var(--app-n-200)",
               bgcolor: "background.paper",
               display: "flex",
               alignItems: "center",
@@ -2730,7 +2730,7 @@ export default function TiltSeriesViewer({
                 display: "flex",
                 alignItems: "center",
                 gap: 0.25,
-                bgcolor: "rgba(248,250,252,0.9)",
+                bgcolor: "color-mix(in srgb, var(--app-n-50) 90%, transparent)",
                 borderRadius: 9999,
                 px: 0.75,
                 py: 0.25,
@@ -2902,7 +2902,7 @@ export default function TiltSeriesViewer({
             sx={{
               px: 1.5,
               py: 0.75,
-              borderTop: "1px solid #e5e7eb",
+              borderTop: "1px solid var(--app-n-200)",
               bgcolor: "background.paper",
               display: "flex",
               alignItems: "center",
@@ -2938,7 +2938,7 @@ export default function TiltSeriesViewer({
           <Box
             sx={{
               p: 0.75,
-              borderTop: "1px solid #e5e7eb",
+              borderTop: "1px solid var(--app-n-200)",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",

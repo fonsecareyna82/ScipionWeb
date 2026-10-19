@@ -29,7 +29,7 @@ export default function PluginQuickDetailsPanel({
   const isDevel = isDevelPlugin(plugin);
 
   return (
-    <aside className="rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-slate-950">
+    <aside className="rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950">
       <div className="flex items-start justify-between gap-4 border-b border-gray-200/80 bg-gray-50/80 px-4 py-4 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.04]">

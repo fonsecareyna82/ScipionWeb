@@ -1441,7 +1441,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
         dividers
         sx={{
           p: 0,
-          background: "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(241,245,249,0.96) 100%)",
+          background: "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 96%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 96%, transparent) 100%)",
         }}
       >
         <Box sx={{ display: "flex", height: "100%" }}>
@@ -1462,7 +1462,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                 p: 1.5,
                 borderRadius: 2.5,
                 borderColor: "rgba(148,163,184,0.25)",
-                backgroundColor: "rgba(255,255,255,0.78)",
+                backgroundColor: "color-mix(in srgb, var(--app-n-0) 78%, transparent)",
               }}
             >
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
@@ -1622,7 +1622,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                 flex: 1,
                 borderRadius: 2.5,
                 borderColor: "rgba(148,163,184,0.25)",
-                backgroundColor: "rgba(255,255,255,0.78)",
+                backgroundColor: "color-mix(in srgb, var(--app-n-0) 78%, transparent)",
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
@@ -1637,7 +1637,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                   justifyContent: "space-between",
                   borderBottom: "1px solid rgba(148,163,184,0.22)",
                   background:
-                    "linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(241,245,249,1) 100%)",
+                    "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 100%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 100%, transparent) 100%)",
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "rgba(15,23,42,0.9)" }}>
@@ -1667,14 +1667,14 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                         <TableRow
                           key={row.name}
                           hover
-                          sx={{ "&:hover td": { backgroundColor: "rgba(248,250,252,1)" } }}
+                          sx={{ "&:hover td": { backgroundColor: "color-mix(in srgb, var(--app-n-50) 100%, transparent)" } }}
                         >
                           <TableCell>{row.idx}</TableCell>
                           <TableCell title={row.name}>
                             <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                               <Typography
                                 variant="body2"
-                                sx={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}
+                                sx={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--app-n-900)" }}
                               >
                                 {row.label}
                               </Typography>
@@ -1718,7 +1718,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
               sx={{
                 borderRadius: 2.5,
                 borderColor: "rgba(148,163,184,0.25)",
-                backgroundColor: "rgba(255,255,255,0.78)",
+                backgroundColor: "color-mix(in srgb, var(--app-n-0) 78%, transparent)",
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
@@ -1735,7 +1735,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                   gap: 1,
                   borderBottom: "1px solid rgba(148,163,184,0.22)",
                   background:
-                    "linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(241,245,249,1) 100%)",
+                    "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 100%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 100%, transparent) 100%)",
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "rgba(15,23,42,0.92)" }}>
@@ -1753,7 +1753,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       py: 0.35,
                       borderRadius: 2,
                       border: "1px solid rgba(148,163,184,0.25)",
-                      background: "rgba(248,250,252,0.8)",
+                      background: "color-mix(in srgb, var(--app-n-50) 80%, transparent)",
                       maxWidth: 420,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -1949,7 +1949,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                         sx={{
                           borderRadius: 2.5,
                           borderColor: "rgba(148,163,184,0.22)",
-                          backgroundColor: "#ffffff",
+                          backgroundColor: "var(--app-n-0)",
                           overflow: "hidden",
                           position: "relative",
                           display: "flex",
@@ -2088,7 +2088,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                               position: "relative",
                               height: 76,
                               borderTop: "1px solid rgba(148,163,184,0.18)",
-                              background: "rgba(248,250,252,0.9)",
+                              background: "color-mix(in srgb, var(--app-n-50) 90%, transparent)",
                             }}
                           >
                             <Box
@@ -2239,7 +2239,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
               sx={{
                 borderRadius: 2.5,
                 borderColor: "rgba(148,163,184,0.25)",
-                backgroundColor: "rgba(255,255,255,0.78)",
+                backgroundColor: "color-mix(in srgb, var(--app-n-0) 78%, transparent)",
                 p: 1.25,
                 display: "flex",
                 alignItems: "center",

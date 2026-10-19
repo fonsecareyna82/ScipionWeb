@@ -59,7 +59,7 @@ function Shell({ title, subtitle, children, actions, onClose, busy, maxWidth = "
         </IconButton>
       </DialogTitle>
       {busy && <LinearProgress />}
-      <DialogContent dividers sx={{ bgcolor: "#f7f9fb" }}>{children}</DialogContent>
+      <DialogContent dividers sx={{ bgcolor: "var(--app-n-50)" }}>{children}</DialogContent>
       <DialogActions sx={{ px: 2.5, py: 1.5 }}>{actions}</DialogActions>
     </Dialog>
   );
@@ -107,7 +107,7 @@ function PreviewBody({ dialog, images, previewBusy, values, item, onItem, onValu
 }) {
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "220px 1fr" }, gap: 2 }}>
-      <Box sx={{ border: "1px solid #dde3ea", borderRadius: 2, bgcolor: "#fff", maxHeight: 420, overflow: "auto" }}>
+      <Box sx={{ border: "1px solid var(--app-n-200)", borderRadius: 2, bgcolor: "var(--app-n-0)", maxHeight: 420, overflow: "auto" }}>
         <List dense disablePadding aria-label="Items">
           {dialog.items.map(entry => (
             <ListItemButton key={entry.index} selected={entry.index === item} onClick={() => onItem(entry.index)}>
@@ -282,7 +282,7 @@ export default function WizardRuntimeDialog({
       </>}>
         <Messages messages={messages} />
         <Message text={dialog.message} />
-        <TableContainer sx={{ maxHeight: 420, bgcolor: "#fff", border: "1px solid #dde3ea", borderRadius: 2 }}>
+        <TableContainer sx={{ maxHeight: 420, bgcolor: "var(--app-n-0)", border: "1px solid var(--app-n-200)", borderRadius: 2 }}>
           <Table size="small" stickyHeader aria-label={dialog.title}>
             <TableHead>
               <TableRow>
@@ -322,7 +322,7 @@ export default function WizardRuntimeDialog({
         <Messages messages={messages} />
         <TextField fullWidth size="small" placeholder="Filter" value={filter} sx={{ mb: 1 }}
           onChange={event => setFilter(event.target.value)} inputProps={{ "aria-label": "Filter files" }} />
-        <Box sx={{ maxHeight: 360, overflow: "auto", bgcolor: "#fff", border: "1px solid #dde3ea", borderRadius: 2 }}>
+        <Box sx={{ maxHeight: 360, overflow: "auto", bgcolor: "var(--app-n-0)", border: "1px solid var(--app-n-200)", borderRadius: 2 }}>
           <List dense disablePadding aria-label={`Files in ${dialog.root}`}>
             {shown.map(entry => (
               <ListItemButton key={entry} selected={entry === path} onClick={() => setPath(entry)}

@@ -60,8 +60,8 @@ export default function ValidationErrorsDialog({
           maxHeight: "300px",
           overflowY: "auto",
           backgroundColor: "#fff8f8",
-          borderTop: "1px solid #f0f0f0",
-          borderBottom: "1px solid #f0f0f0",
+          borderTop: "1px solid var(--app-n-100)",
+          borderBottom: "1px solid var(--app-n-100)",
           p: 2.5,
         }}
       >
@@ -103,7 +103,7 @@ export default function ValidationErrorsDialog({
                   <Typography
                     variant="body2"
                     sx={{
-                      color: "#333",
+                      color: "var(--app-n-700)",
                       lineHeight: 1.5,
                       fontSize: "0.9rem",
                     }}
@@ -121,7 +121,7 @@ export default function ValidationErrorsDialog({
             })}
           </Box>
         ) : (
-          <Typography variant="body2" sx={{ color: "#555" }}>
+          <Typography variant="body2" sx={{ color: "var(--app-n-600)" }}>
             No validation details provided.
           </Typography>
         )}
@@ -131,8 +131,8 @@ export default function ValidationErrorsDialog({
         sx={{
           p: 2,
           justifyContent: "flex-end",
-          backgroundColor: "#fafafa",
-          borderTop: "1px solid #eee",
+          backgroundColor: "var(--app-n-50)",
+          borderTop: "1px solid var(--app-n-100)",
         }}
       >
         <Button

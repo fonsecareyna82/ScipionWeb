@@ -37,10 +37,10 @@ export default function PluginCard(plugin: PluginCardProps) {
         className={classNames(
           "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl border shadow-sm backdrop-blur transition duration-200",
           showUpdate
-            ? "border-red-500/80 bg-gradient-to-br from-red-50 via-white to-rose-50 hover:-translate-y-0.5 hover:border-red-600 hover:shadow-md hover:ring-2 hover:ring-red-200/70 dark:border-red-700/70 dark:bg-gradient-to-br dark:from-red-950/25 dark:via-slate-900 dark:to-rose-950/20 dark:hover:border-red-500 dark:hover:ring-red-500/10"
+            ? "border-red-500/80 bg-gradient-to-br from-red-50 via-white to-rose-50 hover:-translate-y-0.5 hover:border-red-600 hover:shadow-md hover:ring-2 hover:ring-red-200/70 dark:border-red-700/70 dark:bg-gradient-to-br dark:from-red-950/25 dark:via-gray-900 dark:to-rose-950/20 dark:hover:border-red-500 dark:hover:ring-red-500/10"
             : isDevel
-              ? "border-indigo-400/80 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 hover:-translate-y-0.5 hover:border-indigo-500 hover:shadow-md hover:ring-2 hover:ring-indigo-200/70 dark:border-indigo-700/70 dark:bg-gradient-to-br dark:from-indigo-950/25 dark:via-slate-900 dark:to-cyan-950/20 dark:hover:border-indigo-500 dark:hover:ring-indigo-500/10"
-              : "border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-slate-100 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md hover:ring-2 hover:ring-slate-200/70 dark:border-slate-800/80 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-950 dark:to-black dark:hover:border-slate-600 dark:hover:ring-white/[0.06]",
+              ? "border-indigo-400/80 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 hover:-translate-y-0.5 hover:border-indigo-500 hover:shadow-md hover:ring-2 hover:ring-indigo-200/70 dark:border-indigo-700/70 dark:bg-gradient-to-br dark:from-indigo-950/25 dark:via-gray-900 dark:to-cyan-950/20 dark:hover:border-indigo-500 dark:hover:ring-indigo-500/10"
+              : "border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-slate-100 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md hover:ring-2 hover:ring-slate-200/70 dark:border-gray-800/80 dark:bg-gradient-to-br dark:from-gray-900 dark:via-gray-950 dark:to-black dark:hover:border-slate-600 dark:hover:ring-white/[0.06]",
         )}
       >
         <div

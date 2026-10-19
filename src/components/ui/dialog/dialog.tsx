@@ -95,8 +95,8 @@ const DialogContent = React.forwardRef<
             className="h-5 w-5"
             strokeWidth={1}
             style={{
-              color: "#d2daeb",
-              stroke: "#d2daeb",
+              color: "var(--app-n-300)",
+              stroke: "var(--app-n-300)",
             }}
           />
         </DialogPrimitive.Close>

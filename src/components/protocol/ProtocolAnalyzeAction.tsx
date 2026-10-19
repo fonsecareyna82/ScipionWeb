@@ -35,12 +35,12 @@ const dockButtonSx = {
   fontSize: "0.75rem",
   fontWeight: 600,
   whiteSpace: "nowrap",
-  color: "#1f2937",
-  border: "1px solid #d4dbe3",
-  bgcolor: "#fff",
+  color: "var(--app-n-800)",
+  border: "1px solid var(--app-n-300)",
+  bgcolor: "var(--app-n-0)",
   boxShadow: "inset 0 -2px 0 rgba(14, 165, 233, 0.55)",
   "& .MuiButton-startIcon": { mr: 0.6, ml: 0, color: "#0284c7" },
-  "&:hover": { bgcolor: "#f1f5f9", boxShadow: "inset 0 -2px 0 rgba(14, 165, 233, 0.9)" },
+  "&:hover": { bgcolor: "var(--app-n-100)", boxShadow: "inset 0 -2px 0 rgba(14, 165, 233, 0.9)" },
 };
 
 export default function ProtocolAnalyzeAction({

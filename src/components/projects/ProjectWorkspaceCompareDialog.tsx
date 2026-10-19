@@ -1085,7 +1085,7 @@ function downloadTextFile(fileName: string, content: string): void {
 
 function InsightPanel(props: { insights: string[] }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-gray-900/70">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-slate-950 dark:text-white">Scientific summary</h3>
@@ -1093,7 +1093,7 @@ function InsightPanel(props: { insights: string[] }) {
             Auto-generated from smart workflow matching and loaded metadata.
           </p>
         </div>
-        <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200">
+        <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-gray-950 dark:text-slate-200">
           Smart diff
         </span>
       </div>
@@ -1101,7 +1101,7 @@ function InsightPanel(props: { insights: string[] }) {
         {props.insights.map((insight, index) => (
           <div
             key={`${index}:${insight}`}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-gray-950 dark:text-slate-200"
           >
             {insight}
           </div>
@@ -1201,7 +1201,7 @@ function ChipList(props: { items: string[]; emptyText: string; tone?: "green" | 
       ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
       : props.tone === "amber"
         ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-        : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200";
+        : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200";
 
   if (!props.items.length) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">{props.emptyText}</p>;
@@ -1215,7 +1215,7 @@ function ChipList(props: { items: string[]; emptyText: string; tone?: "green" | 
         </span>
       ))}
       {props.items.length > 30 ? (
-        <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200">
+        <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
           +{props.items.length - 30} more
         </span>
       ) : null}
@@ -1229,7 +1229,7 @@ function CompactSummaryItem(props: { label: string; value: string | number; hint
       ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
       : props.tone === "warning"
         ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-        : "border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100";
+        : "border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-gray-950 dark:text-slate-100";
 
   return (
     <div className={classNames("min-w-0 rounded-xl border px-3 py-2", toneClass)}>
@@ -1242,7 +1242,7 @@ function CompactSummaryItem(props: { label: string; value: string | number; hint
 
 function CompactProjectSnapshot(props: { label: string; project: ProjectSummary }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-gray-950">
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{props.label}</div>
       <div className="mt-0.5 truncate text-sm font-bold text-slate-950 dark:text-white" title={props.project.fullTitle}>
         {props.project.title}
@@ -1263,7 +1263,7 @@ function CompactComparisonSummary(props: { comparison: CompareResult }) {
   const weakRows = props.comparison.protocolRows.filter((row) => row.matchQuality === "weak").length;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-100/70 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+    <div className="rounded-2xl border border-slate-200 bg-slate-100/70 p-3 dark:border-slate-700 dark:bg-gray-900/70">
       <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.1fr)_repeat(5,minmax(110px,0.7fr))_minmax(0,1.1fr)]">
         <CompactProjectSnapshot label="Left project" project={props.comparison.left} />
         <CompactSummaryItem label="Similarity" value={`${props.comparison.similarityScore}%`} />
@@ -1279,8 +1279,8 @@ function CompactComparisonSummary(props: { comparison: CompareResult }) {
 
 function AdvancedComparisonDetails(props: { comparison: CompareResult }) {
   return (
-    <details className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-900">
+    <details className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-gray-950">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-gray-900">
         Advanced comparison details
       </summary>
 
@@ -1288,19 +1288,19 @@ function AdvancedComparisonDetails(props: { comparison: CompareResult }) {
         <InsightPanel insights={props.comparison.insights} />
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
             <h3 className="text-sm font-bold text-gray-950 dark:text-white">Common protocol classes</h3>
             <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Classes present in both projects.</p>
             <ChipList items={props.comparison.commonClasses} emptyText="No shared protocol classes." tone="green" />
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
             <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in left project</h3>
             <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the left project.</p>
             <ChipList items={props.comparison.onlyLeftClasses} emptyText="No unique protocol classes." tone="amber" />
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
             <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in right project</h3>
             <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the right project.</p>
             <ChipList items={props.comparison.onlyRightClasses} emptyText="No unique protocol classes." tone="amber" />
@@ -1308,11 +1308,11 @@ function AdvancedComparisonDetails(props: { comparison: CompareResult }) {
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
             <h3 className="text-sm font-bold text-gray-950 dark:text-white">Largest protocol class deltas</h3>
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
               <table className="w-full table-fixed text-left text-sm">
-                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
                   <tr>
                     <th className="w-[52%] px-3 py-2">Class</th>
                     <th className="w-[16%] px-3 py-2 text-right">Left</th>
@@ -1334,11 +1334,11 @@ function AdvancedComparisonDetails(props: { comparison: CompareResult }) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
             <h3 className="text-sm font-bold text-gray-950 dark:text-white">Status distribution</h3>
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
               <table className="w-full table-fixed text-left text-sm">
-                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
                   <tr>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2 text-right">Left</th>
@@ -1414,7 +1414,7 @@ function SeverityBadge(props: { severity: ParamDiffSeverity }) {
       ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
       : props.severity === "important"
         ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-        : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300";
+        : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300";
 
   return (
     <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", tone)}>
@@ -1431,7 +1431,7 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-slate-800 dark:text-gray-200">
+        <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
           {props.protocol.id}
         </span>
         <span className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={props.protocol.label}>
@@ -1476,11 +1476,11 @@ function ParamFilterButton(props: {
         "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
         props.active
           ? "border-slate-700 bg-slate-800 text-white shadow-sm shadow-slate-500/20"
-          : "border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-200 dark:hover:border-slate-600 dark:hover:bg-slate-800",
+          : "border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:border-slate-600 dark:hover:bg-gray-800",
       )}
     >
       <span>{props.label}</span>
-      <span className={classNames("rounded-full px-1 py-0.5 text-[10px]", props.active ? "bg-white/20" : "bg-gray-100 dark:bg-slate-800")}>
+      <span className={classNames("rounded-full px-1 py-0.5 text-[10px]", props.active ? "bg-white/20" : "bg-gray-100 dark:bg-gray-800")}>
         {props.count}
       </span>
     </button>
@@ -1490,7 +1490,7 @@ function ParamFilterButton(props: {
 function ProtocolParamsCard(props: { label: string; protocol?: ProtocolSummary }) {
   if (!props.protocol) {
     return (
-      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-950">
+      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
         <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
           {props.label}
         </div>
@@ -1500,12 +1500,12 @@ function ProtocolParamsCard(props: { label: string; protocol?: ProtocolSummary }
   }
 
   return (
-    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-950">
+    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950">
       <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
         {props.label}
       </div>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-slate-800 dark:text-gray-200">
+        <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
           {props.protocol.id}
         </span>
         <span className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={props.protocol.label}>
@@ -1668,7 +1668,7 @@ function ProtocolParamsComparisonDialog(props: {
   return (
     <div className="pointer-events-none fixed left-1/2 top-1/2 z-[160] w-[calc(100vw-2rem)] max-w-6xl -translate-x-1/2 -translate-y-1/2">
       <div
-        className="pointer-events-auto flex h-[88vh] max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950"
+        className="pointer-events-auto flex h-[88vh] max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-gray-950"
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
@@ -1692,19 +1692,19 @@ function ProtocolParamsComparisonDialog(props: {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 px-5 py-4 dark:bg-slate-900">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 px-5 py-4 dark:bg-gray-900">
           <div className="grid gap-3 lg:grid-cols-2">
             <ProtocolParamsCard label={`Left · ${props.leftTitle}`} protocol={props.row.leftProtocol} />
             <ProtocolParamsCard label={`Right · ${props.rightTitle}`} protocol={props.row.rightProtocol} />
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950 lg:flex-row lg:items-center lg:justify-between">
             <input
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search parameter labels or values..."
-              className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-900 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-slate-900 dark:text-white"
+              className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-900 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
 
             <div className="flex flex-wrap gap-1.5">
@@ -1721,7 +1721,7 @@ function ProtocolParamsComparisonDialog(props: {
           </div>
 
           {loading ? (
-            <div className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-300">
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300">
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               Loading full protocol details...
             </div>
@@ -1734,13 +1734,13 @@ function ProtocolParamsComparisonDialog(props: {
           ) : null}
 
           {!filteredRows.length ? (
-            <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-400">
+            <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
               No parameters match the current filters.
             </div>
           ) : (
-            <div className="mt-3 max-h-[58vh] overflow-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-950">
+            <div className="mt-3 max-h-[58vh] overflow-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
               <table className="w-full min-w-[1100px] table-fixed text-left text-xs">
-                <thead className="sticky top-0 z-20 bg-slate-200 uppercase tracking-wide text-slate-600 shadow-sm dark:bg-slate-800 dark:text-slate-300">
+                <thead className="sticky top-0 z-20 bg-slate-200 uppercase tracking-wide text-slate-600 shadow-sm dark:bg-gray-800 dark:text-slate-300">
                   <tr>
                     <th className="w-[18%] px-3 py-2">Category</th>
                     <th className="w-[24%] px-3 py-2">Parameter label</th>
@@ -1749,10 +1749,10 @@ function ProtocolParamsComparisonDialog(props: {
                     <th className="w-[8%] px-3 py-2">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
+                <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-950">
                   {groupedRows.flatMap((group) => [
                     <tr key={`${group.category}:heading`}>
-                      <td colSpan={5} className="sticky top-[33px] z-10 bg-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      <td colSpan={5} className="sticky top-[33px] z-10 bg-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:bg-gray-800 dark:text-slate-200">
                         {paramCategoryLabels[group.category]}
                       </td>
                     </tr>,
@@ -1770,7 +1770,7 @@ function ProtocolParamsComparisonDialog(props: {
                           {row.changed ? (
                             <SeverityBadge severity={row.severity} />
                           ) : (
-                            <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400">
+                            <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">
                               same
                             </span>
                           )}
@@ -1823,14 +1823,14 @@ function FilterButton(props: {
         "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
         props.active
           ? "border-slate-700 bg-slate-800 text-white shadow-sm shadow-slate-500/20"
-          : "border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-200 dark:hover:border-slate-600 dark:hover:bg-slate-800",
+          : "border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:border-slate-600 dark:hover:bg-gray-800",
       )}
     >
       <span>{props.label}</span>
       <span
         className={classNames(
           "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-          props.active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300",
+          props.active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
         )}
       >
         {props.count}
@@ -1870,7 +1870,7 @@ function ProtocolDiffTable(props: {
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="max-h-[62vh] overflow-auto">
           <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
-            <thead className="sticky top-0 z-20 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 shadow-sm dark:bg-slate-900 dark:text-gray-400">
+            <thead className="sticky top-0 z-20 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 shadow-sm dark:bg-gray-900 dark:text-gray-400">
               <tr>
                 <th className="w-[18%] px-3 py-2">Protocol class</th>
                 <th className="w-[25%] px-3 py-2"><span className="block truncate" title={props.leftTitle}>{props.leftTitle}</span></th>
@@ -1880,7 +1880,7 @@ function ProtocolDiffTable(props: {
                 <th className="w-[11%] px-3 py-2">Confidence</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
+            <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-950">
               {filteredRows.map((row) => {
                 const canCompareParams = Boolean(row.leftProtocol || row.rightProtocol);
                 const totalParamCount = new Set([
@@ -1909,8 +1909,8 @@ function ProtocolDiffTable(props: {
                           canCompareParams
                             ? criticalRows
                               ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-950/50"
-                              : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
-                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
+                              : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500",
                         )}
                         title="Open parameter comparison"
                       >
@@ -2017,7 +2017,7 @@ export default function ProjectWorkspaceCompareDialog({
   return (
     <>
       <div className="pointer-events-none fixed left-1/2 top-1/2 z-[120] w-[calc(100vw-2rem)] max-w-7xl -translate-x-1/2 -translate-y-1/2">
-        <div className="pointer-events-auto flex h-[90vh] max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-300 bg-gray-50 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="pointer-events-auto flex h-[90vh] max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-300 bg-gray-50 shadow-2xl dark:border-slate-700 dark:bg-gray-900">
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-700 bg-slate-800 px-5 py-4">
             <div className="min-w-0">
               <h2 className="text-lg font-bold tracking-tight text-white">Compare projects</h2>
@@ -2039,13 +2039,13 @@ export default function ProjectWorkspaceCompareDialog({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 dark:border-gray-700 dark:bg-slate-900 md:flex-row md:items-end">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 dark:border-gray-700 dark:bg-gray-900 md:flex-row md:items-end">
             <label className="min-w-0 flex-1 text-sm font-semibold text-gray-700 dark:text-gray-200">
               Left project
               <select
                 value={leftProjectName}
                 onChange={(event) => setLeftProjectName(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-slate-950 dark:text-white"
+                className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
               >
                 {orderedTabs.map((tab) => (
                   <option key={tab.id} value={tab.projectName}>{tab.title}</option>
@@ -2058,7 +2058,7 @@ export default function ProjectWorkspaceCompareDialog({
               <select
                 value={rightProjectName}
                 onChange={(event) => setRightProjectName(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-slate-950 dark:text-white"
+                className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
               >
                 {orderedTabs.map((tab) => (
                   <option key={tab.id} value={tab.projectName}>{tab.title}</option>
@@ -2079,7 +2079,7 @@ export default function ProjectWorkspaceCompareDialog({
             ) : comparison ? (
               <div className="space-y-4">
                 {loading ? (
-                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-gray-950 dark:text-slate-200">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     Refreshing project comparison...
                   </div>
@@ -2087,7 +2087,7 @@ export default function ProjectWorkspaceCompareDialog({
 
                 <CompactComparisonSummary comparison={comparison} />
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950">
                   <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
@@ -2107,7 +2107,7 @@ export default function ProjectWorkspaceCompareDialog({
                 <AdvancedComparisonDetails comparison={comparison} />
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-200">
+              <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200">
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 Loading project comparison...
               </div>

@@ -78,7 +78,7 @@ function TopActionButton(props: {
         "inline-flex items-center gap-2 rounded-[10px] px-5 py-3 text-sm font-semibold transition",
         props.primary
           ? "bg-blue-600 text-white hover:bg-blue-700"
-          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700",
+          : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-gray-800 dark:text-blue-300 dark:hover:bg-slate-700",
       )}
     >
       {props.icon}
@@ -97,7 +97,7 @@ function ReleaseRow(props: { release: (typeof releaseEntries)[number] }) {
       className={classNames(
         "flex items-center gap-4 rounded-[10px] border border-gray-200 bg-white px-5 py-4 transition",
         "hover:border-gray-300 hover:bg-gray-50",
-        "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600 dark:hover:bg-slate-800/70",
+        "dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600 dark:hover:bg-gray-800/70",
       )}
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">
@@ -135,7 +135,7 @@ export default function ReleaseNotesPage() {
     <>
       <PageMeta title="Release notes | Scipion" description="Scipion release notes" />
 
-      <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-slate-950 md:px-6 md:py-8">
+      <div className="min-h-full bg-[#f5f7fb] px-4 py-6 dark:bg-gray-950 md:px-6 md:py-8">
         <div className="mx-auto w-full max-w-5xl">
           <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
             <div>
@@ -171,7 +171,7 @@ export default function ReleaseNotesPage() {
                     to="/release-notes"
                     className={classNames(
                       "rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-gray-50",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800",
                     )}
                   >
                     View all releases

@@ -540,7 +540,7 @@ export default function Plugins() {
               ) : (
                 <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-                    <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
+                    <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-gray-950/90">
                       <PluginSelectionBar
                         selectedCount={selectedPlugins.length}
                         actionableCount={actionableSelectedPlugins.length}

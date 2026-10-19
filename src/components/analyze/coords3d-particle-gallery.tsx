@@ -733,7 +733,7 @@ export default function Coords3dParticleGallery({
                                                 justifyContent: "center",
                                             }}
                                         >
-                                            <CircularProgress size={18} sx={{ color: "#cbd5e1" }} />
+                                            <CircularProgress size={18} sx={{ color: "var(--app-n-300)" }} />
                                         </Box>
                                     )}
 
