@@ -298,6 +298,9 @@ const defaultService: ProjectService = {
     opts?: BrowseOptions,
   ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline, opts),
 
+  createProtocolDownloadLink: (projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions) =>
+    api.createProtocolDownloadLink(toId(projectId), toId(protocolId), path, opts),
+
   fetchProtocolInlinePreviewBlob: (projectId: Id, protocolId: Id, path: string) =>
     api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
 

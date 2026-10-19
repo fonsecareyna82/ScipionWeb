@@ -283,6 +283,26 @@ describe("RemoteFileDialog", () => {
     click.mockRestore();
   });
 
+  it("downloads big files with a signed link the browser downloads on its own", async () => {
+    listRemoteDirectory.mockResolvedValue([{ name: "movie.tif", path: "Runs/m/movie.tif", isDir: false, size: 9e9 }]);
+    const getDownloadLink = vi.fn().mockResolvedValue("http://api/projects/7/protocols/12/fs/download-file?token=fd.x");
+    let clicked: HTMLAnchorElement | null = null;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked = this;
+    });
+    renderDialog({ getDownloadLink });
+    expect(await screen.findByText("movie.tif")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Download/ }));
+    });
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(getDownloadLink).toHaveBeenCalledWith("Runs/m/movie.tif");
+    expect(clicked!.href).toBe("http://api/projects/7/protocols/12/fs/download-file?token=fd.x");
+    // Not through memory: no authenticated fetch of the file.
+    expect(authMocks.fetchWithAuth).not.toHaveBeenCalled();
+    click.mockRestore();
+  });
+
   it("shows the data blocks of a metadata file as tabs", () => {
     render(
       <TablePreview

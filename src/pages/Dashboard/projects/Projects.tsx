@@ -893,6 +893,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         listRemoteDirectory={(p) => svc.listRemoteDirectory(-1, -1, p)}
         previewRemoteEntry={(p) => svc.previewRemoteEntry(-1, -1, p)}
         buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl("-1", "-1", p, !!inline)}
+        getDownloadLink={svc.createProtocolDownloadLink ? (p) => svc.createProtocolDownloadLink!(-1, -1, p) : undefined}
       />
 
       <ImportWorkflowDialog

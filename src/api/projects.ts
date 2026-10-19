@@ -2145,6 +2145,26 @@ export function buildProtocolDownloadUrl(
   )}${q}${scopeQuery(opts)}`;
 }
 
+/**
+ * A short-lived signed link to download one file: the browser downloads it on
+ * its own (streamed to disk, with progress, resumable if the connection drops).
+ */
+export async function createProtocolDownloadLink(
+  projectId: Id,
+  protocolId: Id,
+  path: string,
+  opts?: BrowseOptions,
+): Promise<string> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${encodeURIComponent(String(protocolId))}/fs/download-link`,
+    { method: "POST", body: JSON.stringify({ path, scope: opts?.scope ?? "project" }) },
+  );
+  if (!res.ok) throw await toApiError(res, "The file could not be downloaded");
+  const raw = await safeJson<{ url?: string }>(res);
+  if (!raw?.url) throw new Error("The server did not give a download link");
+  return `${BASE_URL}${raw.url}`;
+}
+
 export async function fetchProtocolInlinePreviewBlob(
   projectId: Id,
   protocolId: Id,

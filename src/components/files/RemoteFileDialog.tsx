@@ -110,6 +110,11 @@ type RemoteFileDialogProps = {
   previewRemoteEntry?: (relPath: string, opts?: { signal?: AbortSignal }) => Promise<RemotePreview | null>;
   /** URL of a file (root-relative path); enables the Download button. */
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
+  /**
+   * A signed link to a file (root-relative path), downloaded by the browser on
+   * its own: streamed to disk, with progress, resumable. Preferred to buildDownloadUrl.
+   */
+  getDownloadLink?: (relPath: string) => Promise<string>;
 
   mode?: RemoteFileDialogMode;
   defaultFilename?: string;
@@ -192,6 +197,7 @@ export default function RemoteFileDialog({
   previewRemoteEntry,
   protocolId,
   buildDownloadUrl,
+  getDownloadLink,
   onPick,
   mode = "select",
   defaultFilename = "",
@@ -562,10 +568,21 @@ export default function RemoteFileDialog({
   }, [rows, scrollRowIntoView, selectEntry]);
 
   const downloadSelected = useCallback(async () => {
-    if (!buildDownloadUrl || !selected || selected.isDir) return;
+    if ((!buildDownloadUrl && !getDownloadLink) || !selected || selected.isDir) return;
     setDownloading(true);
     try {
-      const response = await fetchWithAuth(buildDownloadUrl(relPathOf(selected), false));
+      if (getDownloadLink) {
+        // A plain link: the browser's download manager takes it from here.
+        const link = document.createElement("a");
+        link.href = await getDownloadLink(relPathOf(selected));
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return;
+      }
+      // Without signed links: through memory, fine for small files.
+      const response = await fetchWithAuth(buildDownloadUrl!(relPathOf(selected), false));
       if (!response.ok) throw new Error(`The file could not be downloaded (${response.status})`);
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
@@ -580,7 +597,7 @@ export default function RemoteFileDialog({
     } finally {
       setDownloading(false);
     }
-  }, [buildDownloadUrl, relPathOf, selected]);
+  }, [buildDownloadUrl, getDownloadLink, relPathOf, selected]);
 
   // -- keyboard ---------------------------------------------------------------
 
@@ -763,7 +780,7 @@ export default function RemoteFileDialog({
   const dialogHeightClass = mode === "save" ? `${styles.dialogHeight} ${styles.dialogHeightSave}` : styles.dialogHeight;
   const browserHeightClass = mode === "save" ? `${styles.browserHeight} ${styles.browserHeightSave}` : styles.browserHeight;
   const previewHeightClass = mode === "save" ? `${styles.previewHeight} ${styles.previewHeightSave}` : styles.previewHeight;
-  const canDownload = !!buildDownloadUrl && !!selected && !selected.isDir;
+  const canDownload = (!!buildDownloadUrl || !!getDownloadLink) && !!selected && !selected.isDir;
 
   return (
     <Dialog
@@ -823,7 +840,7 @@ export default function RemoteFileDialog({
             Refresh
           </button>
 
-          {buildDownloadUrl && (
+          {(buildDownloadUrl || getDownloadLink) && (
             <button type="button" onClick={() => void downloadSelected()} disabled={!canDownload || downloading}
               title={canDownload ? `Download ${selected?.name}` : "Select a file to download it"}
               className={[styles.ppChipBtn, styles.toolbarEnd].join(" ")}>

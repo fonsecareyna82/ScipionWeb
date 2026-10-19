@@ -4350,6 +4350,9 @@ export default function ProtocolForm({
           listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, effectiveProtocolId, p, { scope: "filesystem" })}
           previewRemoteEntry={(p, opts) => svc.previewRemoteEntry(projectId, effectiveProtocolId, p, { ...opts, scope: "filesystem" })}
           buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projectId, effectiveProtocolId, p, !!inline, { scope: "filesystem" })}
+          getDownloadLink={svc.createProtocolDownloadLink
+            ? (p) => svc.createProtocolDownloadLink!(projectId, effectiveProtocolId, p, { scope: "filesystem" })
+            : undefined}
           onPick={(relativePath, _entry, _filename, info) => {
             const stateKey = pathDialog.stateKey;
             const value = info ? pathForProtocolParam(info.absPath, info.projectRootAbs) : relativePath;

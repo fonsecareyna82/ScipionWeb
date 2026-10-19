@@ -11004,6 +11004,9 @@ export default function ProjectPage() {
             listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
             previewRemoteEntry={(p, opts) => svc.previewRemoteEntry(projId, pid.toString(), p, opts)}
             buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
+            getDownloadLink={svc.createProtocolDownloadLink
+              ? (p) => svc.createProtocolDownloadLink!(projId, pid.toString(), p)
+              : undefined}
             onPick={() => {
               setFileDialogOpen(false);
             }}

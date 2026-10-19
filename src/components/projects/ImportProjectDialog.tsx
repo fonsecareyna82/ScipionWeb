@@ -36,6 +36,7 @@ type ImportProjectDialogProps = {
   listRemoteDirectory: (relPath: string) => Promise<RemoteEntry[]>;
   previewRemoteEntry?: (relPath: string) => Promise<RemotePreview | null>;
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
+  getDownloadLink?: (relPath: string) => Promise<string>;
 
   title?: string;
 };
@@ -114,6 +115,7 @@ export default function ImportProjectDialog({
   listRemoteDirectory,
   previewRemoteEntry,
   buildDownloadUrl,
+  getDownloadLink,
   title = "Import project",
 }: ImportProjectDialogProps) {
   const theme = useTheme();
@@ -458,6 +460,7 @@ export default function ImportProjectDialog({
           listRemoteDirectory={listRemoteDirectory}
           previewRemoteEntry={previewRemoteEntry}
           buildDownloadUrl={buildDownloadUrl}
+          getDownloadLink={getDownloadLink}
           onPick={(pickedPath, entry) => {
             setProjectLocation(buildAbsoluteProjectLocation(pickedPath, entry));
             setOpenBrowser(false);

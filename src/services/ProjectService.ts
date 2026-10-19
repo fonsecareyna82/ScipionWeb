@@ -1982,6 +1982,8 @@ export interface ProjectService<
     protocolId: string,
     path: string
   ): Promise<{ blob: Blob; meta: any }>;
+  /** A short-lived signed link to download one file with the browser's download manager. */
+  createProtocolDownloadLink?(projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions): Promise<string>;
   fetchOutputPreview(
     projectId: string,
     protocolId: string,
