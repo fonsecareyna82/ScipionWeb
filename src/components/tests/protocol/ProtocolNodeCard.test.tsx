@@ -1,13 +1,11 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProtocolNodeCard from "@/components/protocol/ProtocolNodeCard";
-import { run } from "node:test";
-import { comment } from "postcss";
+import { ProjectTagsContext, type ProjectTagsContextValue } from "@/components/tags/ProjectTagsContext";
 
 const mockSetCurrentDraggedOutput = vi.fn();
 const mockUseProjectService = vi.fn();
-const mockUseTagStore = vi.fn();
 const mockWindowOpen = vi.fn();
 const mockWindowAssign = vi.fn();
 
@@ -51,10 +49,6 @@ vi.mock("@/components/protocol/DragContext", () => ({
 
 vi.mock("@/ProjectServiceContext", () => ({
     useProjectService: () => mockUseProjectService(),
-}));
-
-vi.mock("@/stores/tag_store", () => ({
-    useTagStore: () => mockUseTagStore(),
 }));
 
 vi.mock("@/components/analyze/analyze-output-dialog", () => ({
@@ -211,8 +205,29 @@ function createProtocolData(overrides: Record<string, any> = {}) {
 }
 
 
+const projectTagList = [
+    { id: "tag-1", title: "Urgent", color: "#ff0000" },
+    { id: "tag-2", title: "Reviewed", color: "#00ff00" },
+];
+
+// The tags the page provides (useProjectTags), here with a fixed list and map.
+function createTagsContext(overrides: Partial<ProjectTagsContextValue> = {}): ProjectTagsContextValue {
+    const tags = overrides.tags ?? projectTagList;
+    return {
+        tags,
+        tagsById: new Map(tags.map((t) => [t.id, t])),
+        loading: false,
+        assignments: { "12": ["tag-1"] },
+        toggleTag: vi.fn(),
+        requestCreateTag: vi.fn(),
+        openManager: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderComponent(
     overrides: Partial<React.ComponentProps<typeof ProtocolNodeCard>> = {},
+    tagsContext: ProjectTagsContextValue = createTagsContext(),
 ) {
     const onEdit = vi.fn();
     const onDelete = vi.fn();
@@ -244,13 +259,12 @@ function renderComponent(
 
     mockUseProjectService.mockReturnValue(service);
 
-    mockUseTagStore.mockReturnValue({
-        tags: [],
-        setTags: vi.fn(),
-    });
-
     mockReactFlowGetNodes.mockReturnValue([]);
     mockReactFlowSetNodes.mockClear();
+
+    const Wrapper = ({ children }: { children: React.ReactNode }) => (
+        <ProjectTagsContext.Provider value={tagsContext}>{children}</ProjectTagsContext.Provider>
+    );
 
     const rendered = render(
         <ProtocolNodeCard
@@ -262,9 +276,11 @@ function renderComponent(
             onOpenProtocolClass={onOpenProtocolClass}
             {...overrides}
         />,
+        { wrapper: Wrapper },
     );
 
     return {
+        tagsContext,
         onEdit,
         onDelete,
         onDuplicate,
@@ -746,35 +762,56 @@ describe("ProtocolNodeCard", () => {
     });
 
 
-    it("updates tags optimistically and persists them to backend", async () => {
-        const { service } = renderComponent({
-            data: createProtocolData({ tags: [] }),
-        });
-
+    it("toggles a tag through the page's shared write path for the selection", async () => {
+        const { tagsContext, service } = renderComponent({ data: createProtocolData({ tags: [] }) });
         mockReactFlowGetNodes.mockReturnValue([
-            {
-                id: "12",
-                selected: true,
-                data: { projectId: 1, tags: [] },
-            },
+            { id: "12", selected: true, data: {} },
+            { id: "13", selected: true, data: {} },
         ]);
 
-        const urgentButtons = await screen.findAllByRole("button", { name: /Urgent/i });
-        expect(urgentButtons.length).toBeGreaterThan(0);
+        const reviewed = screen.getAllByRole("menuitemcheckbox", { name: /Reviewed/i });
+        fireEvent.click(reviewed[0]);
 
-        fireEvent.click(urgentButtons[0]);
+        expect(tagsContext.toggleTag).toHaveBeenCalledWith(["12", "13"], "tag-2");
+        // The card never writes on its own.
+        expect(service.setProtocolTagIds).not.toHaveBeenCalled();
+    });
 
-        await waitFor(() => {
-            expect(service.setProtocolTagIds).toHaveBeenCalled();
-        });
+    it("asks for a new tag for the protocols the menu was opened on", () => {
+        const { tagsContext } = renderComponent();
 
-        const [projectIdArg, protocolIdArg, tagIdsArg] = service.setProtocolTagIds.mock.calls[0];
+        fireEvent.click(screen.getAllByRole("button", { name: /New tag/i })[0]);
 
-        expect(projectIdArg).toBe(1);
-        expect(String(protocolIdArg)).toBe("12");
-        expect(tagIdsArg).toEqual(["tag-1"]);
+        expect(tagsContext.requestCreateTag).toHaveBeenCalledWith(["12"]);
+    });
 
-        expect(mockReactFlowSetNodes).toHaveBeenCalled();
+    it("shows at most three chips, then +N with the rest in its tooltip", () => {
+        const tags = ["A", "B", "C", "D", "E"].map((title, i) => ({ id: `t${i}`, title, color: "#ffffff" }));
+        renderComponent({}, createTagsContext({ tags, assignments: { "12": tags.map((t) => t.id) } }));
+
+        const row = screen.getByLabelText("Protocol tags");
+        expect(row).toHaveTextContent("A");
+        expect(row).toHaveTextContent("C");
+        expect(row).not.toHaveTextContent("D");
+        const more = screen.getByText("+2");
+        expect(more).toHaveAttribute("title", "D, E");
+        // Readable text on a white tag.
+        expect(within(row).getByTitle("A")).toHaveStyle({ color: "#111827" });
+    });
+
+    it("hides ids the project does not know without saving anything", () => {
+        const { service } = renderComponent({}, createTagsContext({ assignments: { "12": ["tag-1", "from-a-collaborator"] } }));
+
+        expect(screen.getByLabelText("Protocol tags")).toHaveTextContent("Urgent");
+        expect(screen.queryByText("from-a-collaborator")).not.toBeInTheDocument();
+        expect(service.setProtocolTagIds).not.toHaveBeenCalled();
+    });
+
+    it("keeps tagged cards recognisable with a colour strip at far zoom", () => {
+        renderComponent({ zoomLevel: 0.05 });
+
+        expect(screen.queryByLabelText("Protocol tags")).not.toBeInTheDocument();
+        expect(screen.getByRole("img", { name: "Tags: Urgent" })).toBeInTheDocument();
     });
 
     it("calls duplicate and delete actions from menu items", () => {

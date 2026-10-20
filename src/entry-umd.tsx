@@ -607,7 +607,7 @@ const defaultMockService: Partial<ProjectService> = {
     _protocolId: Id,
     tagIds: string[],
   ): Promise<ProtocolTagIdsResult> {
-    return { tagIds } as any;
+    return { tagIds, ignoredTagIds: [] };
   },
 
   async fetchUserSettings(): Promise<UserSettings> {

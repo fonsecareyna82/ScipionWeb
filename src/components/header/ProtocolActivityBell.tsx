@@ -1,4 +1,4 @@
-// The header's bell: runs of the user's protocols that ended, with in-app and desktop notifications.
+// The header's bell: runs of the user's protocols that ended, with in-app notifications.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -8,7 +8,6 @@ import { useProjectService } from "@/ProjectServiceContext";
 import { eventKey, useProtocolActivity } from "@/hooks/useProtocolActivity";
 import type { ProtocolRunEvent } from "@/services/ProjectService";
 
-const DESKTOP_KEY = "scipionweb.activity.desktopNotifications";
 // Off: runs that end only show in the bell's list (no pop-ups, no badge).
 const NOTIFY_KEY = "scipionweb.activity.notifications";
 
@@ -65,8 +64,6 @@ export default function ProtocolActivityBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notify, setNotify] = useState<boolean>(() => readFlag(NOTIFY_KEY, true));
-  const [desktop, setDesktop] = useState<boolean>(() => readFlag(DESKTOP_KEY, false)
-    && typeof Notification !== "undefined" && Notification.permission === "granted");
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const openEvent = useCallback((event: ProtocolRunEvent) => {
@@ -93,25 +90,7 @@ export default function ProtocolActivityBell() {
       </button>
     ), { id: eventKey(event), duration: event.status === "finished" ? 6000 : 12000 });
 
-    // A desktop notification when the page is not in front; the tag keeps one per run over several tabs.
-    if (desktop && typeof Notification !== "undefined" && Notification.permission === "granted"
-      && (document.hidden || !document.hasFocus())) {
-      try {
-        const notification = new Notification(describe(event), {
-          body: `${event.projectName} · ScipionWeb`,
-          tag: eventKey(event),
-          icon: "/scipion_logo.png",
-        });
-        notification.onclick = () => {
-          window.focus();
-          openEvent(event);
-          notification.close();
-        };
-      } catch {
-        // Some browsers only notify from a service worker: the in-app notice stays.
-      }
-    }
-  }, [notify, desktop, openEvent]);
+  }, [notify, openEvent]);
 
   // Stable: a new function would restart the polling on every render.
   const fetchActivity = useMemo(
@@ -140,20 +119,6 @@ export default function ProtocolActivityBell() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open, markSeen]);
-
-  const toggleDesktop = async () => {
-    if (typeof Notification === "undefined") {
-      toast.error("This browser has no desktop notifications.");
-      return;
-    }
-    let next = !desktop;
-    if (next && Notification.permission !== "granted") {
-      next = (await Notification.requestPermission()) === "granted";
-      if (!next) toast.error("Desktop notifications are blocked for ScipionWeb in this browser.");
-    }
-    setDesktop(next);
-    writeFlag(DESKTOP_KEY, next);
-  };
 
   const toggleNotify = () => {
     const next = !notify;
@@ -238,10 +203,6 @@ export default function ProtocolActivityBell() {
             <label className="flex cursor-pointer items-center justify-between gap-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
               <span>Notify me when runs end</span>
               <input type="checkbox" checked={notify} onChange={toggleNotify} className="h-4 w-4 accent-blue-600" />
-            </label>
-            <label className={`flex items-center justify-between gap-3 py-1.5 text-sm ${notify ? "cursor-pointer text-gray-700 dark:text-gray-300" : "text-gray-400 dark:text-gray-600"}`}>
-              <span>Also on the desktop when ScipionWeb is in the background</span>
-              <input type="checkbox" checked={notify && desktop} disabled={!notify} onChange={() => void toggleDesktop()} className="h-4 w-4 accent-blue-600" />
             </label>
           </div>
         </div>

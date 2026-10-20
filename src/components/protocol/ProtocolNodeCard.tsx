@@ -67,8 +67,6 @@ import {
   Eye,
   Tags,
   HelpCircle,
-  Plus,
-  Check,
   FileIcon,
   ClipboardPaste,
   ClipboardCopy,
@@ -79,13 +77,14 @@ import type {
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
   Id,
-  ProtocolTag as ServiceProtocolTag,
   ResolveBrowserPathsResult,
   ExportProtocolsRequestPayload,
 } from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
-import { useTagStore } from "@/stores/tag_store";
+import TagsSubmenu, { getTagCheckState } from "@/components/tags/TagsSubmenu";
+import { useProjectTagsContext } from "@/components/tags/ProjectTagsContext";
+import { apiErrorMessage, getReadableTextColor, normalizeTagColor, resolveAssignedTagIds } from "@/utils/protocol_tags";
 import { useProjectService } from "@/ProjectServiceContext";
 import { CloseIcon } from "@/icons";
 import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
@@ -381,97 +380,6 @@ function uniqStrings(values: string[]): string[] {
   return out;
 }
 
-function filterExistingTagIds(tagIds: string[], defs: ProtocolTag[]): string[] {
-  // filterExistingTagIds
-  const allowed = new Set(defs.map((t) => String(t.id)));
-  return uniqStrings(tagIds).filter((id) => allowed.has(String(id)));
-}
-
-function normalizeTagIdCandidate(raw: unknown, allTags: ProtocolTag[]): string {
-  // normalizeTagIdCandidate
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
-
-  const byId = new Map(allTags.map((t) => [String(t.id), t]));
-  if (byId.has(s)) return s;
-
-  const lower = s.toLowerCase();
-  const byTitle = new Map(allTags.map((t) => [String(t.title ?? "").trim().toLowerCase(), t]));
-  const hit = byTitle.get(lower);
-  return hit ? String(hit.id) : s;
-}
-
-function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): string[] {
-  // normalizeTagIdsFromRaw
-  if (!Array.isArray(rawTags)) return [];
-
-  const out: string[] = [];
-
-  for (const item of rawTags) {
-    if (typeof item === "string" || typeof item === "number") {
-      const id = normalizeTagIdCandidate(item, allTags);
-      if (id) out.push(id);
-      continue;
-    }
-
-    if (item && typeof item === "object") {
-      const obj = item as Record<string, unknown>;
-      const directId = obj.id ?? obj.tagId ?? obj.tag_id;
-      if (directId != null) {
-        const id = normalizeTagIdCandidate(directId, allTags);
-        if (id) out.push(id);
-        continue;
-      }
-
-      const titleCandidate = obj.title ?? obj.name ?? obj.label;
-      if (titleCandidate != null) {
-        const id = normalizeTagIdCandidate(titleCandidate, allTags);
-        if (id) out.push(id);
-      }
-    }
-  }
-
-  return uniqStrings(out);
-}
-
-function coerceErrorMessage(e: any, fallback: string): string {
-  // coerceErrorMessage
-  const msg =
-    (typeof e?.data?.detail === "string" && e.data.detail) ||
-    (typeof e?.response?.data?.detail === "string" && e.response.data.detail) ||
-    (typeof e?.message === "string" && e.message) ||
-    String(e ?? "");
-  return msg.trim() ? msg : fallback;
-}
-
-function normalizeTagDef(raw: any): ProtocolTag | null {
-  // normalizeTagDef
-  const id = String(raw?.id ?? "").trim();
-  const title = String(raw?.title ?? "").trim();
-  if (!id || !title) return null;
-
-  const description =
-    typeof raw?.description === "string" && raw.description.trim() ? raw.description.trim() : undefined;
-
-  return {
-    id,
-    title,
-    description,
-    color: typeof raw?.color === "string" && raw.color.trim() ? raw.color.trim() : "#3b82f6",
-  };
-}
-
-function normalizeTagDefList(raw: unknown): ProtocolTag[] {
-  // normalizeTagDefList
-  if (!Array.isArray(raw)) return [];
-  const out: ProtocolTag[] = [];
-  for (const t of raw) {
-    const nt = normalizeTagDef(t);
-    if (nt) out.push(nt);
-  }
-  return out;
-}
-
 function normalizeNextProtocolSuggestion(raw: any): NextProtocolSuggestion | null {
   // normalizeNextProtocolSuggestion
   const protocolName = typeof raw?.protocolName === "string" ? raw.protocolName.trim() : "";
@@ -493,11 +401,10 @@ function normalizeNextProtocolSuggestion(raw: any): NextProtocolSuggestion | nul
   };
 }
 
-const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
-const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
-let tagDefsStoreProjectId: string | null = null;
 
-
+const EMPTY_TAGS: ProtocolTag[] = [];
+// Chips shown on a card before "+N", so many tags do not make it taller.
+const MAX_VISIBLE_TAG_CHIPS = 3;
 
 function renderBoldLabel(label: string, keyPrefix: string): Array<JSX.Element | string> {
   // renderBoldLabel
@@ -793,7 +700,6 @@ export default function ProtocolNodeCard({
 
   const normalizedStatus = String(data.status ?? "finished").trim().toLowerCase();
   const bgColor = statusColors[normalizedStatus] ?? statusColors.root;
-  data.color = bgColor;
 
   const nodeStyle: CSSProperties = {
     backgroundColor: bgColor,
@@ -973,7 +879,7 @@ export default function ProtocolNodeCard({
 
     const p = run()
       .catch((e: any) => {
-        setNextStepError(coerceErrorMessage(e, "Failed to load suggestions"));
+        setNextStepError(apiErrorMessage(e, "Failed to load suggestions"));
       })
       .finally(() => {
         nextStepInFlightRef.current = null;
@@ -985,396 +891,76 @@ export default function ProtocolNodeCard({
 
 
 
-  const { tags: storeTagDefs, setTags: storeSetTags } = useTagStore();
+  // Tags come from the page (useProjectTags), the one copy shared with the table.
+  const projectTags = useProjectTagsContext();
+  const tagDefs = projectTags?.tags ?? EMPTY_TAGS;
+  const tagsById = projectTags?.tagsById;
+  const tagAssignments = projectTags?.assignments;
+  const isTagDefsLoading = projectTags?.loading ?? false;
 
-  const [remoteTagDefs, setRemoteTagDefs] = useState<ProtocolTag[]>([]);
-  const [isTagDefsLoading, setIsTagDefsLoading] = useState(false);
-
-  const canReadTagDefsFromBackend =
-    normalizedProjectId != null && typeof (svcRef.current as any)?.listProjectTags === "function";
-
-  useEffect(() => {
-    // loadTagDefinitionsFromBackend
-    if (!canReadTagDefsFromBackend) return;
-
-    const pidKey = String(normalizedProjectId ?? "").trim();
-    if (!pidKey) return;
-
-    const storeTagsAreForThisProject = tagDefsStoreProjectId === pidKey;
-    const cached = tagDefsCacheByProjectId.get(pidKey);
-
-    if (cached && cached.length > 0) {
-      // doNotOverwriteStoreWithStaleCache
-      const storeHasDataForThisProject = Array.isArray(storeTagDefs) && storeTagDefs.length > 0 && storeTagsAreForThisProject;
-
-      if (!storeHasDataForThisProject) {
-        tagDefsStoreProjectId = pidKey;
-        storeSetTags?.(cached);
-      }
-
-      return;
-    }
-
-
-    if (Array.isArray(storeTagDefs) && storeTagDefs.length > 0 && storeTagsAreForThisProject) return;
-
-    let cancelled = false;
-    setIsTagDefsLoading(true);
-
-    const existingPromise = tagDefsInFlightByProjectId.get(pidKey);
-    const promise =
-      existingPromise ??
-      (async () => {
-        const remote = await svcRef.current.listProjectTags(normalizedProjectId as Id);
-        const list = normalizeTagDefList(remote as ServiceProtocolTag[]);
-        tagDefsCacheByProjectId.set(pidKey, list);
-        return list;
-      })();
-
-    if (!existingPromise) tagDefsInFlightByProjectId.set(pidKey, promise);
-
-    promise
-      .then((list) => {
-        if (cancelled) return;
-        tagDefsStoreProjectId = pidKey;
-        storeSetTags?.(list);
-        setRemoteTagDefs(list);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        toast.error(coerceErrorMessage(e, "Failed to load tags"));
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setIsTagDefsLoading(false);
-        if (tagDefsInFlightByProjectId.get(pidKey) === promise) {
-          tagDefsInFlightByProjectId.delete(pidKey);
-        }
-      });
-
-    return () => {
-      // cleanup
-      cancelled = true;
-    };
-  }, [canReadTagDefsFromBackend, normalizedProjectId, storeSetTags, storeTagDefs]);
-
-
-  useEffect(() => {
-    // syncCacheWithStoreForProject
-    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
-    if (!pidKey) return;
-
-    const storeTagsAreForThisProject = tagDefsStoreProjectId === pidKey;
-    if (!storeTagsAreForThisProject) return;
-
-    if (Array.isArray(storeTagDefs)) {
-      tagDefsCacheByProjectId.set(pidKey, [...storeTagDefs]);
-    }
-  }, [normalizedProjectId, storeTagDefs]);
-
-  const tagDefs: ProtocolTag[] = useMemo(() => {
-    // tagDefs
-    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
-    const storeTagsAreForThisProject = pidKey && tagDefsStoreProjectId === pidKey;
-
-    // storeIsSourceOfTruth
-    if (storeTagsAreForThisProject && Array.isArray(storeTagDefs) && storeTagDefs.length > 0) {
-      return storeTagDefs;
-    }
-
-    // cacheIsFallbackOnly
-    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
-    if (cached && cached.length > 0) return cached;
-
-    return remoteTagDefs;
-  }, [normalizedProjectId, remoteTagDefs, storeTagDefs]);
-
-
-  const backendAssignmentsWriteEnabled =
-    normalizedProjectId != null &&
-    normalizedProtocolId != null &&
-    typeof (svcRef.current as any)?.setProtocolTagIds === "function";
-
-  const optimisticTagIdsByProtocolRef = useRef<Record<string, string[]>>({});
-  const [optimisticRevision, setOptimisticRevision] = useState(0);
-
-  const updateReactFlowNodeTags = useCallback(
-    (updates: Array<{ protocolId: string; tagIds: string[] }>) => {
-      // updateReactFlowNodeTags
-      const setNodes = (reactFlow as any)?.setNodes;
-      if (typeof setNodes !== "function") return;
-
-      const byId = new Map(updates.map((u) => [String(u.protocolId), [...u.tagIds]]));
-      setNodes((prev: any[]) => {
-        if (!Array.isArray(prev)) return prev;
-
-        let changed = false;
-
-        const next = prev.map((n) => {
-          const id = String(n?.id ?? "");
-          const nextTagIds = byId.get(id);
-          if (!nextTagIds) return n;
-
-          changed = true;
-          const nextData = { ...(n?.data ?? {}), tags: nextTagIds };
-          return { ...n, data: nextData };
-        });
-
-        return changed ? next : prev;
-      });
-    },
-    [reactFlow],
-  );
-
-  type TagTarget = {
-    protocolId: string;
-    projectId: string | number | undefined;
-    rawTags: unknown;
-  };
-
-  const getSelectedTagTargets = useCallback((): TagTarget[] => {
-    // getSelectedTagTargets
+  const getSelectedTagTargets = useCallback((): string[] => {
+    // The selection when this card is part of it; otherwise just this card.
+    const currentId = String(data.id);
     try {
       const nodes = reactFlow.getNodes?.() ?? [];
-      const selectedNodes = nodes.filter((n) => (n as any)?.selected === true);
-
-      const currentId = String(data.id);
-      const currentNode = nodes.find((n) => String(n.id) === currentId);
-
-      const currentIsSelected = selectedNodes.some((n) => String(n.id) === currentId);
-      const baseNodes = currentIsSelected ? selectedNodes : currentNode ? [currentNode] : [];
-
-      if (baseNodes.length === 0) {
-        return [
-          {
-            protocolId: String(data.id),
-            projectId: data.projectId,
-            rawTags: (data as any)?.tags,
-          },
-        ];
-      }
-
-      return baseNodes
-        .filter((n) => String(n.id) !== "PROJECT")
-        .map((n) => ({
-          protocolId: String(n.id),
-          projectId: (n as any)?.data?.projectId ?? data.projectId,
-          rawTags: (n as any)?.data?.tags,
-        }));
+      const selectedIds = nodes.filter((n) => (n as any)?.selected === true).map((n) => String(n.id));
+      const ids = selectedIds.includes(currentId) ? selectedIds : [currentId];
+      return uniqStrings(ids).filter((protocolId) => protocolId !== "PROJECT");
     } catch {
-      return [
-        {
-          protocolId: String(data.id),
-          projectId: data.projectId,
-          rawTags: (data as any)?.tags,
-        },
-      ];
+      return [currentId];
     }
-  }, [reactFlow, data.id, data.projectId, data]);
+  }, [reactFlow, data.id]);
 
-  const getSelectedProtocolIdsForExport = useCallback((): string[] => {
-    const targets = getSelectedTagTargets();
-
-    return uniqStrings(
-      targets
-        .map((t) => String(t.protocolId ?? "").trim())
-        .filter((protocolId) => protocolId && protocolId !== "PROJECT"),
-    );
-  }, [getSelectedTagTargets]);
-
-  const getTagIdsFromNodeRaw = useCallback(
-    (rawTags: unknown): string[] => {
-      // getTagIdsFromNodeRaw
-      if (!Array.isArray(rawTags)) return [];
-      return uniqStrings(normalizeTagIdsFromRaw(rawTags, tagDefs));
-    },
-    [tagDefs],
-  );
-
-  const getEffectiveAssignedForTarget = useCallback(
-    (protocolId: string, rawTags: unknown): string[] => {
-      // getEffectiveAssignedForTarget
-      const optimistic = optimisticTagIdsByProtocolRef.current[String(protocolId)];
-      if (Array.isArray(optimistic)) return uniqStrings(optimistic);
-      return getTagIdsFromNodeRaw(rawTags);
-    },
-    [getTagIdsFromNodeRaw],
-  );
-
-  const applyTagUpdatesOptimistically = useCallback(
-    (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => {
-      // applyTagUpdatesOptimistically
-      if (updates.length === 0) return;
-
-      for (const u of updates) {
-        optimisticTagIdsByProtocolRef.current[String(u.protocolId)] = [...u.tagIds];
-      }
-      setOptimisticRevision((v) => v + 1);
-
-      updateReactFlowNodeTags(
-        updates.map((u) => ({
-          protocolId: String(u.protocolId),
-          tagIds: [...u.tagIds],
-        })),
-      );
-    },
-    [updateReactFlowNodeTags],
-  );
-
-  const persistTagUpdatesToBackend = useCallback(
-    async (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => {
-      // persistTagUpdatesToBackend
-      if (!backendAssignmentsWriteEnabled) return;
-
-      await Promise.all(
-        updates.map(async (u) => {
-          await (svcRef.current as any).setProtocolTagIds(u.projectId as Id, u.protocolId as Id, u.tagIds);
-        }),
-      );
-    },
-    [backendAssignmentsWriteEnabled],
-  );
-
-  const toggleTagSelectionForSelection = useCallback(
-    (tagId: string) => {
-      // toggleTagSelectionForSelection
-      if (isProjectNode) return;
-
-      const normalizedTagId = normalizeTagIdCandidate(tagId, tagDefs);
-      if (!normalizedTagId) return;
-
-      const targets = getSelectedTagTargets();
-      if (targets.length === 0) return;
-
-      const run = async () => {
-        // run
-        const currentByTarget = targets.map((t) => {
-          const current = getEffectiveAssignedForTarget(String(t.protocolId), t.rawTags);
-          return { ...t, current };
-        });
-
-        const allHaveTag = currentByTarget.every((t) =>
-          t.current.some((x) => String(x) === String(normalizedTagId)),
-        );
-
-        const updates = currentByTarget.map((t) => {
-          const next = allHaveTag
-            ? t.current.filter((x) => String(x) !== String(normalizedTagId))
-            : uniqStrings([...t.current, normalizedTagId]);
-
-          return {
-            projectId: t.projectId,
-            protocolId: String(t.protocolId),
-            tagIds: next,
-          };
-        });
-
-        const rollback = currentByTarget.map((t) => ({
-          projectId: t.projectId,
-          protocolId: String(t.protocolId),
-          tagIds: uniqStrings(t.current),
-        }));
-
-        applyTagUpdatesOptimistically(updates);
-
-        try {
-          await persistTagUpdatesToBackend(updates);
-        } catch (e: any) {
-          applyTagUpdatesOptimistically(rollback);
-          toast.error(coerceErrorMessage(e, "Failed to update tags"));
-        }
-      };
-
-      void run();
-    },
-    [
-      applyTagUpdatesOptimistically,
-      getEffectiveAssignedForTarget,
-      getSelectedTagTargets,
-      isProjectNode,
-      persistTagUpdatesToBackend,
-      tagDefs,
-    ],
-  );
+  const getSelectedProtocolIdsForExport = getSelectedTagTargets;
 
   const rawNodeTags = (data as any)?.tags;
 
-  const effectiveAssignedTagIds = useMemo(() => {
-    // effectiveAssignedTagIds
-    const optimistic = optimisticTagIdsByProtocolRef.current[String(data.id)];
-    if (Array.isArray(optimistic)) return uniqStrings(optimistic);
-    return getTagIdsFromNodeRaw(rawNodeTags);
-  }, [data.id, getTagIdsFromNodeRaw, rawNodeTags, optimisticRevision]);
-
-  const selectedTagIds = useMemo(() => {
-    // selectedTagIds
-    return filterExistingTagIds(effectiveAssignedTagIds, tagDefs);
-  }, [effectiveAssignedTagIds, tagDefs]);
-
-  useEffect(() => {
-    // pruneOrphanAssignments
-    if (isProjectNode) return;
-    if (tagDefs.length === 0) return;
-
-    if (selectedTagIds.length !== effectiveAssignedTagIds.length) {
-      const updates = [
-        {
-          projectId: data.projectId,
-          protocolId: String(data.id),
-          tagIds: selectedTagIds,
-        },
-      ];
-
-      applyTagUpdatesOptimistically(updates);
-
-      if (backendAssignmentsWriteEnabled) {
-        void persistTagUpdatesToBackend(updates).catch(() => {
-          // ignore
-        });
-      }
-    }
-  }, [
-    applyTagUpdatesOptimistically,
-    backendAssignmentsWriteEnabled,
-    data.id,
-    data.projectId,
-    effectiveAssignedTagIds.length,
-    isProjectNode,
-    persistTagUpdatesToBackend,
-    selectedTagIds,
-    tagDefs.length,
-  ]);
-
-  const selectedTagSet = useMemo(() => {
-    // selectedTagSet
-    return new Set(selectedTagIds.map((t) => String(t)));
-  }, [selectedTagIds]);
-
-  const tagsById = useMemo(() => {
-    // tagsById
-    return new Map(tagDefs.map((t) => [String(t.id), t]));
-  }, [tagDefs]);
-
+  // Ids the project does not know (yet) are only hidden here, never dropped.
   const selectedTags = useMemo(() => {
-    // selectedTags
-    return selectedTagIds.map((id) => tagsById.get(String(id))).filter(Boolean) as ProtocolTag[];
-  }, [selectedTagIds, tagsById]);
+    const ids = resolveAssignedTagIds(tagAssignments, String(data.id), rawNodeTags);
+    return ids.map((id) => tagsById?.get(id)).filter(Boolean) as ProtocolTag[];
+  }, [data.id, rawNodeTags, tagAssignments, tagsById]);
+
+  const getTagMenuCheckState = useCallback(
+    (tagId: string) => {
+      const targets = getSelectedTagTargets().map((id) => resolveAssignedTagIds(tagAssignments, id));
+      return getTagCheckState(targets, tagId);
+    },
+    [getSelectedTagTargets, tagAssignments],
+  );
 
   const handleToggleTagFromMenu = useCallback(
-    (e: Event, tagId: string, keepOpen: boolean) => {
-      // handleToggleTagFromMenu
-      e.stopPropagation();
-      if (keepOpen) e.preventDefault();
-      toggleTagSelectionForSelection(String(tagId));
+    (tagId: string) => {
+      if (isProjectNode) return;
+      projectTags?.toggleTag(getSelectedTagTargets(), tagId);
     },
-    [toggleTagSelectionForSelection],
+    [getSelectedTagTargets, isProjectNode, projectTags],
   );
+
+  const handleCreateTagFromMenu = useCallback(() => {
+    if (isProjectNode) return;
+    projectTags?.requestCreateTag(getSelectedTagTargets());
+  }, [getSelectedTagTargets, isProjectNode, projectTags]);
 
   const handleManageTags = useCallback(() => {
     // handleManageTags
     if (isProjectNode) return;
-    onManageTags?.(data.id, data.projectId, headerDisplayName);
-  }, [data.id, data.projectId, headerDisplayName, isProjectNode, onManageTags]);
+    if (projectTags?.openManager) projectTags.openManager();
+    else onManageTags?.(data.id, data.projectId, headerDisplayName);
+  }, [data.id, data.projectId, headerDisplayName, isProjectNode, onManageTags, projectTags]);
+
+  const renderTagsSubmenu = (kind: "dropdown" | "context") => (
+    <TagsSubmenu
+      kind={kind}
+      tags={tagDefs}
+      loading={isTagDefsLoading}
+      getCheckState={getTagMenuCheckState}
+      onToggle={handleToggleTagFromMenu}
+      onCreate={handleCreateTagFromMenu}
+      onManage={projectTags?.openManager || onManageTags ? handleManageTags : undefined}
+      contentClassName={styles.menuContent}
+    />
+  );
 
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
@@ -1702,7 +1288,7 @@ export default function ProtocolNodeCard({
           setExportBrowserOpen(false);
           setExportProtocolIds([]);
         } catch (e: any) {
-          toast.error(coerceErrorMessage(e, "Failed to export protocols"));
+          toast.error(apiErrorMessage(e, "Failed to export protocols"));
         } finally {
           setExportBusy(false);
         }
@@ -2404,84 +1990,7 @@ export default function ProtocolNodeCard({
                         <DropdownMenuSeparator />
                       )}
 
-                    {isMenuItemVisible("manageTags") && (
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <Tags className={styles.menuItemIcon} />
-                              <span>Tags</span>
-                            </span>
-                          </div>
-                        </DropdownMenuSubTrigger>
-
-                        <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
-                          <DropdownMenuItem onSelect={() => handleManageTags()}>
-                            <div className={styles.menuRow}>
-                              <span className={styles.menuLeft}>
-                                <Plus className={styles.menuItemIcon} />
-                                <span>Add new tag</span>
-                              </span>
-                            </div>
-                          </DropdownMenuItem>
-
-
-                          <DropdownMenuSeparator />
-
-                          {tagDefs.length > 0 ? (
-                            tagDefs.map((tag) => {
-                              const isChecked = selectedTagSet.has(String(tag.id));
-                              return (
-                                <DropdownMenuItem
-                                  key={String(tag.id)}
-                                  onSelect={(e) => handleToggleTagFromMenu(e, String(tag.id), true)}
-                                >
-                                  <div className={styles.menuRow}>
-                                    <span className={styles.menuLeft}>
-                                      <span
-                                        style={{
-                                          width: 10,
-                                          height: 10,
-                                          borderRadius: 999,
-                                          backgroundColor: tag.color,
-                                          border: "1px solid rgba(15,23,42,0.22)",
-                                          display: "inline-block",
-                                          marginRight: 8,
-                                        }}
-                                      />
-                                      <span>{tag.title}</span>
-                                    </span>
-
-                                    <span className={styles.menuRight}>
-                                      {isChecked ? (
-                                        <Check className={styles.menuCheckIcon} />
-                                      ) : (
-                                        <span className={styles.menuCheckPlaceholder} />
-                                      )}
-                                    </span>
-                                  </div>
-                                </DropdownMenuItem>
-                              );
-                            })
-                          ) : isTagDefsLoading ? (
-                            <DropdownMenuItem disabled>
-                              <div className={styles.menuRow}>
-                                <span className={styles.menuLeft}>
-                                  <span>Loading tags...</span>
-                                </span>
-                              </div>
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem disabled>
-                              <div className={styles.menuRow}>
-                                <span className={styles.menuLeft}>
-                                  <span>No tags defined</span>
-                                </span>
-                              </div>
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>)}
+                    {isMenuItemVisible("manageTags") && renderTagsSubmenu("dropdown")}
 
                     {isMenuItemVisible("export") && (
                       <DropdownMenuItem
@@ -2559,17 +2068,43 @@ export default function ProtocolNodeCard({
             <div className={styles.footerTagsRow} aria-label="Protocol tags">
               <Tags className={styles.tagsRowIcon} aria-hidden="true" />
               <div className={styles.tagsChipsWrap}>
-                {selectedTags.map((t) => (
+                {selectedTags.slice(0, MAX_VISIBLE_TAG_CHIPS).map((t) => {
+                  const color = normalizeTagColor(t.color);
+                  return (
+                    <span
+                      key={t.id}
+                      className={styles.tagChip}
+                      title={t.description ? `${t.title}: ${t.description}` : t.title}
+                      style={{ backgroundColor: color, color: getReadableTextColor(color) }}
+                    >
+                      <span className={styles.tagChipText}>{t.title}</span>
+                    </span>
+                  );
+                })}
+                {selectedTags.length > MAX_VISIBLE_TAG_CHIPS ? (
                   <span
-                    key={String(t.id)}
-                    className={styles.tagChip}
-                    title={(t as any)?.description || t.title}
-                    style={{ backgroundColor: t.color || "var(--app-n-400)" }}
+                    className={`${styles.tagChip} ${styles.tagChipMore}`}
+                    title={selectedTags.slice(MAX_VISIBLE_TAG_CHIPS).map((t) => t.title).join(", ")}
+                    aria-label={`${selectedTags.length - MAX_VISIBLE_TAG_CHIPS} more tags: ${selectedTags.slice(MAX_VISIBLE_TAG_CHIPS).map((t) => t.title).join(", ")}`}
                   >
-                    <span className={styles.tagChipText}>{t.title}</span>
+                    +{selectedTags.length - MAX_VISIBLE_TAG_CHIPS}
                   </span>
-                ))}
+                ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {!isContentExpanded && selectedTags.length > 0 ? (
+            // Too far out for chips: a strip of the tag colours keeps tagged cards recognisable.
+            <div
+              className={styles.tagStrip}
+              role="img"
+              aria-label={`Tags: ${selectedTags.map((t) => t.title).join(", ")}`}
+              title={selectedTags.map((t) => t.title).join(", ")}
+            >
+              {selectedTags.map((t) => (
+                <span key={t.id} style={{ backgroundColor: normalizeTagColor(t.color) }} />
+              ))}
             </div>
           ) : null}
 
@@ -3293,84 +2828,7 @@ export default function ProtocolNodeCard({
             <ContextMenuSeparator />
           )}
 
-        {isMenuItemVisible("manageTags") && (
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <Tags className={styles.menuItemIcon} />
-                  <span>Tags</span>
-                </span>
-              </div>
-            </ContextMenuSubTrigger>
-
-            <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
-              <ContextMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleManageTags();
-                }}
-              >
-                <div className={styles.menuRow}>
-                  <span className={styles.menuLeft}>
-                    <Plus className={styles.menuItemIcon} />
-                    <span>Add new tag</span>
-                  </span>
-                </div>
-              </ContextMenuItem>
-
-              <ContextMenuSeparator />
-
-              {tagDefs.length > 0 ? (
-                tagDefs.map((tag) => {
-                  const isChecked = selectedTagSet.has(String(tag.id));
-                  return (
-                    <ContextMenuItem
-                      key={String(tag.id)}
-                      onSelect={(e: any) => handleToggleTagFromMenu(e as Event, String(tag.id), true)}
-                    >
-                      <div className={styles.menuRow}>
-                        <span className={styles.menuLeft}>
-                          <span
-                            style={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: 999,
-                              backgroundColor: tag.color,
-                              border: "1px solid rgba(15,23,42,0.22)",
-                              display: "inline-block",
-                              marginRight: 8,
-                            }}
-                          />
-                          <span>{tag.title}</span>
-                        </span>
-
-                        <span className={styles.menuRight}>
-                          {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
-                        </span>
-                      </div>
-                    </ContextMenuItem>
-                  );
-                })
-              ) : isTagDefsLoading ? (
-                <ContextMenuItem disabled>
-                  <div className={styles.menuRow}>
-                    <span className={styles.menuLeft}>
-                      <span>Loading tags...</span>
-                    </span>
-                  </div>
-                </ContextMenuItem>
-              ) : (
-                <ContextMenuItem disabled>
-                  <div className={styles.menuRow}>
-                    <span className={styles.menuLeft}>
-                      <span>No tags defined</span>
-                    </span>
-                  </div>
-                </ContextMenuItem>
-              )}
-            </ContextMenuSubContent>
-          </ContextMenuSub>)}
+        {isMenuItemVisible("manageTags") && renderTagsSubmenu("context")}
 
         {isMenuItemVisible("export") && (
           <ContextMenuItem onClick={handleExport}>

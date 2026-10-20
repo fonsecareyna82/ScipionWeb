@@ -89,7 +89,6 @@ describe("ProtocolActivityBell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Protocol activity" }));
     fireEvent.click(screen.getByLabelText("Notify me when runs end"));
     expect(localStorage.getItem("scipionweb.activity.notifications")).toBe("0");
-    expect(screen.getByLabelText("Also on the desktop when ScipionWeb is in the background")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Protocol activity" }));
     await act(async () => { vi.advanceTimersByTime(10000); });
     await waitFor(() => expect(service.fetchProtocolActivity).toHaveBeenLastCalledWith("T1"));

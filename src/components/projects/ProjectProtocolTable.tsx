@@ -25,7 +25,6 @@ import {
   Rows3,
   Scan,
   Square,
-  Tags,
   Trash2,
   X,
   ArrowUpRight,
@@ -43,9 +42,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -60,6 +56,14 @@ import {
 } from "@/utils/protocol_outputs";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
+import TagsSubmenu, { getTagCheckState } from "@/components/tags/TagsSubmenu";
+import {
+  getReadableTextColor,
+  matchesTagFilter,
+  normalizeTagColor,
+  resolveAssignedTagIds,
+  type TagFilterMode,
+} from "@/utils/protocol_tags";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 import "./ProjectProtocolTable.css";
@@ -167,6 +171,11 @@ type Props = {
 
   externalTagFilterIds: string[];
 
+  /** Whether a row needs any or all of the filter tags. */
+  tagFilterMode?: TagFilterMode;
+
+  tagsLoading?: boolean;
+
   searchQuery: string;
 
   highlightedId:
@@ -230,7 +239,14 @@ type Props = {
     protocolIds: string[],
     tagId: string,
     enabled: boolean,
-  ) => void | Promise<void>;
+  ) => void | Promise<unknown>;
+
+  /** "New tag…": create a tag for these protocols. */
+  onCreateTag?: (
+    protocolIds: string[],
+  ) => void;
+
+  onManageTags?: () => void;
 
   projectId?:
   | string
@@ -610,63 +626,6 @@ function readSettings(
   } catch {
     return defaults;
   }
-}
-
-function normalizeIds(
-  raw: unknown,
-): string[] {
-  if (!raw) {
-    return [];
-  }
-
-  const values =
-    Array.isArray(raw)
-      ? raw
-      : [raw];
-
-  const ids =
-    values
-      .map((value) => {
-        if (
-          typeof value ===
-          "string"
-        ) {
-          return value;
-        }
-
-        if (
-          value &&
-          typeof value ===
-          "object"
-        ) {
-          const id =
-            (
-              value as
-              Record<
-                string,
-                unknown
-              >
-            ).id;
-
-          if (
-            typeof id ===
-            "string"
-          ) {
-            return id;
-          }
-        }
-
-        return "";
-      })
-      .map(
-        (value) =>
-          value.trim(),
-      )
-      .filter(Boolean);
-
-  return Array.from(
-    new Set(ids),
-  );
 }
 
 function getProtocolDisplayName(
@@ -1078,81 +1037,6 @@ function getIoSearchText(
     .join(" ");
 }
 
-function normalizeTagColor(
-  raw: unknown,
-): string {
-  const value =
-    String(
-      raw ?? "",
-    ).trim();
-
-  if (
-    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-      .test(value)
-  ) {
-    return value;
-  }
-
-  return "#9ca3af";
-}
-
-function getReadableTextColor(
-  hexColor: string,
-): string {
-  const match =
-    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-      .exec(hexColor);
-
-  if (!match) {
-    return "#111827";
-  }
-
-  const raw =
-    match[1];
-
-  const full =
-    raw.length === 3
-      ? raw
-        .split("")
-        .map(
-          (character) =>
-            character +
-            character,
-        )
-        .join("")
-      : raw;
-
-  const red =
-    Number.parseInt(
-      full.slice(0, 2),
-      16,
-    );
-
-  const green =
-    Number.parseInt(
-      full.slice(2, 4),
-      16,
-    );
-
-  const blue =
-    Number.parseInt(
-      full.slice(4, 6),
-      16,
-    );
-
-  const luminance =
-    (
-      0.2126 * red +
-      0.7152 * green +
-      0.0722 * blue
-    ) / 255;
-
-  return luminance >
-    0.62
-    ? "#111827"
-    : "#f9fafb";
-}
-
 function getRowElapsed(
   row: ProjectProtocolTableRow,
 ): number {
@@ -1232,6 +1116,8 @@ const ProjectProtocolTable =
         allTags,
         tagAssignments,
         externalTagFilterIds,
+        tagFilterMode = "any",
+        tagsLoading = false,
         searchQuery,
         highlightedId,
         selectedIds,
@@ -1250,6 +1136,8 @@ const ProjectProtocolTable =
         onStop,
         onSelectionChange,
         onToggleTag,
+        onCreateTag,
+        onManageTags,
         projectId,
         resolveAnalyzeViewer,
       },
@@ -1422,35 +1310,43 @@ const ProjectProtocolTable =
           : [...standardColumns, ...extraColumnDefinitions];
       }, [extraColumnDefinitions]);
 
+      // An entry in the map wins, also an empty one; row tags are only a
+      // fallback for protocols the map does not know.
       const getAssignedTagIds =
         useCallback(
           (
             row:
               ProjectProtocolTableRow,
-          ): string[] => {
-            const protocolId =
-              String(row.id);
-
-            const assigned =
-              normalizeIds(
-                tagAssignments[
-                protocolId
-                ],
-              );
-
-            if (
-              assigned.length
-            ) {
-              return assigned;
-            }
-
-            return normalizeIds(
+          ): string[] =>
+            resolveAssignedTagIds(
+              tagAssignments,
+              String(row.id),
               row.tagIds ??
               row.tags,
-            );
-          },
+            ),
           [
             tagAssignments,
+          ],
+        );
+
+      // Ids the project does not know are hidden, not shown as raw ids.
+      const getKnownTagIds =
+        useCallback(
+          (
+            row:
+              ProjectProtocolTableRow,
+          ): string[] =>
+            getAssignedTagIds(
+              row,
+            ).filter(
+              (tagId) =>
+                tagById.has(
+                  tagId,
+                ),
+            ),
+          [
+            getAssignedTagIds,
+            tagById,
           ],
         );
 
@@ -1460,7 +1356,7 @@ const ProjectProtocolTable =
             row:
               ProjectProtocolTableRow,
           ): string =>
-            getAssignedTagIds(
+            getKnownTagIds(
               row,
             )
               .map(
@@ -1477,7 +1373,7 @@ const ProjectProtocolTable =
               )
               .join(" "),
           [
-            getAssignedTagIds,
+            getKnownTagIds,
             tagById,
           ],
         );
@@ -1498,11 +1394,9 @@ const ProjectProtocolTable =
 
       const baseFilteredRows =
         useMemo(() => {
-          const externalTagSet =
-            new Set(
-              externalTagFilterIds
-                .map(String),
-            );
+          const filterTagIds =
+            externalTagFilterIds
+              .map(String);
 
           const query =
             searchQuery
@@ -1512,23 +1406,15 @@ const ProjectProtocolTable =
           return rows.filter(
             (row) => {
               if (
-                externalTagSet.size
-              ) {
-                const rowTagIds =
+                !matchesTagFilter(
                   getAssignedTagIds(
                     row,
-                  );
-
-                if (
-                  !rowTagIds.some(
-                    (tagId) =>
-                      externalTagSet.has(
-                        tagId,
-                      ),
-                  )
-                ) {
-                  return false;
-                }
+                  ),
+                  filterTagIds,
+                  tagFilterMode,
+                )
+              ) {
+                return false;
               }
 
               if (!query) {
@@ -1574,6 +1460,7 @@ const ProjectProtocolTable =
         }, [
           rows,
           externalTagFilterIds,
+          tagFilterMode,
           searchQuery,
           getAssignedTagIds,
           getTagsText,
@@ -1870,7 +1757,7 @@ const ProjectProtocolTable =
                 );
             } else {
               const firstTagId =
-                getAssignedTagIds(
+                getKnownTagIds(
                   row,
                 )[0];
 
@@ -1925,7 +1812,7 @@ const ProjectProtocolTable =
         }, [
           settings.groupBy,
           sortedRows,
-          getAssignedTagIds,
+          getKnownTagIds,
           tagById,
         ]);
 
@@ -2696,7 +2583,7 @@ const ProjectProtocolTable =
             ProjectProtocolTableRow,
         ) => {
           const ids =
-            getAssignedTagIds(
+            getKnownTagIds(
               row,
             );
 
@@ -2764,7 +2651,21 @@ const ProjectProtocolTable =
 
               {remaining >
                 0 && (
-                  <span className="ppt-tagMore">
+                  <span
+                    className="ppt-tagMore"
+                    title={
+                      ids
+                        .slice(2)
+                        .map(
+                          (tagId) =>
+                            tagById.get(
+                              tagId,
+                            )?.title ??
+                            tagId,
+                        )
+                        .join(", ")
+                    }
+                  >
                     +{remaining}
                   </span>
                 )}
@@ -3141,6 +3042,57 @@ const ProjectProtocolTable =
           );
         };
 
+      // The same Tags submenu as the graph cards, for one row or the selection.
+      const renderTagsSubmenu =
+        (
+          protocolIds: string[],
+        ) => {
+          const targets =
+            rows
+              .filter(
+                (row) =>
+                  protocolIds.includes(
+                    String(row.id),
+                  ),
+              )
+              .map(
+                (row) =>
+                  getAssignedTagIds(
+                    row,
+                  ),
+              );
+
+          return (
+            <TagsSubmenu
+              kind="dropdown"
+              tags={allTags}
+              loading={tagsLoading}
+              getCheckState={(tagId) =>
+                getTagCheckState(
+                  targets,
+                  tagId,
+                )
+              }
+              onToggle={(tagId) => {
+                void onToggleTag(
+                  protocolIds,
+                  tagId,
+                  getTagCheckState(
+                    targets,
+                    tagId,
+                  ) !== "all",
+                );
+              }}
+              onCreate={() =>
+                onCreateTag?.(
+                  protocolIds,
+                )
+              }
+              onManage={onManageTags}
+            />
+          );
+        };
+
       const renderRowMenu =
         (
           row:
@@ -3306,6 +3258,18 @@ const ProjectProtocolTable =
                       <RotateCcw />
                       Reset from
                     </DropdownMenuItem>
+                  )}
+
+                {isMenuVisible(
+                  "manageTags",
+                ) && (
+                    <>
+                      <DropdownMenuSeparator />
+
+                      {renderTagsSubmenu([
+                        String(row.id),
+                      ])}
+                    </>
                   )}
 
                 {isMenuVisible(
@@ -3836,71 +3800,11 @@ const ProjectProtocolTable =
                           Duplicate
                         </DropdownMenuItem>
 
-                        {allTags.length >
-                          0 && (
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>
-                                <Tags />
-                                Tags
-                              </DropdownMenuSubTrigger>
-
-                              <DropdownMenuSubContent
-                                className="min-w-[210px]"
-                              >
-                                {allTags.map(
-                                  (tag) => {
-                                    const tagId =
-                                      String(
-                                        tag.id,
-                                      );
-
-                                    const allHaveTag =
-                                      selectedRows.length >
-                                      0 &&
-                                      selectedRows.every(
-                                        (row) =>
-                                          getAssignedTagIds(
-                                            row,
-                                          ).includes(
-                                            tagId,
-                                          ),
-                                      );
-
-                                    return (
-                                      <DropdownMenuCheckboxItem
-                                        key={
-                                          tagId
-                                        }
-                                        checked={
-                                          allHaveTag
-                                        }
-                                        onSelect={(
-                                          event,
-                                        ) =>
-                                          event
-                                            .preventDefault()
-                                        }
-                                        onCheckedChange={(
-                                          checked,
-                                        ) => {
-                                          void onToggleTag(
-                                            selectedIds,
-                                            tagId,
-                                            checked ===
-                                            true,
-                                          );
-                                        }}
-                                      >
-                                        {String(
-                                          tag.title ??
-                                          tag.id,
-                                        )}
-                                      </DropdownMenuCheckboxItem>
-                                    );
-                                  },
-                                )}
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
+                        {isMenuVisible(
+                          "manageTags",
+                        ) &&
+                          renderTagsSubmenu(
+                            selectedIds,
                           )}
 
                         {selectedLiveIds.length >

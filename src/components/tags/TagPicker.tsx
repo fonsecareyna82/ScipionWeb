@@ -2,9 +2,9 @@
 import React, { useMemo } from "react";
 import { Autocomplete, Box, Chip, Paper, TextField, Typography } from "@mui/material";
 import Popper, { type PopperProps } from "@mui/material/Popper";
-import { useTheme as useAppTheme } from "@/context/ThemeContext";
+import { getReadableTextColor, normalizeTagColor, normalizeTagIds } from "@/utils/protocol_tags";
 import type { ProtocolTag } from "./tagTypes";
-import "./tag-dark-overrides.css";
+import { tagPalette } from "./tagStyles";
 
 type TagPickerProps = {
   allTags?: ProtocolTag[];
@@ -20,28 +20,6 @@ type TagPickerProps = {
   popperContainer?: HTMLElement | null;
   popperZIndex?: number;
 };
-
-function normalizeColor(color?: string): string {
-  // normalizeColor
-  const c = String(color ?? "").trim();
-  return c.length ? c : "#9ca3af";
-}
-
-function normalizeIds(ids: string[] | undefined | null): string[] {
-  // normalizeIds
-  const raw = (ids ?? []).map((x) => String(x));
-  const seen = new Set<string>();
-  const unique: string[] = [];
-
-  for (const id of raw) {
-    if (!id) continue;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    unique.push(id);
-  }
-
-  return unique;
-}
 
 function createPlaceholderTag(id: string): ProtocolTag {
   // createPlaceholderTag
@@ -67,15 +45,13 @@ export default function TagPicker({
   popperContainer = null,
   popperZIndex = 2000,
 }: TagPickerProps) {
-  const { theme } = useAppTheme();
-  const isDarkMode = theme === "dark";
-  const fieldBg = isDarkMode ? "rgba(15,23,42,0.92)" : "#ffffff";
-  const fieldText = isDarkMode ? "#e5e7eb" : "#111827";
-  const mutedText = isDarkMode ? "#94a3b8" : "#64748b";
-  const borderColor = isDarkMode ? "rgba(148,163,184,0.32)" : "rgba(148,163,184,0.45)";
-  const paperBg = isDarkMode ? "#0f172a" : "#ffffff";
-  const optionHoverBg = isDarkMode ? "rgba(30,41,59,0.92)" : "#f1f5f9";
-  const optionSelectedBg = isDarkMode ? "rgba(37,99,235,0.30)" : "rgba(37,99,235,0.10)";
+  const fieldBg = tagPalette.inputBg;
+  const fieldText = tagPalette.text;
+  const mutedText = tagPalette.textMuted;
+  const borderColor = tagPalette.border;
+  const paperBg = tagPalette.panel;
+  const optionHoverBg = "var(--app-hover)";
+  const optionSelectedBg = "var(--app-selected)";
 
   const normalizedAllTags = useMemo(() => {
     // normalizedAllTags
@@ -84,7 +60,7 @@ export default function TagPicker({
 
   const normalizedSelectedIds = useMemo(() => {
     // normalizedSelectedIds
-    return normalizeIds(selectedTagIds);
+    return normalizeTagIds(selectedTagIds);
   }, [selectedTagIds]);
 
   const tagById = useMemo(() => {
@@ -141,7 +117,7 @@ export default function TagPicker({
           borderColor,
           borderRadius: 2,
           overflow: "hidden",
-          boxShadow: isDarkMode ? "0 18px 48px rgba(0,0,0,0.52)" : "0 14px 34px rgba(15,23,42,0.14)",
+          boxShadow: tagPalette.shadow,
           "& .MuiAutocomplete-listbox": {
             backgroundColor: paperBg,
             color: fieldText,
@@ -169,7 +145,7 @@ export default function TagPicker({
       />
     );
     return Comp;
-  }, [borderColor, fieldText, isDarkMode, mutedText, optionHoverBg, optionSelectedBg, paperBg]);
+  }, [borderColor, fieldText, mutedText, optionHoverBg, optionSelectedBg, paperBg]);
 
   return (
     <Autocomplete<ProtocolTag, true, false, false>
@@ -186,12 +162,13 @@ export default function TagPicker({
       isOptionEqualToValue={(a, b) => String(a.id) === String(b.id)}
       getOptionLabel={(t) => String(t.title ?? t.id)}
       onChange={(_, value) => {
-        const nextIds = normalizeIds((value ?? []).map((t) => String(t.id)));
+        const nextIds = normalizeTagIds((value ?? []).map((t) => String(t.id)));
         onChange(nextIds);
       }}
       renderTags={(value, getTagProps) =>
         (value ?? []).map((tag, index) => {
-          const color = normalizeColor(tag.color);
+          const color = normalizeTagColor(tag.color);
+          const textColor = getReadableTextColor(color);
 
           const rawProps = getTagProps({ index }) as SpreadKeyFix<ReturnType<typeof getTagProps>>;
           const { key: _key, ...chipProps } = rawProps;
@@ -202,16 +179,18 @@ export default function TagPicker({
               key={String(tag.id)}
               size="small"
               label={String(tag.title ?? tag.id)}
+              title={String(tag.title ?? tag.id)}
               sx={{
                 backgroundColor: color,
-                color: "#f9fafc",
-                border: "1px solid rgba(15,23,42,0.24)",
-                boxShadow: isDarkMode ? "0 0 0 1px rgba(248,250,252,0.08)" : "none",
+                color: textColor,
+                border: "1px solid var(--app-n-400)",
                 height: 22,
+                maxWidth: 160,
                 "& .MuiChip-label": { px: 1, fontSize: 12, fontWeight: 600 },
                 "& .MuiChip-deleteIcon": {
-                  color: "rgba(255,255,255,0.82)",
-                  "&:hover": { color: "#ffffff" },
+                  color: textColor,
+                  opacity: 0.75,
+                  "&:hover": { color: textColor, opacity: 1 },
                 },
               }}
             />
@@ -219,7 +198,7 @@ export default function TagPicker({
         })
       }
       renderOption={(props, option) => {
-        const color = normalizeColor(option.color);
+        const color = normalizeTagColor(option.color);
 
         const rawProps = props as SpreadKeyFix<React.HTMLAttributes<HTMLLIElement>>;
         const { key: _key, ...liProps } = rawProps;
@@ -242,7 +221,7 @@ export default function TagPicker({
                   borderRadius: "999px",
                   backgroundColor: color,
                   border: "1px solid",
-                  borderColor: isDarkMode ? "rgba(248,250,252,0.26)" : "rgba(15,23,42,0.22)",
+                  borderColor: "var(--app-n-400)",
                   flex: "0 0 auto",
                 }}
               />
@@ -309,10 +288,10 @@ export default function TagPicker({
           borderColor,
         },
         "&:hover .MuiOutlinedInput-notchedOutline": {
-          borderColor: isDarkMode ? "rgba(125,211,252,0.48)" : "rgba(37,99,235,0.42)",
+          borderColor: tagPalette.accent,
         },
         "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-          borderColor: isDarkMode ? "#38bdf8" : "#2563eb",
+          borderColor: tagPalette.accent,
         },
         "& .MuiInputLabel-root": {
           color: mutedText,

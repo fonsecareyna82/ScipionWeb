@@ -76,6 +76,8 @@ import {
   Square,
   ClipboardPaste,
   CheckSquare,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -100,8 +102,19 @@ import type { ExternalAnalyzeViewerService } from "@/components/protocol/Protoco
 
 import TagPicker from "@/components/tags/TagPicker";
 import TagManager from "@/components/tags/TagManager";
-import type { ProtocolTag } from "@/components/tags/tagTypes";
 import TagsDialog from "@/components/tags/TagsDialog";
+import CreateTagDialog from "@/components/tags/CreateTagDialog";
+import { ProjectTagsContext, type ProjectTagsContextValue } from "@/components/tags/ProjectTagsContext";
+import { useProjectTags } from "@/hooks/useProjectTags";
+import { applyNodeVisibility } from "@/utils/graph_node_visibility";
+import {
+  assignmentsFromProtocols,
+  keepKnownTagIds,
+  matchesTagFilter,
+  resolveAssignedTagIds,
+  type ProtocolTagAssignments,
+  type TagFilterMode,
+} from "@/utils/protocol_tags";
 import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import ProjectProtocolTable, { ProjectProtocolTableHandle } from "@/components/projects/ProjectProtocolTable";
 import WebPickingSessions from "@/components/picking/WebPickingSessions";
@@ -150,10 +163,6 @@ interface StatusNodeData {
   parents?: string[];
   children?: string[];
   __pathVer?: number;
-
-  // Optional color cache
-  color?: string;
-  tagIds?: string[];
 }
 
 // "launched" is intentionally excluded: the elapsed clock should only
@@ -944,39 +953,11 @@ function renderHelpText(helpText: string): JSX.Element {
 }
 
 
-// Tags (backend-driven; no localStorage)
-
-type ProtocolTagAssignments = Record<string, string[]>;
-
-function normalizeTagIds(raw: unknown): string[] {
-  // normalizeTagIds
-  if (!raw) return [];
-  const arr = Array.isArray(raw) ? raw : [raw];
-
-  const ids = arr
-    .map((x) => {
-      if (typeof x === "string") return x;
-      if (x && typeof x === "object" && typeof (x as any).id === "string") return String((x as any).id);
-      return "";
-    })
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  return Array.from(new Set(ids));
-}
-
-/** Try to read tag assignments from backend project payload if present.
-+ * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]), protocol.tag_ids.
-+ */
-
-/** * Try to read tag assignments from backend project payload if present. * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]). */
-function pickFirstNonEmptyTagIds(...candidates: unknown[]): string[] {
-  // pickFirstNonEmptyTagIds 
-  for (const c of candidates) {
-    const ids = normalizeTagIds(c);
-    if (ids.length) return ids;
-  }
-  return [];
+function toFiniteProjectId(project: unknown): number | null {
+  const raw = (project as any)?.id ?? (project as any)?.projectId;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 const getProtocolRowDisplayName = (row: any) => {
@@ -1318,53 +1299,17 @@ export default function ProjectPage() {
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
 
-  // Tags states
-  const [allTags, setAllTags] = useState<ProtocolTag[]>([]);
+  // Tags: the list and the assignments live in useProjectTags (below, once projectId is known).
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [historyProtocolId, setHistoryProtocolId] = useState<string | null>(null);
   const [compareRuns, setCompareRuns] = useState<{ baseId: string; otherId: string | null } | null>(null);
   const [tagFilterIds, setTagFilterIds] = useState<string[]>([]);
-  const [tagAssignments, setTagAssignments] = useState<ProtocolTagAssignments>({});
-
-
-
-  const projectIdForTags = useMemo(() => {
-    // projectIdForTags
-    const raw: any = (project as any)?.id ?? (project as any)?.projectId;
-    if (raw == null) return undefined;
-    const n = typeof raw === "number" ? raw : Number(raw);
-    return Number.isFinite(n) ? n : undefined;
-  }, [project]);
-
-  const refreshTagsFromBackend = useCallback(async () => {
-    // refreshTagsFromBackend
-    if (!projectIdForTags) {
-      setAllTags([]);
-      return;
-    }
-    try {
-      const tags = await (svc as any).listProjectTags?.(projectIdForTags);
-      setAllTags(Array.isArray(tags) ? (tags as ProtocolTag[]) : []);
-    } catch (err) {
-      console.error("listProjectTags failed", err);
-      setAllTags([]);
-    }
-  }, [svc, projectIdForTags]);
-
-
-  function extractAssignmentsFromProjectProtocols(protocols: any): ProtocolTagAssignments {
-    // extractAssignmentsFromProjectProtocols 
-    const out: ProtocolTagAssignments = {};
-    if (!protocols || typeof protocols !== "object")
-      return out;
-    for (const [protocolId, proto] of Object.entries(protocols)) {
-      const p: any = proto ?? {};
-      const tagIds = pickFirstNonEmptyTagIds(p.tagIds, p.tags, p.tag_ids);
-      if (tagIds.length) out[String(protocolId)] = tagIds;
-    }
-    return out;
-  }
+  const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>("any");
+  // Graph only: hide the protocols outside the filter instead of dimming them.
+  const [tagFilterHidesOthers, setTagFilterHidesOthers] = useState(false);
+  // Protocols a "New tag…" from their Tags submenu will be given to.
+  const [createTagTargets, setCreateTagTargets] = useState<string[] | null>(null);
 
 
   // Workflows loaded from API (lazy)
@@ -1539,6 +1484,33 @@ export default function ProjectPage() {
     const n = typeof raw === "number" ? raw : Number(raw);
     return Number.isFinite(n) ? n : undefined;
   }, [project]);
+
+  // Tag writes are mirrored into the loaded project, which layout and view
+  // switches rebuild nodes and rows from. In place on purpose: a new project
+  // object would reflow the grid and reload the thumbnails.
+  const projectForTagsRef = useRef(project);
+  projectForTagsRef.current = project;
+  const mirrorTagsIntoProject = useCallback((changed: ProtocolTagAssignments) => {
+    const protocols = (projectForTagsRef.current as any)?.protocols as Record<string, any> | undefined;
+    if (!protocols) return;
+    for (const [protocolId, tagIds] of Object.entries(changed)) {
+      if (protocols[protocolId]) protocols[protocolId] = { ...protocols[protocolId], tags: tagIds };
+    }
+  }, []);
+
+  const projectTags = useProjectTags({
+    service: svc,
+    projectId,
+    onAssignmentsChange: mirrorTagsIntoProject,
+  });
+  const {
+    tags: allTags,
+    tagsById: tagById,
+    tagsLoaded,
+    assignments: tagAssignments,
+    seedAssignments: seedTagAssignments,
+    refreshTags,
+  } = projectTags;
 
   const effectiveInstanceSettings =
     projectEffectiveSettings
@@ -1955,23 +1927,6 @@ export default function ProjectPage() {
   }, [project]);
 
   const getProjectId = () => projectIdRef.current;
-
-  //Tags 
-  const tagById = useMemo(() => {
-    // tagById
-    return new Map(allTags.map((t) => [t.id, t]));
-  }, [allTags]);
-
-  useEffect(() => {
-    // loadTagsCatalogFromBackend
-    void refreshTagsFromBackend();
-  }, [refreshTagsFromBackend]);
-
-  useEffect(() => {
-    // refreshCatalogAfterClosingManager
-    if (tagManagerOpen) return;
-    void refreshTagsFromBackend();
-  }, [tagManagerOpen, refreshTagsFromBackend]);
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
@@ -3064,25 +3019,11 @@ export default function ProjectPage() {
 
 
   useEffect(() => {
-    // pruneTagFilterAndAssignmentsAgainstCatalog
-    const valid = new Set(allTags.map((t) => t.id));
-    if (valid.size === 0) return;
-
-    setTagFilterIds((prev) => prev.filter((id) => valid.has(id)));
-
-    setTagAssignments((prev) => {
-      let changed = false;
-      const next: ProtocolTagAssignments = {};
-
-      for (const [pid, ids] of Object.entries(prev)) {
-        const cleaned = (ids ?? []).filter((id) => valid.has(id));
-        if (cleaned.length !== (ids ?? []).length) changed = true;
-        if (cleaned.length) next[pid] = cleaned;
-      }
-
-      return changed ? next : prev;
-    });
-  }, [allTags]);
+    // A deleted tag leaves the filter, also when no tag is left. The
+    // assignments keep unknown ids: views hide them, writes never drop them.
+    if (!tagsLoaded) return;
+    setTagFilterIds((prev) => keepKnownTagIds(prev, tagById));
+  }, [tagById, tagsLoaded]);
 
 
 
@@ -4362,10 +4303,11 @@ export default function ProjectPage() {
 
       setProject(data);
 
-      setTagAssignments(
-        extractAssignmentsFromProjectProtocols(
+      seedTagAssignments(
+        assignmentsFromProtocols(
           (data as any)?.protocols,
         ),
+        toFiniteProjectId(data),
       );
 
       const loadedProjectId =
@@ -4515,7 +4457,9 @@ export default function ProjectPage() {
     try {
       const data = await svc.fetchProject(projectName, { includeTableMetrics: viewMode === "table" });
       setProject(data);
-      setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
+      seedTagAssignments(assignmentsFromProtocols((data as any)?.protocols), toFiniteProjectId(data));
+      // The server may have created or copied tags (duplicate, paste, import, another user).
+      void refreshTags();
 
       if (data.protocols) {
         const preferredChildOrder = viewMode === "hierarchical" && graphDirection === "TB"
@@ -5455,7 +5399,7 @@ export default function ProjectPage() {
 
         const data = await svc.fetchProject(projectName);
         setProject(data);
-        setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
+        seedTagAssignments(assignmentsFromProtocols((data as any)?.protocols), toFiniteProjectId(data));
 
         if (!data.protocols) {
           disablePersistenceRef.current = false;
@@ -6235,7 +6179,13 @@ export default function ProjectPage() {
     const limit = 12;
     const results: Array<{ item: SearchResult; score: number; numId: number }> = [];
 
-    const pushIfMatch = (idRaw: any, labelRaw: any, statusRaw?: any) => {
+    // Tag titles match too (below the id and the label), in every view.
+    const tagTitlesOf = (id: string, fallback?: unknown) =>
+      resolveAssignedTagIds(tagAssignments, id, fallback)
+        .map((tagId) => tagById.get(tagId)?.title.toLowerCase())
+        .filter(Boolean) as string[];
+
+    const pushIfMatch = (idRaw: any, labelRaw: any, statusRaw?: any, tagsRaw?: unknown) => {
       const id = String(idRaw ?? "");
       if (!id || id === "PROJECT") return;
 
@@ -6250,15 +6200,17 @@ export default function ProjectPage() {
       const labelStarts = labelL.startsWith(q);
       const idIncludes = idL.includes(q);
       const labelIncludes = labelL.includes(q);
+      const tagIncludes = !(idIncludes || labelIncludes) && tagTitlesOf(id, tagsRaw).some((title) => title.includes(q));
 
-      if (!(idIncludes || labelIncludes)) return;
+      if (!(idIncludes || labelIncludes || tagIncludes)) return;
 
       let score = 0;
       if (idExact) score = 100;
       else if (idStarts) score = 90;
       else if (labelStarts) score = 80;
       else if (idIncludes) score = 70;
-      else score = 60;
+      else if (labelIncludes) score = 60;
+      else score = 50;
 
       const numId = Number.parseInt(id, 10);
       results.push({
@@ -6270,12 +6222,12 @@ export default function ProjectPage() {
 
     if (viewMode === "table") {
       for (const row of tableData) {
-        pushIfMatch(row?.id, getProtocolRowDisplayName(row), row?.status);
+        pushIfMatch(row?.id, getProtocolRowDisplayName(row), row?.status, row?.tags);
       }
     } else {
       for (const n of nodes) {
         const d: any = (n as any).data ?? {};
-        pushIfMatch(n.id, d.runName ?? d.label ?? n.id, d.status);
+        pushIfMatch(n.id, d.runName ?? d.label ?? n.id, d.status, d.tags);
       }
     }
 
@@ -6286,7 +6238,7 @@ export default function ProjectPage() {
     });
 
     return results.slice(0, limit).map((x) => x.item);
-  }, [searchQuery, viewMode, tableData, nodes]);
+  }, [searchQuery, viewMode, tableData, nodes, tagAssignments, tagById]);
 
   const jumpToSearchResult = useCallback(
     async (res: SearchResult, opts?: { openForm?: boolean }) => {
@@ -8765,153 +8717,9 @@ export default function ProjectPage() {
     });
   };
 
-  const handleTableToggleTag =
-    async (
-      protocolIds: string[],
-      tagId: string,
-      enabled: boolean,
-    ) => {
-      const currentProjectId =
-        getProjectId();
-
-      if (
-        currentProjectId == null
-      ) {
-        return;
-      }
-
-      const normalizedIds =
-        Array.from(
-          new Set(
-            protocolIds
-              .map(String)
-              .filter(Boolean),
-          ),
-        );
-
-      if (
-        !normalizedIds.length
-      ) {
-        return;
-      }
-
-      const rowsById =
-        new Map(
-          tableData.map(
-            (row) => [
-              String(row.id),
-              row,
-            ],
-          ),
-        );
-
-      const updates =
-        normalizedIds.map(
-          (protocolId) => {
-            const row =
-              rowsById.get(
-                protocolId,
-              );
-
-            const currentTags =
-              pickFirstNonEmptyTagIds(
-                tagAssignments[
-                protocolId
-                ],
-
-                row?.tagIds,
-
-                row?.tags,
-              );
-
-            const nextTags =
-              enabled
-                ? Array.from(
-                  new Set([
-                    ...currentTags,
-                    tagId,
-                  ]),
-                )
-                : currentTags.filter(
-                  (id) =>
-                    id !==
-                    tagId,
-                );
-
-            return {
-              protocolId,
-              tagIds:
-                nextTags,
-            };
-          },
-        );
-
-      try {
-        await Promise.all(
-          updates.map(
-            (update) =>
-              svc.setProtocolTagIds(
-                currentProjectId,
-                update.protocolId,
-                update.tagIds,
-              ),
-          ),
-        );
-
-        setTagAssignments(
-          (current) => {
-            const next = {
-              ...current,
-            };
-
-            for (
-              const update
-              of updates
-            ) {
-              if (
-                update.tagIds.length
-              ) {
-                next[
-                  update.protocolId
-                ] =
-                  update.tagIds;
-              } else {
-                delete next[
-                  update.protocolId
-                ];
-              }
-            }
-
-            return next;
-          },
-        );
-
-        toast.success(
-          enabled
-            ? (
-              normalizedIds.length >
-                1
-                ? "Tag added to protocols."
-                : "Tag added to protocol."
-            )
-            : (
-              normalizedIds.length >
-                1
-                ? "Tag removed from protocols."
-                : "Tag removed from protocol."
-            ),
-        );
-      } catch (error) {
-        console.error(
-          "table tag update failed",
-          error,
-        );
-
-        toast.error(
-          getErrorMsg(error),
-        );
-      }
-    };
+  // Table and graph menus share the write path of useProjectTags.
+  const handleTableToggleTag = (protocolIds: string[], tagId: string, enabled: boolean) =>
+    projectTags.toggleTag(protocolIds, tagId, enabled);
 
   const submitRename = async () => {
     if (renameBusyRef.current) return;
@@ -9268,84 +9076,48 @@ export default function ProjectPage() {
     unifiedSelectedIdsState.size > 0 &&
     viewMode !== "table";
 
-  const renderNodes = useMemo(() => {
-    // deriveRenderNodes
-    const tagFilterSet = new Set(tagFilterIds);
-    const tagFilterActive = tagFilterSet.size > 0;
+  const canManageTags = contextMenuVisibilityPolicyRef.current.manageTags !== false;
 
-    const dimOpacity = 0.18;
+  const getTagUsageCount = useCallback(
+    (tagId: string) => Object.values(tagAssignments).filter((ids) => ids.includes(tagId)).length,
+    [tagAssignments],
+  );
 
-    let anyChanged = false;
+  const projectTagsContextValue = useMemo<ProjectTagsContextValue>(() => ({
+    tags: allTags,
+    tagsById: tagById,
+    loading: projectTags.tagsLoading,
+    assignments: tagAssignments,
+    toggleTag: (protocolIds, tagId) => {
+      void projectTags.toggleTag(protocolIds, tagId);
+    },
+    requestCreateTag: (protocolIds) => setCreateTagTargets(protocolIds),
+    openManager: canManageTags ? () => setTagManagerOpen(true) : undefined,
+  }), [allTags, tagById, projectTags.tagsLoading, projectTags.toggleTag, tagAssignments, canManageTags]);
 
-    const next = nodes.map((n) => {
-      const nodeId = String(n.id);
+  const tagFilterActive = tagFilterIds.length > 0;
 
-      // keepProjectNodeAsIs
-      if (nodeId === "PROJECT") return n;
+  const tagFilterMatches = useCallback(
+    (protocolId: string, fallback?: unknown) =>
+      matchesTagFilter(resolveAssignedTagIds(tagAssignments, protocolId, fallback), tagFilterIds, tagFilterMode),
+    [tagAssignments, tagFilterIds, tagFilterMode],
+  );
 
-      const dataAny: any = (n as any).data ?? {};
-      const assignedTagIds = pickFirstNonEmptyTagIds(
-        tagAssignments[nodeId],
-        dataAny.tagIds,
-        dataAny.tags
-      );
+  const tagFilterMatchCount = useMemo(() => {
+    if (!tagFilterActive) return 0;
+    const protocols = (project?.protocols ?? {}) as Record<string, any>;
+    return Object.keys(protocols).filter((id) => id !== "PROJECT" && tagFilterMatches(id, protocols[id]?.tags)).length;
+  }, [project, tagFilterActive, tagFilterMatches]);
 
-
-      const matchesTagFilter = !tagFilterActive
-        ? true
-        : assignedTagIds.some((tid) => tagFilterSet.has(tid));
-
-      const tagColor = assignedTagIds.length ? tagById.get(assignedTagIds[0])?.color : undefined;
-
-      const inFocus = focusActive ? unifiedSelectedIdsState.has(nodeId) : true;
-
-      const shouldDim = (focusActive && !inFocus) || (tagFilterActive && !matchesTagFilter);
-      const desiredOpacity = shouldDim ? dimOpacity : 1;
-
-      const baseStyle: any = (n as any).style ?? {};
-      const curOpacity = typeof baseStyle.opacity === "number" ? baseStyle.opacity : 1;
-
-      const curColor = typeof dataAny.color === "string" ? dataAny.color : undefined;
-
-
-      const curTagIds = normalizeTagIds((dataAny as any).tagIds);
-      const sameTags =
-        curTagIds.length === assignedTagIds.length &&
-        curTagIds.every((x) => assignedTagIds.includes(x)) &&
-        assignedTagIds.every((x) => curTagIds.includes(x));
-
-      const nextDataWithTags = sameTags
-        ? dataAny
-        : { ...dataAny, tagIds: assignedTagIds }; // keepNodeDataInSyncWithAssignments
-
-
-      const nextStyle =
-        curOpacity === desiredOpacity && (!focusActive || baseStyle.zIndex === (inFocus ? 10 : 0))
-          ? baseStyle
-          : {
-            ...baseStyle,
-            opacity: desiredOpacity,
-            zIndex: focusActive ? (inFocus ? 10 : 0) : baseStyle.zIndex,
-          };
-
-      const baseData = nextDataWithTags;
-
-      const nextData =
-        tagColor && curColor !== tagColor
-          ? { ...baseData, color: tagColor }
-          : baseData; // deriveColorFromFirstTagIfPresent
-
-      const styleChanged = nextStyle !== baseStyle;
-      const dataChanged = nextData !== dataAny;
-
-      if (!styleChanged && !dataChanged) return n;
-
-      anyChanged = true;
-      return { ...n, style: nextStyle, data: nextData };
-    });
-
-    return anyChanged ? next : nodes;
-  }, [nodes, focusActive, unifiedSelectedIdsState, tagFilterIds, tagAssignments, tagById]);
+  const renderNodes = useMemo(
+    () =>
+      applyNodeVisibility(nodes, {
+        focusIds: focusActive ? unifiedSelectedIdsState : null,
+        matchesFilter: tagFilterActive ? (id, data) => tagFilterMatches(id, data?.tags) : null,
+        hideOutsideFilter: tagFilterHidesOthers,
+      }),
+    [nodes, focusActive, unifiedSelectedIdsState, tagFilterActive, tagFilterHidesOthers, tagFilterMatches],
+  );
 
 
   const renderEdges = useMemo(() => {
@@ -9390,6 +9162,16 @@ export default function ProjectPage() {
     });
   }, [edges, focusActive, unifiedSelectedIdsState]);
 
+  // Edges of protocols hidden by the tag filter go with them.
+  const visibleEdges = useMemo(() => {
+    const hiddenIds = new Set(renderNodes.filter((n) => n.hidden).map((n) => String(n.id)));
+    if (hiddenIds.size === 0) return renderEdges;
+    return renderEdges.map((e) => {
+      const hidden = hiddenIds.has(String(e.source)) || hiddenIds.has(String(e.target));
+      return Boolean(e.hidden) === hidden ? e : { ...e, hidden };
+    });
+  }, [renderEdges, renderNodes]);
+
 
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
@@ -9403,6 +9185,7 @@ export default function ProjectPage() {
     );
 
   return (
+    <ProjectTagsContext.Provider value={projectTagsContextValue}>
     <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
       <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
 
@@ -9485,18 +9268,19 @@ export default function ProjectPage() {
             </div>
 
             <div className="pp-headerCard pp-tagsCard">
-              <div className="pp-tagsActions">
-                <button
-                  type="button"
-                  onClick={() => setTagManagerOpen(true)}
-                  className="pp-chipBtn"
-                  title="Manage tags"
-                >
-                  <TagsIcon className="pp-btnIcon" />
-                  <span>Tags</span>
-                </button>
-
-              </div>
+              {canManageTags && (
+                <div className="pp-tagsActions">
+                  <button
+                    type="button"
+                    onClick={() => setTagManagerOpen(true)}
+                    className="pp-chipBtn"
+                    title="Manage tags"
+                  >
+                    <TagsIcon className="pp-btnIcon" />
+                    <span>Tags</span>
+                  </button>
+                </div>
+              )}
               <div className="pp-tagsPicker">
                 <TagPicker
                   allTags={allTags}
@@ -9505,6 +9289,43 @@ export default function ProjectPage() {
                   disablePortal={false}
                 />
               </div>
+              {tagFilterActive && (
+                <div className="pp-tagFilterOptions" role="group" aria-label="Tag filter options">
+                  {tagFilterIds.length > 1 && (
+                    <button
+                      type="button"
+                      className="pp-chipBtn"
+                      onClick={() => setTagFilterMode((mode) => (mode === "any" ? "all" : "any"))}
+                      title={tagFilterMode === "any"
+                        ? "Showing protocols with any of these tags. Click to require all of them."
+                        : "Showing protocols with all of these tags. Click to accept any of them."}
+                      aria-label={`Match ${tagFilterMode === "any" ? "any" : "all"} tags`}
+                    >
+                      {tagFilterMode === "any" ? "Any" : "All"}
+                    </button>
+                  )}
+                  {viewMode !== "table" && (
+                    <button
+                      type="button"
+                      className="pp-chipBtn"
+                      onClick={() => setTagFilterHidesOthers((hide) => !hide)}
+                      aria-pressed={tagFilterHidesOthers}
+                      title={tagFilterHidesOthers ? "Other protocols are hidden. Click to dim them." : "Other protocols are dimmed. Click to hide them."}
+                    >
+                      {tagFilterHidesOthers ? <EyeOff className="pp-btnIcon" /> : <Eye className="pp-btnIcon" />}
+                      <span>{tagFilterHidesOthers ? "Hide" : "Dim"}</span>
+                    </button>
+                  )}
+                  <span
+                    className="pp-tagFilterCount"
+                    role="status"
+                    title="Protocols matching the tag filter"
+                    aria-label={`${tagFilterMatchCount} matching protocols`}
+                  >
+                    {tagFilterMatchCount}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -9667,6 +9488,10 @@ export default function ProjectPage() {
               externalTagFilterIds={
                 tagFilterIds
               }
+              tagFilterMode={tagFilterMode}
+              tagsLoading={projectTags.tagsLoading}
+              onCreateTag={(protocolIds) => setCreateTagTargets(protocolIds)}
+              onManageTags={canManageTags ? () => setTagManagerOpen(true) : undefined}
               searchQuery={
                 searchQuery
               }
@@ -9947,7 +9772,7 @@ export default function ProjectPage() {
             <ReactFlowProvider>
               <ReactFlow
                 nodes={renderNodes}
-                edges={renderEdges}
+                edges={visibleEdges}
                 // preventReactFlowDefaultDeleteeKeyCode is set to null to allow global handling of delete key for both nodes and edges without interference from React Flow's internal handling, enabling custom delete logic that can consider both nodes and edges together.
                 deleteKeyCode={null}
                 onNodesChange={handleNodesChangeWithPersistence}
@@ -11099,20 +10924,35 @@ export default function ProjectPage() {
           />
         )}
 
-        {/* tagsManagerDialog */}
-        <TagsDialog
-          open={tagManagerOpen}
-          onClose={() => setTagManagerOpen(false)}
-          title="Manage tags"
-        >
-          <div style={{ paddingTop: 8 }}>
-            <TagManager
-              projectId={Number(projId)}
-              open={tagManagerOpen}
-              onTagsChange={setAllTags}
-            />
-          </div>
-        </TagsDialog>
+        {/* tagsManagerDialog: only with a real project id, never /projects/NaN/tags */}
+        {projectId != null && (
+          <TagsDialog
+            open={tagManagerOpen}
+            onClose={() => {
+              setTagManagerOpen(false);
+              void refreshTags();
+            }}
+            title="Manage tags"
+          >
+            <div style={{ paddingTop: 8 }}>
+              <TagManager
+                projectId={projectId}
+                open={tagManagerOpen}
+                onTagsChange={projectTags.replaceTags}
+                onTagDeleted={projectTags.forgetTag}
+                getUsageCount={getTagUsageCount}
+              />
+            </div>
+          </TagsDialog>
+        )}
+
+        <CreateTagDialog
+          open={createTagTargets != null}
+          targetCount={createTagTargets?.length ?? 0}
+          existingTags={allTags}
+          onCreate={(payload) => projectTags.createTagAndAssign(payload, createTagTargets ?? [])}
+          onClose={() => setCreateTagTargets(null)}
+        />
 
         {/* ================= ProtocolSteps ================= */}
         <ProtocolStepsDeveloperDialog
@@ -11156,5 +10996,6 @@ export default function ProjectPage() {
       {/* portalRootInsideWidgetSoDialogsInheritWidgetStyles */}
       <div ref={portalRootRef} id="projectpage-portal-root" className="pp-portalRoot" />
     </div>
+    </ProjectTagsContext.Provider>
   );
 }

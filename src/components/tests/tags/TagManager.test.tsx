@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { useState } from "react";
-import type { ProtocolTag } from "../../tags/tagTypes";
 
 import TagManager from "../../tags/TagManager";
 import { createProjectServiceMock, renderWithProviders } from "../test-utils";
@@ -19,150 +17,141 @@ vi.mock("../../../icons", () => ({
   CloseIcon: (props: any) => <svg data-testid="close-icon" {...props} />,
 }));
 
-const storeSetTags = vi.fn();
-const storeDeleteTag = vi.fn();
+const alpha = { id: "alpha", title: "Alpha", description: "First tag", color: "#ff0000" };
 
-vi.mock("@/stores/tag_store", () => ({
-  useTagStore: () => ({
-    tags: [],
-    setTags: storeSetTags,
-    deleteTag: storeDeleteTag,
-  }),
-}));
-
-function ControlledHarness({ initialTags }: { initialTags: ProtocolTag[] }) {
-  const [tags, setTags] = useState<ProtocolTag[]>(initialTags);
-
-  return (
-    <TagManager
-      title="Protocol tags"
-      tags={tags}
-      onTagsChange={setTags}
-    />
+function setup(overrides: Record<string, any> = {}, props: Record<string, any> = {}) {
+  const service = createProjectServiceMock({
+    listProjectTags: vi.fn().mockResolvedValue([alpha]),
+    createProjectTag: vi.fn(async (_pid: any, payload: any) => ({ id: "new", ...payload })),
+    updateProjectTag: vi.fn(async (_pid: any, id: string, payload: any) => ({ id, ...payload })),
+    deleteProjectTag: vi.fn().mockResolvedValue({ success: true }),
+    ...overrides,
+  } as any);
+  const onTagsChange = vi.fn();
+  const onTagDeleted = vi.fn();
+  renderWithProviders(
+    <TagManager title="Protocol tags" projectId={7} onTagsChange={onTagsChange} onTagDeleted={onTagDeleted} {...props} />,
+    { service },
   );
+  return { service: service as any, onTagsChange, onTagDeleted };
+}
+
+async function openCreateDialog() {
+  fireEvent.click(screen.getByRole("button", { name: "New tag" }));
+  return screen.findByRole("dialog");
 }
 
 describe("TagManager", () => {
-  it("renders the provided title and existing tags", () => {
-    renderWithProviders(
-      <ControlledHarness
-        initialTags={[
-          {
-            id: "alpha",
-            title: "Alpha",
-            description: "First tag",
-            color: "#ff0000",
-          },
-        ]}
-      />,
-      { service: createProjectServiceMock() },
-    );
+  it("loads and lists the project's tags", async () => {
+    const { service, onTagsChange } = setup();
 
     expect(screen.getByText("Protocol tags")).toBeInTheDocument();
-    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(await screen.findByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("First tag")).toBeInTheDocument();
+    expect(service.listProjectTags).toHaveBeenCalledWith(7);
+    expect(onTagsChange).toHaveBeenCalledWith([expect.objectContaining({ id: "alpha" })]);
   });
 
-  it("creates a new tag in controlled mode", async () => {
-    renderWithProviders(
-      <ControlledHarness initialTags={[]} />,
-      { service: createProjectServiceMock() },
-    );
+  it("creates a tag on the server", async () => {
+    const { service } = setup();
+    await screen.findByText("Alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "New tag" }));
-
-    const dialog = await screen.findByRole("dialog");
-    const textboxes = within(dialog).getAllByRole("textbox");
-
-    fireEvent.change(textboxes[0], {
-      target: { value: "Urgent" },
-    });
-
-    fireEvent.change(textboxes[1], {
-      target: { value: "Needs attention" },
-    });
-
+    const dialog = await openCreateDialog();
+    const [title, description] = within(dialog).getAllByRole("textbox");
+    fireEvent.change(title, { target: { value: "Urgent" } });
+    fireEvent.change(description, { target: { value: "Needs attention" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Urgent")).toBeInTheDocument();
-      expect(screen.getByText("Needs attention")).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText("Urgent")).toBeInTheDocument());
+    expect(service.createProjectTag).toHaveBeenCalledWith(7, { title: "Urgent", description: "Needs attention", color: "#3b82f6" });
   });
 
-  it("shows a validation error when creating a duplicate tag title", async () => {
-    renderWithProviders(
-      <ControlledHarness
-        initialTags={[
-          {
-            id: "alpha",
-            title: "Urgent",
-            description: "Existing tag",
-            color: "#ff0000",
-          },
-        ]}
-      />,
-      { service: createProjectServiceMock() },
-    );
+  it("checks the title length, duplicates and the hex colour before sending", async () => {
+    const { service } = setup();
+    await screen.findByText("Alpha");
+    const dialog = await openCreateDialog();
+    const save = within(dialog).getByRole("button", { name: "Save" });
 
-    fireEvent.click(screen.getByRole("button", { name: "New tag" }));
+    fireEvent.change(within(dialog).getAllByRole("textbox")[0], { target: { value: "x".repeat(81) } });
+    fireEvent.click(save);
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("at most 80 characters");
 
-    const dialog = await screen.findByRole("dialog");
-    const textboxes = within(dialog).getAllByRole("textbox");
+    fireEvent.change(within(dialog).getAllByRole("textbox")[0], { target: { value: "alpha" } });
+    fireEvent.click(save);
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("A tag with the same title already exists.");
 
-    fireEvent.change(textboxes[0], {
-      target: { value: "Urgent" },
+    fireEvent.change(within(dialog).getAllByRole("textbox")[0], { target: { value: "Beta" } });
+    fireEvent.change(within(dialog).getByLabelText("Hex color"), { target: { value: "blue" } });
+    fireEvent.click(save);
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("hex value");
+
+    expect(service.createProjectTag).not.toHaveBeenCalled();
+  });
+
+  it("keeps the native colour input and the hex field in hex", async () => {
+    setup();
+    await screen.findByText("Alpha");
+    const dialog = await openCreateDialog();
+
+    fireEvent.change(within(dialog).getByLabelText("Hex color"), { target: { value: "#abc" } });
+    expect(within(dialog).getByLabelText("Pick custom color")).toHaveValue("#aabbcc");
+
+    fireEvent.change(within(dialog).getByLabelText("Pick custom color"), { target: { value: "#112233" } });
+    expect(within(dialog).getByLabelText("Hex color")).toHaveValue("#112233");
+  });
+
+  it("shows the server's message for a duplicate title", async () => {
+    const conflict = Object.assign(new Error("Failed to create tag"), {
+      status: 409,
+      data: { detail: "A tag titled 'Beta' already exists in this project." },
     });
+    setup({ createProjectTag: vi.fn().mockRejectedValue(conflict) });
+    await screen.findByText("Alpha");
+    const dialog = await openCreateDialog();
 
+    fireEvent.change(within(dialog).getAllByRole("textbox")[0], { target: { value: "Beta" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    expect(
-      screen.getByText("A tag with the same title already exists."),
-    ).toBeInTheDocument();
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("A tag titled 'Beta' already exists in this project.");
   });
 
-  it("edits an existing tag in controlled mode", async () => {
-    renderWithProviders(
-      <ControlledHarness
-        initialTags={[
-          {
-            id: "alpha",
-            title: "Alpha",
-            description: "Original description",
-            color: "#ff0000",
-          },
-        ]}
-      />,
-      { service: createProjectServiceMock() },
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-
+  it("edits a tag", async () => {
+    const { service } = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit tag Alpha" }));
     const dialog = await screen.findByRole("dialog");
-    const textboxes = within(dialog).getAllByRole("textbox");
-
-    fireEvent.change(textboxes[0], {
-      target: { value: "Alpha updated" },
-    });
-
-    fireEvent.change(textboxes[1], {
-      target: { value: "Updated description" },
-    });
-
+    const [title, description] = within(dialog).getAllByRole("textbox");
+    fireEvent.change(title, { target: { value: "Alpha updated" } });
+    fireEvent.change(description, { target: { value: "" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Alpha updated")).toBeInTheDocument();
-      expect(screen.getByText("Updated description")).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText("Alpha updated")).toBeInTheDocument());
+    // An empty description is sent as null, which clears it.
+    expect(service.updateProjectTag).toHaveBeenCalledWith(7, "alpha", { title: "Alpha updated", description: null, color: "#ff0000" });
   });
 
-  it("shows the empty state when there are no tags", () => {
-    renderWithProviders(
-      <ControlledHarness initialTags={[]} />,
-      { service: createProjectServiceMock() },
-    );
+  it("asks before deleting, saying how many protocols use the tag", async () => {
+    const { service, onTagDeleted } = setup({}, { getUsageCount: () => 3 });
 
-    expect(screen.getByText("No tags yet.")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete tag Alpha" }));
+    const confirm = await screen.findByRole("dialog", { name: /Delete tag/ });
+    expect(confirm).toHaveTextContent("It is used by 3 protocols");
+    expect(service.deleteProjectTag).not.toHaveBeenCalled();
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(service.deleteProjectTag).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Delete tag/ })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete tag Alpha" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: /Delete tag/ })).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(service.deleteProjectTag).toHaveBeenCalledWith(7, "alpha"));
+    await waitFor(() => expect(screen.queryByText("Alpha")).not.toBeInTheDocument());
+    expect(onTagDeleted).toHaveBeenCalledWith("alpha");
+  });
+
+  it("shows the empty state when there are no tags", async () => {
+    setup({ listProjectTags: vi.fn().mockResolvedValue([]) });
+
+    expect(await screen.findByText("No tags yet.")).toBeInTheDocument();
   });
 });

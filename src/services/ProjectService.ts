@@ -1421,8 +1421,11 @@ export type ProtocolTagUpdatePayload = {
 };
 
 export type ProtocolTagIdsResult = {
+  protocolId?: string;
+  /** What the protocol has now, after the server dropped unknown ids. */
   tagIds: string[];
-  missingTagIds: string[];
+  /** Ids that were sent but are not tags of the project (deleted meanwhile). */
+  ignoredTagIds: string[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -959,58 +959,59 @@
   margin-top: 10px;
   margin-left: 15px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+  min-width: 0;
   justify-content: flex-start;
 }
 
 .tagChip {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  /* Long titles end in an ellipsis (full title in the tooltip). */
+  max-width: 260px;
   padding: 8px 16px;
-  /* bigger */
   border-radius: 999px;
   border: 1px solid rgba(15, 23, 42, 0.18);
   font-size: 30px;
-  /* bigger */
-  line-height: 22px;
-  /* bigger */
-  color: #fdfdfd;
-
-  /* optional extra punch if still small due to zoom */
-  transform: scale(1.06);
-  transform-origin: left center;
-  margin-left: 8px;
-  /* to visually compensate the transform */
+  line-height: 32px;
+  /* The text colour is set inline, readable on the tag colour. */
+  color: var(--app-n-900);
 }
 
 .tagChipText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.menuRight {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
+.tagChipMore {
+  flex: 0 0 auto;
+  background-color: var(--app-n-150);
+  border-color: var(--app-n-300);
+  color: var(--app-n-700);
+  font-weight: 600;
 }
 
-.menuCheckIcon {
-  width: 16px;
-  height: 16px;
-}
-
-.menuCheckPlaceholder {
-  width: 16px;
-  height: 16px;
-  display: inline-block;
-}
-
-.footerTagsRow {
+/* Far zoom: one coloured segment per tag along the bottom edge. */
+.tagStrip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 36px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  overflow: hidden;
+  border-radius: 0 0 1rem 1rem;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tagStrip > span {
+  flex: 1 1 0;
 }
 
 .tagsRowIcon {
@@ -1023,9 +1024,11 @@
 .tagsChipsWrap {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 12px;
+  /* One row: extra tags go into the "+N" chip. */
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 }
 
 .nextStepList {

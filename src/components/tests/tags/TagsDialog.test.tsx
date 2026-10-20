@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import TagsDialog from "../../tags/TagsDialog";
 import { renderWithProviders } from "../test-utils";
@@ -50,5 +50,21 @@ describe("TagsDialog", () => {
     );
 
     expect(screen.queryByText("Dialog content")).not.toBeInTheDocument();
+  });
+
+  it("moves focus into the dialog and is named by its title", async () => {
+    renderWithProviders(
+      <TagsDialog open={true} onClose={() => {}} title="Manage tags">
+        <div>Dialog content</div>
+      </TagsDialog>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Manage tags" });
+    // Focus goes to the modal (its container or something inside it), not left on the page.
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement;
+      expect(active).not.toBe(document.body);
+      expect(active.contains(dialog) || dialog.contains(active)).toBe(true);
+    });
   });
 });

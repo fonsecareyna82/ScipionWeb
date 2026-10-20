@@ -2242,7 +2242,6 @@ export default function SettingsPage() {
                   <TagManager
                     projectId={selectedProjectId as any}
                     title="Tags"
-                    tags={tagsDraft}
                     onTagsChange={setTagsDraft}
                   />
 

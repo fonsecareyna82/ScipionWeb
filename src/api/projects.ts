@@ -9,6 +9,7 @@ import type {
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
+import { normalizeTagIds } from "@/utils/protocol_tags";
 import {
   PointerSelectableSetItemsOptions,
   PointerSelectableSetItemsPage,
@@ -837,53 +838,13 @@ function normalizeProjectTagsResponse(raw: any): ProtocolTag[] {
 
 function normalizeProtocolTagIdsResult(raw: any): ProtocolTagIdsResult {
   // normalizeProtocolTagIdsResult
-  const toStr = (v: any) => String(v).trim();
+  if (Array.isArray(raw)) return { tagIds: normalizeTagIds(raw), ignoredTagIds: [] };
 
-  const uniq = new Set<string>();
-  const tagIds: string[] = [];
-
-  const pushId = (v: any) => {
-    // pushId
-    const s = toStr(v);
-    if (!s) return;
-    if (uniq.has(s)) return;
-    uniq.add(s);
-    tagIds.push(s);
+  return {
+    protocolId: raw?.protocolId != null ? String(raw.protocolId) : undefined,
+    tagIds: normalizeTagIds(raw?.tagIds ?? raw?.tags),
+    ignoredTagIds: normalizeTagIds(raw?.ignoredTagIds),
   };
-
-  const collectFromArray = (arr: any[]) => {
-    // collectFromArray
-    for (const item of arr) {
-      if (item == null) continue;
-
-      if (typeof item === "string" || typeof item === "number") {
-        pushId(item);
-        continue;
-      }
-
-      if (typeof item === "object") {
-        if ((item as any).id != null) pushId((item as any).id);
-        else if ((item as any).tagId != null) pushId((item as any).tagId);
-      }
-    }
-  };
-
-  let missingTagIds: string[] = [];
-
-  if (Array.isArray(raw)) {
-    collectFromArray(raw);
-  } else if (raw && typeof raw === "object") {
-    if (Array.isArray((raw as any).tagIds)) collectFromArray((raw as any).tagIds);
-    if (Array.isArray((raw as any).tags)) collectFromArray((raw as any).tags);
-
-    if (Array.isArray((raw as any).missingTagIds)) {
-      missingTagIds = (raw as any).missingTagIds.map(toStr).filter((s: string) => s.length > 0);
-    }
-  }
-
-  missingTagIds = Array.from(new Set(missingTagIds));
-
-  return { tagIds, missingTagIds };
 }
 
 export async function listProjectTags(projectId: Id): Promise<ProtocolTag[]> {
