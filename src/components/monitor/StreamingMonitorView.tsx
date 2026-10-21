@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Plot from "react-plotly.js";
-import { Activity, ArrowDown, ArrowRight, ArrowUp, Bell, RefreshCw, Settings2 } from "lucide-react";
+import { Activity, ArrowDown, ArrowRight, ArrowUp, Bell, HelpCircle, RefreshCw, Settings2 } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { useIsDark } from "@/context/ThemeContext";
@@ -47,7 +47,29 @@ type PlotSpec = {
   limits: StreamingMonitorThresholdName[];
   /** Alerts that colour a point of this plot. */
   alerts: StreamingMonitorThresholdName[];
+  /** What the plot shows and what to look for. */
+  help: string;
 };
+
+const PIPELINE_HELP =
+  "Each card is a step of the processing chain. The big number is how many items it has; the green dot "
+  + "means its output is still open and more come. The rate is the items per minute of the last 10 minutes, "
+  + "the arrow compares it with the 10 before (up: faster, down: slower). \"Waiting\" is what the step before "
+  + "produced and this one has not processed yet: if it keeps growing, this step falls behind the microscope.";
+
+const ALERTS_HELP =
+  "Each line is a run of consecutive micrographs past the same threshold, newest first. A red dot means the "
+  + "newest micrograph is still past it; a grey one, that the values came back in range. Click the micrograph "
+  + "to see it. The thresholds are set with the Thresholds button, for everyone in the project.";
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span className="inline-flex cursor-help text-app-subtle hover:text-app-text" title={text} aria-label={text}
+          role="img">
+      <HelpCircle className="h-3.5 w-3.5" />
+    </span>
+  );
+}
 
 const PLOTS: PlotSpec[] = [
   {
@@ -56,6 +78,8 @@ const PLOTS: PlotSpec[] = [
     series: [{ name: "Resolution", value: (point) => point.resolution }],
     limits: ["maxResolution"],
     alerts: ["maxResolution"],
+    help: "The resolution up to which the CTF fit matches the Thon rings of each micrograph, in Å. Lower is "
+      + "better. A rising trend usually means thicker ice, a worse focus or drift.",
   },
   {
     title: "Defocus",
@@ -66,6 +90,8 @@ const PLOTS: PlotSpec[] = [
     ],
     limits: ["minDefocus", "maxDefocus"],
     alerts: ["minDefocus", "maxDefocus"],
+    help: "How far from focus each micrograph is, along its two directions (U and V), in Å. It should stay "
+      + "within the range set for the acquisition.",
   },
   {
     title: "Astigmatism |U − V|",
@@ -74,6 +100,8 @@ const PLOTS: PlotSpec[] = [
         : Math.abs(point.astigmatism)) }],
     limits: ["maxAstigmatism"],
     alerts: ["maxAstigmatism"],
+    help: "The difference between the two defocus values, in Å. A large one means the image is stretched in "
+      + "one direction: the astigmatism of the microscope needs correcting.",
   },
   {
     title: "Drift",
@@ -84,6 +112,8 @@ const PLOTS: PlotSpec[] = [
     ],
     limits: ["maxTotalDrift", "maxFrameShift"],
     alerts: ["maxTotalDrift", "maxFrameShift"],
+    help: "How much the sample moved during each movie, in Å: the whole path (total drift) and the largest "
+      + "jump between two frames. High values usually mean an unstable sample or a charging grid.",
   },
 ];
 
@@ -178,7 +208,11 @@ function MonitorPlot({
     shapes,
   };
   return (
-    <div className="rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
+    <div className="relative rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
+      <div className="absolute right-3 top-3 z-10">
+        <HelpHint text={`${spec.help} Each point is a micrograph, at the time it was processed; red ones go past `
+          + "a threshold (the dashed lines). Click one to see the micrograph."} />
+      </div>
       <Plot
         data={data}
         layout={layout}
@@ -377,8 +411,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         ) : null}
 
         {monitor && monitor.stages.length > 0 ? (
-          <section className="flex flex-wrap gap-3" aria-label="Pipeline">
-            {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
+          <section aria-label="Pipeline">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              Pipeline <HelpHint text={PIPELINE_HELP} />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
+            </div>
           </section>
         ) : null}
 
@@ -399,7 +438,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         {seriesKind ? (
           <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Alerts">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-              <Bell className="h-3.5 w-3.5" /> Alerts
+              <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
             </div>
             {episodes.length === 0 ? (
               <div className="text-sm text-app-muted">No micrograph goes past the thresholds.</div>

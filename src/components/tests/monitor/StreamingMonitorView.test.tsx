@@ -69,6 +69,10 @@ describe("StreamingMonitorView", () => {
     expect(screen.getAllByTestId("monitor-plot")).toHaveLength(4);
     expect(screen.getByText("Astigmatism above 1000 Å")).toBeInTheDocument();
     expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+    // Every part says what it shows
+    expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
     expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterRowId: null });
   });
 

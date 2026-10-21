@@ -64,6 +64,7 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
 ## Known gotchas
 
 - Vitest is the only test runner (Jest was removed). `@testing-library/jest-dom` is still a dependency on purpose — it provides DOM matchers for Vitest, not Jest itself.
+- External windows (`ExternalWindowPortal`) share the page's JavaScript thread and copy its stylesheets. The copy is incremental (`mirrorDocumentStyles`): a sheet is turned into text again only when its element changed (`markMirroredStylesDirty`, from the `<head>` observer); one that grew at its end (emotion's `insertRule`) gets only its new rules. Re-reading every rule on each `<head>` change made the whole application slow while a popup was open, so keep syncs cheap.
 - This repo is standalone/HTTP-only towards Scipion — if something looks like it needs a direct Python/Scipion import, that's a sign it belongs in `ScipionAPI` instead, not here.
 
 ## Keeping this document current

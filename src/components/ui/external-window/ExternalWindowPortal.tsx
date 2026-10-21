@@ -224,175 +224,301 @@ function getStyleSheetCssText(
 }
 
 
-function mirrorDocumentStyles(
+// What a popup already has of each source stylesheet, so a sync only copies what changed: turning every
+// rule of every sheet into text on each change of the page made the whole application slow while a
+// popup was open (styles are injected into <head> on almost any render).
+type MirroredSheet = {
+    node: HTMLElement;
+    href: string | null;
+    ruleCount: number;
+};
+
+type StyleMirrorState = {
+    // By source element, or by the sheet itself where it has none
+    sheets: WeakMap<object, MirroredSheet>;
+    // Source <style>/<link> elements whose content changed since the last sync
+    dirty: Set<Node>;
+};
+
+const styleMirrorStates =
+    new WeakMap<Document, StyleMirrorState>();
+
+
+function getStyleMirrorState(
+    targetDocument: Document,
+): StyleMirrorState {
+    let state =
+        styleMirrorStates.get(
+            targetDocument,
+        );
+
+    if (!state) {
+        state = {
+            sheets: new WeakMap(),
+            dirty: new Set(),
+        };
+
+        styleMirrorStates.set(
+            targetDocument,
+            state,
+        );
+    }
+
+    return state;
+}
+
+
+/** Note the source style elements a mutation touched, so the next sync copies them again. */
+export function markMirroredStylesDirty(
+    targetDocument: Document,
+    records: MutationRecord[],
+) {
+    const state =
+        getStyleMirrorState(
+            targetDocument,
+        );
+
+    records.forEach(
+        (record) => {
+            let node: Node | null =
+                record.target;
+
+            while (
+                node &&
+                !(
+                    node instanceof Element &&
+                    ["style", "link"].includes(
+                        node.tagName.toLowerCase(),
+                    )
+                )
+            ) {
+                node = node.parentNode;
+            }
+
+            if (node) {
+                state.dirty.add(
+                    node,
+                );
+            }
+        },
+    );
+}
+
+
+function getRuleCount(
+    sheet: CSSStyleSheet,
+): number {
+    try {
+        return sheet.cssRules.length;
+    } catch {
+        return -1;
+    }
+}
+
+
+function appendNewRules(
+    sheet: CSSStyleSheet,
+    targetNode: HTMLElement,
+    from: number,
+): boolean {
+    const targetSheet =
+        (targetNode as HTMLStyleElement).sheet;
+
+    if (!targetSheet) {
+        return false;
+    }
+
+    try {
+        const rules =
+            sheet.cssRules;
+
+        for (let index = from; index < rules.length; index += 1) {
+            targetSheet.insertRule(
+                rules[index].cssText,
+                targetSheet.cssRules.length,
+            );
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+
+export function mirrorDocumentStyles(
     sourceDocument: Document,
     targetDocument: Document,
 ) {
-    const expectedKeys =
-        new Set<string>();
+    const state =
+        getStyleMirrorState(
+            targetDocument,
+        );
+
+    const wanted: HTMLElement[] = [];
 
     Array.from(
         sourceDocument.styleSheets,
     ).forEach(
-        (
-            sheet,
-            index,
-        ) => {
-            const key =
-                String(
-                    index,
-                );
-
-            expectedKeys.add(
-                key,
-            );
-
+        (sheet) => {
             const ownerNode =
-                sheet.ownerNode;
-
-            const ownerElement =
-                ownerNode instanceof Element
-                    ? ownerNode
+                sheet.ownerNode instanceof Element
+                    ? sheet.ownerNode
                     : null;
 
+            const key: object =
+                ownerNode ?? sheet;
+
             const ownerTag =
-                ownerElement
-                    ?.tagName
-                    ?.toLowerCase() ??
-                "";
+                ownerNode?.tagName.toLowerCase() ?? "";
 
-            const selector =
-                `[${MIRRORED_STYLE_ATTR}="${key}"]`;
-
-            const currentNode =
-                targetDocument.head
-                    .querySelector(
-                        selector,
-                    ) as HTMLElement | null;
-
-
-            if (
-                ownerTag ===
-                "link"
-            ) {
-                const sourceLink =
-                    ownerElement as
-                    HTMLLinkElement;
-
-                const currentIsSameLink =
-                    currentNode
-                        ?.tagName
-                        ?.toLowerCase() ===
-                    "link" &&
-                    (
-                        currentNode as
-                        HTMLLinkElement
-                    ).href ===
-                    sourceLink.href;
-
-                if (
-                    currentIsSameLink
-                ) {
-                    return;
-                }
-
-                currentNode?.remove();
-
-                const clonedLink =
-                    sourceLink.cloneNode(
-                        false,
-                    ) as
-                    HTMLLinkElement;
-
-                clonedLink.setAttribute(
-                    MIRRORED_STYLE_ATTR,
+            const known =
+                state.sheets.get(
                     key,
                 );
 
-                targetDocument.head
-                    .appendChild(
-                        clonedLink,
-                    );
+            const knownIsHere =
+                known &&
+                known.node.ownerDocument === targetDocument;
+
+            if (ownerTag === "link") {
+                const href =
+                    (ownerNode as HTMLLinkElement).href;
+
+                if (knownIsHere && known!.href === href) {
+                    wanted.push(known!.node);
+
+                    return;
+                }
+
+                const clonedLink =
+                    ownerNode!.cloneNode(false) as HTMLLinkElement;
+
+                clonedLink.setAttribute(
+                    MIRRORED_STYLE_ATTR,
+                    "link",
+                );
+
+                state.sheets.set(
+                    key,
+                    { node: clonedLink, href, ruleCount: -1 },
+                );
+
+                wanted.push(clonedLink);
 
                 return;
             }
 
+            const ruleCount =
+                getRuleCount(
+                    sheet,
+                );
+
+            // Unchanged: the same rules, and no mutation of its element since the last sync
+            if (
+                knownIsHere &&
+                known!.ruleCount === ruleCount &&
+                ruleCount !== -1 &&
+                !(ownerNode && state.dirty.has(ownerNode))
+            ) {
+                wanted.push(known!.node);
+
+                return;
+            }
+
+            // Grown at its end (emotion inserts its rules there): only the new rules are copied
+            if (
+                knownIsHere &&
+                ruleCount > known!.ruleCount &&
+                known!.ruleCount >= 0 &&
+                !(ownerNode && state.dirty.has(ownerNode)) &&
+                appendNewRules(
+                    sheet,
+                    known!.node,
+                    known!.ruleCount,
+                )
+            ) {
+                known!.ruleCount = ruleCount;
+
+                wanted.push(known!.node);
+
+                return;
+            }
+
+            const targetStyle =
+                knownIsHere
+                    ? known!.node
+                    : (
+                        ownerNode && ownerTag === "style"
+                            ? ownerNode.cloneNode(false) as HTMLElement
+                            : targetDocument.createElement("style")
+                    );
+
+            targetStyle.setAttribute(
+                MIRRORED_STYLE_ATTR,
+                "style",
+            );
 
             const cssText =
                 getStyleSheetCssText(
                     sheet,
-                    ownerElement,
+                    ownerNode,
                 );
 
-            let targetStyle =
-                currentNode;
-
-            if (
-                targetStyle
-                    ?.tagName
-                    ?.toLowerCase() !==
-                "style"
-            ) {
-                targetStyle?.remove();
-
-                targetStyle =
-                    ownerTag ===
-                        "style"
-                        ? (
-                            ownerElement
-                                ?.cloneNode(
-                                    false,
-                                ) as
-                            HTMLStyleElement
-                        )
-                        : targetDocument
-                            .createElement(
-                                "style",
-                            );
-
-                targetStyle.setAttribute(
-                    MIRRORED_STYLE_ATTR,
-                    key,
-                );
-
-                targetDocument.head
-                    .appendChild(
-                        targetStyle,
-                    );
+            if (targetStyle.textContent !== cssText) {
+                targetStyle.textContent = cssText;
             }
 
-            if (
-                targetStyle.textContent !==
-                cssText
-            ) {
-                targetStyle.textContent =
-                    cssText;
+            state.sheets.set(
+                key,
+                { node: targetStyle, href: null, ruleCount },
+            );
+
+            wanted.push(targetStyle);
+        },
+    );
+
+    state.dirty.clear();
+
+    const wantedSet =
+        new Set<Node>(wanted);
+
+    const current =
+        Array.from(
+            targetDocument.head.querySelectorAll<HTMLElement>(
+                `[${MIRRORED_STYLE_ATTR}]`,
+            ),
+        );
+
+    current.forEach(
+        (node) => {
+            if (!wantedSet.has(node)) {
+                node.remove();
             }
         },
     );
 
+    // The cascade follows the source order: the elements move only when it changed
+    const inOrder =
+        current.filter(
+            (node) => wantedSet.has(node),
+        );
 
-    targetDocument.head
-        .querySelectorAll<HTMLElement>(
-            `[${MIRRORED_STYLE_ATTR}]`,
-        )
-        .forEach(
+    const sameOrder =
+        inOrder.length === wanted.length &&
+        inOrder.every(
+            (node, index) => node === wanted[index],
+        );
+
+    if (!sameOrder) {
+        wanted.forEach(
             (node) => {
-                const key =
-                    node.getAttribute(
-                        MIRRORED_STYLE_ATTR,
-                    ) ??
-                    "";
-
-                if (
-                    !expectedKeys.has(
-                        key,
-                    )
-                ) {
-                    node.remove();
-                }
+                targetDocument.head.appendChild(
+                    node,
+                );
             },
         );
+    }
 }
 
 
@@ -814,7 +940,14 @@ function ExternalWindowPortal({
                 typeof MutationObserver !==
                     "undefined"
                     ? new MutationObserver(
-                        scheduleStyleSync,
+                        (records) => {
+                            markMirroredStylesDirty(
+                                targetDocument,
+                                records,
+                            );
+
+                            scheduleStyleSync();
+                        },
                     )
                     : null;
 
