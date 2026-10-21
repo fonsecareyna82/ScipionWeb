@@ -1592,7 +1592,8 @@ export type ProjectDiskUsage = {
 
 /** One stage of a streaming chain: the output it follows and how fast it grows. */
 export type StreamingMonitorStage = {
-  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d";
+  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
+    | "tiltseries" | "ctftomo" | "aligned" | "tomograms";
   setId: number;
   protocolId: string;
   protocolClassName: string;
@@ -1639,7 +1640,11 @@ export type StreamingMonitorThresholdName =
   | "maxResolution"
   | "maxFrameShift"
   | "maxTotalDrift"
-  | "minParticles";
+  | "minParticles"
+  | "minTilts"
+  | "minAngleSpan"
+  | "maxFailedCtfTilts"
+  | "maxResidual";
 
 /** Thresholds in A (minParticles: coordinates per micrograph); null raises no alert. */
 export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
@@ -1688,6 +1693,8 @@ export type StreamingMonitor = {
     points: StreamingMonitorPoint[];
   };
   classes: StreamingMonitorClasses | null;
+  /** The project has tilt series: the monitor also has a tomography view. */
+  tomography: boolean;
   /** Coordinates per micrograph id that changed since the caller's picking cursor. */
   picking: {
     setId: number | null;
@@ -1696,6 +1703,61 @@ export type StreamingMonitor = {
     complete: boolean;
     counts: Record<string, number>;
   };
+};
+
+/** One tilt series of a tomography stream. Values in A (defocus, astigmatism, resolution), degrees, e/A2 and
+ *  px (residual of the fiducial alignment). */
+export type TomoMonitorTiltSeries = {
+  id: number;
+  tsId: string;
+  time: string | null;
+  enabled: boolean;
+  tilts: number;
+  /** All its tilt images arrived. */
+  complete: boolean;
+  enabledTilts?: number;
+  angleMin?: number;
+  angleMax?: number;
+  dose?: number;
+  ctfTilts?: number;
+  failedCtfTilts?: number;
+  defocusU?: number;
+  defocusV?: number;
+  astigmatism?: number;
+  resolution?: number;
+  aligned: boolean;
+  residual?: number;
+  /** Its tomogram in the followed tomograms output. */
+  tomogramId?: number;
+  alerts: StreamingMonitorThresholdName[];
+};
+
+/** The live monitor of a project's tomography stream. */
+export type TomoMonitor = {
+  now: string;
+  streaming: boolean;
+  stages: StreamingMonitorStage[];
+  tiltSeriesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  tomograms: { setId: number; protocolId: string; outputName: string } | null;
+  thresholds: StreamingMonitorThresholds;
+  tiltSeries: TomoMonitorTiltSeries[];
+};
+
+/** One tilt image of a tilt series, with its CTF, its alignment and the fiducial residual on it. */
+export type TomoMonitorTilt = {
+  acqOrder: number;
+  angle?: number;
+  dose?: number;
+  enabled: boolean;
+  ctfFailed?: boolean;
+  defocusU?: number;
+  defocusV?: number;
+  resolution?: number;
+  shiftX?: number;
+  shiftY?: number;
+  rotation?: number;
+  alignedEnabled?: boolean;
+  residual?: number;
 };
 
 export type StreamingMonitorQuery = {
@@ -2015,6 +2077,11 @@ export interface ProjectService<
   fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
   fetchProjectOverview?(projectId: Id): Promise<ProjectOverview>;
   fetchStreamingMonitor?(projectId: Id, query?: StreamingMonitorQuery): Promise<StreamingMonitor>;
+  fetchTomoMonitor?(projectId: Id, query?: { tsSetId?: number | null }): Promise<TomoMonitor>;
+  fetchTomoMonitorTiltSeries?(projectId: Id, tsId: string, query?: { tsSetId?: number | null }): Promise<{ tsId: string; tilts: TomoMonitorTilt[] }>;
+  /** The central slice of one tomogram of the tomography stream. */
+  fetchTomoMonitorSliceObjectUrl?(projectId: Id, setId: number, itemId: number,
+    opts?: { size?: number; signal?: AbortSignal }): Promise<ObjectUrlResult>;
   saveStreamingMonitorThresholds?(
     projectId: Id,
     thresholds: Partial<StreamingMonitorThresholds>,

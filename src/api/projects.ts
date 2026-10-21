@@ -67,6 +67,9 @@ import {
   ProjectOverview,
   StreamingMonitor,
   StreamingMonitorQuery,
+  TomoMonitor,
+  TomoMonitorTilt,
+  ObjectUrlResult as MonitorObjectUrlResult,
   StreamingMonitorThresholds,
   ProtocolLaunch,
   ProjectDiskUsage,
@@ -4817,6 +4820,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
     },
     classes: raw?.classes && typeof raw.classes === "object" && Array.isArray(raw.classes.classes)
       ? raw.classes : null,
+    tomography: Boolean(raw?.tomography),
     picking: {
       setId: picking.setId ?? null,
       reset: Boolean(picking.reset),
@@ -4825,6 +4829,62 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
       counts: picking.counts && typeof picking.counts === "object" ? picking.counts : {},
     },
   };
+}
+
+function monitorQuery(query: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  return params.toString() ? `?${params.toString()}` : "";
+}
+
+export async function fetchTomoMonitor(projectId: Id, query: { tsSetId?: number | null } = {}): Promise<TomoMonitor> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo${monitorQuery(query)}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The tomography monitor could not be read");
+  const raw = await safeJson<any>(res);
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    now: String(raw?.now ?? ""),
+    streaming: Boolean(raw?.streaming),
+    stages: list(raw?.stages),
+    tiltSeriesOutputs: list(raw?.tiltSeriesOutputs),
+    tomograms: raw?.tomograms && typeof raw.tomograms === "object" ? raw.tomograms : null,
+    thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
+    tiltSeries: list(raw?.tiltSeries).map((row: any) => ({ ...row, alerts: list(row?.alerts) })),
+  };
+}
+
+export async function fetchTomoMonitorTiltSeries(
+  projectId: Id,
+  tsId: string,
+  query: { tsSetId?: number | null } = {},
+): Promise<{ tsId: string; tilts: TomoMonitorTilt[] }> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo/tiltseries${monitorQuery({ tsId, ...query })}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The tilt series could not be read");
+  const raw = await safeJson<any>(res);
+  return { tsId: String(raw?.tsId ?? tsId), tilts: Array.isArray(raw?.tilts) ? raw.tilts : [] };
+}
+
+export async function fetchTomoMonitorSliceObjectUrl(
+  projectId: Id,
+  setId: number,
+  itemId: number,
+  opts: { size?: number; signal?: AbortSignal } = {},
+): Promise<MonitorObjectUrlResult> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo/tomograms/${setId}/${itemId}/slice${monitorQuery({ size: opts.size })}`,
+    { method: "GET", cache: "default", signal: opts.signal },
+  );
+  if (!res.ok) throw await toApiError(res, "The tomogram slice could not be read");
+  const url = URL.createObjectURL(await res.blob());
+  return { url, revoke: () => URL.revokeObjectURL(url) };
 }
 
 export async function saveStreamingMonitorThresholds(

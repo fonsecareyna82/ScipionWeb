@@ -25,7 +25,7 @@ vi.mock("react-plotly.js", () => ({
 
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
-  minParticles: null,
+  minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null,
 };
 
 function point(id: number, extra: Partial<StreamingMonitorPoint> = {}): StreamingMonitorPoint {
@@ -51,6 +51,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
     series: { setId: 30, kind: "ctf", reset: false, lastRowId: points.length ? points[points.length - 1].id : null,
               more: false, points, ...extra },
     classes: null,
+    tomography: false,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
   };
 }
@@ -157,7 +158,7 @@ describe("StreamingMonitorView", () => {
       afterPickSetId: 40, afterPickRowId: 10 })));
     // Micrograph 2 was picked later with too few particles: it shows, and it is an alert
     await waitFor(() => expect(screen.getByRole("button", { name: "Particles" })).toHaveAttribute("data-points", "2"));
-    expect(screen.getByText("Fewer particles picked than 50")).toBeInTheDocument();
+    expect(screen.getByText("Fewer particles picked than 50 particles")).toBeInTheDocument();
   });
 
   it("shows the 2D classes biggest first, and their averages again only after a new round", async () => {
@@ -308,8 +309,10 @@ describe("StreamingMonitorView", () => {
     fireEvent.change(screen.getByLabelText("Astigmatism above"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // The single particle view saves its own thresholds only
     await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, {
-      ...THRESHOLDS, maxResolution: 6, maxAstigmatism: null,
+      minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: null, maxResolution: 6, maxFrameShift: 10,
+      maxTotalDrift: 45, minParticles: null,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
       7, { ctfSetId: null, coordinatesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));

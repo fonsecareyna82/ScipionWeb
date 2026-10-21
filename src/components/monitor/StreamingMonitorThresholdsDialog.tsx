@@ -12,15 +12,18 @@ type Props = {
   onCancel: () => void;
   /** Where the dialog goes: the body of the window the monitor is in. */
   container?: HTMLElement;
+  /** The thresholds of the view the monitor shows. */
+  names?: StreamingMonitorThresholdName[];
 };
 
 function toText(value: number | null | undefined): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, onCancel, container }: Props) {
+export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, onCancel, container,
+                                                           names = THRESHOLD_ORDER }: Props) {
   const [values, setValues] = useState<Record<StreamingMonitorThresholdName, string>>(() =>
-    Object.fromEntries(THRESHOLD_ORDER.map((name) => [name, toText(thresholds[name])])) as
+    Object.fromEntries(names.map((name) => [name, toText(thresholds[name])])) as
       Record<StreamingMonitorThresholdName, string>);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -36,7 +39,7 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
 
   const save = async () => {
     const changed: Partial<StreamingMonitorThresholds> = {};
-    for (const name of THRESHOLD_ORDER) {
+    for (const name of names) {
       const text = values[name].trim();
       if (!text) {
         changed[name] = null;
@@ -78,7 +81,7 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
           <p className="text-xs text-app-muted">
             For every user of this project. Leave a field empty to raise no alert.
           </p>
-          {THRESHOLD_ORDER.map((name) => (
+          {names.map((name) => (
             <label key={name} className="flex items-center justify-between gap-3 text-sm text-app-text">
               <span>{THRESHOLD_LABELS[name]} <span className="text-app-subtle">({thresholdUnit(name)})</span></span>
               <input

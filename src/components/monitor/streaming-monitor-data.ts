@@ -14,16 +14,30 @@ export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
   maxFrameShift: "Frame shift above",
   maxTotalDrift: "Total drift above",
   minParticles: "Fewer particles picked than",
+  minTilts: "Fewer tilts than",
+  minAngleSpan: "Tilt range short of ±",
+  maxFailedCtfTilts: "Tilts without CTF above",
+  maxResidual: "Alignment residual above",
+};
+
+const THRESHOLD_UNITS: Partial<Record<StreamingMonitorThresholdName, string>> = {
+  minParticles: "particles",
+  minTilts: "tilts",
+  minAngleSpan: "°",
+  maxFailedCtfTilts: "tilts",
+  maxResidual: "px",
 };
 
 /** Every threshold is in Å but the particles one, a count. */
 export function formatLimit(kind: StreamingMonitorThresholdName, value: number | null | undefined): string {
-  if (kind === "minParticles") return value === null || value === undefined ? "—" : String(value);
-  return formatAngstrom(value, 0);
+  if (value === null || value === undefined) return "—";
+  const unit = THRESHOLD_UNITS[kind];
+  if (!unit) return formatAngstrom(value, 0);
+  return unit === "°" ? `${value}°` : `${value} ${unit}`;
 }
 
 export function thresholdUnit(kind: StreamingMonitorThresholdName): string {
-  return kind === "minParticles" ? "particles" : "Å";
+  return THRESHOLD_UNITS[kind] ?? "Å";
 }
 
 export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
@@ -34,6 +48,18 @@ export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "maxFrameShift",
   "maxTotalDrift",
   "minParticles",
+];
+
+/** The thresholds of each view of the monitor: the CTF ones are shared. */
+export const TOMO_THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
+  "minDefocus",
+  "maxDefocus",
+  "maxAstigmatism",
+  "maxResolution",
+  "minTilts",
+  "minAngleSpan",
+  "maxFailedCtfTilts",
+  "maxResidual",
 ];
 
 /** How often the monitor reads; 0 pauses it. A preference of each browser, not of the project. */

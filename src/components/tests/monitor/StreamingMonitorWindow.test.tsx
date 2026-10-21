@@ -28,6 +28,7 @@ function monitorAnswer() {
     now: "", streaming: false, stages: [], ctfOutputs: [], coordinatesOutputs: [], thresholds: {},
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
     classes: null,
+    tomography: false,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
   };
 }

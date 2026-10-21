@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Plot from "react-plotly.js";
-import { Activity, ArrowDown, ArrowRight, ArrowUp, Bell, HelpCircle, RefreshCw, Settings2 } from "lucide-react";
+import { Activity, Bell, RefreshCw, Settings2 } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { useIsDark } from "@/context/ThemeContext";
@@ -13,15 +13,17 @@ import type {
   Id,
   StreamingMonitor,
   StreamingMonitorPoint,
-  StreamingMonitorStage,
   StreamingMonitorThresholdName,
   StreamingMonitorThresholds,
+  TomoMonitor,
 } from "@/services/ProjectService";
 import {
   EMPTY_PICKING,
   EMPTY_SERIES,
   POLL_CHOICES,
   THRESHOLD_LABELS,
+  THRESHOLD_ORDER,
+  TOMO_THRESHOLD_ORDER,
   alertEpisodes,
   formatAngstrom,
   formatLimit,
@@ -34,18 +36,11 @@ import {
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
+import { HelpHint, StageCard } from "./monitor-parts";
+import TomoMonitorView from "./TomoMonitorView";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
 
-
-const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
-  movies: "Movies",
-  micrographs: "Micrographs",
-  ctf: "CTF",
-  coordinates: "Coordinates",
-  particles: "Particles",
-  classes2d: "2D classes",
-};
 
 type PlotSpec = {
   title: string;
@@ -73,15 +68,6 @@ const ALERTS_HELP =
   "Each line is a run of consecutive micrographs past the same threshold, newest first. A red dot means the "
   + "newest micrograph is still past it; a grey one, that the values came back in range. Click the micrograph "
   + "to see it. The thresholds are set with the Thresholds button, for everyone in the project.";
-
-function HelpHint({ text }: { text: string }) {
-  return (
-    <span className="inline-flex cursor-help text-app-subtle hover:text-app-text" title={text} aria-label={text}
-          role="img">
-      <HelpCircle className="h-3.5 w-3.5" />
-    </span>
-  );
-}
 
 const PLOTS: PlotSpec[] = [
   {
@@ -143,61 +129,6 @@ const CLASSES_HELP =
   "The 2D class averages of the stream, biggest first, with how many particles each has and their share. "
   + "The classifier works in rounds, so they change when a round ends. Faded classes are disabled. Click one "
   + "to see it bigger.";
-
-function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
-  if (trend === "up") return <ArrowUp className="h-3.5 w-3.5 text-app-success" aria-label="rising" />;
-  if (trend === "down") return <ArrowDown className="h-3.5 w-3.5 text-app-warning" aria-label="falling" />;
-  return <ArrowRight className="h-3.5 w-3.5 text-app-subtle" aria-label="steady" />;
-}
-
-function StageCard({ stage }: { stage: StreamingMonitorStage }) {
-  return (
-    <div className="min-w-[150px] flex-1 rounded-xl border border-app-border bg-app-surface p-3" data-testid="monitor-stage">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-app-subtle">{STAGE_LABELS[stage.stage]}</span>
-        {stage.streaming ? (
-          <span className="h-2 w-2 rounded-full bg-app-success" title="Still receiving items" />
-        ) : null}
-      </div>
-      <div className="mt-1 text-2xl font-semibold text-app-text">{stage.items.toLocaleString()}</div>
-      {stage.perMinute !== null ? (
-        <div className="mt-1 flex items-center gap-1 text-xs text-app-muted">
-          <TrendIcon trend={stage.trend} />
-          <span>{stage.perMinute.toFixed(1)} / min</span>
-        </div>
-      ) : null}
-      {stage.stage === "classes2d" && stage.particles != null ? (
-        <div className="mt-1 text-xs text-app-muted">{stage.particles.toLocaleString()} particles classified</div>
-      ) : null}
-      {stage.classifiedFrom ? (
-        <div className="mt-1 truncate text-[11px] text-app-subtle"
-             title={`Classifies the ${stage.classifiedFrom.items} particles of ${stage.classifiedFrom.label} (${stage.classifiedFrom.outputName})`}>
-          from {stage.classifiedFrom.label}
-        </div>
-      ) : null}
-      {stage.micrographs !== undefined ? (
-        <div className="mt-1 text-xs text-app-muted">
-          {stage.counting ? "Counting micrographs…" : `from ${stage.micrographs.toLocaleString()} micrographs`}
-        </div>
-      ) : null}
-      {stage.pickedFrom ? (
-        <div className="mt-1 truncate text-[11px] text-app-subtle"
-             title={`Picks the ${stage.pickedFrom.items} micrographs of ${stage.pickedFrom.label} (${stage.pickedFrom.outputName})`}>
-          from {stage.pickedFrom.label}
-        </div>
-      ) : null}
-      {stage.behind ? (
-        <div className="mt-1 text-xs font-medium text-app-warning">
-          {stage.behind.toLocaleString()}
-          {stage.micrographs !== undefined ? " micrographs" : stage.stage === "classes2d" ? " particles" : ""} waiting
-        </div>
-      ) : null}
-      <div className="mt-1 truncate text-[11px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>
-        {stage.label}
-      </div>
-    </div>
-  );
-}
 
 function MonitorPlot({
   spec,
@@ -376,6 +307,10 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [ctfSetId, setCtfSetId] = useState<number | null>(null);
   const [coordinatesSetId, setCoordinatesSetId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  // The tomography view: chosen, or the one shown when the project has tilt series and nothing else to follow
+  const [view, setView] = useState<"spa" | "tomo" | null>(null);
+  const [tomo, setTomo] = useState<TomoMonitor | null>(null);
+  const [tomoReload, setTomoReload] = useState(0);
   const [preview, setPreview] = useState<ImagePreviewSource | null>(null);
   const seriesRef = useRef<SeriesState>(EMPTY_SERIES);
   // The monitor can live in another browser window: its own document says whether it is seen.
@@ -488,8 +423,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     await svc.saveStreamingMonitorThresholds(projectId, changed);
     setEditing(false);
     // The alerts of every point depend on the thresholds: read the series again.
+    setTomoReload((current) => current + 1);
     await load(true);
   }, [svc, projectId, load]);
+
+  const isSeen = useCallback(() => (rootRef.current?.ownerDocument ?? document).visibilityState === "visible", []);
+  const tabs = Boolean(monitor?.tomography && monitor.stages.length > 0);
+  const mode = view ?? (monitor?.tomography && monitor.stages.length === 0 ? "tomo" : "spa");
 
   if (!svc.fetchStreamingMonitor) {
     return <div className="p-6 text-sm text-app-muted">The streaming monitor is not available here.</div>;
@@ -528,7 +468,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             ))}
           </select>
           <div className="ml-auto flex items-center gap-2">
-            {monitor && monitor.ctfOutputs.length > 1 ? (
+            {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
               <select
                 aria-label="CTF output to follow"
                 className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
@@ -540,7 +480,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 ))}
               </select>
             ) : null}
-            {monitor && monitor.coordinatesOutputs.length > 1 ? (
+            {mode === "spa" && monitor && monitor.coordinatesOutputs.length > 1 ? (
               <select
                 aria-label="Picking to follow"
                 title="Picking to follow"
@@ -575,101 +515,121 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           <div className="rounded-lg border border-app-border bg-app-surface p-3 text-sm text-red-600 dark:text-red-400">{error}</div>
         ) : null}
 
-        {monitor && monitor.stages.length === 0 ? (
-          <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
-            This project has no movies, micrographs or CTF outputs to follow yet.
+        {tabs ? (
+          <div className="flex gap-1 border-b border-app-border" role="tablist" aria-label="Monitor view">
+            {(["spa", "tomo"] as const).map((view) => (
+              <button key={view} type="button" role="tab" aria-selected={mode === view} onClick={() => setView(view)}
+                      className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${mode === view
+                        ? "border-app-accent font-medium text-app-text" : "border-transparent text-app-muted hover:text-app-text"}`}>
+                {view === "spa" ? "Single particle" : "Tomography"}
+              </button>
+            ))}
           </div>
         ) : null}
 
-        {monitor && monitor.stages.length > 0 ? (
-          <section aria-label="Pipeline">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-              Pipeline <HelpHint text={PIPELINE_HELP} />
+        {mode === "tomo" ? (
+          <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
+                           isSeen={isSeen} onLoaded={setTomo} />
+        ) : (
+          <>
+          {monitor && monitor.stages.length === 0 ? (
+            <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
+              This project has no movies, micrographs or CTF outputs to follow yet.
             </div>
-            <div className="flex flex-wrap gap-3">
-              {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
-            </div>
-          </section>
-        ) : null}
+          ) : null}
 
-        {seriesKind ? (
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Quality over time">
-            {seriesKind === "micrographs" ? (
-              <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted lg:col-span-2">
-                No CTF estimation yet: the drift of the aligned micrographs is shown meanwhile.
+          {monitor && monitor.stages.length > 0 ? (
+            <section aria-label="Pipeline">
+              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+                Pipeline <HelpHint text={PIPELINE_HELP} />
               </div>
-            ) : null}
-            {plots.map((spec) => (
-              <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds}
-                           dark={dark} onPick={openMicrograph} />
-            ))}
-          </section>
-        ) : null}
+              <div className="flex flex-wrap gap-3">
+                {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
+              </div>
+            </section>
+          ) : null}
 
-        {seriesKind === "ctf" && ctfStage ? (
-          <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Latest micrographs">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-              Latest micrographs <HelpHint text={LATEST_HELP} />
-            </div>
-            <LatestMicrographsTable projectId={projectId} protocolId={ctfStage.protocolId} outputName={ctfStage.outputName}
-                                    points={points} onOpen={openMicrograph} showParticles={hasPicking} />
-          </section>
-        ) : null}
+          {seriesKind ? (
+            <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Quality over time">
+              {seriesKind === "micrographs" ? (
+                <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted lg:col-span-2">
+                  No CTF estimation yet: the drift of the aligned micrographs is shown meanwhile.
+                </div>
+              ) : null}
+              {plots.map((spec) => (
+                <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds}
+                             dark={dark} onPick={openMicrograph} />
+              ))}
+            </section>
+          ) : null}
 
-        {monitor?.classes ? (
-          <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="2D classes">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-              2D classes <HelpHint text={CLASSES_HELP} />
-            </div>
-            <ClassesGallery projectId={projectId} classes={monitor.classes} onOpen={openClass} />
-          </section>
-        ) : null}
+          {seriesKind === "ctf" && ctfStage ? (
+            <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Latest micrographs">
+              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+                Latest micrographs <HelpHint text={LATEST_HELP} />
+              </div>
+              <LatestMicrographsTable projectId={projectId} protocolId={ctfStage.protocolId} outputName={ctfStage.outputName}
+                                      points={points} onOpen={openMicrograph} showParticles={hasPicking} />
+            </section>
+          ) : null}
 
-        {seriesKind === "ctf" ? (
-          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
-            {HISTOGRAMS.map((spec) => (
-              <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark} />
-            ))}
-          </section>
-        ) : null}
+          {monitor?.classes ? (
+            <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="2D classes">
+              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+                2D classes <HelpHint text={CLASSES_HELP} />
+              </div>
+              <ClassesGallery projectId={projectId} classes={monitor.classes} onOpen={openClass} />
+            </section>
+          ) : null}
 
-        {seriesKind ? (
-          <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Alerts">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-              <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
-            </div>
-            {episodes.length === 0 ? (
-              <div className="text-sm text-app-muted">No micrograph goes past the thresholds.</div>
-            ) : (
-              <ul className="divide-y divide-app-border">
-                {episodes.map((episode) => {
-                  const limit = monitor?.thresholds[episode.kind];
-                  return (
-                    <li key={`${episode.kind}-${episode.first.id}`} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
-                      <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
-                      <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, limit)}</span>
-                      <span className="text-app-muted">
-                        {episode.count === 1 ? "1 micrograph" : `${episode.count} micrographs in a row`}
-                        {" · "}{timeOf(episode.first)}{episode.count > 1 ? ` – ${timeOf(episode.last)}` : ""}
-                        {episode.ongoing ? " · still going on" : ""}
-                      </span>
-                      <button type="button" className="ml-auto text-app-accent hover:underline"
-                              onClick={() => openMicrograph(episode.first.id)}>
-                        {episode.first.micrographName ?? `Micrograph ${episode.first.id}`}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        ) : null}
+          {seriesKind === "ctf" ? (
+            <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
+              {HISTOGRAMS.map((spec) => (
+                <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark} />
+              ))}
+            </section>
+          ) : null}
+
+          {seriesKind ? (
+            <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Alerts">
+              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+                <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
+              </div>
+              {episodes.length === 0 ? (
+                <div className="text-sm text-app-muted">No micrograph goes past the thresholds.</div>
+              ) : (
+                <ul className="divide-y divide-app-border">
+                  {episodes.map((episode) => {
+                    const limit = monitor?.thresholds[episode.kind];
+                    return (
+                      <li key={`${episode.kind}-${episode.first.id}`} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
+                        <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
+                        <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, limit)}</span>
+                        <span className="text-app-muted">
+                          {episode.count === 1 ? "1 micrograph" : `${episode.count} micrographs in a row`}
+                          {" · "}{timeOf(episode.first)}{episode.count > 1 ? ` – ${timeOf(episode.last)}` : ""}
+                          {episode.ongoing ? " · still going on" : ""}
+                        </span>
+                        <button type="button" className="ml-auto text-app-accent hover:underline"
+                                onClick={() => openMicrograph(episode.first.id)}>
+                          {episode.first.micrographName ?? `Micrograph ${episode.first.id}`}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          ) : null}
+          </>
+        )}
       </div>
 
       <ImagePreviewDialog image={preview} onClose={() => setPreview(null)} />
       {editing && monitor ? (
-        <StreamingMonitorThresholdsDialog thresholds={monitor.thresholds} onCancel={() => setEditing(false)}
-                                          onSave={saveThresholds}
+        <StreamingMonitorThresholdsDialog thresholds={mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds}
+                                          names={mode === "tomo" ? TOMO_THRESHOLD_ORDER : THRESHOLD_ORDER}
+                                          onCancel={() => setEditing(false)} onSave={saveThresholds}
                                           container={rootRef.current?.ownerDocument.body ?? undefined} />
       ) : null}
     </div>
