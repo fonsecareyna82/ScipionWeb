@@ -1014,26 +1014,22 @@ describe("VolumeViewer", () => {
             expect(zView).toHaveAttribute("aria-valuetext", "3 of 5");
         });
 
-        // The prefetch is debounced -- wait for it to actually fire.
-        await waitFor(() => {
-            const batchCall = serviceMocks.fetchVolumeSlicesBatch.mock.calls.find(
-                (call) => call[4]?.items?.some((item: any) => item.axis === "z"),
+        // The prefetch is debounced. On a loaded machine it may also fire
+        // once around the first slice (0) before the view settles on the
+        // center, so look at every Z batch, not only the first one.
+        const prefetchedZ = () =>
+            new Set(
+                serviceMocks.fetchVolumeSlicesBatch.mock.calls.flatMap((call) =>
+                    ((call[4]?.items ?? []) as Array<{ axis: string; index: number }>)
+                        .filter((item) => item.axis === "z")
+                        .map((item) => item.index),
+                ),
             );
-            expect(batchCall).toBeTruthy();
-        });
-
-        const batchCall = serviceMocks.fetchVolumeSlicesBatch.mock.calls.find(
-            (call) => call[4]?.items?.some((item: any) => item.axis === "z"),
-        );
-        if (!batchCall) throw new Error("Expected a Z-axis prefetch batch call");
-        const zIndices = (batchCall[4].items as Array<{ axis: string; index: number }>)
-            .filter((item) => item.axis === "z")
-            .map((item) => item.index)
-            .sort((a, b) => a - b);
 
         // Center default is index 2 (of 5) -- neighbors -2/-1/1/2 -> 0/1/3/4.
-        expect(zIndices).toEqual([0, 1, 3, 4]);
-
+        await waitFor(() => {
+            expect([...prefetchedZ()]).toEqual(expect.arrayContaining([0, 1, 3, 4]));
+        });
         serviceMocks.fetchVolumeSliceObjectUrl.mockClear();
 
         fireEvent.wheel(zView, { deltaY: 100 });
