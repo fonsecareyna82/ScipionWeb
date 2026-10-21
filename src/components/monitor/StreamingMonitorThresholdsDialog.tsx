@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import type { StreamingMonitorThresholdName, StreamingMonitorThresholds } from "@/services/ProjectService";
-import { THRESHOLD_LABELS, THRESHOLD_ORDER } from "./streaming-monitor-data";
+import { THRESHOLD_LABELS, THRESHOLD_ORDER, thresholdUnit } from "./streaming-monitor-data";
 
 type Props = {
   thresholds: StreamingMonitorThresholds;
@@ -76,11 +76,11 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
         </div>
         <div className="flex flex-col gap-3 px-4 py-3">
           <p className="text-xs text-app-muted">
-            Values in Å, for every user of this project. Leave a field empty to raise no alert.
+            For every user of this project. Leave a field empty to raise no alert.
           </p>
           {THRESHOLD_ORDER.map((name) => (
             <label key={name} className="flex items-center justify-between gap-3 text-sm text-app-text">
-              <span>{THRESHOLD_LABELS[name]}</span>
+              <span>{THRESHOLD_LABELS[name]} <span className="text-app-subtle">({thresholdUnit(name)})</span></span>
               <input
                 type="number"
                 min={0}

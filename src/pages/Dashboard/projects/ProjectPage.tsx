@@ -6144,6 +6144,20 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedProtocolId, nodesLoadedOnce, hasNodes]);
 
+  // ?monitor=1 (a monitor alert of the bell) opens the streaming monitor once the project is known.
+  const linkedMonitor = useMemo(
+    () => new URLSearchParams(location.search).get("monitor") === "1",
+    [location.search],
+  );
+  useEffect(() => {
+    if (!linkedMonitor || !project) return;
+    setMonitorOpen(true);
+    const params = new URLSearchParams(location.search);
+    params.delete("monitor");
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedMonitor, project]);
+
   // The project overview: its data is read on demand, and a run opens through the same link.
   const overviewSources = useMemo(() => ({
     fetchOverview: () => svc.fetchProjectOverview!(projectIdRef.current as any),

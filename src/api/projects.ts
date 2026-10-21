@@ -3926,6 +3926,7 @@ export async function fetchMetadataImageCellObjectUrl(
     inline?: boolean;
     format?: string;
     contrastMode?: MetadataContrastMode;
+    version?: string;
     signal?: AbortSignal;
   } = {},
 ): Promise<{ url: string; revoke: () => void }> {
@@ -3939,6 +3940,7 @@ export async function fetchMetadataImageCellObjectUrl(
     rowId,
     sortBy,
     asc,
+    version,
   } = opts;
 
   const baseUrl = getMetadataImageCellUrl(
@@ -3948,7 +3950,7 @@ export async function fetchMetadataImageCellObjectUrl(
     tableName,
     rowIndex,
     columnName,
-    { size, applyTransform, inline, format, rowId, sortBy, asc, contrastMode },
+    { size, applyTransform, inline, format, rowId, sortBy, asc, contrastMode, version },
   );
 
   // Opt into browser HTTP caching (fetchWithAuth defaults to no-store):
@@ -3996,6 +3998,7 @@ export function getMetadataImageCellUrl(
     inline?: boolean;
     format?: string;
     contrastMode?: MetadataContrastMode;
+    version?: string;
   } = {},
 ): string {
   const { size = 256, applyTransform = false, inline = true, format = "png" } =
@@ -4015,6 +4018,7 @@ export function getMetadataImageCellUrl(
   const contrast = metadataContrastParams(opts.contrastMode);
   if (contrast.contrastMode) params.set("contrastMode", contrast.contrastMode);
   if (contrast.volumeView) params.set("volumeView", contrast.volumeView);
+  if (opts.version) params.set("version", opts.version);
 
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodeURIComponent(outputName)}/metadata/tables/${encodeURIComponent(
     tableName,
@@ -4795,6 +4799,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
   const raw = await safeJson<any>(res);
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
   const series = raw?.series && typeof raw.series === "object" ? raw.series : {};
+  const picking = raw?.picking && typeof raw.picking === "object" ? raw.picking : {};
   return {
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
@@ -4808,6 +4813,15 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
       lastRowId: series.lastRowId ?? null,
       more: Boolean(series.more),
       points: list(series.points).map((point: any) => ({ ...point, alerts: list(point?.alerts) })),
+    },
+    classes: raw?.classes && typeof raw.classes === "object" && Array.isArray(raw.classes.classes)
+      ? raw.classes : null,
+    picking: {
+      setId: picking.setId ?? null,
+      reset: Boolean(picking.reset),
+      lastRowId: picking.lastRowId ?? null,
+      complete: picking.complete !== false,
+      counts: picking.counts && typeof picking.counts === "object" ? picking.counts : {},
     },
   };
 }

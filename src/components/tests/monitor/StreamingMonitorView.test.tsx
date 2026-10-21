@@ -7,14 +7,14 @@ import type { StreamingMonitor, StreamingMonitorPoint } from "@/services/Project
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
 vi.mock("react-plotly.js", () => ({
-  default: ({ data, onClick }: { data: Array<{ name: string; customdata: unknown[][] }>; onClick?: (event: unknown) => void }) => (
+  default: ({ data, onClick }: { data: Array<{ name: string; customdata?: unknown[][]; x: unknown[] }>; onClick?: (event: unknown) => void }) => (
     <div data-testid="mock-plotly">
       {data.map((serie) => (
         <button
           key={serie.name}
           type="button"
-          data-points={serie.customdata.length}
-          onClick={() => onClick?.({ points: [{ customdata: serie.customdata[0] }], event: { button: 0 } })}
+          data-points={(serie.customdata ?? serie.x).length}
+          onClick={() => onClick?.({ points: [{ customdata: serie.customdata?.[0] }], event: { button: 0 } })}
         >
           {serie.name}
         </button>
@@ -25,6 +25,7 @@ vi.mock("react-plotly.js", () => ({
 
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
+  minParticles: null,
 };
 
 function point(id: number, extra: Partial<StreamingMonitorPoint> = {}): StreamingMonitorPoint {
@@ -48,6 +49,8 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
     thresholds: THRESHOLDS,
     series: { setId: 30, kind: "ctf", reset: false, lastRowId: points.length ? points[points.length - 1].id : null,
               more: false, points, ...extra },
+    classes: null,
+    picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
   };
 }
 
@@ -73,7 +76,129 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
+  });
+
+  it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
+    const many = Array.from({ length: 120 }, (_, index) => point(index + 1));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(answer(many)) }),
+    });
+
+    await screen.findByText("ctffind");
+    expect(screen.getAllByTestId("monitor-histogram")).toHaveLength(2);
+    const all = screen.getAllByRole("button", { name: "All micrographs" });
+    const last = screen.getAllByRole("button", { name: "Last 50" });
+    expect(all[0]).toHaveAttribute("data-points", "120");
+    expect(last[0]).toHaveAttribute("data-points", "50");
+  });
+
+  it("lists the newest micrographs with their images, reads each image once, and opens one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchCTFMicrographImageObjectUrl = vi.fn().mockResolvedValue({ url: "blob:mic", revoke: vi.fn() });
+    const fetchCTFPsdImageObjectUrl = vi.fn().mockResolvedValue({ url: "blob:psd", revoke: vi.fn() });
+    const fetchStreamingMonitor = vi.fn()
+      .mockResolvedValueOnce(answer([point(1), point(2, { astigmatism: 1500, alerts: ["maxAstigmatism"] })]))
+      .mockResolvedValue(answer([point(3)]));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, fetchCTFMicrographImageObjectUrl, fetchCTFPsdImageObjectUrl }),
+    });
+
+    await screen.findByText("ctffind");
+    expect(screen.getAllByTestId("latest-micrograph").map((row) => row.textContent)).toEqual([
+      expect.stringContaining("mic_2"), expect.stringContaining("mic_1")]);
+    expect(screen.getByText("1500 Å")).toHaveClass("text-app-danger");
+    await waitFor(() => expect(fetchCTFPsdImageObjectUrl).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      vi.advanceTimersByTime(15100);
+    });
+    await waitFor(() => expect(screen.getAllByTestId("latest-micrograph")).toHaveLength(3));
+    // Only the new micrograph's images are read
+    await waitFor(() => expect(fetchCTFMicrographImageObjectUrl).toHaveBeenCalledTimes(3));
+    expect(fetchCTFPsdImageObjectUrl).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(screen.getAllByTestId("latest-micrograph")[0]);
+    await waitFor(() => expect(fetchCTFMicrographImageObjectUrl).toHaveBeenCalledTimes(4));
+    expect(fetchCTFMicrographImageObjectUrl.mock.calls[3].slice(0, 4)).toEqual([7, "3", "outputCTF", 3]);
+  });
+
+  it("shows the particles of each micrograph once picked, with the picking backlog in micrographs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const picked = (counts: Record<string, number>, lastRowId: number) => {
+      const next = answer([point(1), point(2)]);
+      next.stages = [...next.stages, {
+        stage: "coordinates", setId: 40, protocolId: "4", protocolClassName: "ProtPick", label: "cryolo",
+        status: "running", outputName: "outputCoordinates", setClassName: "SetOfCoordinates", items: 120,
+        maxItemId: 120, streaming: true, perMinute: 10, trend: "up", behind: 7, micrographs: 2,
+      }];
+      next.thresholds = { ...THRESHOLDS, minParticles: 50 };
+      next.picking = { setId: 40, reset: false, lastRowId, complete: true, counts };
+      return next;
+    };
+    const fetchStreamingMonitor = vi.fn()
+      .mockResolvedValueOnce(picked({ "1": 100 }, 10))
+      .mockResolvedValue({ ...picked({ "2": 20 }, 12), series: { ...answer([]).series, lastRowId: 2 } });
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+
+    expect(await screen.findByText("7 micrographs waiting")).toBeInTheDocument();
+    expect(screen.getByText("from 2 micrographs")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Particles" })).toHaveAttribute("data-points", "1");
+    expect(screen.getByText("Not picked")).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(15100);
+    });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      afterPickSetId: 40, afterPickRowId: 10 })));
+    // Micrograph 2 was picked later with too few particles: it shows, and it is an alert
+    await waitFor(() => expect(screen.getByRole("button", { name: "Particles" })).toHaveAttribute("data-points", "2"));
+    expect(screen.getByText("Fewer particles picked than 50")).toBeInTheDocument();
+  });
+
+  it("shows the 2D classes biggest first, and their averages again only after a new round", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const withClasses = (version: string) => {
+      const next = answer([point(1)]);
+      next.stages = [...next.stages, {
+        stage: "classes2d", setId: 90, protocolId: "9", protocolClassName: "XmippProtClassifyPcaStreaming",
+        label: "alignPCA-2D", status: "running", outputName: "outputClasses", setClassName: "SetOfClasses2D",
+        items: 2, maxItemId: 2, streaming: true, perMinute: null, trend: null, behind: 500, particles: 4300,
+      }];
+      next.classes = { setId: 90, protocolId: "9", outputName: "outputClasses", version, particles: 4300,
+                       classes: [{ id: 2, particles: 3000, enabled: true }, { id: 1, particles: 1300, enabled: true }] };
+      return next;
+    };
+    const fetchMetadataImageCellObjectUrl = vi.fn().mockResolvedValue({ url: "blob:class", revoke: vi.fn() });
+    const fetchStreamingMonitor = vi.fn()
+      .mockResolvedValueOnce(withClasses("v1"))
+      .mockResolvedValueOnce(withClasses("v1"))
+      .mockResolvedValue(withClasses("v2"));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, fetchMetadataImageCellObjectUrl }),
+    });
+
+    expect(await screen.findByText(/^4\D?300 particles classified$/)).toBeInTheDocument();
+    expect(screen.getByText("500 particles waiting")).toBeInTheDocument();
+    expect(screen.getAllByTestId("class-average").map((item) => item.textContent)).toEqual([
+      expect.stringMatching(/3\D?000/), expect.stringMatching(/1\D?300/)]);
+    await waitFor(() => expect(fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(2));
+    expect(fetchMetadataImageCellObjectUrl.mock.calls[0].slice(0, 6)).toEqual([7, "9", "outputClasses", "objects", 0, "stack"]);
+    expect(fetchMetadataImageCellObjectUrl.mock.calls[0][6]).toMatchObject({ rowId: 2, contrastMode: "enhanced", version: "v1" });
+
+    await act(async () => {
+      vi.advanceTimersByTime(15100);
+    });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
+    // The same round: the averages are not read again
+    expect(fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(15100);
+    });
+    await waitFor(() => expect(fetchMetadataImageCellObjectUrl).toHaveBeenCalledTimes(4));
+    expect(fetchMetadataImageCellObjectUrl.mock.calls[3][6]).toMatchObject({ version: "v2" });
   });
 
   it("asks only for the points after the last one it has", async () => {
@@ -90,7 +215,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, afterSetId: 30, afterRowId: 2 });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -132,7 +257,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, afterSetId: 30, afterRowId: 1 });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
   });
 
   it("opens the micrograph of a point", async () => {
@@ -167,7 +292,7 @@ describe("StreamingMonitorView", () => {
       ...THRESHOLDS, maxResolution: 6, maxAstigmatism: null,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, afterSetId: null, afterRowId: null }));
+      7, { ctfSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {

@@ -1520,8 +1520,12 @@ export type ProtocolRunEvent = {
   protocolId: string;
   protocolClassName: string;
   label: string;
-  status: "finished" | "failed" | "aborted" | "interactive" | string;
+  /** "alert": micrographs of a streaming project started going past a monitor threshold. */
+  status: "finished" | "failed" | "aborted" | "interactive" | "alert" | string;
+  /** When the run ended; for an alert, when its first micrograph went past the threshold. */
   endedAt: string;
+  /** For an alert, the threshold the micrographs go past. */
+  threshold?: string;
 };
 
 export type ProtocolActivity = {
@@ -1588,7 +1592,7 @@ export type ProjectDiskUsage = {
 
 /** One stage of a streaming chain: the output it follows and how fast it grows. */
 export type StreamingMonitorStage = {
-  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles";
+  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d";
   setId: number;
   protocolId: string;
   protocolClassName: string;
@@ -1600,11 +1604,28 @@ export type StreamingMonitorStage = {
   maxItemId: number | null;
   /** The output is still open: more items come. */
   streaming: boolean;
-  /** Items per minute over the last 10 minutes. */
-  perMinute: number;
-  trend: "up" | "down" | "steady";
-  /** Items of the stage before not processed here yet; null where it does not apply. */
+  /** Items per minute over the last 10 minutes; null for 2D classes, made in rounds. */
+  perMinute: number | null;
+  trend: "up" | "down" | "steady" | null;
+  /** Items of the stage before not processed here yet (micrographs, for coordinates and particles); null
+   *  where it does not apply or is not counted yet. */
   behind: number | null;
+  /** Coordinates and particles: how many micrographs they come from. */
+  micrographs?: number;
+  /** Coordinates and particles: still being counted (after the server restarted). */
+  counting?: boolean;
+  /** 2D classes: the particles classified so far. */
+  particles?: number | null;
+};
+
+/** The 2D classes of the stream, biggest first. ``version`` changes with them: it keys their images. */
+export type StreamingMonitorClasses = {
+  setId: number;
+  protocolId: string;
+  outputName: string;
+  version: string | null;
+  particles: number;
+  classes: Array<{ id: number; particles: number; enabled: boolean }>;
 };
 
 export type StreamingMonitorThresholdName =
@@ -1613,9 +1634,10 @@ export type StreamingMonitorThresholdName =
   | "maxAstigmatism"
   | "maxResolution"
   | "maxFrameShift"
-  | "maxTotalDrift";
+  | "maxTotalDrift"
+  | "minParticles";
 
-/** Thresholds in A; null raises no alert. */
+/** Thresholds in A (minParticles: coordinates per micrograph); null raises no alert. */
 export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
 
 /** The CTF of one micrograph and the drift of its movie. Values in A. */
@@ -1634,6 +1656,8 @@ export type StreamingMonitorPoint = {
   phaseShift?: number;
   totalDrift?: number;
   maxFrameShift?: number;
+  /** Coordinates picked on the micrograph, once picked. */
+  particles?: number;
   /** The thresholds this point goes past. */
   alerts: StreamingMonitorThresholdName[];
 };
@@ -1657,12 +1681,23 @@ export type StreamingMonitor = {
     more: boolean;
     points: StreamingMonitorPoint[];
   };
+  classes: StreamingMonitorClasses | null;
+  /** Coordinates per micrograph id that changed since the caller's picking cursor. */
+  picking: {
+    setId: number | null;
+    reset: boolean;
+    lastRowId: number | null;
+    complete: boolean;
+    counts: Record<string, number>;
+  };
 };
 
 export type StreamingMonitorQuery = {
   ctfSetId?: number | null;
   afterSetId?: number | null;
   afterRowId?: number | null;
+  afterPickSetId?: number | null;
+  afterPickRowId?: number | null;
 };
 
 /** A fingerprint of what the project graph shows. */
@@ -2473,6 +2508,8 @@ export interface ProjectService<
       inline?: boolean;
       format?: string;
       contrastMode?: MetadataContrastMode;
+      /** What the caller knows of the image file: another version is another image (rewritten in place). */
+      version?: string;
       signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;

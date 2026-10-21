@@ -27,6 +27,8 @@ function monitorAnswer() {
   return {
     now: "", streaming: false, stages: [], ctfOutputs: [], thresholds: {},
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
+    classes: null,
+    picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
   };
 }
 

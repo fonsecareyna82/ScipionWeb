@@ -18,17 +18,24 @@ import type {
   StreamingMonitorThresholds,
 } from "@/services/ProjectService";
 import {
+  EMPTY_PICKING,
   EMPTY_SERIES,
   POLL_CHOICES,
   THRESHOLD_LABELS,
   alertEpisodes,
   formatAngstrom,
+  formatLimit,
+  mergePicking,
   mergeSeries,
   readPollSeconds,
   savePollSeconds,
+  withParticles,
+  type PickingState,
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
+import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
+import ClassesGallery from "./ClassesGallery";
 
 
 const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
@@ -37,6 +44,7 @@ const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   ctf: "CTF",
   coordinates: "Coordinates",
   particles: "Particles",
+  classes2d: "2D classes",
 };
 
 type PlotSpec = {
@@ -56,6 +64,10 @@ const PIPELINE_HELP =
   + "means its output is still open and more come. The rate is the items per minute of the last 10 minutes, "
   + "the arrow compares it with the 10 before (up: faster, down: slower). \"Waiting\" is what the step before "
   + "produced and this one has not processed yet: if it keeps growing, this step falls behind the microscope.";
+
+const LATEST_HELP =
+  `The newest ${LATEST_MICROGRAPHS} micrographs, newest first, with their power spectrum and values; values past `
+  + "a threshold are red. Click a row to see the micrograph.";
 
 const ALERTS_HELP =
   "Each line is a run of consecutive micrographs past the same threshold, newest first. A red dot means the "
@@ -117,6 +129,21 @@ const PLOTS: PlotSpec[] = [
   },
 ];
 
+const PARTICLES_PLOT: PlotSpec = {
+  title: "Particles per micrograph",
+  unit: "particles",
+  series: [{ name: "Particles", value: (point) => point.particles }],
+  limits: ["minParticles"],
+  alerts: ["minParticles"],
+  help: "How many coordinates the picking found on each micrograph. A sudden drop usually means thick ice, an "
+    + "empty area or a picker that needs tuning; far too many, that it picks contamination or edges.",
+};
+
+const CLASSES_HELP =
+  "The 2D class averages of the stream, biggest first, with how many particles each has and their share. "
+  + "The classifier works in rounds, so they change when a round ends. Faded classes are disabled. Click one "
+  + "to see it bigger.";
+
 function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
   if (trend === "up") return <ArrowUp className="h-3.5 w-3.5 text-app-success" aria-label="rising" />;
   if (trend === "down") return <ArrowDown className="h-3.5 w-3.5 text-app-warning" aria-label="falling" />;
@@ -133,12 +160,25 @@ function StageCard({ stage }: { stage: StreamingMonitorStage }) {
         ) : null}
       </div>
       <div className="mt-1 text-2xl font-semibold text-app-text">{stage.items.toLocaleString()}</div>
-      <div className="mt-1 flex items-center gap-1 text-xs text-app-muted">
-        <TrendIcon trend={stage.trend} />
-        <span>{stage.perMinute.toFixed(1)} / min</span>
-      </div>
+      {stage.perMinute !== null ? (
+        <div className="mt-1 flex items-center gap-1 text-xs text-app-muted">
+          <TrendIcon trend={stage.trend} />
+          <span>{stage.perMinute.toFixed(1)} / min</span>
+        </div>
+      ) : null}
+      {stage.stage === "classes2d" && stage.particles != null ? (
+        <div className="mt-1 text-xs text-app-muted">{stage.particles.toLocaleString()} particles classified</div>
+      ) : null}
+      {stage.micrographs !== undefined ? (
+        <div className="mt-1 text-xs text-app-muted">
+          {stage.counting ? "Counting micrographs…" : `from ${stage.micrographs.toLocaleString()} micrographs`}
+        </div>
+      ) : null}
       {stage.behind ? (
-        <div className="mt-1 text-xs font-medium text-app-warning">{stage.behind.toLocaleString()} waiting</div>
+        <div className="mt-1 text-xs font-medium text-app-warning">
+          {stage.behind.toLocaleString()}
+          {stage.micrographs !== undefined ? " micrographs" : stage.stage === "classes2d" ? " particles" : ""} waiting
+        </div>
       ) : null}
       <div className="mt-1 truncate text-[11px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>
         {stage.label}
@@ -230,6 +270,82 @@ function MonitorPlot({
   );
 }
 
+type HistogramSpec = {
+  title: string;
+  unit: string;
+  binSize: number;
+  value: (point: StreamingMonitorPoint) => number | undefined;
+  help: string;
+};
+
+// As in the facilities report: the whole session, and its last micrographs over it once there are enough.
+const RECENT_MICROGRAPHS = 50;
+const RECENT_FROM = 100;
+
+const HISTOGRAMS: HistogramSpec[] = [
+  {
+    title: "CTF resolution",
+    unit: "Å",
+    binSize: 0.5,
+    value: (point) => point.resolution,
+    help: "How many micrographs reach each CTF resolution (0.5 Å bins). A distribution moving to the right "
+      + "means the data are getting worse.",
+  },
+  {
+    title: "Defocus coverage",
+    unit: "µm",
+    binSize: 0.5,
+    value: (point) => (point.defocusU === undefined ? undefined : point.defocusU / 10000),
+    help: "How many micrographs were taken at each defocus (defocus U, 0.5 µm bins). The bars should cover "
+      + "the defocus range planned for the session evenly.",
+  },
+];
+
+function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points: StreamingMonitorPoint[]; dark: boolean }) {
+  const tokens = APP_TOKENS[dark ? "dark" : "light"];
+  const values = (list: StreamingMonitorPoint[]) => list
+    .filter((point) => !point.failed)
+    .map(spec.value)
+    .filter((value): value is number => value !== undefined && Number.isFinite(value));
+  const all = values(points);
+  const recent = points.length >= RECENT_FROM ? values(points.slice(-RECENT_MICROGRAPHS)) : [];
+  const bins = { size: spec.binSize };
+  const data: any[] = [{
+    type: "histogram", name: "All micrographs", x: all, xbins: bins, marker: { color: tokens.accent },
+    hovertemplate: `%{x} ${spec.unit}: %{y}<extra>All</extra>`,
+  }];
+  if (recent.length) {
+    data.push({
+      type: "histogram", name: `Last ${RECENT_MICROGRAPHS}`, x: recent, xbins: bins,
+      marker: { color: tokens.warning }, opacity: 0.75, hovertemplate: `%{x} ${spec.unit}: %{y}<extra>Last ${RECENT_MICROGRAPHS}</extra>`,
+    });
+  }
+  const layout = {
+    autosize: true,
+    height: 240,
+    barmode: "overlay",
+    bargap: 0.05,
+    margin: { t: 32, r: 16, b: 40, l: 48 },
+    title: { text: spec.title, font: { size: 13, color: tokens.text }, x: 0.02 },
+    paper_bgcolor: tokens.surface,
+    plot_bgcolor: tokens.surface,
+    font: { color: tokens.textMuted, size: 11 },
+    showlegend: recent.length > 0,
+    legend: { orientation: "h", x: 1, xanchor: "right", y: 1.15 },
+    xaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
+    yaxis: { title: { text: "Micrographs" }, gridcolor: tokens.border, zeroline: false },
+  };
+  return (
+    <div className="relative rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
+      <div className="absolute right-3 top-3 z-10">
+        <HelpHint text={spec.help + (recent.length ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
+      </div>
+      <Plot data={data} layout={layout} config={{ displaylogo: false, responsive: true }} useResizeHandler
+            style={{ width: "100%", height: "100%" }} />
+    </div>
+  );
+}
+
 function timeOf(point: StreamingMonitorPoint): string {
   return point.time ? new Date(point.time).toLocaleTimeString() : "—";
 }
@@ -240,6 +356,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const dark = useIsDark();
   const [monitor, setMonitor] = useState<StreamingMonitor | null>(null);
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
+  const [picking, setPicking] = useState<PickingState>(EMPTY_PICKING);
+  const pickingRef = useRef<PickingState>(EMPTY_PICKING);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
@@ -256,6 +374,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     loadingRef.current = true;
     try {
       let current = fromScratch ? EMPTY_SERIES : seriesRef.current;
+      let picks = fromScratch ? EMPTY_PICKING : pickingRef.current;
       let answer: StreamingMonitor;
       // Points come in batches: read until the server has no more.
       do {
@@ -263,11 +382,16 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           ctfSetId,
           afterSetId: current.setId,
           afterRowId: current.lastRowId,
+          afterPickSetId: picks.setId,
+          afterPickRowId: picks.lastRowId,
         });
         current = mergeSeries(current, answer.series);
+        picks = mergePicking(picks, answer.picking);
       } while (answer.series.more && answer.series.points.length > 0);
       seriesRef.current = current;
+      pickingRef.current = picks;
       setSeries(current);
+      setPicking(picks);
       setMonitor(answer);
       setUpdatedAt(new Date());
       setError(null);
@@ -304,9 +428,15 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const ctfStage = monitor?.stages.find((stage) => stage.stage === "ctf") ?? null;
   // Before there is a CTF output the points are the micrographs, and only their drift is known
   const seriesKind = monitor?.series.kind ?? null;
-  const plots = seriesKind === "ctf" ? PLOTS : PLOTS.filter((spec) => spec.title === "Drift");
-  const episodes = useMemo(() => alertEpisodes(series.points), [series.points]);
-  const pointsById = useMemo(() => new Map(series.points.map((point) => [point.id, point])), [series.points]);
+  const hasPicking = Boolean(monitor?.stages.some((stage) => stage.stage === "coordinates"));
+  const plots = [...(seriesKind === "ctf" ? PLOTS : PLOTS.filter((spec) => spec.title === "Drift")),
+                 ...(hasPicking ? [PARTICLES_PLOT] : [])];
+  const thresholds = monitor?.thresholds ?? null;
+  // The points as shown: with the coordinates picked on their micrograph, which come later than the CTF
+  const points = useMemo(() => withParticles(series.points, picking.counts, thresholds),
+    [series.points, picking.counts, thresholds]);
+  const episodes = useMemo(() => alertEpisodes(points), [points]);
+  const pointsById = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
 
   const openMicrograph = useCallback((pointId: number) => {
     if (!ctfStage || seriesKind !== "ctf") return;
@@ -324,6 +454,20 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         pointId, { size: 1024, format: "png", quality: 80, signal }),
     });
   }, [svc, projectId, ctfStage, seriesKind, pointsById]);
+
+  const openClass = useCallback((classId: number) => {
+    const classes = monitor?.classes;
+    if (!classes) return;
+    const item = classes.classes.find((candidate) => candidate.id === classId);
+    setPreview({
+      title: `Class ${classId}`,
+      path: `${classes.outputName} · class ${classId}`,
+      details: item ? [{ label: "Particles", value: item.particles.toLocaleString() }] : [],
+      loadImage: (signal) => svc.fetchMetadataImageCellObjectUrl(projectId, classes.protocolId, classes.outputName,
+        "objects", 0, "stack", { rowId: classId, size: 512, format: "png", contrastMode: "enhanced",
+          applyTransform: false, inline: true, version: classes.version ?? undefined, signal }),
+    });
+  }, [svc, projectId, monitor?.classes]);
 
   const saveThresholds = useCallback(async (changed: Partial<StreamingMonitorThresholds>) => {
     if (!svc.saveStreamingMonitorThresholds) return;
@@ -429,8 +573,35 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               </div>
             ) : null}
             {plots.map((spec) => (
-              <MonitorPlot key={spec.title} spec={spec} points={series.points} thresholds={monitor?.thresholds ?? null}
+              <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds}
                            dark={dark} onPick={openMicrograph} />
+            ))}
+          </section>
+        ) : null}
+
+        {seriesKind === "ctf" && ctfStage ? (
+          <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Latest micrographs">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              Latest micrographs <HelpHint text={LATEST_HELP} />
+            </div>
+            <LatestMicrographsTable projectId={projectId} protocolId={ctfStage.protocolId} outputName={ctfStage.outputName}
+                                    points={points} onOpen={openMicrograph} showParticles={hasPicking} />
+          </section>
+        ) : null}
+
+        {monitor?.classes ? (
+          <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="2D classes">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              2D classes <HelpHint text={CLASSES_HELP} />
+            </div>
+            <ClassesGallery projectId={projectId} classes={monitor.classes} onOpen={openClass} />
+          </section>
+        ) : null}
+
+        {seriesKind === "ctf" ? (
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
+            {HISTOGRAMS.map((spec) => (
+              <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark} />
             ))}
           </section>
         ) : null}
@@ -449,7 +620,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                   return (
                     <li key={`${episode.kind}-${episode.first.id}`} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
                       <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
-                      <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatAngstrom(limit, 0)}</span>
+                      <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, limit)}</span>
                       <span className="text-app-muted">
                         {episode.count === 1 ? "1 micrograph" : `${episode.count} micrographs in a row`}
                         {" · "}{timeOf(episode.first)}{episode.count > 1 ? ` – ${timeOf(episode.last)}` : ""}

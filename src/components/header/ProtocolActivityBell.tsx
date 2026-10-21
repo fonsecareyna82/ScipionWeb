@@ -1,8 +1,9 @@
-// The header's bell: runs of the user's protocols that ended, with in-app notifications.
+// The header's bell: runs of the user's protocols that ended, and micrographs of streaming projects that
+// go past a monitor threshold, with in-app notifications.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Bell, BellOff, BellRing, CheckCircle2, Clock, Hand, X, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, BellRing, CheckCircle2, Clock, Hand, X, XCircle } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { eventKey, useProtocolActivity } from "@/hooks/useProtocolActivity";
@@ -19,6 +20,7 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 function statusIcon(status: string, className: string) {
+  if (status === "alert") return <AlertTriangle className={`${className} text-amber-600 dark:text-amber-400`} />;
   if (status === "finished") return <CheckCircle2 className={`${className} text-green-600 dark:text-green-400`} />;
   if (status === "interactive") return <Hand className={`${className} text-amber-600 dark:text-amber-400`} />;
   return <XCircle className={`${className} text-red-600 dark:text-red-400`} />;
@@ -29,7 +31,14 @@ export function protocolLink(event: Pick<ProtocolRunEvent, "projectId" | "protoc
   return `/project/load/${encodeURIComponent(String(event.projectId))}?protocol=${encodeURIComponent(event.protocolId)}`;
 }
 
+/** An alert opens its project with the streaming monitor. */
+export function eventLink(event: Pick<ProtocolRunEvent, "projectId" | "protocolId" | "status">): string {
+  if (event.status === "alert") return `/project/load/${encodeURIComponent(String(event.projectId))}?monitor=1`;
+  return protocolLink(event);
+}
+
 function describe(event: ProtocolRunEvent): string {
+  if (event.status === "alert") return event.label;
   return `${event.label || event.protocolClassName} ${STATUS_TEXT[event.status] ?? event.status}`;
 }
 
@@ -68,7 +77,7 @@ export default function ProtocolActivityBell() {
 
   const openEvent = useCallback((event: ProtocolRunEvent) => {
     setOpen(false);
-    navigate(protocolLink(event));
+    navigate(eventLink(event));
   }, [navigate]);
 
   const onEnded = useCallback((event: ProtocolRunEvent) => {
@@ -178,7 +187,7 @@ export default function ProtocolActivityBell() {
           <ul className="max-h-[360px] overflow-y-auto">
             {events.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                Runs that finish or fail show here.
+                Runs that finish or fail, and streaming monitor alerts, show here.
               </li>
             ) : events.map((event) => (
               <li key={eventKey(event)}>
@@ -201,7 +210,7 @@ export default function ProtocolActivityBell() {
 
           <div className="border-t border-slate-200 bg-slate-100 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
             <label className="flex cursor-pointer items-center justify-between gap-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
-              <span>Notify me when runs end</span>
+              <span>Notify me when runs end or the monitor alerts</span>
               <input type="checkbox" checked={notify} onChange={toggleNotify} className="h-4 w-4 accent-blue-600" />
             </label>
           </div>

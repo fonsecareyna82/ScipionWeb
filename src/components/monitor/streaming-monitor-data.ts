@@ -3,6 +3,7 @@ import type {
   StreamingMonitor,
   StreamingMonitorPoint,
   StreamingMonitorThresholdName,
+  StreamingMonitorThresholds,
 } from "@/services/ProjectService";
 
 export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
@@ -12,7 +13,18 @@ export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
   maxResolution: "CTF resolution worse than",
   maxFrameShift: "Frame shift above",
   maxTotalDrift: "Total drift above",
+  minParticles: "Fewer particles picked than",
 };
+
+/** Every threshold is in Å but the particles one, a count. */
+export function formatLimit(kind: StreamingMonitorThresholdName, value: number | null | undefined): string {
+  if (kind === "minParticles") return value === null || value === undefined ? "—" : String(value);
+  return formatAngstrom(value, 0);
+}
+
+export function thresholdUnit(kind: StreamingMonitorThresholdName): string {
+  return kind === "minParticles" ? "particles" : "Å";
+}
 
 export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "minDefocus",
@@ -21,6 +33,7 @@ export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "maxResolution",
   "maxFrameShift",
   "maxTotalDrift",
+  "minParticles",
 ];
 
 /** How often the monitor reads; 0 pauses it. A preference of each browser, not of the project. */
@@ -68,6 +81,48 @@ export function mergeSeries(previous: SeriesState, answer: StreamingMonitor["ser
     lastRowId: answer.lastRowId ?? (restart ? null : previous.lastRowId),
     points: added.length ? [...kept, ...added].sort((a, b) => a.id - b.id) : kept,
   };
+}
+
+export type PickingState = {
+  setId: number | null;
+  lastRowId: number | null;
+  /** Coordinates per micrograph id. */
+  counts: Record<string, number>;
+};
+
+export const EMPTY_PICKING: PickingState = { setId: null, lastRowId: null, counts: {} };
+
+/** The coordinates per micrograph after this answer: the changed ones updated, or only them when the
+ *  coordinates output is another one. */
+export function mergePicking(previous: PickingState, answer: StreamingMonitor["picking"]): PickingState {
+  const restart = answer.reset || answer.setId !== previous.setId;
+  const kept = restart ? {} : previous.counts;
+  const changed = Object.keys(answer.counts).length > 0;
+  return {
+    setId: answer.setId,
+    lastRowId: answer.lastRowId,
+    counts: changed ? { ...kept, ...answer.counts } : kept,
+  };
+}
+
+/**
+ * The points with the coordinates picked on their micrograph. Picking comes after the CTF, so a point the
+ * page already has gets them later: its particles alert is worked out here, with the project's threshold.
+ */
+export function withParticles(
+  points: StreamingMonitorPoint[],
+  counts: Record<string, number>,
+  thresholds: StreamingMonitorThresholds | null,
+): StreamingMonitorPoint[] {
+  const limit = thresholds?.minParticles ?? null;
+  return points.map((point) => {
+    const particles = counts[String(point.id)] ?? point.particles;
+    const others = point.alerts.filter((alert) => alert !== "minParticles");
+    const alerts = limit !== null && particles !== undefined && particles < limit && !point.failed
+      ? [...others, "minParticles" as const] : others;
+    if (particles === point.particles && alerts.length === point.alerts.length) return point;
+    return { ...point, particles, alerts };
+  });
 }
 
 /** A run of consecutive micrographs past the same threshold. */
