@@ -169,9 +169,21 @@ function StageCard({ stage }: { stage: StreamingMonitorStage }) {
       {stage.stage === "classes2d" && stage.particles != null ? (
         <div className="mt-1 text-xs text-app-muted">{stage.particles.toLocaleString()} particles classified</div>
       ) : null}
+      {stage.classifiedFrom ? (
+        <div className="mt-1 truncate text-[11px] text-app-subtle"
+             title={`Classifies the ${stage.classifiedFrom.items} particles of ${stage.classifiedFrom.label} (${stage.classifiedFrom.outputName})`}>
+          from {stage.classifiedFrom.label}
+        </div>
+      ) : null}
       {stage.micrographs !== undefined ? (
         <div className="mt-1 text-xs text-app-muted">
           {stage.counting ? "Counting micrographs…" : `from ${stage.micrographs.toLocaleString()} micrographs`}
+        </div>
+      ) : null}
+      {stage.pickedFrom ? (
+        <div className="mt-1 truncate text-[11px] text-app-subtle"
+             title={`Picks the ${stage.pickedFrom.items} micrographs of ${stage.pickedFrom.label} (${stage.pickedFrom.outputName})`}>
+          from {stage.pickedFrom.label}
         </div>
       ) : null}
       {stage.behind ? (
@@ -362,6 +374,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
   const [ctfSetId, setCtfSetId] = useState<number | null>(null);
+  const [coordinatesSetId, setCoordinatesSetId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [preview, setPreview] = useState<ImagePreviewSource | null>(null);
   const seriesRef = useRef<SeriesState>(EMPTY_SERIES);
@@ -380,6 +393,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       do {
         answer = await svc.fetchStreamingMonitor(projectId, {
           ctfSetId,
+          coordinatesSetId,
           afterSetId: current.setId,
           afterRowId: current.lastRowId,
           afterPickSetId: picks.setId,
@@ -400,7 +414,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     } finally {
       loadingRef.current = false;
     }
-  }, [svc, projectId, ctfSetId]);
+  }, [svc, projectId, ctfSetId, coordinatesSetId]);
 
   useEffect(() => {
     void load(true);
@@ -522,6 +536,19 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 onChange={(event) => setCtfSetId(Number(event.target.value))}
               >
                 {monitor.ctfOutputs.map((output) => (
+                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                ))}
+              </select>
+            ) : null}
+            {monitor && monitor.coordinatesOutputs.length > 1 ? (
+              <select
+                aria-label="Picking to follow"
+                title="Picking to follow"
+                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                value={monitor.stages.find((stage) => stage.stage === "coordinates")?.setId ?? ""}
+                onChange={(event) => setCoordinatesSetId(Number(event.target.value))}
+              >
+                {monitor.coordinatesOutputs.map((output) => (
                   <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
                 ))}
               </select>

@@ -4805,6 +4805,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
     streaming: Boolean(raw?.streaming),
     stages: list(raw?.stages),
     ctfOutputs: list(raw?.ctfOutputs),
+    coordinatesOutputs: list(raw?.coordinatesOutputs),
     thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
     series: {
       setId: series.setId ?? null,

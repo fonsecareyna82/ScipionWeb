@@ -46,6 +46,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
         streaming: true, perMinute: 1.2, trend: "steady", behind: 3 },
     ],
     ctfOutputs: [{ setId: 30, protocolId: "3", label: "ctffind", outputName: "outputCTF" }],
+    coordinatesOutputs: [],
     thresholds: THRESHOLDS,
     series: { setId: 30, kind: "ctf", reset: false, lastRowId: points.length ? points[points.length - 1].id : null,
               more: false, points, ...extra },
@@ -76,7 +77,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
@@ -131,6 +132,7 @@ describe("StreamingMonitorView", () => {
         stage: "coordinates", setId: 40, protocolId: "4", protocolClassName: "ProtPick", label: "cryolo",
         status: "running", outputName: "outputCoordinates", setClassName: "SetOfCoordinates", items: 120,
         maxItemId: 120, streaming: true, perMinute: 10, trend: "up", behind: 7, micrographs: 2,
+        pickedFrom: { protocolId: "6", label: "ctf consensus", outputName: "outputMicrographs", items: 9 },
       }];
       next.thresholds = { ...THRESHOLDS, minParticles: 50 };
       next.picking = { setId: 40, reset: false, lastRowId, complete: true, counts };
@@ -144,6 +146,7 @@ describe("StreamingMonitorView", () => {
 
     expect(await screen.findByText("7 micrographs waiting")).toBeInTheDocument();
     expect(screen.getByText("from 2 micrographs")).toBeInTheDocument();
+    expect(screen.getByText("from ctf consensus")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Particles" })).toHaveAttribute("data-points", "1");
     expect(screen.getByText("Not picked")).toBeInTheDocument();
 
@@ -201,6 +204,23 @@ describe("StreamingMonitorView", () => {
     expect(fetchMetadataImageCellObjectUrl.mock.calls[3][6]).toMatchObject({ version: "v2" });
   });
 
+  it("follows the picking chosen among several, reading everything again", async () => {
+    const several = answer([point(1)]);
+    several.coordinatesOutputs = [
+      { setId: 40, protocolId: "4", label: "cryolo", outputName: "outputCoordinates" },
+      { setId: 41, protocolId: "14", label: "template picking", outputName: "outputCoordinates" },
+    ];
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(several);
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+    await screen.findByText("ctffind");
+
+    fireEvent.change(screen.getByLabelText("Picking to follow"), { target: { value: "41" } });
+
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      coordinatesSetId: 41, afterSetId: null, afterPickSetId: null })));
+  });
+
   it("asks only for the points after the last one it has", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchStreamingMonitor = vi.fn()
@@ -215,7 +235,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -257,7 +277,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
   });
 
   it("opens the micrograph of a point", async () => {
@@ -292,7 +312,7 @@ describe("StreamingMonitorView", () => {
       ...THRESHOLDS, maxResolution: 6, maxAstigmatism: null,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
+      7, { ctfSetId: null, coordinatesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {

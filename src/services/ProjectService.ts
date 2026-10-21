@@ -1616,6 +1616,10 @@ export type StreamingMonitorStage = {
   counting?: boolean;
   /** 2D classes: the particles classified so far. */
   particles?: number | null;
+  /** Coordinates: the micrographs the picker reads (e.g. those a CTF consensus kept), which it waits on. */
+  pickedFrom?: { protocolId: string; label: string; outputName: string; items: number };
+  /** 2D classes: the particles the classifier reads when a filter is in between, which it waits on. */
+  classifiedFrom?: { protocolId: string; label: string; outputName: string; items: number };
 };
 
 /** The 2D classes of the stream, biggest first. ``version`` changes with them: it keys their images. */
@@ -1668,6 +1672,8 @@ export type StreamingMonitor = {
   streaming: boolean;
   stages: StreamingMonitorStage[];
   ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  /** The pickings the monitor could follow (it follows the one that goes furthest unless told). */
+  coordinatesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   thresholds: StreamingMonitorThresholds;
   series: {
     setId: number | null;
@@ -1694,6 +1700,7 @@ export type StreamingMonitor = {
 
 export type StreamingMonitorQuery = {
   ctfSetId?: number | null;
+  coordinatesSetId?: number | null;
   afterSetId?: number | null;
   afterRowId?: number | null;
   afterPickSetId?: number | null;
