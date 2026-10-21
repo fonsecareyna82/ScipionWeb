@@ -1603,8 +1603,6 @@ export type StreamingMonitorStage = {
   /** Items per minute over the last 10 minutes. */
   perMinute: number;
   trend: "up" | "down" | "steady";
-  firstAt: string | null;
-  lastAt: string | null;
   /** Items of the stage before not processed here yet; null where it does not apply. */
   behind: number | null;
 };
@@ -1653,7 +1651,8 @@ export type StreamingMonitor = {
     kind: "ctf" | "micrographs" | null;
     /** The points the caller had belong to an output that was rebuilt: drop them. */
     reset: boolean;
-    lastItemId: number | null;
+    /** The cursor to send back as afterRowId: the order rows were written in, not micrograph ids. */
+    lastRowId: number | null;
     /** More points wait: ask again at once. */
     more: boolean;
     points: StreamingMonitorPoint[];
@@ -1663,7 +1662,7 @@ export type StreamingMonitor = {
 export type StreamingMonitorQuery = {
   ctfSetId?: number | null;
   afterSetId?: number | null;
-  afterItemId?: number | null;
+  afterRowId?: number | null;
 };
 
 /** A fingerprint of what the project graph shows. */

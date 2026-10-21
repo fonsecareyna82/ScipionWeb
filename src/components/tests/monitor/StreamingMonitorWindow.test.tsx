@@ -26,7 +26,7 @@ vi.mock("@/components/ui/external-window/ExternalWindowPortal", async (importOri
 function monitorAnswer() {
   return {
     now: "", streaming: false, stages: [], ctfOutputs: [], thresholds: {},
-    series: { setId: null, kind: null, reset: false, lastItemId: null, more: false, points: [] },
+    series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
   };
 }
 

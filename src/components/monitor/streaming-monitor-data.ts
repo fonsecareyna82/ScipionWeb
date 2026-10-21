@@ -23,15 +23,41 @@ export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "maxTotalDrift",
 ];
 
+/** How often the monitor reads; 0 pauses it. A preference of each browser, not of the project. */
+export const POLL_CHOICES = [5, 10, 15, 30, 60, 0] as const;
+export const DEFAULT_POLL_SECONDS = 15;
+export const POLL_STORAGE_KEY = "scipionweb.monitor.pollSeconds";
+
+export function readPollSeconds(): number {
+  try {
+    const stored = window.localStorage.getItem(POLL_STORAGE_KEY);
+    const seconds = stored === null ? NaN : Number(stored);
+    return (POLL_CHOICES as readonly number[]).includes(seconds) ? seconds : DEFAULT_POLL_SECONDS;
+  } catch {
+    return DEFAULT_POLL_SECONDS;
+  }
+}
+
+export function savePollSeconds(seconds: number): void {
+  try {
+    window.localStorage.setItem(POLL_STORAGE_KEY, String(seconds));
+  } catch {
+    // Without storage the choice lasts until the monitor closes
+  }
+}
+
 export type SeriesState = {
   setId: number | null;
-  lastItemId: number | null;
+  lastRowId: number | null;
   points: StreamingMonitorPoint[];
 };
 
-export const EMPTY_SERIES: SeriesState = { setId: null, lastItemId: null, points: [] };
+export const EMPTY_SERIES: SeriesState = { setId: null, lastRowId: null, points: [] };
 
-/** The points after this answer: the new ones added, or only them when the output was rebuilt. */
+/**
+ * The points after this answer: the new ones added, or only them when the output was rebuilt. They come in
+ * the order they were written, which parallel steps mix up: they are kept in micrograph order.
+ */
 export function mergeSeries(previous: SeriesState, answer: StreamingMonitor["series"]): SeriesState {
   const restart = answer.reset || answer.setId !== previous.setId;
   const kept = restart ? [] : previous.points;
@@ -39,8 +65,8 @@ export function mergeSeries(previous: SeriesState, answer: StreamingMonitor["ser
   const added = answer.points.filter((point) => !known.has(point.id));
   return {
     setId: answer.setId,
-    lastItemId: answer.lastItemId ?? (restart ? null : previous.lastItemId),
-    points: added.length ? [...kept, ...added] : kept,
+    lastRowId: answer.lastRowId ?? (restart ? null : previous.lastRowId),
+    points: added.length ? [...kept, ...added].sort((a, b) => a.id - b.id) : kept,
   };
 }
 

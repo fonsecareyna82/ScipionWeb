@@ -1,7 +1,8 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import StreamingMonitorView, { MONITOR_POLL_MS } from "@/components/monitor/StreamingMonitorView";
+import StreamingMonitorView from "@/components/monitor/StreamingMonitorView";
+import { POLL_STORAGE_KEY } from "@/components/monitor/streaming-monitor-data";
 import type { StreamingMonitor, StreamingMonitorPoint } from "@/services/ProjectService";
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
@@ -38,20 +39,21 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
     stages: [
       { stage: "micrographs", setId: 20, protocolId: "2", protocolClassName: "ProtMotionCorr", label: "motioncor",
         status: "running", outputName: "outputMicrographs", setClassName: "SetOfMicrographs", items: 12, maxItemId: 12,
-        streaming: true, perMinute: 1.5, trend: "up", firstAt: null, lastAt: null, behind: 3 },
+        streaming: true, perMinute: 1.5, trend: "up", behind: 3 },
       { stage: "ctf", setId: 30, protocolId: "3", protocolClassName: "ProtCTFFind", label: "ctffind",
         status: "running", outputName: "outputCTF", setClassName: "SetOfCTF", items: 9, maxItemId: 9,
-        streaming: true, perMinute: 1.2, trend: "steady", firstAt: null, lastAt: null, behind: 3 },
+        streaming: true, perMinute: 1.2, trend: "steady", behind: 3 },
     ],
     ctfOutputs: [{ setId: 30, protocolId: "3", label: "ctffind", outputName: "outputCTF" }],
     thresholds: THRESHOLDS,
-    series: { setId: 30, kind: "ctf", reset: false, lastItemId: points.length ? points[points.length - 1].id : null,
+    series: { setId: 30, kind: "ctf", reset: false, lastRowId: points.length ? points[points.length - 1].id : null,
               more: false, points, ...extra },
   };
 }
 
 afterEach(() => {
   vi.useRealTimers();
+  window.localStorage.removeItem(POLL_STORAGE_KEY);
 });
 
 describe("StreamingMonitorView", () => {
@@ -66,7 +68,8 @@ describe("StreamingMonitorView", () => {
     expect(screen.getAllByText("3 waiting")).toHaveLength(2);
     expect(screen.getAllByTestId("monitor-plot")).toHaveLength(4);
     expect(screen.getByText("Astigmatism above 1000 Å")).toBeInTheDocument();
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterItemId: null });
+    expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, afterSetId: null, afterRowId: null });
   });
 
   it("asks only for the points after the last one it has", async () => {
@@ -79,12 +82,42 @@ describe("StreamingMonitorView", () => {
     await screen.findByText("ctffind");
 
     await act(async () => {
-      vi.advanceTimersByTime(MONITOR_POLL_MS + 100);
+      vi.advanceTimersByTime(15000 + 100);
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, afterSetId: 30, afterItemId: 2 });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, afterSetId: 30, afterRowId: 2 });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
+  });
+
+  it("reads as often as chosen, keeps the choice, and can be paused", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1)]));
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+    await screen.findByText("ctffind");
+
+    fireEvent.change(screen.getByLabelText("Refresh every"), { target: { value: "5" } });
+    await act(async () => {
+      vi.advanceTimersByTime(5100);
+    });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
+    expect(window.localStorage.getItem(POLL_STORAGE_KEY)).toBe("5");
+
+    fireEvent.change(screen.getByLabelText("Refresh every"), { target: { value: "0" } });
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts with the interval chosen before in this browser", async () => {
+    window.localStorage.setItem(POLL_STORAGE_KEY, "30");
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([])) }),
+    });
+
+    expect(await screen.findByLabelText("Refresh every")).toHaveValue("30");
   });
 
   it("reads every batch the server has before showing them", async () => {
@@ -95,7 +128,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, afterSetId: 30, afterItemId: 1 });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, afterSetId: 30, afterRowId: 1 });
   });
 
   it("opens the micrograph of a point", async () => {
@@ -130,7 +163,7 @@ describe("StreamingMonitorView", () => {
       ...THRESHOLDS, maxResolution: 6, maxAstigmatism: null,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, afterSetId: null, afterItemId: null }));
+      7, { ctfSetId: null, afterSetId: null, afterRowId: null }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {

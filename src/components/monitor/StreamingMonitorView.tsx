@@ -19,15 +19,17 @@ import type {
 } from "@/services/ProjectService";
 import {
   EMPTY_SERIES,
+  POLL_CHOICES,
   THRESHOLD_LABELS,
   alertEpisodes,
   formatAngstrom,
   mergeSeries,
+  readPollSeconds,
+  savePollSeconds,
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
 
-export const MONITOR_POLL_MS = 15000;
 
 const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   movies: "Movies",
@@ -205,6 +207,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [monitor, setMonitor] = useState<StreamingMonitor | null>(null);
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
   const [ctfSetId, setCtfSetId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [preview, setPreview] = useState<ImagePreviewSource | null>(null);
@@ -224,13 +228,14 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         answer = await svc.fetchStreamingMonitor(projectId, {
           ctfSetId,
           afterSetId: current.setId,
-          afterItemId: current.lastItemId,
+          afterRowId: current.lastRowId,
         });
         current = mergeSeries(current, answer.series);
       } while (answer.series.more && answer.series.points.length > 0);
       seriesRef.current = current;
       setSeries(current);
       setMonitor(answer);
+      setUpdatedAt(new Date());
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The streaming monitor could not be read");
@@ -241,11 +246,15 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
   useEffect(() => {
     void load(true);
+  }, [load]);
+
+  useEffect(() => {
+    if (!pollSeconds) return undefined;
     const ownerDocument = () => rootRef.current?.ownerDocument ?? document;
     const seen = () => ownerDocument().visibilityState === "visible";
     const timer = window.setInterval(() => {
       if (seen()) void load();
-    }, MONITOR_POLL_MS);
+    }, pollSeconds * 1000);
     const onVisible = () => {
       if (seen()) void load();
     };
@@ -256,7 +265,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load]);
+  }, [load, pollSeconds]);
 
   const ctfStage = monitor?.stages.find((stage) => stage.stage === "ctf") ?? null;
   // Before there is a CTF output the points are the micrographs, and only their drift is known
@@ -306,6 +315,26 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               {monitor.streaming ? "Streaming" : "Not streaming"}
             </span>
           ) : null}
+          {updatedAt ? (
+            <span className="text-xs text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
+          ) : null}
+          <select
+            aria-label="Refresh every"
+            title="How often the monitor reads (in this browser)"
+            className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+            value={pollSeconds}
+            onChange={(event) => {
+              const seconds = Number(event.target.value);
+              setPollSeconds(seconds);
+              savePollSeconds(seconds);
+            }}
+          >
+            {POLL_CHOICES.map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
+              </option>
+            ))}
+          </select>
           <div className="ml-auto flex items-center gap-2">
             {monitor && monitor.ctfOutputs.length > 1 ? (
               <select

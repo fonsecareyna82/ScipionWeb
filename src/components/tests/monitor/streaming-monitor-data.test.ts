@@ -9,25 +9,33 @@ function point(id: number, alerts: StreamingMonitorPoint["alerts"] = [], extra: 
 
 describe("mergeSeries", () => {
   it("adds the new points after the ones it has", () => {
-    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastItemId: 2, more: false, points: [point(1), point(2)] });
-    const next = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: false, lastItemId: 3, more: false, points: [point(2), point(3)] });
+    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 2, more: false, points: [point(1), point(2)] });
+    const next = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 3, more: false, points: [point(2), point(3)] });
 
     expect(next.points.map((p) => p.id)).toEqual([1, 2, 3]);
-    expect(next.lastItemId).toBe(3);
+    expect(next.lastRowId).toBe(3);
+  });
+
+  it("keeps the points in micrograph order although they arrive out of it", () => {
+    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 101, more: false, points: [point(5)] });
+    const next = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 103, more: false, points: [point(3), point(6)] });
+
+    expect(next.points.map((p) => p.id)).toEqual([3, 5, 6]);
+    expect(next.lastRowId).toBe(103);
   });
 
   it("keeps what it has when nothing is new", () => {
-    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastItemId: 2, more: false, points: [point(1), point(2)] });
-    const next = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: false, lastItemId: 2, more: false, points: [] });
+    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 2, more: false, points: [point(1), point(2)] });
+    const next = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 2, more: false, points: [] });
 
     expect(next).toEqual(first);
   });
 
   it("starts again when the output was rebuilt or another one is followed", () => {
-    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastItemId: 2, more: false, points: [point(1), point(2)] });
+    const first = mergeSeries(EMPTY_SERIES, { setId: 30, kind: "ctf" as const, reset: false, lastRowId: 2, more: false, points: [point(1), point(2)] });
 
-    const rebuilt = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: true, lastItemId: 1, more: false, points: [point(1)] });
-    const other = mergeSeries(first, { setId: 31, kind: "ctf" as const, reset: false, lastItemId: 5, more: false, points: [point(5)] });
+    const rebuilt = mergeSeries(first, { setId: 30, kind: "ctf" as const, reset: true, lastRowId: 1, more: false, points: [point(1)] });
+    const other = mergeSeries(first, { setId: 31, kind: "ctf" as const, reset: false, lastRowId: 5, more: false, points: [point(5)] });
 
     expect(rebuilt.points.map((p) => p.id)).toEqual([1]);
     expect(other.points.map((p) => p.id)).toEqual([5]);

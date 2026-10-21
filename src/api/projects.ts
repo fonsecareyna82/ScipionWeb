@@ -4805,7 +4805,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
       setId: series.setId ?? null,
       kind: series.kind === "ctf" || series.kind === "micrographs" ? series.kind : null,
       reset: Boolean(series.reset),
-      lastItemId: series.lastItemId ?? null,
+      lastRowId: series.lastRowId ?? null,
       more: Boolean(series.more),
       points: list(series.points).map((point: any) => ({ ...point, alerts: list(point?.alerts) })),
     },
