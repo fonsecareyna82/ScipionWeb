@@ -70,6 +70,7 @@ import {
   TagsIcon,
   Terminal,
   LayoutDashboard,
+  Activity,
   AlertTriangle,
   Trash2,
   Play,
@@ -121,6 +122,7 @@ import WebPickingSessions from "@/components/picking/WebPickingSessions";
 import { loadSignedNodeThumbnails, type SignedThumbnailList } from "@/utils/signed-thumbnails";
 import CompareRunsDialog, { type CompareRunCandidate } from "@/components/protocol/CompareRunsDialog";
 import ProjectOverviewPanel from "@/components/projects/ProjectOverviewPanel";
+import StreamingMonitorWindow from "@/components/monitor/StreamingMonitorWindow";
 import ParameterHistoryDialog from "@/components/protocol/ParameterHistoryDialog";
 
 
@@ -1302,6 +1304,7 @@ export default function ProjectPage() {
   // Tags: the list and the assignments live in useProjectTags (below, once projectId is known).
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const [historyProtocolId, setHistoryProtocolId] = useState<string | null>(null);
   const [compareRuns, setCompareRuns] = useState<{ baseId: string; otherId: string | null } | null>(null);
   const [tagFilterIds, setTagFilterIds] = useState<string[]>([]);
@@ -9733,6 +9736,18 @@ export default function ProjectPage() {
                   </button>
                 )}
 
+                {svc.fetchStreamingMonitor && getProjectId() != null && (
+                  <button
+                    type="button"
+                    title="Streaming monitor"
+                    aria-label="Streaming monitor"
+                    onClick={() => setMonitorOpen(true)}
+                    className="pp-flowControlBtn"
+                  >
+                    <Activity className="pp-btnIcon" />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="pp-flowControlBtn pp-logsToggle"
@@ -10895,6 +10910,15 @@ export default function ProjectPage() {
             fetchDiskUsage={overviewSources.fetchDiskUsage}
             onOpenProtocol={openProtocolFromOverview}
             onClose={closeOverview}
+          />
+        )}
+
+        {svc.fetchStreamingMonitor && monitorOpen && getProjectId() != null && (
+          <StreamingMonitorWindow
+            open
+            projectId={getProjectId()!}
+            projectLabel={project?.name}
+            onClose={() => setMonitorOpen(false)}
           />
         )}
 

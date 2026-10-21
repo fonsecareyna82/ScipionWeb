@@ -27,6 +27,7 @@ import { AppMuiThemeProvider } from "./theme/AppMuiThemeProvider";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
+import ProjectMonitor from "./pages/Dashboard/projects/ProjectMonitor";
 
 class WidgetErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -657,6 +658,7 @@ export function mountProjectPageWidget({
                     <DragProvider>
                       <Routes>
                         <Route path="/project/load/:projectName" element={<ProjectPage />} />
+                        <Route path="/project/:projectId/monitor" element={<ProjectMonitor />} />
                         <Route path="*" element={<Navigate to={initialPath} replace />} />
                       </Routes>
                     </DragProvider>

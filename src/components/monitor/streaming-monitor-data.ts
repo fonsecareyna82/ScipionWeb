@@ -1,0 +1,96 @@
+// What the streaming monitor keeps between polls: the points it has, and the alerts they make.
+import type {
+  StreamingMonitor,
+  StreamingMonitorPoint,
+  StreamingMonitorThresholdName,
+} from "@/services/ProjectService";
+
+export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
+  minDefocus: "Defocus below",
+  maxDefocus: "Defocus above",
+  maxAstigmatism: "Astigmatism above",
+  maxResolution: "CTF resolution worse than",
+  maxFrameShift: "Frame shift above",
+  maxTotalDrift: "Total drift above",
+};
+
+export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
+  "minDefocus",
+  "maxDefocus",
+  "maxAstigmatism",
+  "maxResolution",
+  "maxFrameShift",
+  "maxTotalDrift",
+];
+
+export type SeriesState = {
+  setId: number | null;
+  lastItemId: number | null;
+  points: StreamingMonitorPoint[];
+};
+
+export const EMPTY_SERIES: SeriesState = { setId: null, lastItemId: null, points: [] };
+
+/** The points after this answer: the new ones added, or only them when the output was rebuilt. */
+export function mergeSeries(previous: SeriesState, answer: StreamingMonitor["series"]): SeriesState {
+  const restart = answer.reset || answer.setId !== previous.setId;
+  const kept = restart ? [] : previous.points;
+  const known = new Set(kept.map((point) => point.id));
+  const added = answer.points.filter((point) => !known.has(point.id));
+  return {
+    setId: answer.setId,
+    lastItemId: answer.lastItemId ?? (restart ? null : previous.lastItemId),
+    points: added.length ? [...kept, ...added] : kept,
+  };
+}
+
+/** A run of consecutive micrographs past the same threshold. */
+export type AlertEpisode = {
+  kind: StreamingMonitorThresholdName;
+  first: StreamingMonitorPoint;
+  last: StreamingMonitorPoint;
+  count: number;
+  /** The newest micrograph still goes past it. */
+  ongoing: boolean;
+};
+
+/**
+ * One alert per run of consecutive micrographs past a threshold, newest first: it does not repeat until
+ * a micrograph is back in range. Failed estimations neither start nor end a run.
+ */
+export function alertEpisodes(points: StreamingMonitorPoint[]): AlertEpisode[] {
+  const open = new Map<StreamingMonitorThresholdName, AlertEpisode>();
+  const episodes: AlertEpisode[] = [];
+  for (const point of points) {
+    if (point.failed) continue;
+    const kinds = new Set(point.alerts);
+    for (const [kind, episode] of open) {
+      if (!kinds.has(kind)) {
+        episode.ongoing = false;
+        open.delete(kind);
+      }
+    }
+    for (const kind of kinds) {
+      const episode = open.get(kind);
+      if (episode) {
+        episode.last = point;
+        episode.count += 1;
+      } else {
+        const started: AlertEpisode = { kind, first: point, last: point, count: 1, ongoing: true };
+        open.set(kind, started);
+        episodes.push(started);
+      }
+    }
+  }
+  return episodes.reverse();
+}
+
+export function formatAngstrom(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(digits)} Å`;
+}
+
+/** Defocus is shown in µm, as in the facilities report; thresholds stay in Å. */
+export function toMicrons(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : value / 10000;
+}

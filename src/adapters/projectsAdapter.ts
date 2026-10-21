@@ -5,6 +5,8 @@ import { BASE_URL } from "@/config";
 import type {
   ProjectService,
   ProjectPayload,
+  StreamingMonitorQuery,
+  StreamingMonitorThresholds,
   ImportProjectPayload,
   PointerSelectableSetItemsOptions,
   PointerSelectableSetItemsPage,
@@ -119,6 +121,10 @@ const defaultService: ProjectService = {
     api.fetchProjectThumbnails(toId(projectId), opts),
   fetchProjectRevision: (projectId: Id) => api.fetchProjectRevision(toId(projectId)),
   fetchProjectOverview: (projectId: Id) => api.fetchProjectOverview(toId(projectId)),
+  fetchStreamingMonitor: (projectId: Id, query?: StreamingMonitorQuery) =>
+    api.fetchStreamingMonitor(toId(projectId), query),
+  saveStreamingMonitorThresholds: (projectId: Id, thresholds: Partial<StreamingMonitorThresholds>) =>
+    api.saveStreamingMonitorThresholds(toId(projectId), thresholds),
   fetchProtocolLaunches: (projectId: Id, protocolId: Id) => api.fetchProtocolLaunches(toId(projectId), toId(protocolId)),
   fetchProjectDiskUsage: (projectId: Id, opts?: { refresh?: boolean }) => api.fetchProjectDiskUsage(toId(projectId), opts),
   fetchProtocolActivity: (since?: string | null) => api.fetchProtocolActivity(since),

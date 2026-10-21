@@ -65,6 +65,9 @@ import {
   PickingPickResult,
   ProjectRevision,
   ProjectOverview,
+  StreamingMonitor,
+  StreamingMonitorQuery,
+  StreamingMonitorThresholds,
   ProtocolLaunch,
   ProjectDiskUsage,
   BrowseOptions,
@@ -4776,6 +4779,50 @@ export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevisi
   if (!res.ok) throw await toApiError(res, "The project revision could not be read");
   const raw = await safeJson<any>(res);
   return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
+}
+
+export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonitorQuery = {}): Promise<StreamingMonitor> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor${suffix}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The streaming monitor could not be read");
+  const raw = await safeJson<any>(res);
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  const series = raw?.series && typeof raw.series === "object" ? raw.series : {};
+  return {
+    now: String(raw?.now ?? ""),
+    streaming: Boolean(raw?.streaming),
+    stages: list(raw?.stages),
+    ctfOutputs: list(raw?.ctfOutputs),
+    thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
+    series: {
+      setId: series.setId ?? null,
+      kind: series.kind === "ctf" || series.kind === "micrographs" ? series.kind : null,
+      reset: Boolean(series.reset),
+      lastItemId: series.lastItemId ?? null,
+      more: Boolean(series.more),
+      points: list(series.points).map((point: any) => ({ ...point, alerts: list(point?.alerts) })),
+    },
+  };
+}
+
+export async function saveStreamingMonitorThresholds(
+  projectId: Id,
+  thresholds: Partial<StreamingMonitorThresholds>,
+): Promise<StreamingMonitorThresholds> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/thresholds`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(thresholds) },
+  );
+  if (!res.ok) throw await toApiError(res, "The monitor thresholds could not be saved");
+  const raw = await safeJson<any>(res);
+  return raw?.thresholds ?? {};
 }
 
 export async function fetchProjectOverview(projectId: Id): Promise<ProjectOverview> {

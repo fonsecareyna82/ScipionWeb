@@ -1586,6 +1586,86 @@ export type ProjectDiskUsage = {
   computing: boolean;
 };
 
+/** One stage of a streaming chain: the output it follows and how fast it grows. */
+export type StreamingMonitorStage = {
+  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles";
+  setId: number;
+  protocolId: string;
+  protocolClassName: string;
+  label: string;
+  status: string;
+  outputName: string;
+  setClassName: string;
+  items: number;
+  maxItemId: number | null;
+  /** The output is still open: more items come. */
+  streaming: boolean;
+  /** Items per minute over the last 10 minutes. */
+  perMinute: number;
+  trend: "up" | "down" | "steady";
+  firstAt: string | null;
+  lastAt: string | null;
+  /** Items of the stage before not processed here yet; null where it does not apply. */
+  behind: number | null;
+};
+
+export type StreamingMonitorThresholdName =
+  | "minDefocus"
+  | "maxDefocus"
+  | "maxAstigmatism"
+  | "maxResolution"
+  | "maxFrameShift"
+  | "maxTotalDrift";
+
+/** Thresholds in A; null raises no alert. */
+export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
+
+/** The CTF of one micrograph and the drift of its movie. Values in A. */
+export type StreamingMonitorPoint = {
+  /** The CTF id, which is also its micrograph's. */
+  id: number;
+  time: string | null;
+  micrographName?: string;
+  enabled: boolean;
+  failed?: boolean;
+  defocusU?: number;
+  defocusV?: number;
+  astigmatism?: number;
+  resolution?: number;
+  fitQuality?: number;
+  phaseShift?: number;
+  totalDrift?: number;
+  maxFrameShift?: number;
+  /** The thresholds this point goes past. */
+  alerts: StreamingMonitorThresholdName[];
+};
+
+/** The live monitor of a project's stream; the series holds the points after the ones asked for. */
+export type StreamingMonitor = {
+  now: string;
+  streaming: boolean;
+  stages: StreamingMonitorStage[];
+  ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  thresholds: StreamingMonitorThresholds;
+  series: {
+    setId: number | null;
+    /** What the points come from: the CTF output, or before there is one the micrographs (drift only). */
+    kind: "ctf" | "micrographs" | null;
+    /** The points the caller had belong to an output that was rebuilt: drop them. */
+    reset: boolean;
+    lastItemId: number | null;
+    /** More points wait: ask again at once. */
+    more: boolean;
+    points: StreamingMonitorPoint[];
+  };
+};
+
+export type StreamingMonitorQuery = {
+  ctfSetId?: number | null;
+  afterSetId?: number | null;
+  afterItemId?: number | null;
+};
+
 /** A fingerprint of what the project graph shows. */
 export type ProjectRevision = {
   revision: string;
@@ -1893,6 +1973,11 @@ export interface ProjectService<
   /** A fingerprint of the project graph, to tell cheaply whether it changed elsewhere. */
   fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
   fetchProjectOverview?(projectId: Id): Promise<ProjectOverview>;
+  fetchStreamingMonitor?(projectId: Id, query?: StreamingMonitorQuery): Promise<StreamingMonitor>;
+  saveStreamingMonitorThresholds?(
+    projectId: Id,
+    thresholds: Partial<StreamingMonitorThresholds>,
+  ): Promise<StreamingMonitorThresholds>;
   fetchProtocolLaunches?(projectId: Id, protocolId: Id): Promise<ProtocolLaunch[]>;
   fetchProjectDiskUsage?(projectId: Id, opts?: { refresh?: boolean }): Promise<ProjectDiskUsage>;
   /** Runs of the user's projects that ended since the previous call (none on a first call). */
