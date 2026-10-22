@@ -311,6 +311,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
   const [ctfSetId, setCtfSetId] = useState<number | null>(null);
   const [coordinatesSetId, setCoordinatesSetId] = useState<number | null>(null);
+  const [classesSetId, setClassesSetId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   // The tomography view: chosen, or the one shown when the project has tilt series and nothing else to follow
   const [view, setView] = useState<"spa" | "tomo" | null>(null);
@@ -334,6 +335,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         answer = await svc.fetchStreamingMonitor(projectId, {
           ctfSetId,
           coordinatesSetId,
+          classesSetId,
           afterSetId: current.setId,
           afterRowId: current.lastRowId,
           afterPickSetId: picks.setId,
@@ -354,7 +356,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     } finally {
       loadingRef.current = false;
     }
-  }, [svc, projectId, ctfSetId, coordinatesSetId]);
+  }, [svc, projectId, ctfSetId, coordinatesSetId, classesSetId]);
 
   useEffect(() => {
     void load(true);
@@ -498,6 +500,23 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 onChange={(event) => setCoordinatesSetId(Number(event.target.value))}
               >
                 {monitor.coordinatesOutputs.map((output) => (
+                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                ))}
+              </select>
+            ) : null}
+            {mode === "spa" && monitor && monitor.classesOutputs.length > 1 ? (
+              <select
+                aria-label="2D classes to follow"
+                title="2D classes to follow"
+                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                value={monitor.classes?.setId ?? ""}
+                onChange={(event) => {
+                  // The classes asked for bring their own picking
+                  setCoordinatesSetId(null);
+                  setClassesSetId(Number(event.target.value));
+                }}
+              >
+                {monitor.classesOutputs.map((output) => (
                   <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
                 ))}
               </select>

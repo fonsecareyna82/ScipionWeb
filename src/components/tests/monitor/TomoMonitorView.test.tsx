@@ -26,7 +26,7 @@ const THRESHOLDS = {
 
 function spa(stages: StreamingMonitor["stages"] = []): StreamingMonitor {
   return {
-    now: "", streaming: false, stages, ctfOutputs: [], coordinatesOutputs: [], thresholds: THRESHOLDS,
+    now: "", streaming: false, stages, ctfOutputs: [], coordinatesOutputs: [], classesOutputs: [], thresholds: THRESHOLDS,
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
     classes: null, tomography: true,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },

@@ -5,6 +5,7 @@ import type { StreamingMonitorStage } from "@/services/ProjectService";
 
 export const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   movies: "Movies",
+  alignedMicrographs: "Aligned micrographs",
   micrographs: "Micrographs",
   ctf: "CTF",
   coordinates: "Coordinates",

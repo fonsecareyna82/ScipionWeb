@@ -1592,7 +1592,7 @@ export type ProjectDiskUsage = {
 
 /** One stage of a streaming chain: the output it follows and how fast it grows. */
 export type StreamingMonitorStage = {
-  stage: "movies" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
+  stage: "movies" | "alignedMicrographs" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
     | "tiltseries" | "ctftomo" | "aligned" | "tomograms";
   setId: number;
   protocolId: string;
@@ -1683,6 +1683,8 @@ export type StreamingMonitor = {
   ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   /** The pickings the monitor could follow (it follows the one that goes furthest unless told). */
   coordinatesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  /** The 2D classifications of the project (the monitor follows the nearest to the picking unless told). */
+  classesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   thresholds: StreamingMonitorThresholds;
   series: {
     setId: number | null;
@@ -1767,6 +1769,7 @@ export type TomoMonitorTilt = {
 export type StreamingMonitorQuery = {
   ctfSetId?: number | null;
   coordinatesSetId?: number | null;
+  classesSetId?: number | null;
   afterSetId?: number | null;
   afterRowId?: number | null;
   afterPickSetId?: number | null;

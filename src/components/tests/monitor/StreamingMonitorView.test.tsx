@@ -47,7 +47,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
         streaming: true, perMinute: 1.2, trend: "steady", behind: 3 },
     ],
     ctfOutputs: [{ setId: 30, protocolId: "3", label: "ctffind", outputName: "outputCTF" }],
-    coordinatesOutputs: [],
+    coordinatesOutputs: [], classesOutputs: [],
     thresholds: THRESHOLDS,
     series: { setId: 30, kind: "ctf", reset: false, lastRowId: points.length ? points[points.length - 1].id : null,
               more: false, points, ...extra },
@@ -79,7 +79,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
@@ -232,6 +232,35 @@ describe("StreamingMonitorView", () => {
       coordinatesSetId: 41, afterSetId: null, afterPickSetId: null })));
   });
 
+  it("follows the 2D classes chosen among several, with their own picking", async () => {
+    const several = answer([point(1)]);
+    several.classesOutputs = [
+      { setId: 90, protocolId: "9", label: "alignPCA-2D", outputName: "outputClasses" },
+      { setId: 91, protocolId: "19", label: "alignPCA-2D (2)", outputName: "outputClasses" },
+    ];
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(several);
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+    await screen.findByText("ctffind");
+
+    fireEvent.change(screen.getByLabelText("2D classes to follow"), { target: { value: "91" } });
+
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      classesSetId: 91, coordinatesSetId: null, afterSetId: null })));
+  });
+
+  it("names the micrographs the aligner wrote apart from the ones the CTF reads", async () => {
+    const withAligned = answer([point(1)]);
+    withAligned.stages = [{ ...withAligned.stages[0], stage: "alignedMicrographs", setId: 19, label: "motioncor" },
+                          ...withAligned.stages];
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(withAligned) }),
+    });
+
+    expect(await screen.findByText("Aligned micrographs")).toBeInTheDocument();
+    expect(screen.getByText("Micrographs")).toBeInTheDocument();
+  });
+
   it("asks only for the points after the last one it has", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchStreamingMonitor = vi.fn()
@@ -246,7 +275,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -288,7 +317,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
   });
 
   it("opens the micrograph of a point", async () => {
@@ -325,7 +354,7 @@ describe("StreamingMonitorView", () => {
       maxTotalDrift: 45, minParticles: null,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, coordinatesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
+      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {
