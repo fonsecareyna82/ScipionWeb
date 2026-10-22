@@ -353,6 +353,17 @@ describe("StreamingMonitorView", () => {
     expect(fetchCTFMicrographImageObjectUrl).not.toHaveBeenCalled();
   });
 
+  it("tells how long each backlog takes to clear, or that it does not move", async () => {
+    const busy = answer([point(1)]);
+    busy.stages = [{ ...busy.stages[0], etaMinutes: 83.6 }, { ...busy.stages[1], stalled: true }];
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(busy) }),
+    });
+
+    expect(await screen.findByText("· about 1 h 24 min")).toBeInTheDocument();
+    expect(screen.getByText("· stalled")).toBeInTheDocument();
+  });
+
   it("is a quality overview when nothing streams: no rates or backlogs, micrographs in their order", async () => {
     const finished = answer([point(4), point(9)]);
     finished.streaming = false;

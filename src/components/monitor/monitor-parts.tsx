@@ -32,6 +32,16 @@ function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
 }
 
 /** ``live``: something still streams; without it rates and backlogs say nothing (all was processed). */
+/** "about 12 min", "about 1 h 20 min", "under a minute". */
+export function formatEta(minutes: number): string {
+  if (minutes < 1) return "under a minute";
+  const rounded = Math.round(minutes);
+  if (rounded < 60) return `about ${rounded} min`;
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return rest ? `about ${hours} h ${rest} min` : `about ${hours} h`;
+}
+
 export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage; live?: boolean }) {
   return (
     <div className="min-w-[150px] flex-1 rounded-xl border border-app-border bg-app-surface p-3" data-testid="monitor-stage">
@@ -72,6 +82,14 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
         <div className="mt-1 text-xs font-medium text-app-warning">
           {stage.behind.toLocaleString()}
           {stage.micrographs !== undefined ? " micrographs" : stage.stage === "classes2d" ? " particles" : ""} waiting
+          {stage.etaMinutes !== undefined ? (
+            <span className="font-normal text-app-muted" title="At the rate of the last 10 minutes">
+              {` · ${formatEta(stage.etaMinutes)}`}
+            </span>
+          ) : null}
+          {stage.stalled ? (
+            <span className="font-normal" title="Nothing was processed in the last 10 minutes"> · stalled</span>
+          ) : null}
         </div>
       ) : null}
       <div className="mt-1 truncate text-[11px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>

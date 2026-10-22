@@ -1617,6 +1617,10 @@ export type StreamingMonitorStage = {
   counting?: boolean;
   /** 2D classes: the particles classified so far. */
   particles?: number | null;
+  /** How long the backlog takes to clear at the rate of the last minutes. */
+  etaMinutes?: number;
+  /** There is a backlog and nothing moved in the last minutes. */
+  stalled?: boolean;
   /** Coordinates: the micrographs the picker reads (e.g. those a CTF consensus kept), which it waits on. */
   pickedFrom?: { protocolId: string; label: string; outputName: string; items: number };
   /** 2D classes: the particles the classifier reads when a filter is in between, which it waits on. */

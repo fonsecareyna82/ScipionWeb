@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StreamingMonitorPoint } from "@/services/ProjectService";
+import { formatEta } from "@/components/monitor/monitor-parts";
 import { EMPTY_PICKING, EMPTY_SERIES, alertEpisodes, mergePicking, mergeSeries, withParticles } from "@/components/monitor/streaming-monitor-data";
 
 function point(id: number, alerts: StreamingMonitorPoint["alerts"] = [], extra: Partial<StreamingMonitorPoint> = {}) {
@@ -97,5 +98,13 @@ describe("withParticles", () => {
     const shown = withParticles([point(1)], { "1": 5 }, { ...thresholds, minParticles: null });
 
     expect(shown[0].alerts).toEqual([]);
+  });
+});
+
+
+describe("formatEta", () => {
+  it("says the time in words a person reads at a glance", () => {
+    expect([0.4, 12.4, 60, 83.6].map(formatEta)).toEqual(["under a minute", "about 12 min", "about 1 h",
+                                                          "about 1 h 24 min"]);
   });
 });
