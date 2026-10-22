@@ -93,6 +93,10 @@ type FloatingWindowProps = {
     minHeight?: number;
 
     resizable?: boolean;
+
+    /** Where the window goes: a body of another browser window (an external monitor or viewer). By default,
+     *  the project page's portal root. Its size and events are that window's. */
+    container?: HTMLElement;
 };
 
 
@@ -137,10 +141,10 @@ function clampWindowPosition(
     y: number,
     width: number,
     height: number,
+    view: Window | undefined = typeof window === "undefined" ? undefined : window,
 ): FloatingWindowPosition {
     if (
-        typeof window ===
-        "undefined"
+        !view
     ) {
         return {
             x,
@@ -151,7 +155,7 @@ function clampWindowPosition(
     const maxX =
         Math.max(
             VIEWPORT_MARGIN,
-            window.innerWidth -
+            view.innerWidth -
             width -
             VIEWPORT_MARGIN,
         );
@@ -159,7 +163,7 @@ function clampWindowPosition(
     const maxY =
         Math.max(
             VIEWPORT_MARGIN,
-            window.innerHeight -
+            view.innerHeight -
             height -
             VIEWPORT_MARGIN,
         );
@@ -198,7 +202,16 @@ function FloatingWindow({
     minWidth = 640,
     minHeight = 420,
     resizable = true,
+    container,
 }: FloatingWindowProps) {
+    const hostDocument =
+        container?.ownerDocument ??
+        (typeof document === "undefined" ? undefined : document);
+
+    const hostWindow =
+        (hostDocument?.defaultView ??
+        (typeof window === "undefined" ? undefined : window)) as Window;
+
     const windowRef =
         useRef<HTMLDivElement | null>(
             null,
@@ -287,7 +300,7 @@ function FloatingWindow({
 
             floatingWindowOpenCount += 1;
 
-            document.body.classList.add(
+            hostDocument!.body.classList.add(
                 "sfw-active",
             );
 
@@ -301,7 +314,7 @@ function FloatingWindow({
                 if (
                     floatingWindowOpenCount === 0
                 ) {
-                    document.body.classList.remove(
+                    hostDocument!.body.classList.remove(
                         "sfw-active",
                     );
                 }
@@ -351,6 +364,7 @@ function FloatingWindow({
                                 current.y,
                                 rect.width,
                                 rect.height,
+                                hostWindow,
                             );
 
                         if (
@@ -420,19 +434,20 @@ function FloatingWindow({
             const centered =
                 clampWindowPosition(
                     (
-                        window.innerWidth -
+                        hostWindow.innerWidth -
                         rect.width
                     ) /
                     2,
 
                     (
-                        window.innerHeight -
+                        hostWindow.innerHeight -
                         rect.height
                     ) /
                     2,
 
                     rect.width,
                     rect.height,
+                    hostWindow,
                 );
 
             setPosition(
@@ -460,13 +475,13 @@ function FloatingWindow({
                     clampCurrentPosition();
                 };
 
-            window.addEventListener(
+            hostWindow.addEventListener(
                 "resize",
                 handleResize,
             );
 
             return () => {
-                window.removeEventListener(
+                hostWindow.removeEventListener(
                     "resize",
                     handleResize,
                 );
@@ -615,6 +630,7 @@ function FloatingWindow({
 
                     rect.width,
                     rect.height,
+                    hostWindow,
                 ),
             );
 
@@ -756,7 +772,7 @@ function FloatingWindow({
                     minWidth,
                     Math.max(
                         0,
-                        window.innerWidth -
+                        hostWindow.innerWidth -
                         VIEWPORT_MARGIN *
                         2,
                     ),
@@ -767,7 +783,7 @@ function FloatingWindow({
                     minHeight,
                     Math.max(
                         0,
-                        window.innerHeight -
+                        hostWindow.innerHeight -
                         VIEWPORT_MARGIN *
                         2,
                     ),
@@ -812,7 +828,7 @@ function FloatingWindow({
                     Math.max(
                         effectiveMinWidth,
 
-                        window.innerWidth -
+                        hostWindow.innerWidth -
                         state.startX -
                         VIEWPORT_MARGIN,
                     );
@@ -859,7 +875,7 @@ function FloatingWindow({
                     Math.max(
                         effectiveMinHeight,
 
-                        window.innerHeight -
+                        hostWindow.innerHeight -
                         state.startY -
                         VIEWPORT_MARGIN,
                     );
@@ -971,6 +987,7 @@ function FloatingWindow({
 
 
     const portalContainer =
+        container ??
         getFloatingWindowPortalContainer();
 
     if (!portalContainer) {

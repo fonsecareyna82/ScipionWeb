@@ -442,3 +442,23 @@ describe(
         );
     },
 );
+
+describe("FloatingWindow in another browser window", () => {
+    it("goes to the container it is given, not to the project page", () => {
+        const frame = document.createElement("iframe");
+        document.body.appendChild(frame);
+        const otherBody = frame.contentDocument!.body;
+
+        const { unmount } = render(
+            <FloatingWindow open onClose={vi.fn()} title="Micrograph" ariaLabel="Image in the monitor window"
+                            container={otherBody}>
+                <p>image</p>
+            </FloatingWindow>,
+        );
+
+        expect(otherBody.querySelector("[aria-label='Image in the monitor window']")).not.toBeNull();
+        expect(document.querySelector("[aria-label='Image in the monitor window']")).toBeNull();
+        unmount();
+        frame.remove();
+    });
+});

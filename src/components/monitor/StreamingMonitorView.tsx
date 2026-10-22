@@ -645,7 +645,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         )}
       </div>
 
-      <ImagePreviewDialog image={preview} onClose={() => setPreview(null)} />
+      {/* In the window the monitor is in, also when it was moved to another one */}
+      <ImagePreviewDialog image={preview} onClose={() => setPreview(null)}
+                          container={rootRef.current?.ownerDocument.body ?? undefined} />
       {editing && monitor ? (
         <StreamingMonitorThresholdsDialog thresholds={mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds}
                                           names={mode === "tomo" ? TOMO_THRESHOLD_ORDER : THRESHOLD_ORDER}
