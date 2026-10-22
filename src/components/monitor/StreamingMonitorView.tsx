@@ -36,7 +36,7 @@ import {
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
-import { HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
+import { HelpHint, PlotHeader, StageCard, plotBox, plotFrame } from "./monitor-parts";
 import TomoMonitorView from "./TomoMonitorView";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
@@ -183,8 +183,7 @@ function MonitorPlot({
       line: { color: tokens.danger, width: 1, dash: "dash" },
     }));
   const layout = {
-    ...plotFrame(PLOT_HEIGHT, spec.series.length > 1),
-    title: { text: spec.title, font: { size: 13, color: tokens.text }, x: 0.02 },
+    ...plotFrame(PLOT_HEIGHT, spec.series.length > 1, false),
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
@@ -197,10 +196,8 @@ function MonitorPlot({
   };
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
-      <div className="absolute right-3 top-3 z-10">
-        <HelpHint text={`${spec.help} Each point is a micrograph, at the time it was processed; red ones go past `
-          + "a threshold (the dashed lines). Click one to see the micrograph."} />
-      </div>
+      <PlotHeader title={spec.title} help={`${spec.help} Each point is a micrograph, at the time it was processed; `
+        + "red ones go past a threshold (the dashed lines). Click one to see the micrograph."} />
       <Plot
         data={data}
         layout={layout}
@@ -269,10 +266,9 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
     });
   }
   const layout = {
-    ...plotFrame(HISTOGRAM_HEIGHT, recent.length > 0),
+    ...plotFrame(HISTOGRAM_HEIGHT, recent.length > 0, false),
     barmode: "overlay",
     bargap: 0.05,
-    title: { text: spec.title, font: { size: 13, color: tokens.text }, x: 0.02 },
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
@@ -282,9 +278,8 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
   };
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
-      <div className="absolute right-3 top-3 z-10">
-        <HelpHint text={spec.help + (recent.length ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
-      </div>
+      <PlotHeader title={spec.title} help={spec.help + (recent.length
+        ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
       <Plot data={data} layout={layout} config={{ displaylogo: false, responsive: true }} useResizeHandler
             style={plotBox(HISTOGRAM_HEIGHT)} />
     </div>

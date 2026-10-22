@@ -35,15 +35,27 @@ function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
 /** ``live``: something still streams; without it rates and backlogs say nothing (all was processed). */
 /**
  * The frame of a plot of the monitor: its height (also the height of its box, so the plot never grows past
- * its card) and, with a legend, room for it between the title and the plotting area.
+ * its card) and, with a legend, room for it between the title and the plotting area. ``titled``: Plotly
+ * draws the title; without it the card shows the title above the plot (with its help, clear of Plotly's
+ * buttons).
  */
-export function plotFrame(height: number, showLegend: boolean) {
+export function plotFrame(height: number, showLegend: boolean, titled = true) {
   return {
     autosize: true,
     height,
-    margin: { t: showLegend ? 56 : 32, r: 16, b: 40, l: 56 },
+    margin: { t: (titled ? 32 : 8) + (showLegend ? 24 : 0), r: 16, b: 40, l: 56 },
     legend: { orientation: "h", x: 1, xanchor: "right", y: 1, yanchor: "bottom" },
   };
+}
+
+/** The title of a plot card, with its help: above the plot, so Plotly's buttons never cover it. */
+export function PlotHeader({ title, help }: { title: string; help: string }) {
+  return (
+    <div className="flex items-center gap-1.5 px-1 pb-0.5 text-[13px] text-app-text">
+      <span className="truncate">{title}</span>
+      <HelpHint text={help} />
+    </div>
+  );
 }
 
 /** The box of a plot: as high as its frame, as wide as its card, never wider. */
