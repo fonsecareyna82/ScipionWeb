@@ -54,6 +54,8 @@ type ImagePreviewDialogProps = {
   onClose: () => void;
   ariaLabel?: string;
   className?: string;
+  /** Where the window goes when it is not the project page: the body of another browser window. */
+  container?: HTMLElement;
 };
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -70,6 +72,7 @@ export function ImagePreviewDialog({
   onClose,
   ariaLabel = "Image preview",
   className = "image-preview-window",
+  container,
 }: ImagePreviewDialogProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -405,6 +408,25 @@ export function ImagePreviewDialog({
   }>({ active: false, startX: 0, startY: 0, originPanX: 0, originPanY: 0 });
   const [isPanning, setIsPanning] = useState(false);
 
+  // The pointer is followed in the window the drag starts in: the preview can be in another browser window
+  const panViewRef = useRef<Window | null>(null);
+
+  const handlePanMove = useCallback((event: MouseEvent) => {
+    if (!dragStateRef.current.active) return;
+    setPanX(dragStateRef.current.originPanX + (event.clientX - dragStateRef.current.startX));
+    setPanY(dragStateRef.current.originPanY + (event.clientY - dragStateRef.current.startY));
+  }, []);
+
+  const handlePanEnd = useCallback(() => {
+    const view = panViewRef.current;
+    panViewRef.current = null;
+    view?.removeEventListener("mousemove", handlePanMove);
+    view?.removeEventListener("mouseup", handlePanEnd);
+    if (!dragStateRef.current.active) return;
+    dragStateRef.current.active = false;
+    setIsPanning(false);
+  }, [handlePanMove]);
+
   const handlePanStart = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!previewUrl || zoom <= 1) return;
@@ -416,31 +438,17 @@ export function ImagePreviewDialog({
         originPanY: panY,
       };
       setIsPanning(true);
+      const view = event.currentTarget.ownerDocument.defaultView ?? window;
+      panViewRef.current?.removeEventListener("mousemove", handlePanMove);
+      panViewRef.current?.removeEventListener("mouseup", handlePanEnd);
+      panViewRef.current = view;
+      view.addEventListener("mousemove", handlePanMove);
+      view.addEventListener("mouseup", handlePanEnd);
     },
-    [previewUrl, zoom, panX, panY],
+    [previewUrl, zoom, panX, panY, handlePanMove, handlePanEnd],
   );
 
-  useEffect(() => {
-    const handleMove = (event: MouseEvent) => {
-      if (!dragStateRef.current.active) return;
-      setPanX(dragStateRef.current.originPanX + (event.clientX - dragStateRef.current.startX));
-      setPanY(dragStateRef.current.originPanY + (event.clientY - dragStateRef.current.startY));
-    };
-
-    const handleUp = () => {
-      if (!dragStateRef.current.active) return;
-      dragStateRef.current.active = false;
-      setIsPanning(false);
-    };
-
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-  }, []);
+  useEffect(() => handlePanEnd, [handlePanEnd]);
 
 
   const previewTitle = (
@@ -965,6 +973,7 @@ export function ImagePreviewDialog({
           onClose={
             handleClosePreview
           }
+          container={container}
           className={className}
           ariaLabel={ariaLabel}
           closeAriaLabel="Close image preview"

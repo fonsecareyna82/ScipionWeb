@@ -65,6 +65,12 @@ import {
   PickingPickResult,
   ProjectRevision,
   ProjectOverview,
+  StreamingMonitor,
+  StreamingMonitorQuery,
+  TomoMonitor,
+  TomoMonitorTilt,
+  ObjectUrlResult as MonitorObjectUrlResult,
+  StreamingMonitorThresholds,
   ProtocolLaunch,
   ProjectDiskUsage,
   BrowseOptions,
@@ -3923,6 +3929,7 @@ export async function fetchMetadataImageCellObjectUrl(
     inline?: boolean;
     format?: string;
     contrastMode?: MetadataContrastMode;
+    version?: string;
     signal?: AbortSignal;
   } = {},
 ): Promise<{ url: string; revoke: () => void }> {
@@ -3936,6 +3943,7 @@ export async function fetchMetadataImageCellObjectUrl(
     rowId,
     sortBy,
     asc,
+    version,
   } = opts;
 
   const baseUrl = getMetadataImageCellUrl(
@@ -3945,7 +3953,7 @@ export async function fetchMetadataImageCellObjectUrl(
     tableName,
     rowIndex,
     columnName,
-    { size, applyTransform, inline, format, rowId, sortBy, asc, contrastMode },
+    { size, applyTransform, inline, format, rowId, sortBy, asc, contrastMode, version },
   );
 
   // Opt into browser HTTP caching (fetchWithAuth defaults to no-store):
@@ -3993,6 +4001,7 @@ export function getMetadataImageCellUrl(
     inline?: boolean;
     format?: string;
     contrastMode?: MetadataContrastMode;
+    version?: string;
   } = {},
 ): string {
   const { size = 256, applyTransform = false, inline = true, format = "png" } =
@@ -4012,6 +4021,7 @@ export function getMetadataImageCellUrl(
   const contrast = metadataContrastParams(opts.contrastMode);
   if (contrast.contrastMode) params.set("contrastMode", contrast.contrastMode);
   if (contrast.volumeView) params.set("volumeView", contrast.volumeView);
+  if (opts.version) params.set("version", opts.version);
 
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodeURIComponent(outputName)}/metadata/tables/${encodeURIComponent(
     tableName,
@@ -4776,6 +4786,119 @@ export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevisi
   if (!res.ok) throw await toApiError(res, "The project revision could not be read");
   const raw = await safeJson<any>(res);
   return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
+}
+
+export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonitorQuery = {}): Promise<StreamingMonitor> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor${suffix}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The streaming monitor could not be read");
+  const raw = await safeJson<any>(res);
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  const series = raw?.series && typeof raw.series === "object" ? raw.series : {};
+  const picking = raw?.picking && typeof raw.picking === "object" ? raw.picking : {};
+  return {
+    now: String(raw?.now ?? ""),
+    streaming: Boolean(raw?.streaming),
+    stages: list(raw?.stages),
+    ctfOutputs: list(raw?.ctfOutputs),
+    coordinatesOutputs: list(raw?.coordinatesOutputs),
+    classesOutputs: list(raw?.classesOutputs),
+    thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
+    series: {
+      setId: series.setId ?? null,
+      kind: series.kind === "ctf" || series.kind === "micrographs" ? series.kind : null,
+      reset: Boolean(series.reset),
+      lastRowId: series.lastRowId ?? null,
+      more: Boolean(series.more),
+      points: list(series.points).map((point: any) => ({ ...point, alerts: list(point?.alerts) })),
+    },
+    classes: raw?.classes && typeof raw.classes === "object" && Array.isArray(raw.classes.classes)
+      ? raw.classes : null,
+    tomography: Boolean(raw?.tomography),
+    picking: {
+      setId: picking.setId ?? null,
+      reset: Boolean(picking.reset),
+      lastRowId: picking.lastRowId ?? null,
+      complete: picking.complete !== false,
+      counts: picking.counts && typeof picking.counts === "object" ? picking.counts : {},
+    },
+  };
+}
+
+function monitorQuery(query: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  return params.toString() ? `?${params.toString()}` : "";
+}
+
+export async function fetchTomoMonitor(projectId: Id, query: { tsSetId?: number | null } = {}): Promise<TomoMonitor> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo${monitorQuery(query)}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The tomography monitor could not be read");
+  const raw = await safeJson<any>(res);
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    now: String(raw?.now ?? ""),
+    streaming: Boolean(raw?.streaming),
+    stages: list(raw?.stages),
+    tiltSeriesOutputs: list(raw?.tiltSeriesOutputs),
+    tomograms: raw?.tomograms && typeof raw.tomograms === "object" ? raw.tomograms : null,
+    thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
+    tiltSeries: list(raw?.tiltSeries).map((row: any) => ({ ...row, alerts: list(row?.alerts) })),
+  };
+}
+
+export async function fetchTomoMonitorTiltSeries(
+  projectId: Id,
+  tsId: string,
+  query: { tsSetId?: number | null } = {},
+): Promise<{ tsId: string; tilts: TomoMonitorTilt[] }> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo/tiltseries${monitorQuery({ tsId, ...query })}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!res.ok) throw await toApiError(res, "The tilt series could not be read");
+  const raw = await safeJson<any>(res);
+  return { tsId: String(raw?.tsId ?? tsId), tilts: Array.isArray(raw?.tilts) ? raw.tilts : [] };
+}
+
+export async function fetchTomoMonitorSliceObjectUrl(
+  projectId: Id,
+  setId: number,
+  itemId: number,
+  opts: { size?: number; signal?: AbortSignal } = {},
+): Promise<MonitorObjectUrlResult> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo/tomograms/${setId}/${itemId}/slice${monitorQuery({ size: opts.size })}`,
+    { method: "GET", cache: "default", signal: opts.signal },
+  );
+  if (!res.ok) throw await toApiError(res, "The tomogram slice could not be read");
+  const url = URL.createObjectURL(await res.blob());
+  return { url, revoke: () => URL.revokeObjectURL(url) };
+}
+
+export async function saveStreamingMonitorThresholds(
+  projectId: Id,
+  thresholds: Partial<StreamingMonitorThresholds>,
+): Promise<StreamingMonitorThresholds> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/thresholds`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(thresholds) },
+  );
+  if (!res.ok) throw await toApiError(res, "The monitor thresholds could not be saved");
+  const raw = await safeJson<any>(res);
+  return raw?.thresholds ?? {};
 }
 
 export async function fetchProjectOverview(projectId: Id): Promise<ProjectOverview> {

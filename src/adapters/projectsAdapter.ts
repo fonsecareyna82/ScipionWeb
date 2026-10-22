@@ -5,6 +5,8 @@ import { BASE_URL } from "@/config";
 import type {
   ProjectService,
   ProjectPayload,
+  StreamingMonitorQuery,
+  StreamingMonitorThresholds,
   ImportProjectPayload,
   PointerSelectableSetItemsOptions,
   PointerSelectableSetItemsPage,
@@ -119,6 +121,16 @@ const defaultService: ProjectService = {
     api.fetchProjectThumbnails(toId(projectId), opts),
   fetchProjectRevision: (projectId: Id) => api.fetchProjectRevision(toId(projectId)),
   fetchProjectOverview: (projectId: Id) => api.fetchProjectOverview(toId(projectId)),
+  fetchStreamingMonitor: (projectId: Id, query?: StreamingMonitorQuery) =>
+    api.fetchStreamingMonitor(toId(projectId), query),
+  saveStreamingMonitorThresholds: (projectId: Id, thresholds: Partial<StreamingMonitorThresholds>) =>
+    api.saveStreamingMonitorThresholds(toId(projectId), thresholds),
+  fetchTomoMonitor: (projectId: Id, query?: { tsSetId?: number | null }) => api.fetchTomoMonitor(toId(projectId), query),
+  fetchTomoMonitorTiltSeries: (projectId: Id, tsId: string, query?: { tsSetId?: number | null }) =>
+    api.fetchTomoMonitorTiltSeries(toId(projectId), tsId, query),
+  fetchTomoMonitorSliceObjectUrl: (projectId: Id, setId: number, itemId: number,
+                                   opts?: { size?: number; signal?: AbortSignal }) =>
+    api.fetchTomoMonitorSliceObjectUrl(toId(projectId), setId, itemId, opts),
   fetchProtocolLaunches: (projectId: Id, protocolId: Id) => api.fetchProtocolLaunches(toId(projectId), toId(protocolId)),
   fetchProjectDiskUsage: (projectId: Id, opts?: { refresh?: boolean }) => api.fetchProjectDiskUsage(toId(projectId), opts),
   fetchProtocolActivity: (since?: string | null) => api.fetchProtocolActivity(since),

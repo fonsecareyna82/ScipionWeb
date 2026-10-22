@@ -23,6 +23,9 @@
   --color-app-disabled: var(--app-text-disabled);
   --color-app-accent: var(--app-accent);
   --color-app-accent-soft: var(--app-accent-soft);
+  --color-app-success: var(--app-success);
+  --color-app-warning: var(--app-warning);
+  --color-app-danger: var(--app-danger);
 }
 
 @font-face {

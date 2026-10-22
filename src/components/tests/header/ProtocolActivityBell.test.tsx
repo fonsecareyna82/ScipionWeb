@@ -7,7 +7,7 @@ vi.mock("@/ProjectServiceContext", () => ({ useProjectService: () => service }))
 const toastMocks = vi.hoisted(() => ({ custom: vi.fn(), dismiss: vi.fn(), error: vi.fn() }));
 vi.mock("react-hot-toast", () => ({ default: toastMocks }));
 
-import ProtocolActivityBell, { protocolLink } from "@/components/header/ProtocolActivityBell";
+import ProtocolActivityBell, { eventLink, protocolLink } from "@/components/header/ProtocolActivityBell";
 
 const ended = {
   projectId: 7, projectName: "Workflow_2D", protocolId: "4", protocolClassName: "XmippProtCTFConsensus",
@@ -87,7 +87,7 @@ describe("ProtocolActivityBell", () => {
       .mockResolvedValue({ now: "T2", live: 0, events: [ended] });
     renderBell();
     fireEvent.click(await screen.findByRole("button", { name: "Protocol activity" }));
-    fireEvent.click(screen.getByLabelText("Notify me when runs end"));
+    fireEvent.click(screen.getByLabelText("Notify me when runs end or the monitor alerts"));
     expect(localStorage.getItem("scipionweb.activity.notifications")).toBe("0");
     fireEvent.click(screen.getByRole("button", { name: "Protocol activity" }));
     await act(async () => { vi.advanceTimersByTime(10000); });
@@ -98,7 +98,25 @@ describe("ProtocolActivityBell", () => {
     expect(await screen.findByText("ctf consensus failed")).toBeInTheDocument();
   });
 
+  it("tells of a monitor alert and opens its project with the monitor", async () => {
+    const alert = {
+      projectId: 7, projectName: "Workflow_2D", protocolId: "5", protocolClassName: "CistemProtCTFFind",
+      label: "Astigmatism above 1000 Å: mic_012 and 2 more", status: "alert", threshold: "maxAstigmatism",
+      endedAt: "2026-10-19T12:01:00+00:00",
+    };
+    service.fetchProtocolActivity.mockResolvedValue({ now: "T1", live: 1, events: [alert] });
+    localStorage.setItem("scipionweb.activity.since", JSON.stringify("T0"));
+    renderBell();
+
+    await waitFor(() => expect(toastMocks.custom).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: /Protocol activity, 1 new/ }));
+    fireEvent.click(screen.getByText("Astigmatism above 1000 Å: mic_012 and 2 more"));
+
+    expect(screen.getByTestId("where")).toHaveTextContent("/project/load/7?monitor=1");
+  });
+
   it("links protocols safely", () => {
+    expect(eventLink({ projectId: 7, protocolId: "12", status: "failed" })).toBe("/project/load/7?protocol=12");
     expect(protocolLink({ projectId: 7, protocolId: "12" })).toBe("/project/load/7?protocol=12");
   });
 });

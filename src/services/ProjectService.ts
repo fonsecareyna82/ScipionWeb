@@ -1520,8 +1520,12 @@ export type ProtocolRunEvent = {
   protocolId: string;
   protocolClassName: string;
   label: string;
-  status: "finished" | "failed" | "aborted" | "interactive" | string;
+  /** "alert": micrographs of a streaming project started going past a monitor threshold. */
+  status: "finished" | "failed" | "aborted" | "interactive" | "alert" | string;
+  /** When the run ended; for an alert, when its first micrograph went past the threshold. */
   endedAt: string;
+  /** For an alert, the threshold the micrographs go past. */
+  threshold?: string;
 };
 
 export type ProtocolActivity = {
@@ -1584,6 +1588,192 @@ export type ProjectDiskUsage = {
   protocols: ProtocolDiskUsage[];
   /** A count runs now: ask again in a moment. */
   computing: boolean;
+};
+
+/** One stage of a streaming chain: the output it follows and how fast it grows. */
+export type StreamingMonitorStage = {
+  stage: "movies" | "alignedMicrographs" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
+    | "tiltseries" | "ctftomo" | "aligned" | "tomograms";
+  setId: number;
+  protocolId: string;
+  protocolClassName: string;
+  label: string;
+  status: string;
+  outputName: string;
+  setClassName: string;
+  items: number;
+  maxItemId: number | null;
+  /** The output is still open: more items come. */
+  streaming: boolean;
+  /** Items per minute over the last 10 minutes; null for 2D classes, made in rounds. */
+  perMinute: number | null;
+  trend: "up" | "down" | "steady" | null;
+  /** Items of the stage before not processed here yet (micrographs, for coordinates and particles); null
+   *  where it does not apply or is not counted yet. */
+  behind: number | null;
+  /** Coordinates and particles: how many micrographs they come from. */
+  micrographs?: number;
+  /** Coordinates and particles: still being counted (after the server restarted). */
+  counting?: boolean;
+  /** 2D classes: the particles classified so far. */
+  particles?: number | null;
+  /** How long the backlog takes to clear at the rate of the last minutes. */
+  etaMinutes?: number;
+  /** There is a backlog and nothing moved in the last minutes. */
+  stalled?: boolean;
+  /** Coordinates: the micrographs the picker reads (e.g. those a CTF consensus kept), which it waits on. */
+  pickedFrom?: { protocolId: string; label: string; outputName: string; items: number };
+  /** 2D classes: the particles the classifier reads when a filter is in between, which it waits on. */
+  classifiedFrom?: { protocolId: string; label: string; outputName: string; items: number };
+};
+
+/** The 2D classes of the stream, biggest first. ``version`` changes with them: it keys their images. */
+export type StreamingMonitorClasses = {
+  setId: number;
+  protocolId: string;
+  outputName: string;
+  version: string | null;
+  particles: number;
+  classes: Array<{ id: number; particles: number; enabled: boolean }>;
+};
+
+export type StreamingMonitorThresholdName =
+  | "minDefocus"
+  | "maxDefocus"
+  | "maxAstigmatism"
+  | "maxResolution"
+  | "maxFrameShift"
+  | "maxTotalDrift"
+  | "minParticles"
+  | "minTilts"
+  | "minAngleSpan"
+  | "maxFailedCtfTilts"
+  | "maxResidual";
+
+/** Thresholds in A (minParticles: coordinates per micrograph); null raises no alert. */
+export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
+
+/** The CTF of one micrograph and the drift of its movie. Values in A. */
+export type StreamingMonitorPoint = {
+  /** The CTF id, which is also its micrograph's. */
+  id: number;
+  time: string | null;
+  micrographName?: string;
+  enabled: boolean;
+  failed?: boolean;
+  defocusU?: number;
+  defocusV?: number;
+  astigmatism?: number;
+  resolution?: number;
+  fitQuality?: number;
+  phaseShift?: number;
+  totalDrift?: number;
+  maxFrameShift?: number;
+  /** Coordinates picked on the micrograph, once picked. */
+  particles?: number;
+  /** The thresholds this point goes past. */
+  alerts: StreamingMonitorThresholdName[];
+};
+
+/** The live monitor of a project's stream; the series holds the points after the ones asked for. */
+export type StreamingMonitor = {
+  now: string;
+  streaming: boolean;
+  stages: StreamingMonitorStage[];
+  ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  /** The pickings the monitor could follow (it follows the one that goes furthest unless told). */
+  coordinatesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  /** The 2D classifications of the project (the monitor follows the nearest to the picking unless told). */
+  classesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  thresholds: StreamingMonitorThresholds;
+  series: {
+    setId: number | null;
+    /** What the points come from: the CTF output, or before there is one the micrographs (drift only). */
+    kind: "ctf" | "micrographs" | null;
+    /** The points the caller had belong to an output that was rebuilt: drop them. */
+    reset: boolean;
+    /** The cursor to send back as afterRowId: the order rows were written in, not micrograph ids. */
+    lastRowId: number | null;
+    /** More points wait: ask again at once. */
+    more: boolean;
+    points: StreamingMonitorPoint[];
+  };
+  classes: StreamingMonitorClasses | null;
+  /** The project has tilt series: the monitor also has a tomography view. */
+  tomography: boolean;
+  /** Coordinates per micrograph id that changed since the caller's picking cursor. */
+  picking: {
+    setId: number | null;
+    reset: boolean;
+    lastRowId: number | null;
+    complete: boolean;
+    counts: Record<string, number>;
+  };
+};
+
+/** One tilt series of a tomography stream. Values in A (defocus, astigmatism, resolution), degrees, e/A2 and
+ *  px (residual of the fiducial alignment). */
+export type TomoMonitorTiltSeries = {
+  id: number;
+  tsId: string;
+  time: string | null;
+  enabled: boolean;
+  tilts: number;
+  /** All its tilt images arrived. */
+  complete: boolean;
+  enabledTilts?: number;
+  angleMin?: number;
+  angleMax?: number;
+  dose?: number;
+  ctfTilts?: number;
+  failedCtfTilts?: number;
+  defocusU?: number;
+  defocusV?: number;
+  astigmatism?: number;
+  resolution?: number;
+  aligned: boolean;
+  residual?: number;
+  /** Its tomogram in the followed tomograms output. */
+  tomogramId?: number;
+  alerts: StreamingMonitorThresholdName[];
+};
+
+/** The live monitor of a project's tomography stream. */
+export type TomoMonitor = {
+  now: string;
+  streaming: boolean;
+  stages: StreamingMonitorStage[];
+  tiltSeriesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
+  tomograms: { setId: number; protocolId: string; outputName: string } | null;
+  thresholds: StreamingMonitorThresholds;
+  tiltSeries: TomoMonitorTiltSeries[];
+};
+
+/** One tilt image of a tilt series, with its CTF, its alignment and the fiducial residual on it. */
+export type TomoMonitorTilt = {
+  acqOrder: number;
+  angle?: number;
+  dose?: number;
+  enabled: boolean;
+  ctfFailed?: boolean;
+  defocusU?: number;
+  defocusV?: number;
+  resolution?: number;
+  shiftX?: number;
+  shiftY?: number;
+  rotation?: number;
+  alignedEnabled?: boolean;
+  residual?: number;
+};
+
+export type StreamingMonitorQuery = {
+  ctfSetId?: number | null;
+  coordinatesSetId?: number | null;
+  classesSetId?: number | null;
+  afterSetId?: number | null;
+  afterRowId?: number | null;
+  afterPickSetId?: number | null;
+  afterPickRowId?: number | null;
 };
 
 /** A fingerprint of what the project graph shows. */
@@ -1893,6 +2083,16 @@ export interface ProjectService<
   /** A fingerprint of the project graph, to tell cheaply whether it changed elsewhere. */
   fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
   fetchProjectOverview?(projectId: Id): Promise<ProjectOverview>;
+  fetchStreamingMonitor?(projectId: Id, query?: StreamingMonitorQuery): Promise<StreamingMonitor>;
+  fetchTomoMonitor?(projectId: Id, query?: { tsSetId?: number | null }): Promise<TomoMonitor>;
+  fetchTomoMonitorTiltSeries?(projectId: Id, tsId: string, query?: { tsSetId?: number | null }): Promise<{ tsId: string; tilts: TomoMonitorTilt[] }>;
+  /** The central slice of one tomogram of the tomography stream. */
+  fetchTomoMonitorSliceObjectUrl?(projectId: Id, setId: number, itemId: number,
+    opts?: { size?: number; signal?: AbortSignal }): Promise<ObjectUrlResult>;
+  saveStreamingMonitorThresholds?(
+    projectId: Id,
+    thresholds: Partial<StreamingMonitorThresholds>,
+  ): Promise<StreamingMonitorThresholds>;
   fetchProtocolLaunches?(projectId: Id, protocolId: Id): Promise<ProtocolLaunch[]>;
   fetchProjectDiskUsage?(projectId: Id, opts?: { refresh?: boolean }): Promise<ProjectDiskUsage>;
   /** Runs of the user's projects that ended since the previous call (none on a first call). */
@@ -2389,6 +2589,8 @@ export interface ProjectService<
       inline?: boolean;
       format?: string;
       contrastMode?: MetadataContrastMode;
+      /** What the caller knows of the image file: another version is another image (rewritten in place). */
+      version?: string;
       signal?: AbortSignal;
     }
   ): Promise<{ url: string; revoke: () => void }>;
