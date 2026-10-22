@@ -121,9 +121,18 @@ describe("StreamingMonitorView", () => {
     await waitFor(() => expect(fetchCTFMicrographImageObjectUrl).toHaveBeenCalledTimes(3));
     expect(fetchCTFPsdImageObjectUrl).toHaveBeenCalledTimes(3);
 
+    // The row itself opens nothing; the micrograph opens from its thumbnail
     fireEvent.click(screen.getAllByTestId("latest-micrograph")[0]);
+    expect(fetchCTFMicrographImageObjectUrl).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open the micrograph" })[0]);
     await waitFor(() => expect(fetchCTFMicrographImageObjectUrl).toHaveBeenCalledTimes(4));
     expect(fetchCTFMicrographImageObjectUrl.mock.calls[3].slice(0, 4)).toEqual([7, "3", "outputCTF", 3]);
+
+    // Its power spectrum opens from its thumbnail
+    fireEvent.click(screen.getAllByRole("button", { name: "Open the power spectrum" })[0]);
+    await waitFor(() => expect(fetchCTFPsdImageObjectUrl).toHaveBeenCalledTimes(4));
+    expect(fetchCTFPsdImageObjectUrl.mock.calls[3].slice(0, 4)).toEqual([7, "3", "outputCTF", 3]);
+    expect(fetchCTFPsdImageObjectUrl.mock.calls[3][4]).toMatchObject({ size: 1024 });
   });
 
   it("shows the particles of each micrograph once picked, with the picking backlog in micrographs", async () => {

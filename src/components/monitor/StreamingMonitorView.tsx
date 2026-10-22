@@ -62,7 +62,7 @@ const PIPELINE_HELP =
 
 const LATEST_HELP =
   `The newest ${LATEST_MICROGRAPHS} micrographs, newest first, with their power spectrum and values; values past `
-  + "a threshold are red. Click a row to see the micrograph.";
+  + "a threshold are red. Click the micrograph or its power spectrum to see it bigger.";
 
 const ALERTS_HELP =
   "Each line is a run of consecutive micrographs past the same threshold, newest first. A red dot means the "
@@ -392,7 +392,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const episodes = useMemo(() => alertEpisodes(points), [points]);
   const pointsById = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
 
-  const openMicrograph = useCallback((pointId: number) => {
+  const openMicrograph = useCallback((pointId: number, kind: "micrograph" | "psd" = "micrograph") => {
     if (!ctfStage || seriesKind !== "ctf") return;
     const point = pointsById.get(pointId);
     const details: ImagePreviewSource["details"] = [];
@@ -400,11 +400,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     if (point?.astigmatism !== undefined) details.push({ label: "Astigmatism", value: formatAngstrom(Math.abs(point.astigmatism), 0) });
     if (point?.resolution !== undefined) details.push({ label: "CTF resolution", value: formatAngstrom(point.resolution) });
     if (point?.totalDrift !== undefined) details.push({ label: "Total drift", value: formatAngstrom(point.totalDrift) });
+    const load = kind === "psd" ? svc.fetchCTFPsdImageObjectUrl : svc.fetchCTFMicrographImageObjectUrl;
+    const name = point?.micrographName ?? `Micrograph ${pointId}`;
     setPreview({
-      title: point?.micrographName ?? `Micrograph ${pointId}`,
+      title: kind === "psd" ? `${name} · power spectrum` : name,
       path: point?.micrographName ?? String(pointId),
       details,
-      loadImage: (signal) => svc.fetchCTFMicrographImageObjectUrl(projectId, ctfStage.protocolId, ctfStage.outputName,
+      loadImage: (signal) => load.call(svc, projectId, ctfStage.protocolId, ctfStage.outputName,
         pointId, { size: 1024, format: "png", quality: 80, signal }),
     });
   }, [svc, projectId, ctfStage, seriesKind, pointsById]);

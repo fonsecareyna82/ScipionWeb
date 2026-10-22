@@ -14,15 +14,18 @@ type Props = {
   protocolId: string;
   outputName: string;
   points: StreamingMonitorPoint[];
-  onOpen: (pointId: number) => void;
+  /** Opens the micrograph, or its power spectrum when its thumbnail is clicked. */
+  onOpen: (pointId: number, kind?: "micrograph" | "psd") => void;
   /** The stream is picked: a column with the particles of each micrograph. */
   showParticles?: boolean;
 };
 
 type Kind = "micrograph" | "psd";
 
-function Thumbnail({ projectId, protocolId, outputName, pointId, kind }: {
+function Thumbnail({ projectId, protocolId, outputName, pointId, kind, onOpen }: {
   projectId: Id; protocolId: string; outputName: string; pointId: number; kind: Kind;
+  /** Opens this image bigger. */
+  onOpen?: () => void;
 }) {
   const svc = useProjectService();
   const [url, setUrl] = useState<string | null>(null);
@@ -53,6 +56,18 @@ function Thumbnail({ projectId, protocolId, outputName, pointId, kind }: {
   }, [svc, projectId, protocolId, outputName, pointId, kind]);
 
   const label = kind === "psd" ? "Power spectrum" : "Micrograph";
+  if (url && onOpen) {
+    return (
+      <button type="button" title={`Open the ${label.toLowerCase()}`} aria-label={`Open the ${label.toLowerCase()}`}
+              className="block rounded hover:ring-2 hover:ring-app-accent"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen();
+              }}>
+        <img src={url} alt={label} className="h-14 w-14 rounded object-cover" />
+      </button>
+    );
+  }
   if (url) return <img src={url} alt={label} className="h-14 w-14 rounded object-cover" />;
   return (
     <div className="flex h-14 w-14 items-center justify-center rounded bg-app-surface-3 text-[10px] text-app-subtle"
@@ -95,15 +110,14 @@ export default function LatestMicrographsTable({ projectId, protocolId, outputNa
         </thead>
         <tbody className="divide-y divide-app-border">
           {latest.map((point) => (
-            <tr key={point.id} className="cursor-pointer hover:bg-app-hover" onClick={() => onOpen(point.id)}
-                data-testid="latest-micrograph">
+            <tr key={point.id} className="hover:bg-app-hover" data-testid="latest-micrograph">
               <td className="px-2 py-1">
                 <Thumbnail projectId={projectId} protocolId={protocolId} outputName={outputName} pointId={point.id}
-                           kind="micrograph" />
+                           kind="micrograph" onOpen={() => onOpen(point.id, "micrograph")} />
               </td>
               <td className="px-2 py-1">
                 <Thumbnail projectId={projectId} protocolId={protocolId} outputName={outputName} pointId={point.id}
-                           kind="psd" />
+                           kind="psd" onOpen={() => onOpen(point.id, "psd")} />
               </td>
               <td className="max-w-[220px] truncate px-2 py-1 text-app-text" title={point.micrographName}>
                 {point.micrographName ?? `Micrograph ${point.id}`}
