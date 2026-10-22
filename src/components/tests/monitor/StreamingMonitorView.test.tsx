@@ -14,6 +14,7 @@ vi.mock("react-plotly.js", () => ({
           key={serie.name}
           type="button"
           data-points={(serie.customdata ?? serie.x).length}
+          data-first-x={String(serie.x?.[0])}
           onClick={() => onClick?.({ points: [{ customdata: serie.customdata?.[0] }], event: { button: 0 } })}
         >
           {serie.name}
@@ -350,6 +351,28 @@ describe("StreamingMonitorView", () => {
     expect(screen.getAllByTestId("monitor-plot")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Total drift" }));
     expect(fetchCTFMicrographImageObjectUrl).not.toHaveBeenCalled();
+  });
+
+  it("is a quality overview when nothing streams: no rates or backlogs, micrographs in their order", async () => {
+    const finished = answer([point(4), point(9)]);
+    finished.streaming = false;
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(finished) }),
+    });
+
+    expect(await screen.findByRole("heading", { name: "Quality overview" })).toBeInTheDocument();
+    expect(screen.queryByText(/\/ min/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/waiting/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-first-x", "1");
+  });
+
+  it("is a streaming monitor while something streams, with processing times", async () => {
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(4)])) }),
+    });
+
+    expect(await screen.findByRole("heading", { name: "Streaming monitor" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-first-x", "2026-10-21T12:00:00Z");
   });
 
   it("says so when the project has nothing to follow", async () => {

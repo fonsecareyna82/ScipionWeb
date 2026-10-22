@@ -116,17 +116,20 @@ function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string
   };
 }
 
-function SessionPlot({ title, unit, rows, value, alerts, dark, onPick }: {
+function SessionPlot({ title, unit, rows, value, alerts, dark, onPick, byOrder = false }: {
   title: string; unit: string; rows: TomoMonitorTiltSeries[]; value: (row: TomoMonitorTiltSeries) => number | undefined;
   alerts: StreamingMonitorThresholdName[]; dark: boolean; onPick: (tsId: string) => void;
+  /** Nothing streams: the tilt series in their order, as their times would all fall together. */
+  byOrder?: boolean;
 }) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
-  const shown = rows.filter((row) => row.time && value(row) !== undefined);
+  const order = new Map([...rows].sort((a, b) => a.id - b.id).map((row, index) => [row.id, index + 1]));
+  const shown = rows.filter((row) => (byOrder || row.time) && value(row) !== undefined);
   const data = [{
     type: "scatter",
     mode: "markers",
     name: title,
-    x: shown.map((row) => row.time),
+    x: shown.map((row) => (byOrder ? order.get(row.id) : row.time)),
     y: shown.map(value),
     customdata: shown.map((row) => [row.tsId]),
     hovertemplate: `%{customdata[0]}<br>%{y:.1f} ${unit}<extra></extra>`,
@@ -135,7 +138,8 @@ function SessionPlot({ title, unit, rows, value, alerts, dark, onPick }: {
   }];
   return (
     <div className="rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot">
-      <Plot data={data} layout={{ ...layoutFor(title, unit, dark, undefined, "date"), showlegend: false }}
+      <Plot data={data} layout={{ ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
+                                               byOrder ? undefined : "date"), showlegend: false }}
             config={{ displaylogo: false, responsive: true }} useResizeHandler style={{ width: "100%", height: "100%" }}
             onClick={(event: any) => {
               const tsId = event?.points?.[0]?.customdata?.[0];
@@ -312,7 +316,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
             ) : null}
           </div>
           <div className="flex flex-wrap gap-3">
-            {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
+            {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} live={monitor.streaming} />)}
           </div>
         </section>
       )}
@@ -323,11 +327,11 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
             Session <HelpHint text={SESSION_HELP} />
           </div>
           <SessionPlot title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
-                       alerts={["minDefocus", "maxDefocus"]} dark={dark} onPick={setSelected} />
+                       alerts={["minDefocus", "maxDefocus"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
-                       alerts={["minTilts"]} dark={dark} onPick={setSelected} />
+                       alerts={["minTilts"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
-                       alerts={["maxResidual"]} dark={dark} onPick={setSelected} />
+                       alerts={["maxResidual"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
         </section>
       ) : null}
 

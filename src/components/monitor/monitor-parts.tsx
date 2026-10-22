@@ -31,7 +31,8 @@ function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
   return <ArrowRight className="h-3.5 w-3.5 text-app-subtle" aria-label="steady" />;
 }
 
-export function StageCard({ stage }: { stage: StreamingMonitorStage }) {
+/** ``live``: something still streams; without it rates and backlogs say nothing (all was processed). */
+export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage; live?: boolean }) {
   return (
     <div className="min-w-[150px] flex-1 rounded-xl border border-app-border bg-app-surface p-3" data-testid="monitor-stage">
       <div className="flex items-center justify-between gap-2">
@@ -41,7 +42,7 @@ export function StageCard({ stage }: { stage: StreamingMonitorStage }) {
         ) : null}
       </div>
       <div className="mt-1 text-2xl font-semibold text-app-text">{stage.items.toLocaleString()}</div>
-      {stage.perMinute !== null ? (
+      {live && stage.perMinute !== null ? (
         <div className="mt-1 flex items-center gap-1 text-xs text-app-muted">
           <TrendIcon trend={stage.trend} />
           <span>{stage.perMinute.toFixed(1)} / min</span>
@@ -67,7 +68,7 @@ export function StageCard({ stage }: { stage: StreamingMonitorStage }) {
           from {stage.pickedFrom.label}
         </div>
       ) : null}
-      {stage.behind ? (
+      {live && stage.behind ? (
         <div className="mt-1 text-xs font-medium text-app-warning">
           {stage.behind.toLocaleString()}
           {stage.micrographs !== undefined ? " micrographs" : stage.stage === "classes2d" ? " particles" : ""} waiting

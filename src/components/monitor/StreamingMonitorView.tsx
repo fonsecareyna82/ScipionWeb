@@ -136,23 +136,27 @@ function MonitorPlot({
   thresholds,
   dark,
   onPick,
+  byOrder = false,
 }: {
   spec: PlotSpec;
   points: StreamingMonitorPoint[];
   thresholds: StreamingMonitorThresholds | null;
   dark: boolean;
   onPick: (pointId: number) => void;
+  /** Nothing streams: the micrographs in their order, as processing times would all fall together. */
+  byOrder?: boolean;
 }) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   const colours = [tokens.accent, tokens.success];
-  const usable = points.filter((point) => !point.failed && point.time);
+  const order = new Map(points.map((point, index) => [point.id, index + 1]));
+  const usable = points.filter((point) => !point.failed && (byOrder || point.time));
   const data = spec.series.map((serie, index) => {
     const shown = usable.filter((point) => serie.value(point) !== undefined);
     return {
       type: "scattergl",
       mode: "markers",
       name: serie.name,
-      x: shown.map((point) => point.time),
+      x: shown.map((point) => (byOrder ? order.get(point.id) : point.time)),
       y: shown.map((point) => serie.value(point)),
       customdata: shown.map((point) => [point.id, point.micrographName ?? `Micrograph ${point.id}`]),
       hovertemplate: `%{customdata[1]}<br>%{y:.1f} ${spec.unit}<extra>${serie.name}</extra>`,
@@ -186,7 +190,8 @@ function MonitorPlot({
     hovermode: "closest",
     showlegend: spec.series.length > 1,
     legend: { orientation: "h", x: 1, xanchor: "right", y: 1.15 },
-    xaxis: { type: "date", gridcolor: tokens.border, zeroline: false },
+    xaxis: byOrder ? { title: { text: "Micrograph" }, gridcolor: tokens.border, zeroline: false }
+      : { type: "date", gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     shapes,
   };
@@ -430,6 +435,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const isSeen = useCallback(() => (rootRef.current?.ownerDocument ?? document).visibilityState === "visible", []);
   const tabs = Boolean(monitor?.tomography && monitor.stages.length > 0);
   const mode = view ?? (monitor?.tomography && monitor.stages.length === 0 ? "tomo" : "spa");
+  // Without anything streaming the monitor is an overview of how the data came out: no rates, no backlogs
+  const live = Boolean(mode === "tomo" ? tomo?.streaming ?? true : monitor?.streaming ?? true);
 
   if (!svc.fetchStreamingMonitor) {
     return <div className="p-6 text-sm text-app-muted">The streaming monitor is not available here.</div>;
@@ -440,7 +447,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
         <header className="flex flex-wrap items-center gap-3">
           <Activity className="h-5 w-5 text-app-accent" />
-          <h1 className="text-lg font-semibold text-app-text">Streaming monitor</h1>
+          <h1 className="text-lg font-semibold text-app-text">{live ? "Streaming monitor" : "Quality overview"}</h1>
           {monitor ? (
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${monitor.streaming
               ? "bg-app-accent-soft text-app-accent" : "bg-app-surface-3 text-app-muted"}`}>
@@ -544,7 +551,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 Pipeline <HelpHint text={PIPELINE_HELP} />
               </div>
               <div className="flex flex-wrap gap-3">
-                {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} />)}
+                {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} live={live} />)}
               </div>
             </section>
           ) : null}
@@ -557,7 +564,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 </div>
               ) : null}
               {plots.map((spec) => (
-                <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds}
+                <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds} byOrder={!live}
                              dark={dark} onPick={openMicrograph} />
               ))}
             </section>

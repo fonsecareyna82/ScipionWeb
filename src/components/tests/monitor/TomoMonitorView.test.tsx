@@ -10,7 +10,7 @@ vi.mock("react-plotly.js", () => ({
   default: ({ data, onClick }: { data: Array<{ name: string; x: unknown[]; customdata?: unknown[][] }>; onClick?: (event: unknown) => void }) => (
     <div data-testid="mock-plotly">
       {data.map((serie) => (
-        <button key={serie.name} type="button" data-points={serie.x.length}
+        <button key={serie.name} type="button" data-points={serie.x.length} data-first-x={String(serie.x[0])}
                 onClick={() => onClick?.({ points: [{ customdata: serie.customdata?.[0] }], event: { button: 0 } })}>
           {serie.name}
         </button>
@@ -147,6 +147,17 @@ describe("The tomography view of the monitor", () => {
       minTilts: 30, maxResidual: 1.5 })));
     expect(service.saveStreamingMonitorThresholds.mock.calls[0][1]).not.toHaveProperty("maxTotalDrift");
     await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
+  });
+
+  it("is a quality overview of the tilt series when nothing streams", async () => {
+    const finished = tomo([row(5, "TS_05"), row(2, "TS_02")]);
+    finished.streaming = false;
+    render(finished);
+
+    expect(await screen.findByRole("heading", { name: "Quality overview" })).toBeInTheDocument();
+    expect(screen.queryByText(/waiting/)).not.toBeInTheDocument();
+    // The tilt series in their order: the oldest (TS_02) is the first
+    expect(screen.getByRole("button", { name: "Mean defocus" })).toHaveAttribute("data-first-x", "1");
   });
 
   it("has a tab for each stream when the project has both", async () => {
