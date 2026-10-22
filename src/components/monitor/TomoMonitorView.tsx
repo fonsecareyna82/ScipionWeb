@@ -15,7 +15,7 @@ import type {
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
-import { HelpHint, StageCard } from "./monitor-parts";
+import { HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
 import { THRESHOLD_LABELS, alertEpisodes, formatLimit } from "./streaming-monitor-data";
 
 const THUMBNAIL_SIZE = 96;
@@ -98,19 +98,19 @@ function Cell({ value, alerted }: { value: string; alerted: boolean }) {
 const number = (value: number | undefined, digits = 1, unit = "") =>
   value === undefined ? "—" : `${value.toFixed(digits)}${unit}`;
 
-function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string, xType?: string) {
+const PLOT_HEIGHT = 240;
+
+function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string, xType?: string,
+                   showLegend = true) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   return {
-    autosize: true,
-    height: 240,
-    margin: { t: 32, r: 16, b: 40, l: 56 },
+    ...plotFrame(PLOT_HEIGHT, showLegend),
     title: { text: title, font: { size: 13, color: tokens.text }, x: 0.02 },
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
     hovermode: "closest",
-    showlegend: true,
-    legend: { orientation: "h", x: 1, xanchor: "right", y: 1.15 },
+    showlegend: showLegend,
     xaxis: { type: xType, title: xTitle ? { text: xTitle } : undefined, gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: yTitle }, gridcolor: tokens.border, zeroline: false },
   };
@@ -137,10 +137,10 @@ function SessionPlot({ title, unit, rows, value, alerts, dark, onPick, byOrder =
       ? tokens.danger : tokens.accent)) },
   }];
   return (
-    <div className="rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot">
-      <Plot data={data} layout={{ ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
-                                               byOrder ? undefined : "date"), showlegend: false }}
-            config={{ displaylogo: false, responsive: true }} useResizeHandler style={{ width: "100%", height: "100%" }}
+    <div className="min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot">
+      <Plot data={data} layout={layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
+                                          byOrder ? undefined : "date", false)}
+            config={{ displaylogo: false, responsive: true }} useResizeHandler style={plotBox(PLOT_HEIGHT)}
             onClick={(event: any) => {
               const tsId = event?.points?.[0]?.customdata?.[0];
               if (tsId != null) onPick(String(tsId));
@@ -183,27 +183,27 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose }: {
       </div>
       {tilts === null ? <div className="text-sm text-app-muted">Reading its tilts…</div> : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-app-border p-2" data-testid="tilt-plot">
+          <div className="min-w-0 overflow-hidden rounded-xl border border-app-border p-2" data-testid="tilt-plot">
             <Plot data={[series("Defocus U", tokens.accent, (t) => t.defocusU),
                          series("Defocus V", tokens.success, (t) => t.defocusV),
                          series("Resolution", tokens.warning, (t) => t.resolution, "y2")]}
                   layout={ctfLayout} config={{ displaylogo: false, responsive: true }} useResizeHandler
-                  style={{ width: "100%", height: "100%" }} />
+                  style={plotBox(PLOT_HEIGHT)} />
           </div>
           {hasShifts ? (
-            <div className="rounded-xl border border-app-border p-2" data-testid="tilt-plot">
+            <div className="min-w-0 overflow-hidden rounded-xl border border-app-border p-2" data-testid="tilt-plot">
               <Plot data={[series("Shift X", tokens.accent, (t) => t.shiftX), series("Shift Y", tokens.success, (t) => t.shiftY)]}
                     layout={layoutFor("Alignment shifts by tilt angle", "px", dark, "Tilt angle (°)")}
                     config={{ displaylogo: false, responsive: true }} useResizeHandler
-                    style={{ width: "100%", height: "100%" }} />
+                    style={plotBox(PLOT_HEIGHT)} />
             </div>
           ) : null}
           {hasResiduals ? (
-            <div className="rounded-xl border border-app-border p-2" data-testid="tilt-plot">
+            <div className="min-w-0 overflow-hidden rounded-xl border border-app-border p-2" data-testid="tilt-plot">
               <Plot data={[series("Residual", tokens.danger, (t) => t.residual)]}
                     layout={layoutFor("Fiducial residual by tilt angle", "px", dark, "Tilt angle (°)")}
                     config={{ displaylogo: false, responsive: true }} useResizeHandler
-                    style={{ width: "100%", height: "100%" }} />
+                    style={plotBox(PLOT_HEIGHT)} />
             </div>
           ) : null}
           {tomograms && row.tomogramId !== undefined ? (

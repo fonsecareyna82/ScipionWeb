@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StreamingMonitorPoint } from "@/services/ProjectService";
-import { formatEta } from "@/components/monitor/monitor-parts";
+import { formatEta, plotBox, plotFrame } from "@/components/monitor/monitor-parts";
 import { EMPTY_PICKING, EMPTY_SERIES, alertEpisodes, mergePicking, mergeSeries, withParticles } from "@/components/monitor/streaming-monitor-data";
 
 function point(id: number, alerts: StreamingMonitorPoint["alerts"] = [], extra: Partial<StreamingMonitorPoint> = {}) {
@@ -106,5 +106,18 @@ describe("formatEta", () => {
   it("says the time in words a person reads at a glance", () => {
     expect([0.4, 12.4, 60, 83.6].map(formatEta)).toEqual(["under a minute", "about 12 min", "about 1 h",
                                                           "about 1 h 24 min"]);
+  });
+});
+
+
+describe("plotFrame", () => {
+  it("keeps a plot as high as its box, with room for its legend inside it", () => {
+    const withLegend = plotFrame(240, true);
+    const without = plotFrame(240, false);
+
+    expect(plotBox(240)).toEqual({ width: "100%", height: withLegend.height });
+    expect(withLegend.margin.t).toBeGreaterThan(without.margin.t);
+    // Anchored on the plotting area, not above the frame
+    expect(withLegend.legend).toMatchObject({ y: 1, yanchor: "bottom" });
   });
 });

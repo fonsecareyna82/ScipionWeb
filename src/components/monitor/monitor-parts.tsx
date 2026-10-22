@@ -33,6 +33,24 @@ function TrendIcon({ trend }: { trend: StreamingMonitorStage["trend"] }) {
 }
 
 /** ``live``: something still streams; without it rates and backlogs say nothing (all was processed). */
+/**
+ * The frame of a plot of the monitor: its height (also the height of its box, so the plot never grows past
+ * its card) and, with a legend, room for it between the title and the plotting area.
+ */
+export function plotFrame(height: number, showLegend: boolean) {
+  return {
+    autosize: true,
+    height,
+    margin: { t: showLegend ? 56 : 32, r: 16, b: 40, l: 56 },
+    legend: { orientation: "h", x: 1, xanchor: "right", y: 1, yanchor: "bottom" },
+  };
+}
+
+/** The box of a plot: as high as its frame, as wide as its card, never wider. */
+export function plotBox(height: number) {
+  return { width: "100%", height };
+}
+
 /** "about 12 min", "about 1 h 20 min", "under a minute". */
 export function formatEta(minutes: number): string {
   if (minutes < 1) return "under a minute";

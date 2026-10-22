@@ -36,11 +36,14 @@ import {
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
-import { HelpHint, StageCard } from "./monitor-parts";
+import { HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
 import TomoMonitorView from "./TomoMonitorView";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
 
+
+const PLOT_HEIGHT = 260;
+const HISTOGRAM_HEIGHT = 240;
 
 type PlotSpec = {
   title: string;
@@ -180,23 +183,20 @@ function MonitorPlot({
       line: { color: tokens.danger, width: 1, dash: "dash" },
     }));
   const layout = {
-    autosize: true,
-    height: 260,
-    margin: { t: 32, r: 16, b: 40, l: 56 },
+    ...plotFrame(PLOT_HEIGHT, spec.series.length > 1),
     title: { text: spec.title, font: { size: 13, color: tokens.text }, x: 0.02 },
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
     hovermode: "closest",
     showlegend: spec.series.length > 1,
-    legend: { orientation: "h", x: 1, xanchor: "right", y: 1.15 },
     xaxis: byOrder ? { title: { text: "Micrograph" }, gridcolor: tokens.border, zeroline: false }
       : { type: "date", gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     shapes,
   };
   return (
-    <div className="relative rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
+    <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
       <div className="absolute right-3 top-3 z-10">
         <HelpHint text={`${spec.help} Each point is a micrograph, at the time it was processed; red ones go past `
           + "a threshold (the dashed lines). Click one to see the micrograph."} />
@@ -206,7 +206,7 @@ function MonitorPlot({
         layout={layout}
         config={{ displaylogo: false, responsive: true }}
         useResizeHandler
-        style={{ width: "100%", height: "100%" }}
+        style={plotBox(PLOT_HEIGHT)}
         onClick={(event: any) => {
           const button = event?.event?.button;
           if (button != null && button !== 0) return;
@@ -269,27 +269,24 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
     });
   }
   const layout = {
-    autosize: true,
-    height: 240,
+    ...plotFrame(HISTOGRAM_HEIGHT, recent.length > 0),
     barmode: "overlay",
     bargap: 0.05,
-    margin: { t: 32, r: 16, b: 40, l: 48 },
     title: { text: spec.title, font: { size: 13, color: tokens.text }, x: 0.02 },
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
     showlegend: recent.length > 0,
-    legend: { orientation: "h", x: 1, xanchor: "right", y: 1.15 },
     xaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: "Micrographs" }, gridcolor: tokens.border, zeroline: false },
   };
   return (
-    <div className="relative rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
+    <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
       <div className="absolute right-3 top-3 z-10">
         <HelpHint text={spec.help + (recent.length ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
       </div>
       <Plot data={data} layout={layout} config={{ displaylogo: false, responsive: true }} useResizeHandler
-            style={{ width: "100%", height: "100%" }} />
+            style={plotBox(HISTOGRAM_HEIGHT)} />
     </div>
   );
 }
