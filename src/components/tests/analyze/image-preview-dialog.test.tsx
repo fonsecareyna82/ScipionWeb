@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ImagePreviewDialog, type ImagePreviewSource } from "../../analyze/image-preview-dialog";
@@ -89,5 +89,45 @@ describe("ImagePreviewDialog", () => {
     resolveQuick({ url: "blob:quick", revoke: revokeQuick });
     await waitFor(() => expect(revokeQuick).toHaveBeenCalledTimes(1));
     expect(within(dialog).getByRole("img")).toHaveAttribute("src", "blob:full");
+  });
+
+  it("draws the overlay points over the image in the pixels of the image it was scaled from", async () => {
+    render(
+      <ImagePreviewDialog
+        image={source({
+          loadImage: async () => ({ url: "blob:quick", revoke: vi.fn(), originalWidth: 4096, originalHeight: 4096 }),
+          overlay: { label: "Particles", load: async () => ({ points: [{ x: 100, y: 200 }, { x: 3000, y: 50 }], boxSize: 180 }) },
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Image preview" });
+    const overlay = await within(dialog).findByTestId("preview-overlay");
+
+    expect(overlay).toHaveAttribute("viewBox", "0 0 4096 4096");
+    const circles = overlay.querySelectorAll("circle");
+    expect([...circles].map((circle) => [circle.getAttribute("cx"), circle.getAttribute("cy"), circle.getAttribute("r")]))
+      .toEqual([["100", "200", "90"], ["3000", "50", "90"]]);
+    expect(within(dialog).getByRole("button", { name: "Particles (2)" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hides and shows the overlay points again", async () => {
+    render(
+      <ImagePreviewDialog
+        image={source({
+          loadImage: async () => ({ url: "blob:quick", revoke: vi.fn(), originalWidth: 100, originalHeight: 100 }),
+          overlay: { label: "Particles", load: async () => ({ points: [{ x: 10, y: 10 }] }) },
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Image preview" });
+    await within(dialog).findByTestId("preview-overlay");
+    const toggle = within(dialog).getByRole("button", { name: "Particles (1)" });
+
+    fireEvent.click(toggle);
+    expect(within(dialog).queryByTestId("preview-overlay")).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(within(dialog).getByTestId("preview-overlay")).toBeInTheDocument();
   });
 });

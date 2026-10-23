@@ -4828,6 +4828,9 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
       lastRowId: picking.lastRowId ?? null,
       complete: picking.complete !== false,
       counts: picking.counts && typeof picking.counts === "object" ? picking.counts : {},
+      protocolId: picking.protocolId != null ? String(picking.protocolId) : null,
+      outputName: picking.outputName ?? null,
+      boxSize: typeof picking.boxSize === "number" && picking.boxSize > 0 ? picking.boxSize : null,
     },
   };
 }

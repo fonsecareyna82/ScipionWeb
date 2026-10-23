@@ -335,6 +335,37 @@ describe("StreamingMonitorView", () => {
     expect(fetchCTFMicrographImageObjectUrl.mock.calls[0].slice(0, 4)).toEqual([7, "3", "outputCTF", 5]);
   });
 
+  it("opens the micrograph of a particles point with the particles picked on it", async () => {
+    const picked = answer([point(5)]);
+    picked.stages = [...picked.stages, {
+      stage: "coordinates", setId: 40, protocolId: "4", protocolClassName: "ProtPick", label: "cryolo",
+      status: "running", outputName: "outputCoordinates", setClassName: "SetOfCoordinates", items: 2,
+      maxItemId: 2, streaming: true, perMinute: 1, trend: "steady", behind: 0, micrographs: 1,
+    }];
+    picked.picking = { setId: 40, reset: false, lastRowId: 2, complete: true, counts: { "5": 2 },
+                       protocolId: "4", outputName: "outputCoordinates", boxSize: 180 };
+    const fetchCoords2dMicrographImageObjectUrl = vi.fn().mockResolvedValue(
+      { url: "blob:mic", revoke: vi.fn(), originalWidth: 4096, originalHeight: 4096 });
+    const fetchCoords2dForMicrograph = vi.fn().mockResolvedValue(
+      [{ id: 1, x: 100, y: 200, micId: 5 }, { id: 2, x: 300, y: 400, micId: 5 }]);
+    // The table of the latest micrographs reads its thumbnails from the CTF output
+    const fetchCTFMicrographImageObjectUrl = vi.fn().mockResolvedValue({ url: "blob:thumb", revoke: vi.fn() });
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(picked),
+        fetchCoords2dMicrographImageObjectUrl, fetchCoords2dForMicrograph, fetchCTFMicrographImageObjectUrl,
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Particles" }));
+
+    expect(await screen.findByRole("button", { name: "Particles (2)" })).toBeInTheDocument();
+    expect(fetchCoords2dMicrographImageObjectUrl.mock.calls[0].slice(0, 4)).toEqual([7, "4", "outputCoordinates", 5]);
+    expect(fetchCoords2dForMicrograph).toHaveBeenCalledWith(7, "4", "outputCoordinates", 5);
+    expect(fetchCoords2dMicrographImageObjectUrl).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("preview-overlay").querySelectorAll("circle")[0]).toHaveAttribute("r", "90");
+  });
+
   it("saves the thresholds and reads the series again with them", async () => {
     const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1)]));
     const saveStreamingMonitorThresholds = vi.fn().mockResolvedValue({ ...THRESHOLDS, maxResolution: 6 });

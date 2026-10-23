@@ -125,7 +125,8 @@ const PARTICLES_PLOT: PlotSpec = {
   limits: ["minParticles"],
   alerts: ["minParticles"],
   help: "How many coordinates the picking found on each micrograph. A sudden drop usually means thick ice, an "
-    + "empty area or a picker that needs tuning; far too many, that it picks contamination or edges.",
+    + "empty area or a picker that needs tuning; far too many, that it picks contamination or edges. The "
+    + "micrograph a point opens shows its particles circled.",
 };
 
 const CLASSES_HELP =
@@ -405,6 +406,33 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     });
   }, [svc, projectId, ctfStage, seriesKind, pointsById]);
 
+  const pickedCoordinates = monitor?.picking?.protocolId && monitor.picking.outputName
+    ? { protocolId: monitor.picking.protocolId, outputName: monitor.picking.outputName,
+        boxSize: monitor.picking.boxSize ?? null }
+    : null;
+  const { protocolId: pickProtocolId, outputName: pickOutputName, boxSize: pickBoxSize } = pickedCoordinates ?? {};
+
+  // The micrograph as the picking read it, with the coordinates it found drawn over it
+  const openParticles = useCallback((pointId: number) => {
+    if (!pickProtocolId || !pickOutputName) return;
+    const point = pointsById.get(pointId);
+    const name = point?.micrographName ?? `Micrograph ${pointId}`;
+    setPreview({
+      title: `${name} · particles`,
+      path: point?.micrographName ?? String(pointId),
+      details: point?.particles !== undefined ? [{ label: "Particles", value: point.particles.toLocaleString() }] : [],
+      loadImage: (signal) => svc.fetchCoords2dMicrographImageObjectUrl(projectId, pickProtocolId, pickOutputName,
+        pointId, { size: 1024, format: "png", signal }),
+      overlay: {
+        label: "Particles",
+        load: async () => ({
+          points: await svc.fetchCoords2dForMicrograph(projectId, pickProtocolId, pickOutputName, pointId),
+          boxSize: pickBoxSize,
+        }),
+      },
+    });
+  }, [svc, projectId, pickProtocolId, pickOutputName, pickBoxSize, pointsById]);
+
   const openClass = useCallback((classId: number) => {
     const classes = monitor?.classes;
     if (!classes) return;
@@ -578,7 +606,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               ) : null}
               {plots.map((spec) => (
                 <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds} byOrder={!live}
-                             dark={dark} onPick={openMicrograph} />
+                             dark={dark}
+                             onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
               ))}
             </section>
           ) : null}

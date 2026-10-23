@@ -36,15 +36,31 @@ import ExternalWindowPortal, {
   openExternalWindow,
 } from "@/components/ui/external-window/ExternalWindowPortal";
 
+/** A loaded image. The original size is the one of the image it was scaled down from, when it was. */
+export type ImagePreviewLoad = {
+  url: string;
+  revoke: () => void;
+  originalWidth?: number | null;
+  originalHeight?: number | null;
+};
+
+/** Points drawn over the image (e.g. the particles picked on a micrograph), in pixels of the original image,
+ *  each one as a circle of the box size. */
+export type ImagePreviewOverlay = {
+  label: string;
+  load: (signal: AbortSignal) => Promise<{ points: Array<{ x: number; y: number }>; boxSize?: number | null }>;
+};
+
 export type ImagePreviewSource = {
   title: string;
   path: string;
   details?: Array<{ label: string; value: string | number; highlight?: boolean }>;
   // Each load owns its object URL; the dialog releases it on close or replacement.
-  loadImage: (signal: AbortSignal) => Promise<{ url: string; revoke: () => void }>;
+  loadImage: (signal: AbortSignal) => Promise<ImagePreviewLoad>;
   // The image at its full resolution, without compression losses: loaded after
   // the quick one, which it replaces when it arrives.
-  loadFullImage?: (signal: AbortSignal) => Promise<{ url: string; revoke: () => void }>;
+  loadFullImage?: (signal: AbortSignal) => Promise<ImagePreviewLoad>;
+  overlay?: ImagePreviewOverlay;
 };
 
 type FullQuality = "loading" | "ready" | "failed" | null;
@@ -79,6 +95,10 @@ export function ImagePreviewDialog({
   const [error, setError] = useState<string | null>(null);
   const [fullQuality, setFullQuality] = useState<FullQuality>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [originalSize, setOriginalSize] = useState<{ width: number; height: number } | null>(null);
+  const [overlayMarks, setOverlayMarks] = useState<{ points: Array<{ x: number; y: number }>;
+    boxSize?: number | null } | null>(null);
+  const [overlayVisible, setOverlayVisible] = useState(true);
   // The "Full resolution" badge shows for a moment when the full image arrives.
   const [showFullBadge, setShowFullBadge] = useState(false);
 
@@ -151,6 +171,7 @@ export function ImagePreviewDialog({
     setLoading(!!image);
     setFullQuality(image?.loadFullImage ? "loading" : null);
     setNaturalSize(null);
+    setOriginalSize(null);
     resetView();
     dragStateRef.current.active = false;
     setIsPanning(false);
@@ -163,7 +184,7 @@ export function ImagePreviewDialog({
     let fullFailed = !image.loadFullImage;
     const controller = new AbortController();
 
-    const show = (result: { url: string; revoke: () => void }, full: boolean) => {
+    const show = (result: ImagePreviewLoad, full: boolean) => {
       if (cancelled || (showingFull && !full)) {
         result.revoke();
         return;
@@ -171,6 +192,9 @@ export function ImagePreviewDialog({
       revokeCurrent?.();
       revokeCurrent = result.revoke;
       showingFull = full;
+      if (result.originalWidth && result.originalHeight) {
+        setOriginalSize({ width: result.originalWidth, height: result.originalHeight });
+      }
       setPreviewUrl(result.url);
       setError(null);
       setLoading(false);
@@ -212,6 +236,24 @@ export function ImagePreviewDialog({
       revokeCurrent = null;
     };
   }, [image, resetView]);
+
+  useEffect(() => {
+    setOverlayMarks(null);
+    setOverlayVisible(true);
+    const overlay = image?.overlay;
+    if (!overlay) return;
+    const controller = new AbortController();
+    overlay.load(controller.signal).then((marks) => {
+      if (!controller.signal.aborted) setOverlayMarks(marks);
+    }).catch((error) => {
+      if (!controller.signal.aborted) toast.error(getErrorMessage(error, `Could not load the ${overlay.label.toLowerCase()}`));
+    });
+    return () => controller.abort();
+  }, [image]);
+
+  // The marks are in pixels of the original image: the box they are drawn in is that image, fitted like it
+  const overlaySize = originalSize ?? naturalSize;
+  const imageTransform = `translate(${zoom > 1 ? panX : 0}px, ${zoom > 1 ? panY : 0}px) scale(${zoom}) rotate(${rotation}deg)`;
 
   const open = !!image;
 
@@ -610,6 +652,22 @@ export function ImagePreviewDialog({
                   </Tooltip>
                 </Box>
 
+                {image?.overlay ? (
+                  <>
+                    <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+                    <Button
+                      size="small"
+                      variant={overlayVisible ? "contained" : "outlined"}
+                      disabled={!overlayMarks}
+                      onClick={() => setOverlayVisible((visible) => !visible)}
+                      aria-pressed={overlayVisible}
+                      sx={{ textTransform: "none", fontWeight: 650 }}
+                    >
+                      {overlayMarks ? `${image.overlay.label} (${overlayMarks.points.length})` : `${image.overlay.label}…`}
+                    </Button>
+                  </>
+                ) : null}
+
                 <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150 }}>
@@ -822,11 +880,34 @@ export function ImagePreviewDialog({
                       width: "100%",
                       height: "100%",
                       objectFit: "contain",
-                      transform: `translate(${zoom > 1 ? panX : 0}px, ${zoom > 1 ? panY : 0}px) scale(${zoom}) rotate(${rotation}deg)`,
+                      transform: imageTransform,
                       filter: `brightness(${1 + brightness}) contrast(${contrast})`,
                       transition: isPanning ? "none" : "transform 120ms ease-out",
                     }}
                   />
+                  {overlayMarks && overlayVisible && overlaySize ? (
+                    <svg
+                      data-testid="preview-overlay"
+                      aria-label={image?.overlay?.label}
+                      viewBox={`0 0 ${overlaySize.width} ${overlaySize.height}`}
+                      preserveAspectRatio="xMidYMid meet"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        pointerEvents: "none",
+                        transform: imageTransform,
+                        transition: isPanning ? "none" : "transform 120ms ease-out",
+                      }}
+                    >
+                      {overlayMarks.points.map((point, index) => (
+                        <circle key={index} cx={point.x} cy={point.y}
+                                r={(overlayMarks.boxSize || Math.max(overlaySize.width, overlaySize.height) / 50) / 2}
+                                fill="none" stroke="#22c55e" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                      ))}
+                    </svg>
+                  ) : null}
                 </Box>
               )}
 

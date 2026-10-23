@@ -1708,6 +1708,10 @@ export type StreamingMonitor = {
     lastRowId: number | null;
     complete: boolean;
     counts: Record<string, number>;
+    /** The coordinates output followed, to read and draw its particles; null without picking. */
+    protocolId?: string | null;
+    outputName?: string | null;
+    boxSize?: number | null;
   };
 };
 
