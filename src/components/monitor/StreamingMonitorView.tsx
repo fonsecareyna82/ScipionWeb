@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Plot from "react-plotly.js";
-import { Activity, Bell, RefreshCw, Settings2 } from "lucide-react";
+import { Activity, RefreshCw, Settings2 } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { useIsDark } from "@/context/ThemeContext";
@@ -22,13 +22,11 @@ import {
   EMPTY_PICKING,
   EMPTY_SERIES,
   POLL_CHOICES,
-  THRESHOLD_LABELS,
   THRESHOLD_ORDER,
   TOMO_THRESHOLD_ORDER,
   alertEpisodes,
   dosePlotPoints,
   formatAngstrom,
-  formatLimit,
   mergeDose,
   mergePicking,
   mergeSeries,
@@ -42,6 +40,7 @@ import {
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
 import { HelpHint, PlotHeader, StageCard, plotBox, plotFrame } from "./monitor-parts";
 import TomoMonitorView from "./TomoMonitorView";
+import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
 
@@ -75,10 +74,6 @@ const LATEST_HELP =
   `The newest ${LATEST_MICROGRAPHS} micrographs, newest first, with their power spectrum and values; values past `
   + "a threshold are red. Click the micrograph or its power spectrum to see it bigger.";
 
-const ALERTS_HELP =
-  "Each line is a run of consecutive micrographs past the same threshold, newest first. A red dot means the "
-  + "newest micrograph is still past it; a grey one, that the values came back in range. Click the micrograph "
-  + "to see it. The thresholds are set with the Thresholds button, for everyone in the project.";
 
 const PLOTS: PlotSpec[] = [
   {
@@ -310,9 +305,6 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
   );
 }
 
-function timeOf(point: StreamingMonitorPoint): string {
-  return point.time ? new Date(point.time).toLocaleTimeString() : "—";
-}
 
 /** ``embedded``: inside a window over the project (no way back to it is needed). */
 export default function StreamingMonitorView({ projectId, embedded = false }: { projectId: Id; embedded?: boolean }) {
@@ -418,11 +410,18 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   // A movie of the dose analysis for a micrograph: drawn and alerted as one
   const dosePoints = useMemo(() => dosePlotPoints(dose.points), [dose.points]);
   const hasDose = dosePoints.length > 0;
-  // The alerts of the micrographs and of the movies, newest first
-  const episodes = useMemo(() => [
+  // Every alert of the monitor, newest first: micrographs, movies of the dose analysis and tilt series
+  const alerts = useMemo<MonitorAlert[]>(() => [
     ...alertEpisodes(points).map((episode) => ({ ...episode, item: "micrograph" as const })),
     ...alertEpisodes(dosePoints).map((episode) => ({ ...episode, item: "movie" as const })),
-  ].sort((a, b) => (b.last.time ?? "").localeCompare(a.last.time ?? "")), [points, dosePoints]);
+    ...alertEpisodes((tomo?.tiltSeries ?? []).map((row): StreamingMonitorPoint => ({
+      id: row.id, time: row.time, micrographName: row.tsId, enabled: row.enabled, alerts: row.alerts,
+    }))).map((episode) => ({ ...episode, item: "tilt series" as const })),
+  ].sort((a, b) => (b.last.time ?? "").localeCompare(a.last.time ?? "")), [points, dosePoints, tomo]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const unseenAlerts = useUnseenAlerts(projectId, alerts, alertsOpen);
+  // A tilt series an alert asks the tomography view to open
+  const [tomoFocus, setTomoFocus] = useState<{ tsId: string; at: number } | null>(null);
   const pointsById = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
 
   const openMicrograph = useCallback((pointId: number, kind: "micrograph" | "psd" = "micrograph") => {
@@ -505,7 +504,21 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   }
 
   return (
-    <div ref={rootRef} className="h-full w-full overflow-y-auto bg-app-bg p-4 md:p-6" data-testid="streaming-monitor">
+    <div ref={rootRef} className="relative h-full w-full overflow-hidden bg-app-bg" data-testid="streaming-monitor">
+      {alertsOpen ? (
+        <AlertsPanel alerts={alerts} thresholds={mode === "tomo" && tomo ? tomo.thresholds : thresholds}
+                     onClose={() => setAlertsOpen(false)}
+                     onOpen={(alert) => {
+                       if (alert.item === "tilt series" && alert.first.micrographName) {
+                         setView("tomo");
+                         setTomoFocus({ tsId: alert.first.micrographName, at: Date.now() });
+                       } else if (alert.item === "micrograph") {
+                         setView("spa");
+                         openMicrograph(alert.first.id);
+                       }
+                     }} />
+      ) : null}
+      <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
         <header className="flex flex-wrap items-center gap-3">
           <Activity className="h-5 w-5 text-app-accent" />
@@ -594,6 +607,11 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 Back to the project
               </Link>
             )}
+            {/* In the top right corner, apart from the controls */}
+            <div className="ml-3 border-l border-app-border pl-4">
+              <AlertsButton unseen={unseenAlerts} total={alerts.length} open={alertsOpen}
+                            onToggle={() => setAlertsOpen((open) => !open)} />
+            </div>
           </div>
         </header>
 
@@ -615,7 +633,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
         {mode === "tomo" ? (
           <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
-                           isSeen={isSeen} onLoaded={setTomo} />
+                           isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus} />
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
@@ -680,43 +698,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {seriesKind || hasDose ? (
-            <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Alerts">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-                <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
-              </div>
-              {episodes.length === 0 ? (
-                <div className="text-sm text-app-muted">No {hasDose ? "micrograph or movie" : "micrograph"} goes past the thresholds.</div>
-              ) : (
-                <ul className="divide-y divide-app-border">
-                  {episodes.map((episode) => {
-                    const limit = monitor?.thresholds[episode.kind];
-                    return (
-                      <li key={`${episode.kind}-${episode.first.id}`} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
-                        <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
-                        <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, limit)}</span>
-                        <span className="text-app-muted">
-                          {episode.count === 1 ? `1 ${episode.item}` : `${episode.count} ${episode.item}s in a row`}
-                          {" · "}{timeOf(episode.first)}{episode.count > 1 ? ` – ${timeOf(episode.last)}` : ""}
-                          {episode.ongoing ? " · still going on" : ""}
-                        </span>
-                        {episode.item === "movie" ? (
-                          <span className="ml-auto text-app-muted">{episode.first.micrographName}</span>
-                        ) : (
-                          <button type="button" className="ml-auto text-app-accent hover:underline"
-                                  onClick={() => openMicrograph(episode.first.id)}>
-                            {episode.first.micrographName ?? `Micrograph ${episode.first.id}`}
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          ) : null}
           </>
         )}
+      </div>
       </div>
 
       {/* In the window the monitor is in, also when it was moved to another one */}

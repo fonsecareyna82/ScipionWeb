@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import StreamingMonitorView from "@/components/monitor/StreamingMonitorView";
@@ -70,6 +70,7 @@ function withCoordinates(): StreamingMonitor {
 
 afterEach(() => {
   vi.useRealTimers();
+  window.localStorage.clear();
   window.localStorage.removeItem(POLL_STORAGE_KEY);
 });
 
@@ -84,11 +85,16 @@ describe("StreamingMonitorView", () => {
     expect(screen.getAllByTestId("monitor-stage")).toHaveLength(2);
     expect(screen.getAllByText("3 waiting")).toHaveLength(2);
     expect(screen.getAllByTestId("monitor-plot")).toHaveLength(4);
-    expect(screen.getByText("Astigmatism above 1000 Å")).toBeInTheDocument();
+    // The alerts are in the panel the bell opens; the bell counts the new ones
+    expect(screen.getByTestId("monitor-alerts-badge")).toHaveTextContent("1");
+    fireEvent.click(screen.getByRole("button", { name: "Alerts, 1 new" }));
+    const panel = screen.getByRole("complementary", { name: "Alerts" });
+    expect(within(panel).getByText("Astigmatism above 1000 Å")).toBeInTheDocument();
+    expect(screen.queryByTestId("monitor-alerts-badge")).not.toBeInTheDocument();
     expect(screen.getByText(/^Updated /)).toBeInTheDocument();
     // Every part says what it shows
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
+    expect(within(panel).getByRole("img", { name: /Each line is a run of consecutive items/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
     expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
   });
@@ -179,6 +185,7 @@ describe("StreamingMonitorView", () => {
       afterPickSetId: 40, afterPickRowId: 10 })));
     // Micrograph 2 was picked later with too few particles: it shows, and it is an alert
     await waitFor(() => expect(screen.getByRole("button", { name: "Particles" })).toHaveAttribute("data-points", "2"));
+    fireEvent.click(screen.getByRole("button", { name: /^Alerts/ }));
     expect(screen.getByText("Fewer particles picked than 50 particles")).toBeInTheDocument();
   });
 
@@ -360,6 +367,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     expect(await screen.findByRole("button", { name: "Dose against the median" })).toHaveAttribute("data-points", "2");
+    fireEvent.click(screen.getByRole("button", { name: "Alerts, 1 new" }));
     expect(screen.getByText("Dose off the session median by more than 5 %")).toBeInTheDocument();
     expect(screen.getByText(/^1 movie/)).toBeInTheDocument();
     expect(screen.getByText("movie_002.tiff")).toBeInTheDocument();

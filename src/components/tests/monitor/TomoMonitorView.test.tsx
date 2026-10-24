@@ -82,6 +82,7 @@ function render(tomoAnswer: TomoMonitor, spaAnswer = spa(), extra = {}) {
 
 afterEach(() => {
   vi.useRealTimers();
+  window.localStorage.clear();
   window.localStorage.removeItem(POLL_STORAGE_KEY);
 });
 
@@ -112,8 +113,23 @@ describe("The tomography view of the monitor", () => {
                  row(2, "TS_02", { enabledTilts: 25, alerts: ["minTilts"] })]));
 
     expect(await screen.findByText("20/41")).toHaveClass("text-app-danger");
-    expect(screen.getByText("Fewer tilts than 30 tilts")).toBeInTheDocument();
-    expect(screen.getByText(/2 tilt series in a row/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Alerts, 1 new" }));
+    const panel = screen.getByRole("complementary", { name: "Alerts" });
+    expect(within(panel).getByText("Fewer tilts than 30 tilts")).toBeInTheDocument();
+    expect(within(panel).getByText(/2 tilt series in a row/)).toBeInTheDocument();
+
+    // The alert opens its tilt series in the tomography view
+    fireEvent.click(within(panel).getByRole("button", { name: "TS_01" }));
+    expect(await screen.findByRole("region", { name: "Tilt series TS_01" })).toBeInTheDocument();
+  });
+
+  it("counts again only the alerts not seen yet, also after reopening the monitor", async () => {
+    render(tomo([row(1, "TS_01", { enabledTilts: 20, alerts: ["minTilts"] })]));
+    fireEvent.click(await screen.findByRole("button", { name: "Alerts, 1 new" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close the alerts" }));
+
+    expect(screen.getByRole("button", { name: "Alerts" })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem("scipionweb.monitor.seenAlerts.7") ?? "[]")).toEqual(["tilt series:minTilts:1"]);
   });
 
   it("opens the tilts of a tilt series by angle", async () => {

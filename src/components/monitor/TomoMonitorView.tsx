@@ -3,7 +3,7 @@
 // series opens its tilts by angle and the central slice of its tomogram.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Plot from "react-plotly.js";
-import { Bell, Check, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import IntegratedTomographyViewer from "@/components/analyze/integrated-tomography-viewer";
@@ -11,14 +11,12 @@ import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
 import { APP_TOKENS } from "@/theme/tokens";
 import type {
   Id,
-  StreamingMonitorPoint,
   StreamingMonitorThresholdName,
   TomoMonitor,
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
 import { HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
-import { THRESHOLD_LABELS, alertEpisodes, formatLimit } from "./streaming-monitor-data";
 
 const THUMBNAIL_SIZE = 96;
 const SLICE_SIZE = 512;
@@ -39,9 +37,6 @@ const SESSION_HELP =
   + "kept, the residual of its alignment and, once picked, the particles of its tomogram. Red points go past a "
   + "threshold. A particles point opens its tomogram with the particles on it.";
 
-const ALERTS_HELP =
-  "Each line is a run of consecutive tilt series past the same threshold, newest first. A red dot means the "
-  + "newest one is still past it. The thresholds are set with the Thresholds button, for everyone in the project.";
 
 type Props = {
   projectId: Id;
@@ -52,6 +47,8 @@ type Props = {
   /** Whether the window the monitor is in is seen (it can be another browser window). */
   isSeen: () => boolean;
   onLoaded: (monitor: TomoMonitor) => void;
+  /** A tilt series to open, asked from outside (e.g. an alert); ``at`` makes asking again open it again. */
+  focus?: { tsId: string; at: number } | null;
 };
 
 function TomogramSlice({ projectId, setId, itemId, size }: { projectId: Id; setId: number; itemId: number; size: number }) {
@@ -226,7 +223,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   );
 }
 
-export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded }: Props) {
+export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null }: Props) {
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -268,6 +265,10 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   }, [load, pollSeconds, isSeen]);
 
   const rows = useMemo(() => [...(monitor?.tiltSeries ?? [])].reverse(), [monitor]);
+
+  useEffect(() => {
+    if (focus) setSelected(focus.tsId);
+  }, [focus]);
   const selectedRow = rows.find((row) => row.tsId === selected) ?? null;
 
   useEffect(() => {
@@ -287,10 +288,6 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
     // The tilts are read again when the selected tilt series changes in the stream
   }, [svc, projectId, selected, tsSetId, selectedRow?.tilts, selectedRow?.aligned, selectedRow?.residual]);
 
-  // As in the single particle view, consecutive tilt series past the same threshold are one alert
-  const episodes = useMemo(() => alertEpisodes((monitor?.tiltSeries ?? []).map((row): StreamingMonitorPoint => ({
-    id: row.id, time: row.time, micrographName: row.tsId, enabled: row.enabled, alerts: row.alerts,
-  }))), [monitor]);
 
   if (!monitor) {
     return error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
@@ -441,35 +438,6 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
         </section>
       ) : null}
 
-      {rows.length ? (
-        <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Tomography alerts">
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
-            <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
-          </div>
-          {episodes.length === 0 ? (
-            <div className="text-sm text-app-muted">No tilt series goes past the thresholds.</div>
-          ) : (
-            <ul className="divide-y divide-app-border">
-              {episodes.map((episode) => (
-                <li key={`${episode.kind}-${episode.first.id}`} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
-                  <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
-                  <span className="font-medium text-app-text">
-                    {THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, monitor.thresholds[episode.kind])}
-                  </span>
-                  <span className="text-app-muted">
-                    {episode.count === 1 ? "1 tilt series" : `${episode.count} tilt series in a row`}
-                    {episode.ongoing ? " · still going on" : ""}
-                  </span>
-                  <button type="button" className="ml-auto text-app-accent hover:underline"
-                          onClick={() => setSelected(episode.first.micrographName ?? null)}>
-                    {episode.first.micrographName}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
 
       {viewed ? (
         <FloatingWindow open onClose={() => setViewing(null)} title={`${viewing?.tsId} · ${viewed.label}`}
