@@ -41,4 +41,14 @@ describe("fetchStreamingMonitor", () => {
     expect(monitor.stages[0]).toEqual(picking);
     expect(monitor.tiltSeries[0].particles).toBe(120);
   });
+
+  it("keeps the dose of the movies a dose analysis measured", async () => {
+    const movie = { id: 2, time: "t", movieName: "movie_002.tiff", meanDose: 1.4, doseDifference: 16, discarded: true,
+                    alerts: ["maxDoseDifference"] };
+    respond({ dose: { key: 9, label: "dose analysis", reset: false, lastRowId: 502, more: true, points: [movie] } });
+
+    const { dose } = await fetchStreamingMonitor(7);
+
+    expect(dose).toEqual({ key: "9", label: "dose analysis", reset: false, lastRowId: 502, more: true, points: [movie] });
+  });
 });

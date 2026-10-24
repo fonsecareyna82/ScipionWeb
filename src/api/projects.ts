@@ -4803,6 +4803,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
   const series = raw?.series && typeof raw.series === "object" ? raw.series : {};
   const picking = raw?.picking && typeof raw.picking === "object" ? raw.picking : {};
+  const dose = raw?.dose && typeof raw.dose === "object" ? raw.dose : {};
   return {
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
@@ -4822,6 +4823,15 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
     classes: raw?.classes && typeof raw.classes === "object" && Array.isArray(raw.classes.classes)
       ? raw.classes : null,
     tomography: Boolean(raw?.tomography),
+    dose: {
+      key: dose.key != null ? String(dose.key) : null,
+      label: dose.label ?? null,
+      reset: Boolean(dose.reset),
+      lastRowId: dose.lastRowId ?? null,
+      more: Boolean(dose.more),
+      points: list(dose.points).map((point: any) => ({ ...point, discarded: Boolean(point?.discarded),
+                                                       alerts: list(point?.alerts) })),
+    },
     picking: {
       setId: picking.setId ?? null,
       reset: Boolean(picking.reset),

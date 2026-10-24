@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { StreamingMonitorPoint } from "@/services/ProjectService";
 import { formatEta, plotBox, plotFrame } from "@/components/monitor/monitor-parts";
-import { EMPTY_PICKING, EMPTY_SERIES, alertEpisodes, mergePicking, mergeSeries, withParticles } from "@/components/monitor/streaming-monitor-data";
+import { EMPTY_DOSE, EMPTY_PICKING, EMPTY_SERIES, alertEpisodes, mergeDose, mergePicking, mergeSeries, withParticles } from "@/components/monitor/streaming-monitor-data";
 
 function point(id: number, alerts: StreamingMonitorPoint["alerts"] = [], extra: Partial<StreamingMonitorPoint> = {}) {
   return { id, time: `2026-10-21T12:0${id}:00Z`, enabled: true, alerts, ...extra } as StreamingMonitorPoint;
@@ -86,7 +86,7 @@ describe("mergePicking", () => {
 describe("withParticles", () => {
   const thresholds = { minDefocus: null, maxDefocus: null, maxAstigmatism: null, maxResolution: null,
                        maxFrameShift: null, maxTotalDrift: null, minParticles: 10, minTilts: null,
-                       minAngleSpan: null, maxFailedCtfTilts: null, maxResidual: null };
+                       minAngleSpan: null, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: null };
 
   it("gives each point its particles and the alert when they are too few", () => {
     const shown = withParticles([point(1), point(2), point(3)], { "1": 5, "2": 50 }, thresholds);
@@ -119,5 +119,19 @@ describe("plotFrame", () => {
     expect(withLegend.margin.t).toBeGreaterThan(without.margin.t);
     // Anchored on the plotting area, not above the frame
     expect(withLegend.legend).toMatchObject({ y: 1, yanchor: "bottom" });
+  });
+
+  it("keeps the dose points by movie, and drops them for another dose analysis", () => {
+    const movie = (id: number) => ({ id, time: null, meanDose: 1, doseDifference: 0, discarded: false, alerts: [] });
+    const first = mergeDose(EMPTY_DOSE, { key: "9", label: "dose", reset: false, lastRowId: 20, more: false,
+                                          points: [movie(3), movie(1)] });
+    const next = mergeDose(first, { key: "9", label: "dose", reset: false, lastRowId: 25, more: false,
+                                    points: [movie(2), movie(3)] });
+    const other = mergeDose(next, { key: "8", label: "dose", reset: false, lastRowId: 4, more: false,
+                                    points: [movie(7)] });
+
+    expect(next.points.map((point) => point.id)).toEqual([1, 2, 3]);
+    expect(next.lastRowId).toBe(25);
+    expect([other.key, other.points.map((point) => point.id)]).toEqual(["8", [7]]);
   });
 });

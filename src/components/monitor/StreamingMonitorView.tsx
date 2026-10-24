@@ -18,6 +18,7 @@ import type {
   TomoMonitor,
 } from "@/services/ProjectService";
 import {
+  EMPTY_DOSE,
   EMPTY_PICKING,
   EMPTY_SERIES,
   POLL_CHOICES,
@@ -25,13 +26,16 @@ import {
   THRESHOLD_ORDER,
   TOMO_THRESHOLD_ORDER,
   alertEpisodes,
+  dosePlotPoints,
   formatAngstrom,
   formatLimit,
+  mergeDose,
   mergePicking,
   mergeSeries,
   readPollSeconds,
   savePollSeconds,
   withParticles,
+  type DoseState,
   type PickingState,
   type SeriesState,
 } from "./streaming-monitor-data";
@@ -48,6 +52,10 @@ const HISTOGRAM_HEIGHT = 240;
 type PlotSpec = {
   title: string;
   unit: string;
+  /** What each point is: a micrograph, or a movie for the dose. */
+  item?: "micrograph" | "movie";
+  /** The thresholds are a distance from zero: drawn above and below it. */
+  symmetric?: boolean;
   series: Array<{ name: string; value: (point: StreamingMonitorPoint) => number | undefined }>;
   /** Thresholds drawn as lines on this plot. */
   limits: StreamingMonitorThresholdName[];
@@ -129,6 +137,19 @@ const PARTICLES_PLOT: PlotSpec = {
     + "micrograph a point opens shows its particles circled.",
 };
 
+const DOSE_PLOT: PlotSpec = {
+  title: "Dose stability",
+  unit: "%",
+  item: "movie",
+  symmetric: true,
+  series: [{ name: "Dose against the median", value: (point) => point.doseDifference }],
+  limits: ["maxDoseDifference"],
+  alerts: ["maxDoseDifference"],
+  help: "How far the dose of each movie is from the median dose of the session, in %, as the dose analysis "
+    + "measured it. It should stay flat around 0: a jump or a drift points to the beam, the gun or the camera, "
+    + "before it shows in the CTF.",
+};
+
 const CLASSES_HELP =
   "The 2D class averages of the stream, biggest first, with how many particles each has and their share. "
   + "The classifier works in rounds, so they change when a round ends. Faded classes are disabled. Click one "
@@ -146,7 +167,7 @@ function MonitorPlot({
   points: StreamingMonitorPoint[];
   thresholds: StreamingMonitorThresholds | null;
   dark: boolean;
-  onPick: (pointId: number) => void;
+  onPick?: (pointId: number) => void;
   /** Nothing streams: the micrographs in their order, as processing times would all fall together. */
   byOrder?: boolean;
 }) {
@@ -174,6 +195,7 @@ function MonitorPlot({
   const shapes = spec.limits
     .map((name) => thresholds?.[name])
     .filter((value): value is number => value !== null && value !== undefined)
+    .flatMap((value) => (spec.symmetric ? [value, -value] : [value]))
     .map((value) => ({
       type: "line",
       xref: "paper",
@@ -190,15 +212,16 @@ function MonitorPlot({
     font: { color: tokens.textMuted, size: 11 },
     hovermode: "closest",
     showlegend: spec.series.length > 1,
-    xaxis: byOrder ? { title: { text: "Micrograph" }, gridcolor: tokens.border, zeroline: false }
+    xaxis: byOrder ? { title: { text: spec.item === "movie" ? "Movie" : "Micrograph" }, gridcolor: tokens.border, zeroline: false }
       : { type: "date", gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     shapes,
   };
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
-      <PlotHeader title={spec.title} help={`${spec.help} Each point is a micrograph, at the time it was processed; `
-        + "red ones go past a threshold (the dashed lines). Click one to see the micrograph."} />
+      <PlotHeader title={spec.title} help={`${spec.help} Each point is a ${spec.item ?? "micrograph"}, at the time it `
+        + "was processed; red ones go past a threshold (the dashed lines)."
+        + (onPick ? " Click one to see the micrograph." : "")} />
       <Plot
         data={data}
         layout={layout}
@@ -209,7 +232,7 @@ function MonitorPlot({
           const button = event?.event?.button;
           if (button != null && button !== 0) return;
           const pointId = event?.points?.[0]?.customdata?.[0];
-          if (pointId != null) onPick(Number(pointId));
+          if (pointId != null) onPick?.(Number(pointId));
         }}
       />
     </div>
@@ -299,6 +322,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
   const [picking, setPicking] = useState<PickingState>(EMPTY_PICKING);
   const pickingRef = useRef<PickingState>(EMPTY_PICKING);
+  const [dose, setDose] = useState<DoseState>(EMPTY_DOSE);
+  const doseRef = useRef<DoseState>(EMPTY_DOSE);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
@@ -322,6 +347,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     try {
       let current = fromScratch ? EMPTY_SERIES : seriesRef.current;
       let picks = fromScratch ? EMPTY_PICKING : pickingRef.current;
+      let doses = fromScratch ? EMPTY_DOSE : doseRef.current;
       let answer: StreamingMonitor;
       // Points come in batches: read until the server has no more.
       do {
@@ -333,14 +359,19 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           afterRowId: current.lastRowId,
           afterPickSetId: picks.setId,
           afterPickRowId: picks.lastRowId,
+          afterDoseKey: doses.key,
+          afterDoseRowId: doses.lastRowId,
         });
         current = mergeSeries(current, answer.series);
         picks = mergePicking(picks, answer.picking);
-      } while (answer.series.more && answer.series.points.length > 0);
+        doses = mergeDose(doses, answer.dose);
+      } while ((answer.series.more && answer.series.points.length > 0) || answer.dose.more);
       seriesRef.current = current;
       pickingRef.current = picks;
+      doseRef.current = doses;
       setSeries(current);
       setPicking(picks);
+      setDose(doses);
       setMonitor(answer);
       setUpdatedAt(new Date());
       setError(null);
@@ -384,7 +415,14 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   // The points as shown: with the coordinates picked on their micrograph, which come later than the CTF
   const points = useMemo(() => withParticles(series.points, picking.counts, thresholds),
     [series.points, picking.counts, thresholds]);
-  const episodes = useMemo(() => alertEpisodes(points), [points]);
+  // A movie of the dose analysis for a micrograph: drawn and alerted as one
+  const dosePoints = useMemo(() => dosePlotPoints(dose.points), [dose.points]);
+  const hasDose = dosePoints.length > 0;
+  // The alerts of the micrographs and of the movies, newest first
+  const episodes = useMemo(() => [
+    ...alertEpisodes(points).map((episode) => ({ ...episode, item: "micrograph" as const })),
+    ...alertEpisodes(dosePoints).map((episode) => ({ ...episode, item: "movie" as const })),
+  ].sort((a, b) => (b.last.time ?? "").localeCompare(a.last.time ?? "")), [points, dosePoints]);
   const pointsById = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
 
   const openMicrograph = useCallback((pointId: number, kind: "micrograph" | "psd" = "micrograph") => {
@@ -597,7 +635,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {seriesKind ? (
+          {seriesKind || hasDose ? (
             <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Quality over time">
               {seriesKind === "micrographs" ? (
                 <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted lg:col-span-2">
@@ -609,6 +647,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                              dark={dark}
                              onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
               ))}
+              {hasDose ? (
+                <MonitorPlot spec={DOSE_PLOT} points={dosePoints} thresholds={thresholds} byOrder={!live} dark={dark} />
+              ) : null}
             </section>
           ) : null}
 
@@ -639,13 +680,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {seriesKind ? (
+          {seriesKind || hasDose ? (
             <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Alerts">
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
                 <Bell className="h-3.5 w-3.5" /> Alerts <HelpHint text={ALERTS_HELP} />
               </div>
               {episodes.length === 0 ? (
-                <div className="text-sm text-app-muted">No micrograph goes past the thresholds.</div>
+                <div className="text-sm text-app-muted">No {hasDose ? "micrograph or movie" : "micrograph"} goes past the thresholds.</div>
               ) : (
                 <ul className="divide-y divide-app-border">
                   {episodes.map((episode) => {
@@ -655,14 +696,18 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                         <span className={`h-2 w-2 rounded-full ${episode.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
                         <span className="font-medium text-app-text">{THRESHOLD_LABELS[episode.kind]} {formatLimit(episode.kind, limit)}</span>
                         <span className="text-app-muted">
-                          {episode.count === 1 ? "1 micrograph" : `${episode.count} micrographs in a row`}
+                          {episode.count === 1 ? `1 ${episode.item}` : `${episode.count} ${episode.item}s in a row`}
                           {" · "}{timeOf(episode.first)}{episode.count > 1 ? ` – ${timeOf(episode.last)}` : ""}
                           {episode.ongoing ? " · still going on" : ""}
                         </span>
-                        <button type="button" className="ml-auto text-app-accent hover:underline"
-                                onClick={() => openMicrograph(episode.first.id)}>
-                          {episode.first.micrographName ?? `Micrograph ${episode.first.id}`}
-                        </button>
+                        {episode.item === "movie" ? (
+                          <span className="ml-auto text-app-muted">{episode.first.micrographName}</span>
+                        ) : (
+                          <button type="button" className="ml-auto text-app-accent hover:underline"
+                                  onClick={() => openMicrograph(episode.first.id)}>
+                            {episode.first.micrographName ?? `Micrograph ${episode.first.id}`}
+                          </button>
+                        )}
                       </li>
                     );
                   })}

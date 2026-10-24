@@ -1652,7 +1652,8 @@ export type StreamingMonitorThresholdName =
   | "minTilts"
   | "minAngleSpan"
   | "maxFailedCtfTilts"
-  | "maxResidual";
+  | "maxResidual"
+  | "maxDoseDifference";
 
 /** Thresholds in A (minParticles: coordinates per micrograph); null raises no alert. */
 export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
@@ -1675,6 +1676,8 @@ export type StreamingMonitorPoint = {
   maxFrameShift?: number;
   /** Coordinates picked on the micrograph, once picked. */
   particles?: number;
+  /** A movie of the dose analysis, as the dose plot draws it: its dose against the session median, in %. */
+  doseDifference?: number;
   /** The thresholds this point goes past. */
   alerts: StreamingMonitorThresholdName[];
 };
@@ -1705,6 +1708,16 @@ export type StreamingMonitor = {
   classes: StreamingMonitorClasses | null;
   /** The project has tilt series: the monitor also has a tomography view. */
   tomography: boolean;
+  /** The dose of the movies a dose analysis measured since the caller's dose cursor; key null without one. */
+  dose: {
+    /** The dose analysis followed (its protocol): another one means reading everything again. */
+    key: string | null;
+    label: string | null;
+    reset: boolean;
+    lastRowId: number | null;
+    more: boolean;
+    points: StreamingMonitorDosePoint[];
+  };
   /** Coordinates per micrograph id that changed since the caller's picking cursor. */
   picking: {
     setId: number | null;
@@ -1784,6 +1797,23 @@ export type StreamingMonitorQuery = {
   afterRowId?: number | null;
   afterPickSetId?: number | null;
   afterPickRowId?: number | null;
+  afterDoseKey?: string | null;
+  afterDoseRowId?: number | null;
+};
+
+/** The dose a dose analysis measured on one movie. */
+export type StreamingMonitorDosePoint = {
+  /** The movie id. */
+  id: number;
+  time: string | null;
+  movieName?: string;
+  /** Mean dose per frame, in e/A2. */
+  meanDose: number;
+  /** How far it is from the median dose of the session, in %. */
+  doseDifference: number;
+  /** The analysis discarded the movie. */
+  discarded: boolean;
+  alerts: StreamingMonitorThresholdName[];
 };
 
 /** A fingerprint of what the project graph shows. */

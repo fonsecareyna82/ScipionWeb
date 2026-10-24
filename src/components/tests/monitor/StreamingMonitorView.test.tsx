@@ -26,7 +26,7 @@ vi.mock("react-plotly.js", () => ({
 
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
-  minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null,
+  minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: 5,
 };
 
 function point(id: number, extra: Partial<StreamingMonitorPoint> = {}): StreamingMonitorPoint {
@@ -54,6 +54,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
     classes: null,
     tomography: false,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
+    dose: { key: null, label: null, reset: false, lastRowId: null, more: false, points: [] },
   };
 }
 
@@ -89,7 +90,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Each line is a run of consecutive micrographs/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
@@ -285,7 +286,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -327,7 +328,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
   });
 
   it("tints the cards of each phase of the stream with one quiet hue", async () => {
@@ -340,6 +341,32 @@ describe("StreamingMonitorView", () => {
       .map((card) => card.getAttribute("data-phase-hue"));
     expect(micrographs).toBe(ctf);
     expect(coordinates).not.toBe(ctf);
+  });
+
+  it("shows the dose of each analysed movie, with its alerts, and asks only for the newer ones", async () => {
+    const dosed = (points: StreamingMonitor["dose"]["points"], lastRowId: number) => ({
+      ...answer([point(1)]),
+      dose: { key: "9", label: "dose analysis", reset: false, lastRowId, more: false, points },
+    });
+    const fetchStreamingMonitor = vi.fn()
+      .mockResolvedValueOnce(dosed([
+        { id: 1, time: "2026-10-21T12:00:00Z", movieName: "movie_001.tiff", meanDose: 1.2, doseDifference: 0.5,
+          discarded: false, alerts: [] },
+        { id: 2, time: "2026-10-21T12:01:00Z", movieName: "movie_002.tiff", meanDose: 1.4, doseDifference: 16,
+          discarded: true, alerts: ["maxDoseDifference"] },
+      ], 502))
+      .mockResolvedValue(dosed([], 502));
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+
+    expect(await screen.findByRole("button", { name: "Dose against the median" })).toHaveAttribute("data-points", "2");
+    expect(screen.getByText("Dose off the session median by more than 5 %")).toBeInTheDocument();
+    expect(screen.getByText(/^1 movie/)).toBeInTheDocument();
+    expect(screen.getByText("movie_002.tiff")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      afterDoseKey: "9", afterDoseRowId: 502 })));
   });
 
   it("opens the micrograph of a point", async () => {
@@ -404,10 +431,10 @@ describe("StreamingMonitorView", () => {
     // The single particle view saves its own thresholds only
     await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, {
       minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: null, maxResolution: 6, maxFrameShift: 10,
-      maxTotalDrift: 45, minParticles: null,
+      maxTotalDrift: 45, minParticles: null, maxDoseDifference: 5,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null }));
+      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {

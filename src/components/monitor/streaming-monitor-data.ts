@@ -1,6 +1,7 @@
 // What the streaming monitor keeps between polls: the points it has, and the alerts they make.
 import type {
   StreamingMonitor,
+  StreamingMonitorDosePoint,
   StreamingMonitorPoint,
   StreamingMonitorThresholdName,
   StreamingMonitorThresholds,
@@ -18,6 +19,7 @@ export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
   minAngleSpan: "Tilt range short of ±",
   maxFailedCtfTilts: "Tilts without CTF above",
   maxResidual: "Alignment residual above",
+  maxDoseDifference: "Dose off the session median by more than",
 };
 
 const THRESHOLD_UNITS: Partial<Record<StreamingMonitorThresholdName, string>> = {
@@ -26,6 +28,7 @@ const THRESHOLD_UNITS: Partial<Record<StreamingMonitorThresholdName, string>> = 
   minAngleSpan: "°",
   maxFailedCtfTilts: "tilts",
   maxResidual: "px",
+  maxDoseDifference: "%",
 };
 
 /** Every threshold is in Å but the particles one, a count. */
@@ -48,6 +51,7 @@ export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "maxFrameShift",
   "maxTotalDrift",
   "minParticles",
+  "maxDoseDifference",
 ];
 
 /** The thresholds of each view of the monitor: the CTF ones are shared. */
@@ -97,6 +101,36 @@ export const EMPTY_SERIES: SeriesState = { setId: null, lastRowId: null, points:
  * The points after this answer: the new ones added, or only them when the output was rebuilt. They come in
  * the order they were written, which parallel steps mix up: they are kept in micrograph order.
  */
+export type DoseState = {
+  key: string | null;
+  lastRowId: number | null;
+  points: StreamingMonitorDosePoint[];
+};
+
+export const EMPTY_DOSE: DoseState = { key: null, lastRowId: null, points: [] };
+
+/** The dose points after this answer, as mergeSeries does for the CTF: by movie id, from scratch for another
+ *  dose analysis. */
+export function mergeDose(previous: DoseState, answer: StreamingMonitor["dose"]): DoseState {
+  const restart = answer.reset || answer.key !== previous.key;
+  const kept = restart ? [] : previous.points;
+  const known = new Set(kept.map((point) => point.id));
+  const added = answer.points.filter((point) => !known.has(point.id));
+  return {
+    key: answer.key,
+    lastRowId: answer.lastRowId ?? (restart ? null : previous.lastRowId),
+    points: added.length ? [...kept, ...added].sort((a, b) => a.id - b.id) : kept,
+  };
+}
+
+/** The dose points as the plots and the alerts of the monitor take them: a movie for a micrograph. */
+export function dosePlotPoints(points: StreamingMonitorDosePoint[]): StreamingMonitorPoint[] {
+  return points.map((point) => ({
+    id: point.id, time: point.time, enabled: true, micrographName: point.movieName ?? `Movie ${point.id}`,
+    doseDifference: point.doseDifference, alerts: point.alerts,
+  }));
+}
+
 export function mergeSeries(previous: SeriesState, answer: StreamingMonitor["series"]): SeriesState {
   const restart = answer.reset || answer.setId !== previous.setId;
   const kept = restart ? [] : previous.points;

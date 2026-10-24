@@ -29,7 +29,7 @@ vi.mock("@/components/analyze/integrated-tomography-viewer", () => ({
 
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
-  minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null,
+  minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: 5,
 };
 
 function spa(stages: StreamingMonitor["stages"] = []): StreamingMonitor {
@@ -38,6 +38,7 @@ function spa(stages: StreamingMonitor["stages"] = []): StreamingMonitor {
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
     classes: null, tomography: true,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
+    dose: { key: null, label: null, reset: false, lastRowId: null, more: false, points: [] },
   };
 }
 
