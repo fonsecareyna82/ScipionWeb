@@ -57,6 +57,16 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
   };
 }
 
+function withCoordinates(): StreamingMonitor {
+  const next = answer([point(1)]);
+  next.stages = [...next.stages, {
+    stage: "coordinates", setId: 40, protocolId: "4", protocolClassName: "ProtPick", label: "cryolo",
+    status: "running", outputName: "outputCoordinates", setClassName: "SetOfCoordinates", items: 2,
+    maxItemId: 2, streaming: true, perMinute: 1, trend: "steady", behind: 0, micrographs: 1,
+  }];
+  return next;
+}
+
 afterEach(() => {
   vi.useRealTimers();
   window.localStorage.removeItem(POLL_STORAGE_KEY);
@@ -318,6 +328,18 @@ describe("StreamingMonitorView", () => {
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
     expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null });
+  });
+
+  it("tints the cards of each phase of the stream with one quiet hue", async () => {
+    const answer = withCoordinates();
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(answer) }) });
+
+    await screen.findByText("ctffind");
+    const [micrographs, ctf, coordinates] = screen.getAllByTestId("monitor-stage")
+      .map((card) => card.getAttribute("data-phase-hue"));
+    expect(micrographs).toBe(ctf);
+    expect(coordinates).not.toBe(ctf);
   });
 
   it("opens the micrograph of a point", async () => {

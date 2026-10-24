@@ -19,6 +19,14 @@ vi.mock("react-plotly.js", () => ({
   ),
 }));
 
+// The tomography viewer reads its outputs from the server: it says what it was opened on
+vi.mock("@/components/analyze/integrated-tomography-viewer", () => ({
+  default: ({ protocolId, outputName, pointerClass, initialTsId }: { protocolId: string; outputName: string;
+    pointerClass: string; initialTsId: string }) => (
+    <div data-testid="tomography-viewer">{`${protocolId}:${outputName}:${pointerClass}:${initialTsId}`}</div>
+  ),
+}));
+
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
   minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null,
@@ -172,5 +180,53 @@ describe("The tomography view of the monitor", () => {
     fireEvent.click(within(tabs).getByRole("tab", { name: "Tomography" }));
 
     expect(await screen.findByTestId("tomo-monitor")).toBeInTheDocument();
+  });
+
+  it("shows the particles picked on each tomogram, and opens a tomogram with them", async () => {
+    const answer = tomo([row(1, "TS_01", { tomogramId: 7, particles: 120 }), row(2, "TS_02")]);
+    answer.stages = [...answer.stages, {
+      stage: "coordinates3d", setId: 60, protocolId: "6", protocolClassName: "ProtPick3D", label: "picking",
+      status: "running", outputName: "coordinates", setClassName: "SetOfCoordinates3D", items: 120, maxItemId: 120,
+      streaming: true, perMinute: 4, trend: "steady", behind: 0, tomogramsPicked: 1, boxSize: 40,
+      pickedFrom: { protocolId: "20", label: "cryocare", outputName: "Tomograms", items: 1 },
+    }];
+    render(answer);
+
+    expect(await screen.findByText("from 1 tomograms")).toBeInTheDocument();
+    expect(screen.getByTitle("Picks the 1 tomograms of cryocare (Tomograms)")).toHaveTextContent("from cryocare");
+    expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Particles per tomogram" })).toHaveAttribute("data-points", "1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open the particles of TS_01" }));
+    expect(await screen.findByTestId("tomography-viewer")).toHaveTextContent("6:coordinates:SetOfCoordinates3D:TS_01");
+    // Opening the particles does not open the tilts of the row
+    expect(screen.queryByRole("region", { name: "Tilt series TS_01" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the tomography viewer" }));
+    await waitFor(() => expect(screen.queryByTestId("tomography-viewer")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Particles per tomogram" }));
+    expect(await screen.findByTestId("tomography-viewer")).toHaveTextContent("6:coordinates:SetOfCoordinates3D:TS_01");
+  });
+
+  it("opens a tomogram in the tomography viewer, from the table and from the tilt series", async () => {
+    render(tomo([row(1, "TS_01", { tomogramId: 7 })]));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open the tomogram of TS_01" }));
+    expect(await screen.findByTestId("tomography-viewer")).toHaveTextContent("5:Tomograms:SetOfTomograms:TS_01");
+    expect(screen.queryByRole("region", { name: "Tilt series TS_01" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the tomography viewer" }));
+    fireEvent.click(screen.getAllByTestId("tilt-series-row")[0]);
+    const detail = await screen.findByRole("region", { name: "Tilt series TS_01" });
+    fireEvent.click(within(detail).getByRole("button", { name: "Open the tomogram of TS_01" }));
+    expect(await screen.findByTestId("tomography-viewer")).toHaveTextContent("5:Tomograms:SetOfTomograms:TS_01");
+  });
+
+  it("has no particles plot or column without a 3D picking", async () => {
+    render(tomo([row(1, "TS_01", { tomogramId: 7 })]));
+
+    await screen.findByTestId("tomo-monitor");
+    expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(3);
+    expect(screen.queryByRole("columnheader", { name: "Particles" })).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,5 @@
 // Pieces both views of the streaming monitor (single particle and tomography) show.
+import type { CSSProperties } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, HelpCircle } from "lucide-react";
 
 import type { StreamingMonitorStage } from "@/services/ProjectService";
@@ -15,6 +16,7 @@ export const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   ctftomo: "CTF",
   aligned: "Aligned",
   tomograms: "Tomograms",
+  coordinates3d: "Coordinates",
 };
 
 export function HelpHint({ text }: { text: string }) {
@@ -73,9 +75,37 @@ export function formatEta(minutes: number): string {
   return rest ? `about ${hours} h ${rest} min` : `about ${hours} h`;
 }
 
+// One quiet hue per phase of the stream, not per card: acquisition, preprocessing, picking, classification
+const STAGE_HUES: Record<StreamingMonitorStage["stage"], string> = {
+  movies: "var(--app-sky-700)",
+  tiltseries: "var(--app-sky-700)",
+  alignedMicrographs: "var(--app-indigo-700)",
+  micrographs: "var(--app-indigo-700)",
+  ctf: "var(--app-indigo-700)",
+  ctftomo: "var(--app-indigo-700)",
+  aligned: "var(--app-indigo-700)",
+  tomograms: "var(--app-indigo-700)",
+  coordinates: "var(--app-emerald-700)",
+  particles: "var(--app-emerald-700)",
+  coordinates3d: "var(--app-emerald-700)",
+  classes2d: "var(--app-amber-700)",
+};
+
+function stageTint(stage: StreamingMonitorStage["stage"]) {
+  const hue = STAGE_HUES[stage];
+  return {
+    background: `linear-gradient(135deg, color-mix(in srgb, ${hue} 8%, var(--app-surface)) 0%, var(--app-surface) 75%)`,
+    borderColor: `color-mix(in srgb, ${hue} 22%, var(--app-border))`,
+    "--stage-hue": hue,
+  } as CSSProperties;
+}
+
 export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage; live?: boolean }) {
   return (
-    <div className="min-w-[150px] flex-1 rounded-xl border border-app-border bg-app-surface p-3" data-testid="monitor-stage">
+    <div className="relative min-w-[150px] flex-1 overflow-hidden rounded-xl border p-3" style={stageTint(stage.stage)}
+         data-testid="monitor-stage" data-phase-hue={STAGE_HUES[stage.stage]}>
+      <span aria-hidden className="absolute inset-x-3 top-0 h-[3px] rounded-b-full opacity-70"
+            style={{ background: "var(--stage-hue)" }} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-app-subtle">{STAGE_LABELS[stage.stage]}</span>
         {stage.streaming ? (
@@ -103,16 +133,21 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
           {stage.counting ? "Counting micrographs…" : `from ${stage.micrographs.toLocaleString()} micrographs`}
         </div>
       ) : null}
+      {stage.tomogramsPicked !== undefined ? (
+        <div className="mt-1 text-xs text-app-muted">from {stage.tomogramsPicked.toLocaleString()} tomograms</div>
+      ) : null}
       {stage.pickedFrom ? (
         <div className="mt-1 truncate text-[11px] text-app-subtle"
-             title={`Picks the ${stage.pickedFrom.items} micrographs of ${stage.pickedFrom.label} (${stage.pickedFrom.outputName})`}>
+             title={`Picks the ${stage.pickedFrom.items} ${stage.tomogramsPicked !== undefined ? "tomograms" : "micrographs"} `
+               + `of ${stage.pickedFrom.label} (${stage.pickedFrom.outputName})`}>
           from {stage.pickedFrom.label}
         </div>
       ) : null}
       {live && stage.behind ? (
         <div className="mt-1 text-xs font-medium text-app-warning">
           {stage.behind.toLocaleString()}
-          {stage.micrographs !== undefined ? " micrographs" : stage.stage === "classes2d" ? " particles" : ""} waiting
+          {stage.micrographs !== undefined ? " micrographs" : stage.tomogramsPicked !== undefined ? " tomograms"
+            : stage.stage === "classes2d" ? " particles" : ""} waiting
           {stage.etaMinutes !== undefined ? (
             <span className="font-normal text-app-muted" title="At the rate of the last 10 minutes">
               {` · ${formatEta(stage.etaMinutes)}`}

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   fetchIntegratedAnalyzeContext: vi.fn(),
   reviewPanelSpy: vi.fn(),
   volumeViewerSpy: vi.fn(),
+  coordsViewerSpy: vi.fn(),
 }));
 
 vi.mock("@/ProjectServiceContext", () => ({
@@ -52,7 +53,10 @@ vi.mock("../../analyze/tomogram-review-panel", () => ({
 }));
 
 vi.mock("../../analyze/coords3d-viewer", () => ({
-  default: () => <div>Mock Coords3dViewer</div>,
+  default: (props: Record<string, unknown>) => {
+    mocks.coordsViewerSpy(props);
+    return <div>Mock Coords3dViewer</div>;
+  },
 }));
 
 vi.mock("../../analyze/tiltseries-viewer", () => ({
@@ -338,4 +342,24 @@ describe("IntegratedTomographyViewer reviews", () => {
     });
   });
 
+
+  it("starts every section on the tilt series asked for", async () => {
+    mocks.fetchIntegratedAnalyzeContext.mockResolvedValue({
+      root: { outputClass: "SetOfCoordinates3D" },
+      links: {},
+      summaries: { coordinates3d: { size: 500 } },
+      relations: { items: [
+        { key: "TS_01", label: "TS_01", tiltSeriesId: "TS_01", coordinatesTomogramId: "TS_01" },
+        { key: "TS_02", label: "TS_02", tiltSeriesId: "TS_02", coordinatesTomogramId: "TS_02" },
+      ] },
+    });
+
+    render(
+      <IntegratedTomographyViewer projectId={7} protocolId={42} outputName="outputCoordinates"
+                                  pointerClass="SetOfCoordinates3D" initialTsId="TS_02" />,
+    );
+
+    await waitFor(() => expect(mocks.coordsViewerSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedTomogramId: "TS_02" })));
+  });
 });

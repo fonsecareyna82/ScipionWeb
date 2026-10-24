@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchStreamingMonitor } from "@/api/projects";
+import { fetchStreamingMonitor, fetchTomoMonitor } from "@/api/projects";
 import { fetchWithAuth } from "@/api/auth";
 
 vi.mock("@/api/auth", () => ({ fetchWithAuth: vi.fn() }));
@@ -29,5 +29,16 @@ describe("fetchStreamingMonitor", () => {
     const { picking } = await fetchStreamingMonitor(7);
 
     expect([picking.protocolId, picking.outputName, picking.boxSize]).toEqual([null, null, null]);
+  });
+
+  it("keeps the 3D picking of a tomography stream and the particles of each tomogram", async () => {
+    const picking = { stage: "coordinates3d", setId: 60, protocolId: "6", outputName: "coordinates", items: 120,
+                      tomogramsPicked: 1, boxSize: 40, behind: 0 };
+    respond({ stages: [picking], tiltSeries: [{ id: 1, tsId: "TS_01", particles: 120, alerts: [] }] });
+
+    const monitor = await fetchTomoMonitor(7);
+
+    expect(monitor.stages[0]).toEqual(picking);
+    expect(monitor.tiltSeries[0].particles).toBe(120);
   });
 });

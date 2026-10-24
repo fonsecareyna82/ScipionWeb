@@ -17,6 +17,8 @@ type IntegratedTomographyViewerProps = {
   protocolLabel?: string;
   outputName: string;
   pointerClass?: string;
+  /** The tilt series (tsId) every section starts on: its tilts, CTF, tomogram and coordinates. */
+  initialTsId?: string | null;
 };
 
 type IntegratedSection = "tiltSeries" | "ctf" | "tomogram" | "coordinates" | "metadata";
@@ -354,6 +356,7 @@ export default function IntegratedTomographyViewer({
   protocolLabel,
   outputName,
   pointerClass,
+  initialTsId = null,
 }: IntegratedTomographyViewerProps) {
   const svc = useProjectService();
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
@@ -556,6 +559,17 @@ export default function IntegratedTomographyViewer({
 
     return () => abort.abort();
   }, [svc, projectIdNum, protocolIdNum, outputName]);
+
+  // Once the related items are known, every section selects the tilt series asked for
+  useEffect(() => {
+    if (!initialTsId) return;
+    const match = (context?.relations?.items ?? []).find((item) =>
+      [item.key, item.label, item.tiltSeriesId, item.coordinatesTomogramId, item.tomogramId]
+        .some((value) => value != null && String(value) === initialTsId));
+    if (!match) return;
+    setSelectedRelationSource(null);
+    setSelectedRelation(match);
+  }, [context, initialTsId]);
 
   const nodes = useMemo<ContextNode[]>(() => {
     const tiltIsSource = isTiltSeriesKind(resolvedPointerClass);

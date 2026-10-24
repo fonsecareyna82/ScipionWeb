@@ -6,6 +6,8 @@ import Plot from "react-plotly.js";
 import { Bell, Check, X } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
+import IntegratedTomographyViewer from "@/components/analyze/integrated-tomography-viewer";
+import FloatingWindow from "@/components/ui/floating-window/FloatingWindow";
 import { APP_TOKENS } from "@/theme/tokens";
 import type {
   Id,
@@ -29,11 +31,13 @@ const PIPELINE_HELP =
 const TABLE_HELP =
   "One row per tilt series, newest first: its tilts (kept of all; an incomplete one is still arriving), tilt "
   + "range and dose, its CTF (mean defocus, worst resolution, tilts without a CTF), the residual of its fiducial "
-  + "alignment and its tomogram. Values past a threshold are red. Click a row to see its tilts by angle.";
+  + "alignment, its tomogram and the particles picked on it. Values past a threshold are red. Click a row to see "
+  + "its tilts by angle; its tomogram or its particles open it in the tomography viewer.";
 
 const SESSION_HELP =
   "How the session goes, one point per tilt series at the time it was acquired: its mean defocus, the tilts it "
-  + "kept and the residual of its alignment. Red points go past a threshold.";
+  + "kept, the residual of its alignment and, once picked, the particles of its tomogram. Red points go past a "
+  + "threshold. A particles point opens its tomogram with the particles on it.";
 
 const ALERTS_HELP =
   "Each line is a run of consecutive tilt series past the same threshold, newest first. A red dot means the "
@@ -149,9 +153,9 @@ function SessionPlot({ title, unit, rows, value, alerts, dark, onPick, byOrder =
   );
 }
 
-function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose }: {
+function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onOpenTomogram }: {
   projectId: Id; row: TomoMonitorTiltSeries; tomograms: TomoMonitor["tomograms"]; tilts: TomoMonitorTilt[] | null;
-  dark: boolean; onClose: () => void;
+  dark: boolean; onClose: () => void; onOpenTomogram: () => void;
 }) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   const withAngle = (tilts ?? []).filter((tilt) => tilt.angle !== undefined);
@@ -209,9 +213,11 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose }: {
           {tomograms && row.tomogramId !== undefined ? (
             <div className="flex flex-col items-center gap-1 rounded-xl border border-app-border p-2">
               <span className="self-start text-[13px] text-app-text">Tomogram, central slice</span>
-              <div className="aspect-square w-full max-w-[420px] overflow-hidden rounded bg-black">
+              <button type="button" onClick={onOpenTomogram} aria-label={`Open the tomogram of ${row.tsId}`}
+                      title="Open in the tomography viewer"
+                      className="aspect-square w-full max-w-[420px] overflow-hidden rounded bg-black">
                 <TomogramSlice projectId={projectId} setId={tomograms.setId} itemId={row.tomogramId} size={SLICE_SIZE} />
-              </div>
+              </button>
             </div>
           ) : null}
         </div>
@@ -227,6 +233,9 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   const [tsSetId, setTsSetId] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tilts, setTilts] = useState<TomoMonitorTilt[] | null>(null);
+  // An output open in the tomography viewer, on one tilt series: the picking (its particles) or the tomograms
+  const [viewing, setViewing] = useState<{ tsId: string; kind: "particles" | "tomogram" } | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
@@ -289,9 +298,18 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   }
   const past = (row: TomoMonitorTiltSeries, ...names: StreamingMonitorThresholdName[]) =>
     names.some((name) => row.alerts.includes(name));
+  const picking = monitor.stages.find((stage) => stage.stage === "coordinates3d") ?? null;
+  // What the tomography viewer opens on: the picking, or the followed tomograms
+  const viewed = viewing?.kind === "particles" && picking
+    ? { protocolId: picking.protocolId, outputName: picking.outputName, label: picking.label,
+        pointerClass: "SetOfCoordinates3D" }
+    : viewing?.kind === "tomogram" && monitor.tomograms
+      ? { protocolId: monitor.tomograms.protocolId, outputName: monitor.tomograms.outputName, label: "tomograms",
+          pointerClass: "SetOfTomograms" }
+      : null;
 
   return (
-    <div className="flex flex-col gap-4" data-testid="tomo-monitor">
+    <div ref={rootRef} className="flex flex-col gap-4" data-testid="tomo-monitor">
       {error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div> : null}
       {monitor.stages.length === 0 ? (
         <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
@@ -332,12 +350,17 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                        alerts={["minTilts"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
                        alerts={["maxResidual"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+          {picking ? (
+            <SessionPlot title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
+                         alerts={[]} dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
+          ) : null}
         </section>
       ) : null}
 
       {selectedRow ? (
         <TiltSeriesDetail projectId={projectId} row={selectedRow} tomograms={monitor.tomograms} tilts={tilts}
-                          dark={dark} onClose={() => setSelected(null)} />
+                          dark={dark} onClose={() => setSelected(null)}
+                          onOpenTomogram={() => setViewing({ tsId: selectedRow.tsId, kind: "tomogram" })} />
       ) : null}
 
       {rows.length ? (
@@ -360,6 +383,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                   <th className="px-2 py-1 text-right">No CTF</th>
                   <th className="px-2 py-1 text-right">Residual</th>
                   <th className="px-2 py-1 text-center">Aligned</th>
+                  {picking ? <th className="px-2 py-1 text-right">Particles</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-app-border">
@@ -367,12 +391,17 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                   <tr key={row.id} data-testid="tilt-series-row" onClick={() => setSelected(row.tsId)}
                       className={`cursor-pointer hover:bg-app-hover ${row.tsId === selected ? "bg-app-selected" : ""}`}>
                     <td className="px-2 py-1">
-                      <div className="h-12 w-12 overflow-hidden rounded bg-black">
-                        {monitor.tomograms && row.tomogramId !== undefined ? (
+                      {monitor.tomograms && row.tomogramId !== undefined ? (
+                        <button type="button" className="block h-12 w-12 overflow-hidden rounded bg-black"
+                                aria-label={`Open the tomogram of ${row.tsId}`} title="Open in the tomography viewer"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setViewing({ tsId: row.tsId, kind: "tomogram" });
+                                }}>
                           <TomogramSlice projectId={projectId} setId={monitor.tomograms.setId} itemId={row.tomogramId}
                                          size={THUMBNAIL_SIZE} />
-                        ) : null}
-                      </div>
+                        </button>
+                      ) : <div className="h-12 w-12 rounded bg-black" />}
                     </td>
                     <td className="px-2 py-1 text-app-text">{row.tsId}</td>
                     <Cell value={`${row.enabledTilts ?? row.tilts}/${row.tilts}${row.complete ? "" : " …"}`}
@@ -390,6 +419,20 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                     <td className="px-2 py-1 text-center">
                       {row.aligned ? <Check className="mx-auto h-4 w-4 text-app-success" aria-label="aligned" /> : "—"}
                     </td>
+                    {picking ? (
+                      <td className="px-2 py-1 text-right">
+                        {row.particles === undefined ? "—" : (
+                          <button type="button" className="text-app-accent hover:underline"
+                                  aria-label={`Open the particles of ${row.tsId}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setViewing({ tsId: row.tsId, kind: "particles" });
+                                  }}>
+                            {row.particles.toLocaleString()}
+                          </button>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -426,6 +469,17 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
             </ul>
           )}
         </section>
+      ) : null}
+
+      {viewed ? (
+        <FloatingWindow open onClose={() => setViewing(null)} title={`${viewing?.tsId} · ${viewed.label}`}
+                        ariaLabel={`Tomography viewer of ${viewing?.tsId}`} closeAriaLabel="Close the tomography viewer"
+                        initialWidth="80vw" initialHeight="84vh" minWidth={760} minHeight={560}
+                        container={rootRef.current?.ownerDocument.body ?? undefined}>
+          <IntegratedTomographyViewer projectId={String(projectId)} protocolId={viewed.protocolId} outputName={viewed.outputName}
+                                      protocolLabel={viewed.label} pointerClass={viewed.pointerClass}
+                                      initialTsId={viewing?.tsId} />
+        </FloatingWindow>
       ) : null}
     </div>
   );

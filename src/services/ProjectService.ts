@@ -1593,7 +1593,7 @@ export type ProjectDiskUsage = {
 /** One stage of a streaming chain: the output it follows and how fast it grows. */
 export type StreamingMonitorStage = {
   stage: "movies" | "alignedMicrographs" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
-    | "tiltseries" | "ctftomo" | "aligned" | "tomograms";
+    | "tiltseries" | "ctftomo" | "aligned" | "tomograms" | "coordinates3d";
   setId: number;
   protocolId: string;
   protocolClassName: string;
@@ -1625,6 +1625,10 @@ export type StreamingMonitorStage = {
   pickedFrom?: { protocolId: string; label: string; outputName: string; items: number };
   /** 2D classes: the particles the classifier reads when a filter is in between, which it waits on. */
   classifiedFrom?: { protocolId: string; label: string; outputName: string; items: number };
+  /** 3D coordinates: the tomograms that have some; ``behind`` is then the tomograms with none yet. */
+  tomogramsPicked?: number;
+  /** 3D coordinates: the side of the box of each particle, in pixels. */
+  boxSize?: number | null;
 };
 
 /** The 2D classes of the stream, biggest first. ``version`` changes with them: it keys their images. */
@@ -1739,6 +1743,8 @@ export type TomoMonitorTiltSeries = {
   residual?: number;
   /** Its tomogram in the followed tomograms output. */
   tomogramId?: number;
+  /** The coordinates the followed 3D picking has on its tomogram. */
+  particles?: number;
   alerts: StreamingMonitorThresholdName[];
 };
 
