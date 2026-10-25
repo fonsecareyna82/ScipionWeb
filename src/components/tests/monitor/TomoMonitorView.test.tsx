@@ -132,6 +132,15 @@ describe("The tomography view of the monitor", () => {
     expect(JSON.parse(window.localStorage.getItem("scipionweb.monitor.seenAlerts.7") ?? "[]")).toEqual(["tilt series:minTilts:1"]);
   });
 
+  it("draws the thresholds of each session plot as lines", async () => {
+    render(tomo([row(1, "TS_01", { residual: 1.5 })]));
+
+    await screen.findByTestId("tomo-monitor");
+    const lines = screen.getAllByTestId("tomo-session-plot").map((plot) => plot.getAttribute("data-threshold-lines"));
+    // Defocus between 1000 and 40000 A, at least 30 tilts; the residual has no threshold set
+    expect(lines).toEqual(["1000,40000", "30", ""]);
+  });
+
   it("opens the tilts of a tilt series by angle", async () => {
     const service = render(tomo([row(1, "TS_01", { tomogramId: 7 })]));
 

@@ -117,9 +117,11 @@ function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string
   };
 }
 
-function SessionPlot({ title, unit, rows, value, alerts, dark, onPick, byOrder = false }: {
+function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPick, byOrder = false }: {
   title: string; unit: string; rows: TomoMonitorTiltSeries[]; value: (row: TomoMonitorTiltSeries) => number | undefined;
-  alerts: StreamingMonitorThresholdName[]; dark: boolean; onPick: (tsId: string) => void;
+  /** The thresholds that colour a point red; each one set is also drawn as a dashed line. */
+  alerts: StreamingMonitorThresholdName[]; thresholds: TomoMonitor["thresholds"]; dark: boolean;
+  onPick: (tsId: string) => void;
   /** Nothing streams: the tilt series in their order, as their times would all fall together. */
   byOrder?: boolean;
 }) {
@@ -137,10 +139,18 @@ function SessionPlot({ title, unit, rows, value, alerts, dark, onPick, byOrder =
     marker: { size: 7, color: shown.map((row) => (row.alerts.some((alert) => alerts.includes(alert))
       ? tokens.danger : tokens.accent)) },
   }];
+  const shapes = alerts
+    .map((name) => thresholds?.[name])
+    .filter((limit): limit is number => limit !== null && limit !== undefined)
+    .map((limit) => ({
+      type: "line", xref: "paper", x0: 0, x1: 1, y0: limit, y1: limit,
+      line: { color: tokens.danger, width: 1, dash: "dash" },
+    }));
   return (
-    <div className="min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot">
-      <Plot data={data} layout={layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
-                                          byOrder ? undefined : "date", false)}
+    <div className="min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot"
+         data-threshold-lines={shapes.map((shape) => shape.y0).join(",")}>
+      <Plot data={data} layout={{ ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
+                                          byOrder ? undefined : "date", false), shapes }}
             config={{ displaylogo: false, responsive: true }} useResizeHandler style={plotBox(PLOT_HEIGHT)}
             onClick={(event: any) => {
               const tsId = event?.points?.[0]?.customdata?.[0];
@@ -342,14 +352,14 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
             Session <HelpHint text={SESSION_HELP} />
           </div>
           <SessionPlot title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
-                       alerts={["minDefocus", "maxDefocus"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
-                       alerts={["minTilts"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["minTilts"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
-                       alerts={["maxResidual"]} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["maxResidual"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           {picking ? (
             <SessionPlot title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
-                         alerts={[]} dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
+                         alerts={[]} thresholds={monitor.thresholds} dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
           ) : null}
         </section>
       ) : null}
