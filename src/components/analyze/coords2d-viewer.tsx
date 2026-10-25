@@ -344,6 +344,10 @@ const VIEWER_TEXT_SX = {
 const THUMBNAIL_SIZE = 72;
 const THUMBNAIL_CONCURRENCY = 6;
 const THUMBNAIL_FLUSH_SIZE = 12;
+// Height of a row of the micrograph table (its thumbnail and padding): the table draws only the rows on screen
+const MICROGRAPH_ROW_HEIGHT = 48;
+const TABLE_OVERSCAN = 8;
+const TABLE_INITIAL_HEIGHT = 800;
 const PARTICLE_CROP_BATCH_SIZE = 40;
 
 const MICROGRAPH_IMAGE_SIZE = 2200;
@@ -772,6 +776,7 @@ const MicrographTableRow = memo(function MicrographTableRow({
       selected={selected}
       onClick={() => onSelect(micrograph.id)}
       sx={{
+        height: MICROGRAPH_ROW_HEIGHT,
         cursor: "pointer",
         "&.Mui-selected td": {
           bgcolor: ROW_SELECTED,
@@ -856,7 +861,8 @@ function Coords2dViewer({
 
   const micrographsLoadKeyRef = useRef("");
   const thumbnailSourceKeyRef = useRef("");
-  const thumbnailLoadKeyRef = useRef("");
+  // Micrographs whose thumbnail is being read, so a row scrolled back into view does not ask for it again
+  const thumbnailInFlightRef = useRef<Set<string>>(new Set());
   const thumbnailUrlsRef = useRef<Record<string, string>>({});
   const thumbnailObjectUrlsRef = useRef<Record<string, ObjectUrlResult>>({});
 
@@ -1076,12 +1082,49 @@ function Coords2dViewer({
     };
   }, [dataSource]);
 
-  useEffect(() => {
-    if (!micrographs.length) return;
+  // The rows of the micrograph table on screen, plus a margin: only they are drawn and get a thumbnail, so a
+  // Set of thousands of micrographs opens as fast as one of a few
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [tableViewport, setTableViewport] = useState({ scrollTop: 0, height: TABLE_INITIAL_HEIGHT });
+  const visibleRows = useMemo(() => ({
+    first: Math.max(0, Math.floor(tableViewport.scrollTop / MICROGRAPH_ROW_HEIGHT) - TABLE_OVERSCAN),
+    last: Math.min(micrographs.length,
+      Math.ceil((tableViewport.scrollTop + tableViewport.height) / MICROGRAPH_ROW_HEIGHT) + TABLE_OVERSCAN),
+  }), [tableViewport, micrographs.length]);
 
+  const readTableViewport = useCallback(() => {
+    const node = tableContainerRef.current;
+    if (!node) return;
+    setTableViewport((current) => {
+      const height = node.clientHeight || current.height;
+      return current.scrollTop === node.scrollTop && current.height === height
+        ? current : { scrollTop: node.scrollTop, height };
+    });
+  }, []);
+
+  useEffect(() => {
+    const node = tableContainerRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => readTableViewport());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [readTableViewport]);
+
+  // A micrograph chosen another way (next, previous...) is brought into the table's view
+  useEffect(() => {
+    const node = tableContainerRef.current;
+    if (!node || !selectedMicKey) return;
+    const index = micrographs.findIndex((micrograph) => toStringId(micrograph.id) === selectedMicKey);
+    if (index < 0) return;
+    const top = index * MICROGRAPH_ROW_HEIGHT;
+    if (top < node.scrollTop || top + MICROGRAPH_ROW_HEIGHT > node.scrollTop + node.clientHeight) {
+      node.scrollTop = Math.max(0, top - node.clientHeight / 2);
+      readTableViewport();
+    }
+  }, [selectedMicKey, micrographs, readTableViewport]);
+
+  useEffect(() => {
     const sourceKey = dataSource.key;
-    const idsKey = micrographs.map((micrograph) => toStringId(micrograph.id)).join("|");
-    const loadKey = `${sourceKey}:${idsKey}`;
 
     if (thumbnailSourceKeyRef.current !== sourceKey) {
       Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
@@ -1090,116 +1133,110 @@ function Coords2dViewer({
 
       thumbnailObjectUrlsRef.current = {};
       thumbnailUrlsRef.current = {};
-      thumbnailLoadKeyRef.current = "";
+      thumbnailInFlightRef.current = new Set();
       thumbnailSourceKeyRef.current = sourceKey;
       setThumbnailUrls({});
     }
 
-    if (thumbnailLoadKeyRef.current === loadKey) return;
-    thumbnailLoadKeyRef.current = loadKey;
+    if (!micrographs.length) return;
 
     let cancelled = false;
+    const shown = micrographs.slice(visibleRows.first, visibleRows.last);
 
-    async function loadThumbnails() {
-      const directUrls: Record<string, string> = {};
-
-      for (const micrograph of micrographs) {
-        const micKey = toStringId(micrograph.id);
-        if (!micKey) continue;
-
-        if (micrograph.thumbnailUrl) {
-          directUrls[micKey] = micrograph.thumbnailUrl;
-        }
+    // Thumbnails the server already gives
+    const directUrls: Record<string, string> = {};
+    for (const micrograph of shown) {
+      const micKey = toStringId(micrograph.id);
+      if (micKey && micrograph.thumbnailUrl && !thumbnailUrlsRef.current[micKey]) {
+        directUrls[micKey] = micrograph.thumbnailUrl;
       }
-
-      if (Object.keys(directUrls).length > 0) {
-        setThumbnailUrls((current) => {
-          const next = { ...current, ...directUrls };
-          thumbnailUrlsRef.current = next;
-          return next;
-        });
-      }
-
-      const pendingMicrographs = micrographs.filter((micrograph) => {
-        const micKey = toStringId(micrograph.id);
-        if (!micKey) return false;
-        if (micrograph.thumbnailUrl) return false;
-        if (thumbnailUrlsRef.current[micKey]) return false;
-        if (thumbnailObjectUrlsRef.current[micKey]) return false;
-
-        return true;
+    }
+    if (Object.keys(directUrls).length > 0) {
+      setThumbnailUrls((current) => {
+        const next = { ...current, ...directUrls };
+        thumbnailUrlsRef.current = next;
+        return next;
       });
+    }
 
-      if (!pendingMicrographs.length) return;
+    const pendingMicrographs = shown.filter((micrograph) => {
+      const micKey = toStringId(micrograph.id);
+      return Boolean(micKey) && !micrograph.thumbnailUrl && !thumbnailUrlsRef.current[micKey]
+        && !thumbnailObjectUrlsRef.current[micKey] && !thumbnailInFlightRef.current.has(micKey);
+    });
+    if (!pendingMicrographs.length) return;
 
-      let cursor = 0;
-      let pendingUrls: Record<string, string> = {};
+    let cursor = 0;
+    let pendingUrls: Record<string, string> = {};
 
-      const flushPendingUrls = () => {
-        const keys = Object.keys(pendingUrls);
-        if (!keys.length) return;
+    const flushPendingUrls = () => {
+      const keys = Object.keys(pendingUrls);
+      if (!keys.length) return;
 
-        const patch = pendingUrls;
-        pendingUrls = {};
+      const patch = pendingUrls;
+      pendingUrls = {};
 
-        setThumbnailUrls((current) => {
-          const next = {
-            ...current,
-            ...patch,
-          };
+      setThumbnailUrls((current) => {
+        const next = {
+          ...current,
+          ...patch,
+        };
 
-          thumbnailUrlsRef.current = next;
-          return next;
-        });
-      };
+        thumbnailUrlsRef.current = next;
+        return next;
+      });
+    };
 
-      async function worker() {
-        while (!cancelled && cursor < pendingMicrographs.length) {
-          const micrograph = pendingMicrographs[cursor];
-          cursor += 1;
+    async function worker() {
+      // Scrolled away: stop taking rows, but keep what is already on its way
+      while (!cancelled && cursor < pendingMicrographs.length) {
+        const micrograph = pendingMicrographs[cursor];
+        cursor += 1;
 
-          const micKey = toStringId(micrograph.id);
-          if (!micKey) continue;
+        const micKey = toStringId(micrograph.id);
+        if (!micKey || thumbnailInFlightRef.current.has(micKey)) continue;
+        thumbnailInFlightRef.current.add(micKey);
 
-          try {
-            const result = normalizeObjectUrl(
-              await dataSource.fetchThumbnail(micrograph.id,
-                { size: THUMBNAIL_SIZE, format: "png" },
-              ),
-            );
+        try {
+          const result = normalizeObjectUrl(
+            await dataSource.fetchThumbnail(micrograph.id,
+              { size: THUMBNAIL_SIZE, format: "png" },
+            ),
+          );
 
-            if (!result || cancelled) continue;
-
-            thumbnailObjectUrlsRef.current[micKey] = result;
-            pendingUrls[micKey] = result.url;
-
-            if (Object.keys(pendingUrls).length >= THUMBNAIL_FLUSH_SIZE) {
-              flushPendingUrls();
-            }
-          } catch {
+          if (!result) continue;
+          if (thumbnailSourceKeyRef.current !== sourceKey) {
+            result.revoke?.();
             continue;
           }
+
+          thumbnailObjectUrlsRef.current[micKey] = result;
+          pendingUrls[micKey] = result.url;
+
+          if (Object.keys(pendingUrls).length >= THUMBNAIL_FLUSH_SIZE) {
+            flushPendingUrls();
+          }
+        } catch {
+          continue;
+        } finally {
+          thumbnailInFlightRef.current.delete(micKey);
         }
-      }
-
-      await Promise.all(
-        Array.from(
-          { length: Math.min(THUMBNAIL_CONCURRENCY, pendingMicrographs.length) },
-          () => worker(),
-        ),
-      );
-
-      if (!cancelled) {
-        flushPendingUrls();
       }
     }
 
-    void loadThumbnails();
+    void Promise.all(
+      Array.from(
+        { length: Math.min(THUMBNAIL_CONCURRENCY, pendingMicrographs.length) },
+        () => worker(),
+      ),
+    ).then(() => {
+      if (thumbnailSourceKeyRef.current === sourceKey) flushPendingUrls();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [dataSource, micrographs]);
+  }, [dataSource, micrographs, visibleRows.first, visibleRows.last]);
 
   useEffect(() => {
     if (!selectedMicKey || selectedMicId === null || selectedMicId === undefined) return;
@@ -3539,6 +3576,8 @@ function Coords2dViewer({
         <TableContainer
           component={Paper}
           square
+          ref={tableContainerRef}
+          onScroll={readTableViewport}
           sx={{
             width: 520,
             borderRight: PANEL_BORDER,
@@ -3578,7 +3617,11 @@ function Coords2dViewer({
             </TableHead>
 
             <TableBody>
-              {micrographs.map((micrograph, index) => {
+              {visibleRows.first > 0 ? (
+                <TableRow aria-hidden style={{ height: visibleRows.first * MICROGRAPH_ROW_HEIGHT }} />
+              ) : null}
+              {micrographs.slice(visibleRows.first, visibleRows.last).map((micrograph, offset) => {
+                const index = visibleRows.first + offset;
                 const micKey = toStringId(micrograph.id);
 
                 return (
@@ -3594,6 +3637,9 @@ function Coords2dViewer({
                   />
                 );
               })}
+              {visibleRows.last < micrographs.length ? (
+                <TableRow aria-hidden style={{ height: (micrographs.length - visibleRows.last) * MICROGRAPH_ROW_HEIGHT }} />
+              ) : null}
             </TableBody>
           </Table>
         </TableContainer>
