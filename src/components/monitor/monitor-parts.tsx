@@ -12,6 +12,7 @@ export const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   coordinates: "Coordinates",
   particles: "Particles",
   classes2d: "2D classes",
+  tiltseriesmovies: "Tilt series movies",
   tiltseries: "Tilt series",
   ctftomo: "CTF",
   aligned: "Aligned",
@@ -78,6 +79,7 @@ export function formatEta(minutes: number): string {
 // One quiet hue per phase of the stream, not per card: acquisition, preprocessing, picking, classification
 const STAGE_HUES: Record<StreamingMonitorStage["stage"], string> = {
   movies: "var(--app-sky-700)",
+  tiltseriesmovies: "var(--app-sky-700)",
   tiltseries: "var(--app-sky-700)",
   alignedMicrographs: "var(--app-indigo-700)",
   micrographs: "var(--app-indigo-700)",

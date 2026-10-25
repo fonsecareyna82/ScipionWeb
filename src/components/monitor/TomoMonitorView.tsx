@@ -22,9 +22,10 @@ const THUMBNAIL_SIZE = 96;
 const SLICE_SIZE = 512;
 
 const PIPELINE_HELP =
-  "Each card is a step of the tomography stream: the tilt series as they are acquired, their CTF, the aligned "
-  + "ones and the tomograms. The number is how many tilt series it has; \"waiting\" is how many the step before "
-  + "has and this one has not processed yet.";
+  "Each card is a step of the tomography stream: the movies of the tilts as they arrive, the tilt series made "
+  + "from them, their CTF, the aligned ones, the tomograms and their particles. The number is how many tilt series "
+  + "it has; \"waiting\" is how many the step before has and this one has not processed yet (for the tilt series, "
+  + "movies still to motion correct).";
 
 const TABLE_HELP =
   "One row per tilt series, newest first: its tilts (kept of all; an incomplete one is still arriving), tilt "

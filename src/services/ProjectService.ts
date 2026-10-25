@@ -1593,7 +1593,7 @@ export type ProjectDiskUsage = {
 /** One stage of a streaming chain: the output it follows and how fast it grows. */
 export type StreamingMonitorStage = {
   stage: "movies" | "alignedMicrographs" | "micrographs" | "ctf" | "coordinates" | "particles" | "classes2d"
-    | "tiltseries" | "ctftomo" | "aligned" | "tomograms" | "coordinates3d";
+    | "tiltseriesmovies" | "tiltseries" | "ctftomo" | "aligned" | "tomograms" | "coordinates3d";
   setId: number;
   protocolId: string;
   protocolClassName: string;

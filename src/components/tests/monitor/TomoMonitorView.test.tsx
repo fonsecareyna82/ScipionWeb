@@ -132,6 +132,21 @@ describe("The tomography view of the monitor", () => {
     expect(JSON.parse(window.localStorage.getItem("scipionweb.monitor.seenAlerts.7") ?? "[]")).toEqual(["tilt series:minTilts:1"]);
   });
 
+  it("opens the pipeline with the movies of the tilts, and tells what waits for motion correction", async () => {
+    const answer = tomo([row(1, "TS_01")]);
+    answer.stages = [{
+      stage: "tiltseriesmovies", setId: 5, protocolId: "0", protocolClassName: "ProtImportTsMovies", label: "import",
+      status: "running", outputName: "outputTiltSeriesM", setClassName: "SetOfTiltSeriesM", items: 4, maxItemId: 4,
+      streaming: true, perMinute: 0.3, trend: "steady", behind: null,
+    }, { ...answer.stages[0], behind: 3 }, ...answer.stages.slice(1)];
+    render(answer);
+
+    const cards = await screen.findAllByTestId("monitor-stage");
+    expect(cards[0]).toHaveTextContent("Tilt series movies");
+    expect(cards[1]).toHaveTextContent("3 waiting");
+    expect(cards[0].getAttribute("data-phase-hue")).toBe(cards[1].getAttribute("data-phase-hue"));
+  });
+
   it("draws the thresholds of each session plot as lines", async () => {
     render(tomo([row(1, "TS_01", { residual: 1.5 })]));
 
