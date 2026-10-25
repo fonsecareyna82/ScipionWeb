@@ -66,6 +66,16 @@ export function plotBox(height: number) {
   return { width: "100%", height };
 }
 
+/** A plot with nothing to draw: its title and why, instead of empty axes. */
+export function EmptyPlot({ title, text, height }: { title: string; text: string; height: number }) {
+  return (
+    <div className="flex flex-col" style={{ height }} data-testid="empty-plot">
+      <span className="px-2 pt-1 text-[13px] text-app-text">{title}</span>
+      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-app-muted">{text}</div>
+    </div>
+  );
+}
+
 /** "about 12 min", "about 1 h 20 min", "under a minute". */
 export function formatEta(minutes: number): string {
   if (minutes < 1) return "under a minute";

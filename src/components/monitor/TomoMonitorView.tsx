@@ -16,7 +16,7 @@ import type {
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
-import { HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
+import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
 
 const THUMBNAIL_SIZE = 96;
 const SLICE_SIZE = 512;
@@ -118,11 +118,13 @@ function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string
   };
 }
 
-function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPick, byOrder = false }: {
+function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPick, empty, byOrder = false }: {
   title: string; unit: string; rows: TomoMonitorTiltSeries[]; value: (row: TomoMonitorTiltSeries) => number | undefined;
   /** The thresholds that colour a point red; each one set is also drawn as a dashed line. */
   alerts: StreamingMonitorThresholdName[]; thresholds: TomoMonitor["thresholds"]; dark: boolean;
   onPick: (tsId: string) => void;
+  /** Why there is nothing to draw, when no tilt series has a value. */
+  empty: string;
   /** Nothing streams: the tilt series in their order, as their times would all fall together. */
   byOrder?: boolean;
 }) {
@@ -150,6 +152,7 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot"
          data-threshold-lines={shapes.map((shape) => shape.y0).join(",")}>
+      {shown.length === 0 ? <EmptyPlot title={title} text={empty} height={PLOT_HEIGHT} /> : (
       <Plot data={data} layout={{ ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
                                           byOrder ? undefined : "date", false), shapes }}
             config={{ displaylogo: false, responsive: true }} useResizeHandler style={plotBox(PLOT_HEIGHT)}
@@ -157,6 +160,7 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
               const tsId = event?.points?.[0]?.customdata?.[0];
               if (tsId != null) onPick(String(tsId));
             }} />
+      )}
     </div>
   );
 }
@@ -307,6 +311,14 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   const past = (row: TomoMonitorTiltSeries, ...names: StreamingMonitorThresholdName[]) =>
     names.some((name) => row.alerts.includes(name));
   const picking = monitor.stages.find((stage) => stage.stage === "coordinates3d") ?? null;
+  const hasStage = (name: string) => monitor.stages.some((stage) => stage.stage === name);
+  // Why a session plot has nothing to draw: what the stream lacks for it
+  const emptyDefocus = hasStage("ctftomo")
+    ? "The CTF estimation has no defocus for these tilt series yet."
+    : "No CTF estimation of these tilt series in the stream yet.";
+  const emptyResidual = hasStage("aligned") || hasStage("tomograms")
+    ? "No residual: only a fiducial alignment (IMOD) writes one; other aligners, such as AreTomo, do not."
+    : "Nothing aligned yet.";
   // What the tomography viewer opens on: the picking, or the followed tomograms
   const viewed = viewing?.kind === "particles" && picking
     ? { protocolId: picking.protocolId, outputName: picking.outputName, label: picking.label,
@@ -353,14 +365,14 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
             Session <HelpHint text={SESSION_HELP} />
           </div>
           <SessionPlot title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
-                       alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} empty={emptyDefocus} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
-                       alerts={["minTilts"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["minTilts"]} thresholds={monitor.thresholds} empty="No tilt images in these tilt series yet." dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           <SessionPlot title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
-                       alerts={["maxResidual"]} thresholds={monitor.thresholds} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+                       alerts={["maxResidual"]} thresholds={monitor.thresholds} empty={emptyResidual} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           {picking ? (
             <SessionPlot title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
-                         alerts={[]} thresholds={monitor.thresholds} dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
+                         alerts={[]} thresholds={monitor.thresholds} empty="No particles picked on these tomograms yet." dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
           ) : null}
         </section>
       ) : null}

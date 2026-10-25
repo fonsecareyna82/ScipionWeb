@@ -62,6 +62,8 @@ type PlotSpec = {
   alerts: StreamingMonitorThresholdName[];
   /** What the plot shows and what to look for. */
   help: string;
+  /** Why there is nothing to draw, when no point has a value. */
+  empty: string;
 };
 
 const PIPELINE_HELP =
@@ -84,6 +86,7 @@ const PLOTS: PlotSpec[] = [
     alerts: ["maxResolution"],
     help: "The resolution up to which the CTF fit matches the Thon rings of each micrograph, in Å. Lower is "
       + "better. A rising trend usually means thicker ice, a worse focus or drift.",
+    empty: "The CTF estimation gives no resolution for these micrographs.",
   },
   {
     title: "Defocus",
@@ -96,6 +99,7 @@ const PLOTS: PlotSpec[] = [
     alerts: ["minDefocus", "maxDefocus"],
     help: "How far from focus each micrograph is, along its two directions (U and V), in Å. It should stay "
       + "within the range set for the acquisition.",
+    empty: "No defocus estimated for these micrographs yet.",
   },
   {
     title: "Astigmatism |U − V|",
@@ -106,6 +110,7 @@ const PLOTS: PlotSpec[] = [
     alerts: ["maxAstigmatism"],
     help: "The difference between the two defocus values, in Å. A large one means the image is stretched in "
       + "one direction: the astigmatism of the microscope needs correcting.",
+    empty: "No astigmatism estimated for these micrographs yet.",
   },
   {
     title: "Drift",
@@ -118,6 +123,7 @@ const PLOTS: PlotSpec[] = [
     alerts: ["maxTotalDrift", "maxFrameShift"],
     help: "How much the sample moved during each movie, in Å: the whole path (total drift) and the largest "
       + "jump between two frames. High values usually mean an unstable sample or a charging grid.",
+    empty: "No drift: the movie alignment of this stream does not keep the shifts of the frames.",
   },
 ];
 
@@ -130,6 +136,7 @@ const PARTICLES_PLOT: PlotSpec = {
   help: "How many coordinates the picking found on each micrograph. A sudden drop usually means thick ice, an "
     + "empty area or a picker that needs tuning; far too many, that it picks contamination or edges. The "
     + "micrograph a point opens shows its particles circled.",
+  empty: "No particles picked on these micrographs yet.",
 };
 
 const DOSE_PLOT: PlotSpec = {
@@ -143,6 +150,7 @@ const DOSE_PLOT: PlotSpec = {
   help: "How far the dose of each movie is from the median dose of the session, in %, as the dose analysis "
     + "measured it. It should stay flat around 0: a jump or a drift points to the beam, the gun or the camera, "
     + "before it shows in the CTF.",
+  empty: "No dose measured on the movies yet.",
 };
 
 const CLASSES_HELP =
@@ -217,19 +225,26 @@ function MonitorPlot({
       <PlotHeader title={spec.title} help={`${spec.help} Each point is a ${spec.item ?? "micrograph"}, at the time it `
         + "was processed; red ones go past a threshold (the dashed lines)."
         + (onPick ? " Click one to see the micrograph." : "")} />
-      <Plot
-        data={data}
-        layout={layout}
-        config={{ displaylogo: false, responsive: true }}
-        useResizeHandler
-        style={plotBox(PLOT_HEIGHT)}
-        onClick={(event: any) => {
-          const button = event?.event?.button;
-          if (button != null && button !== 0) return;
-          const pointId = event?.points?.[0]?.customdata?.[0];
-          if (pointId != null) onPick?.(Number(pointId));
-        }}
-      />
+      {data.every((serie) => serie.y.length === 0) ? (
+        <div className="flex items-center justify-center px-6 text-center text-sm text-app-muted" data-testid="empty-plot"
+             style={plotBox(PLOT_HEIGHT)}>
+          {spec.empty}
+        </div>
+      ) : (
+        <Plot
+          data={data}
+          layout={layout}
+          config={{ displaylogo: false, responsive: true }}
+          useResizeHandler
+          style={plotBox(PLOT_HEIGHT)}
+          onClick={(event: any) => {
+            const button = event?.event?.button;
+            if (button != null && button !== 0) return;
+            const pointId = event?.points?.[0]?.customdata?.[0];
+            if (pointId != null) onPick?.(Number(pointId));
+          }}
+        />
+      )}
     </div>
   );
 }

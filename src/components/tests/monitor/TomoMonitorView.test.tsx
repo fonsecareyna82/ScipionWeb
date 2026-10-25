@@ -147,6 +147,18 @@ describe("The tomography view of the monitor", () => {
     expect(cards[0].getAttribute("data-phase-hue")).toBe(cards[1].getAttribute("data-phase-hue"));
   });
 
+  it("says why a session plot has nothing to draw", async () => {
+    // Tomograms, but no CTF estimation and no residual: an alignment without fiducials
+    render(tomo([row(1, "TS_01", { defocusU: undefined })]));
+
+    await screen.findByTestId("tomo-monitor");
+    const empty = screen.getAllByTestId("empty-plot").map((plot) => plot.textContent);
+    expect(empty).toEqual([
+      "Mean defocusNo CTF estimation of these tilt series in the stream yet.",
+      "Alignment residualNo residual: only a fiducial alignment (IMOD) writes one; other aligners, such as AreTomo, do not.",
+    ]);
+  });
+
   it("draws the thresholds of each session plot as lines", async () => {
     render(tomo([row(1, "TS_01", { residual: 1.5 })]));
 
