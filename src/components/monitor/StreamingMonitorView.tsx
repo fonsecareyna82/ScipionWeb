@@ -43,6 +43,7 @@ import TomoMonitorView from "./TomoMonitorView";
 import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
+import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 
 
 const PLOT_HEIGHT = 260;
@@ -165,7 +166,13 @@ function MonitorPlot({
   dark,
   onPick,
   byOrder = false,
+  thresholdChanges = {},
+  onThresholdChange,
+  savingThresholds = false,
 }: {
+  thresholdChanges?: ThresholdChanges;
+  onThresholdChange?: (changes: ThresholdChanges) => void;
+  savingThresholds?: boolean;
   spec: PlotSpec;
   points: StreamingMonitorPoint[];
   thresholds: StreamingMonitorThresholds | null;
@@ -175,6 +182,7 @@ function MonitorPlot({
   byOrder?: boolean;
 }) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
+  const shownThresholds = thresholds ? { ...thresholds, ...thresholdChanges } : null;
   const colours = [tokens.accent, tokens.success];
   const order = new Map(points.map((point, index) => [point.id, index + 1]));
   const usable = points.filter((point) => !point.failed && (byOrder || point.time));
@@ -190,13 +198,19 @@ function MonitorPlot({
       hovertemplate: `%{customdata[1]}<br>%{y:.1f} ${spec.unit}<extra>${serie.name}</extra>`,
       marker: {
         size: 6,
-        color: shown.map((point) => (point.alerts.some((alert) => spec.alerts.includes(alert))
+        color: shown.map((point) => (previewAlerts(point.failed ? [] : point.alerts, thresholdChanges, {
+          minDefocus: point.defocusV == null ? undefined : Math.min(point.defocusV, point.defocusU || point.defocusV),
+          maxDefocus: point.defocusU == null ? undefined : Math.max(point.defocusU, point.defocusV || point.defocusU),
+          maxAstigmatism: point.astigmatism == null ? undefined : Math.abs(point.astigmatism),
+          maxResolution: point.resolution, maxTotalDrift: point.totalDrift, maxFrameShift: point.maxFrameShift,
+          minParticles: point.particles, maxDoseDifference: point.doseDifference == null ? undefined : Math.abs(point.doseDifference),
+        }).some((alert) => spec.alerts.includes(alert))
           ? tokens.danger : colours[index % colours.length])),
       },
     };
   });
   const shapes = spec.limits
-    .map((name) => thresholds?.[name])
+    .map((name) => shownThresholds?.[name])
     .filter((value): value is number => value !== null && value !== undefined)
     .flatMap((value) => (spec.symmetric ? [value, -value] : [value]))
     .map((value) => ({
@@ -210,6 +224,7 @@ function MonitorPlot({
     }));
   const layout = {
     ...plotFrame(PLOT_HEIGHT, spec.series.length > 1, false),
+    uirevision: spec.title,
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
     font: { color: tokens.textMuted, size: 11 },
@@ -225,6 +240,8 @@ function MonitorPlot({
       <PlotHeader title={spec.title} help={`${spec.help} Each point is a ${spec.item ?? "micrograph"}, at the time it `
         + "was processed; red ones go past a threshold (the dashed lines)."
         + (onPick ? " Click one to see the micrograph." : "")} />
+      <ThresholdSliders names={spec.limits} thresholds={shownThresholds} bounds={thresholds}
+                        onChange={onThresholdChange} disabled={savingThresholds} />
       {data.every((serie) => serie.y.length === 0) ? (
         <div className="flex items-center justify-center px-6 text-center text-sm text-app-muted" data-testid="empty-plot"
              style={plotBox(PLOT_HEIGHT)}>
@@ -250,6 +267,8 @@ function MonitorPlot({
 }
 
 type HistogramSpec = {
+  limits: StreamingMonitorThresholdName[];
+  thresholdScale?: number;
   title: string;
   unit: string;
   binSize: number;
@@ -264,6 +283,7 @@ const RECENT_FROM = 100;
 const HISTOGRAMS: HistogramSpec[] = [
   {
     title: "CTF resolution",
+    limits: ["maxResolution"],
     unit: "Å",
     binSize: 0.5,
     value: (point) => point.resolution,
@@ -272,6 +292,8 @@ const HISTOGRAMS: HistogramSpec[] = [
   },
   {
     title: "Defocus coverage",
+    limits: ["minDefocus", "maxDefocus"],
+    thresholdScale: 1 / 10000,
     unit: "µm",
     binSize: 0.5,
     value: (point) => (point.defocusU === undefined ? undefined : point.defocusU / 10000),
@@ -280,7 +302,12 @@ const HISTOGRAMS: HistogramSpec[] = [
   },
 ];
 
-function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points: StreamingMonitorPoint[]; dark: boolean }) {
+function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, onThresholdChange, savingThresholds = false }: {
+  spec: HistogramSpec; points: StreamingMonitorPoint[]; dark: boolean;
+  thresholds: StreamingMonitorThresholds | null; thresholdChanges: ThresholdChanges;
+  onThresholdChange?: (changes: ThresholdChanges) => void; savingThresholds?: boolean;
+}) {
+  const shownThresholds = thresholds ? { ...thresholds, ...thresholdChanges } : null;
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   const values = (list: StreamingMonitorPoint[]) => list
     .filter((point) => !point.failed)
@@ -301,6 +328,12 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
   }
   const layout = {
     ...plotFrame(HISTOGRAM_HEIGHT, recent.length > 0, false),
+    uirevision: spec.title,
+    shapes: spec.limits.map((name) => shownThresholds?.[name])
+      .filter((value): value is number => value != null)
+      .map((value) => ({ type: "line", yref: "paper", y0: 0, y1: 1,
+        x0: value * (spec.thresholdScale ?? 1), x1: value * (spec.thresholdScale ?? 1),
+        line: { color: tokens.danger, width: 1, dash: "dash" } })),
     barmode: "overlay",
     bargap: 0.05,
     paper_bgcolor: tokens.surface,
@@ -314,6 +347,8 @@ function MonitorHistogram({ spec, points, dark }: { spec: HistogramSpec; points:
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
       <PlotHeader title={spec.title} help={spec.help + (recent.length
         ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
+      <ThresholdSliders names={spec.limits} thresholds={shownThresholds} bounds={thresholds}
+                        onChange={onThresholdChange} disabled={savingThresholds} />
       <Plot data={data} layout={layout} config={{ displaylogo: false, responsive: true }} useResizeHandler
             style={plotBox(HISTOGRAM_HEIGHT)} />
     </div>
@@ -338,6 +373,15 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [coordinatesSetId, setCoordinatesSetId] = useState<number | null>(null);
   const [classesSetId, setClassesSetId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const [thresholdChanges, setThresholdChanges] = useState<ThresholdChanges>({});
+  const thresholdAutosaveTimerRef = useRef<number | null>(null);
+  const thresholdSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const thresholdProjectRef = useRef(projectId);
+  thresholdProjectRef.current = projectId;
+  const changeThresholds = useCallback((changed: ThresholdChanges) => {
+    setThresholdChanges((previous) => ({ ...previous, ...changed }));
+  }, []);
+  useEffect(() => setThresholdChanges({}), [projectId]);
   // The tomography view: chosen, or the one shown when the project has tilt series and nothing else to follow
   const [view, setView] = useState<"spa" | "tomo" | null>(null);
   const [tomo, setTomo] = useState<TomoMonitor | null>(null);
@@ -347,9 +391,25 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   // The monitor can live in another browser window: its own document says whether it is seen.
   const rootRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const reloadRequestedRef = useRef(false);
+  useEffect(() => () => {
+    reloadRequestedRef.current = false;
+    requestRevisionRef.current += 1;
+  }, []);
+  const requestRevisionRef = useRef(0);
+  const requestKey = JSON.stringify([projectId, ctfSetId, coordinatesSetId, classesSetId]);
+  const requestKeyRef = useRef(requestKey);
+  requestKeyRef.current = requestKey;
+  const latestLoadRef = useRef<(fromScratch?: boolean) => Promise<void>>(async () => {});
 
   const load = useCallback(async (fromScratch = false) => {
-    if (!svc.fetchStreamingMonitor || loadingRef.current) return;
+    if (!svc.fetchStreamingMonitor) return;
+    if (loadingRef.current) {
+      if (fromScratch) reloadRequestedRef.current = true;
+      return;
+    }
+    const revision = requestRevisionRef.current;
+    const key = requestKeyRef.current;
     loadingRef.current = true;
     try {
       let current = fromScratch ? EMPTY_SERIES : seriesRef.current;
@@ -369,6 +429,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           afterDoseKey: doses.key,
           afterDoseRowId: doses.lastRowId,
         });
+        if (key !== requestKeyRef.current || revision !== requestRevisionRef.current) return;
         current = mergeSeries(current, answer.series);
         picks = mergePicking(picks, answer.picking);
         doses = mergeDose(doses, answer.dose);
@@ -386,8 +447,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       setError(reason instanceof Error ? reason.message : "The streaming monitor could not be read");
     } finally {
       loadingRef.current = false;
+      if (reloadRequestedRef.current) {
+        reloadRequestedRef.current = false;
+        void latestLoadRef.current(true);
+      }
     }
   }, [svc, projectId, ctfSetId, coordinatesSetId, classesSetId]);
+  latestLoadRef.current = load;
 
   useEffect(() => {
     void load(true);
@@ -499,14 +565,50 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     });
   }, [svc, projectId, monitor?.classes]);
 
-  const saveThresholds = useCallback(async (changed: Partial<StreamingMonitorThresholds>) => {
-    if (!svc.saveStreamingMonitorThresholds) return;
-    await svc.saveStreamingMonitorThresholds(projectId, changed);
-    setEditing(false);
-    // The alerts of every point depend on the thresholds: read the series again.
-    setTomoReload((current) => current + 1);
-    await load(true);
-  }, [svc, projectId, load]);
+  const saveThresholds = useCallback((changed: Partial<StreamingMonitorThresholds>, fromSlider = false) => {
+    // Saving the form supersedes a slider save that has not started yet.
+    if (!fromSlider && thresholdAutosaveTimerRef.current !== null) {
+      window.clearTimeout(thresholdAutosaveTimerRef.current);
+      thresholdAutosaveTimerRef.current = null;
+    }
+    // Serialize writes so a slower earlier save cannot overwrite the latest slider position.
+    const task = thresholdSaveQueueRef.current.catch(() => {}).then(async () => {
+      if (!svc.saveStreamingMonitorThresholds) return;
+      const saved = await svc.saveStreamingMonitorThresholds(projectId, changed);
+      if (thresholdProjectRef.current !== projectId) return;
+      requestRevisionRef.current += 1;
+      if (!fromSlider) setEditing(false);
+      setThresholdChanges((previous) => {
+        if (!fromSlider) return {};
+        const remaining = Object.entries(previous).filter(([name, value]) =>
+          value !== changed[name as StreamingMonitorThresholdName]);
+        return remaining.length === Object.keys(previous).length ? previous : Object.fromEntries(remaining);
+      });
+      setMonitor((previous) => previous ? { ...previous, thresholds: { ...previous.thresholds, ...changed, ...saved } } : previous);
+      setTomo((previous) => previous ? { ...previous, thresholds: { ...previous.thresholds, ...changed, ...saved } } : previous);
+      setTomoReload((current) => current + 1);
+      await latestLoadRef.current(true);
+    });
+    thresholdSaveQueueRef.current = task;
+    return task;
+  }, [svc, projectId]);
+
+  useEffect(() => {
+    if (!Object.keys(thresholdChanges).length) return;
+    // The form and plots update immediately; save once dragging pauses briefly.
+    const timer = window.setTimeout(() => {
+      thresholdAutosaveTimerRef.current = null;
+      void saveThresholds(thresholdChanges, true).catch((reason) => {
+        if (thresholdProjectRef.current !== projectId) return;
+        setError(reason instanceof Error ? reason.message : "The thresholds could not be saved");
+      });
+    }, 400);
+    thresholdAutosaveTimerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (thresholdAutosaveTimerRef.current === timer) thresholdAutosaveTimerRef.current = null;
+    };
+  }, [thresholdChanges, saveThresholds, projectId]);
 
   const isSeen = useCallback(() => (rootRef.current?.ownerDocument ?? document).visibilityState === "visible", []);
   const tabs = Boolean(monitor?.tomography && monitor.stages.length > 0);
@@ -648,7 +750,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
         {mode === "tomo" ? (
           <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
-                           isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus} />
+                           isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus}
+                           thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds} />
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
@@ -677,11 +780,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               ) : null}
               {plots.map((spec) => (
                 <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds} byOrder={!live}
-                             dark={dark}
+                             dark={dark} thresholdChanges={thresholdChanges}
+                             onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined}
                              onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
               ))}
               {hasDose ? (
-                <MonitorPlot spec={DOSE_PLOT} points={dosePoints} thresholds={thresholds} byOrder={!live} dark={dark} />
+                <MonitorPlot spec={DOSE_PLOT} points={dosePoints} thresholds={thresholds} byOrder={!live} dark={dark}
+                             thresholdChanges={thresholdChanges} onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
               ) : null}
             </section>
           ) : null}
@@ -708,7 +813,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           {seriesKind === "ctf" ? (
             <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
               {HISTOGRAMS.map((spec) => (
-                <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark} />
+                <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark}
+                                  thresholds={thresholds} thresholdChanges={thresholdChanges}
+                                  onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
               ))}
             </section>
           ) : null}
@@ -722,9 +829,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       <ImagePreviewDialog image={preview} onClose={() => setPreview(null)}
                           container={rootRef.current?.ownerDocument.body ?? undefined} />
       {editing && monitor ? (
-        <StreamingMonitorThresholdsDialog thresholds={mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds}
+        <StreamingMonitorThresholdsDialog thresholds={{ ...(mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds), ...thresholdChanges }}
                                           names={mode === "tomo" ? TOMO_THRESHOLD_ORDER : THRESHOLD_ORDER}
-                                          onCancel={() => setEditing(false)} onSave={saveThresholds}
+                                          onCancel={() => setEditing(false)} onSave={(changed) => saveThresholds(changed)}
                                           container={rootRef.current?.ownerDocument.body ?? undefined} />
       ) : null}
     </div>

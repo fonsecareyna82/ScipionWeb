@@ -193,6 +193,18 @@ describe("The tomography view of the monitor", () => {
     await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
   });
 
+  it("automatically saves a tomography plot threshold", async () => {
+    const service = render(tomo([row(1, "TS_01")]), spa(),
+      { saveStreamingMonitorThresholds: vi.fn().mockResolvedValue({ ...THRESHOLDS, minTilts: 40 }) });
+    const slider = await screen.findByRole("slider", { name: "Fewer tilts than slider" });
+    expect(slider).toHaveValue("30");
+    fireEvent.change(slider, { target: { value: "40" } });
+    expect(slider).toHaveValue("40");
+    expect(service.saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    await waitFor(() => expect(service.saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { minTilts: 40 }));
+    await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
+  });
+
   it("edits the tomography thresholds in its view", async () => {
     const service = render(tomo([row(1, "TS_01")]), spa(),
                            { saveStreamingMonitorThresholds: vi.fn().mockResolvedValue(THRESHOLDS) });

@@ -305,7 +305,7 @@ const AppSidebar: React.FC = () => {
   return (
     <aside className={asideClassName}>
       <div className={`py-8 flex ${!isExpanded ? "lg:justify-center" : "justify-start"}`}>
-        <Link to="/">
+        <Link to="/home" aria-label="Home">
           <div className="flex items-center">
             <img
               src={isDark ? "/images/logo/scipion_icon_white.png" : "/images/logo/scipion_icon.png"}

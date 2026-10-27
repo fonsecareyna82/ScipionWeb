@@ -7,13 +7,15 @@ import type { StreamingMonitor, StreamingMonitorPoint } from "@/services/Project
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
 vi.mock("react-plotly.js", () => ({
-  default: ({ data, onClick }: { data: Array<{ name: string; customdata?: unknown[][]; x: unknown[] }>; onClick?: (event: unknown) => void }) => (
-    <div data-testid="mock-plotly">
+  default: ({ data, layout, onClick }: { layout?: { shapes?: Array<{ y0: number; x0?: number }> }; data: Array<{ name: string; customdata?: unknown[][]; x: unknown[]; marker?: { color: string[] } }>; onClick?: (event: unknown) => void }) => (
+    <div data-testid="mock-plotly" data-limits={JSON.stringify(layout?.shapes?.map((shape) => shape.y0) ?? [])}
+         data-x-limits={JSON.stringify(layout?.shapes?.map((shape) => shape.x0) ?? [])}>
       {data.map((serie) => (
         <button
           key={serie.name}
           type="button"
           data-points={(serie.customdata ?? serie.x).length}
+          data-colours={JSON.stringify(serie.marker?.color)}
           data-first-x={String(serie.x?.[0])}
           onClick={() => onClick?.({ points: [{ customdata: serie.customdata?.[0] }], event: { button: 0 } })}
         >
@@ -421,6 +423,144 @@ describe("StreamingMonitorView", () => {
     expect(fetchCoords2dForMicrograph).toHaveBeenCalledWith(7, "4", "outputCoordinates", 5);
     expect(fetchCoords2dMicrographImageObjectUrl).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("preview-overlay").querySelectorAll("circle")[0]).toHaveAttribute("r", "90");
+  });
+
+  it("updates the form immediately and automatically saves slider changes", async () => {
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1)]));
+    const saveStreamingMonitorThresholds = vi.fn().mockResolvedValue({ ...THRESHOLDS, maxAstigmatism: 800 });
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    const plot = slider.closest('[data-testid="monitor-plot"]')!;
+    fireEvent.change(slider, { target: { value: "800" } });
+    expect(within(plot as HTMLElement).getByTestId("mock-plotly")).toHaveAttribute("data-limits", "[800]");
+    expect(saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Apply thresholds" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    expect(screen.getByLabelText("Astigmatism above")).toHaveValue(800);
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { maxAstigmatism: 800 }));
+    expect(screen.getByRole("dialog", { name: "Monitor thresholds" })).toBeInTheDocument();
+  });
+
+  it("serializes autosaves and retains edits made while an earlier save is pending", async () => {
+    let finishFirst!: () => void;
+    let stored = 1000;
+    const saveStreamingMonitorThresholds = vi.fn().mockImplementation(async (_projectId, changed) => {
+      if (saveStreamingMonitorThresholds.mock.calls.length === 1) {
+        await new Promise<void>((resolve) => { finishFirst = resolve; });
+      }
+      stored = changed.maxAstigmatism;
+      return { ...THRESHOLDS, maxAstigmatism: stored };
+    });
+    const fetchStreamingMonitor = vi.fn().mockImplementation(async () => ({
+      ...answer([point(1)]), thresholds: { ...THRESHOLDS, maxAstigmatism: stored },
+    }));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    fireEvent.change(slider, { target: { value: "800" } });
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1));
+    expect(slider).toBeEnabled();
+    fireEvent.change(slider, { target: { value: "600" } });
+    fireEvent.change(slider, { target: { value: "500" } });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1);
+    await act(async () => finishFirst());
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(2));
+    expect(saveStreamingMonitorThresholds).toHaveBeenLastCalledWith(7, { maxAstigmatism: 500 });
+    await waitFor(() => expect(slider).toHaveValue("500"));
+  });
+
+  it("lets a form save supersede a slider save that has not started", async () => {
+    let finishSave!: (value: typeof THRESHOLDS) => void;
+    const saveStreamingMonitorThresholds = vi.fn().mockImplementation(() =>
+      new Promise<typeof THRESHOLDS>((resolve) => { finishSave = resolve; }));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1)])), saveStreamingMonitorThresholds,
+      }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    fireEvent.change(slider, { target: { value: "800" } });
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    fireEvent.change(screen.getByLabelText("Astigmatism above"), { target: { value: "700" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    await act(async () => finishSave({ ...THRESHOLDS, maxAstigmatism: 700 }));
+    expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1);
+    expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, expect.objectContaining({ maxAstigmatism: 700 }));
+  });
+
+  it("shares defocus sliders with the histogram and converts its threshold lines to micrometres", async () => {
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1)])),
+        saveStreamingMonitorThresholds: vi.fn(),
+      }),
+    });
+    const sliders = await screen.findAllByRole("slider", { name: "Defocus above slider" });
+    expect(sliders).toHaveLength(2);
+    fireEvent.change(sliders[0], { target: { value: "30000" } });
+    expect(sliders[1]).toHaveValue("30000");
+    const histogram = sliders[1].closest('[data-testid="monitor-histogram"]')!;
+    expect(within(histogram as HTMLElement).getByTestId("mock-plotly")).toHaveAttribute("data-x-limits", "[0.1,3]");
+  });
+
+  it("recalculates point colours while dragging and can preview a disabled limit", async () => {
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1, { astigmatism: 900 })])),
+        saveStreamingMonitorThresholds: vi.fn(),
+      }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    const trace = screen.getByRole("button", { name: "Astigmatism" });
+    const original = trace.getAttribute("data-colours")!;
+    fireEvent.change(slider, { target: { value: "800" } });
+    expect(trace.getAttribute("data-colours")).not.toBe(original);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Enable Astigmatism above" }));
+    expect(trace).toHaveAttribute("data-colours", original);
+    const resolution = within(screen.getAllByTestId("monitor-plot")[0]).getByRole("slider", { name: "CTF resolution worse than slider" });
+    expect(resolution).toBeDisabled();
+    fireEvent.click(within(screen.getAllByTestId("monitor-plot")[0]).getByRole("checkbox", { name: "Enable CTF resolution worse than" }));
+    expect(resolution).toBeEnabled();
+  });
+
+  it("queues a full reload when thresholds are saved during a poll", async () => {
+    let finishPoll!: (value: StreamingMonitor) => void;
+    const fetchStreamingMonitor = vi.fn()
+      .mockResolvedValueOnce(answer([point(1)]))
+      .mockImplementationOnce(() => new Promise<StreamingMonitor>((resolve) => { finishPoll = resolve; }))
+      .mockResolvedValue(answer([point(1)]));
+    const saveStreamingMonitorThresholds = vi.fn().mockResolvedValue({ ...THRESHOLDS, maxAstigmatism: 800 });
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    fireEvent.change(slider, { target: { value: "800" } });
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { maxAstigmatism: 800 }));
+    await act(async () => finishPoll(answer([point(2)])));
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(3));
+    expect(fetchStreamingMonitor.mock.calls[2][1]).toEqual(expect.objectContaining({ afterSetId: null, afterRowId: null }));
+  });
+
+  it("keeps slider edits available when saving fails", async () => {
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1)])),
+        saveStreamingMonitorThresholds: vi.fn().mockRejectedValue(new Error("Save failed")),
+      }),
+    });
+    const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
+    fireEvent.change(slider, { target: { value: "800" } });
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
+    expect(slider).toHaveValue("800");
+    expect(slider).toBeEnabled();
   });
 
   it("saves the thresholds and reads the series again with them", async () => {

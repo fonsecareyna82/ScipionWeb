@@ -91,7 +91,7 @@ const AppHeader: React.FC = () => {
           </button>
 
           {/* Logo only on mobile */}
-          <Link to="/" className="lg:hidden" aria-label="Home">
+          <Link to="/home" className="lg:hidden" aria-label="Home">
             <img
               className="max-h-5"
               src={isDark ? "./images/logo/logo-dark.svg" : "./images/logo/logo.svg"}

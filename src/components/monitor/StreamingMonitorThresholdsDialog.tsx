@@ -1,5 +1,5 @@
 // The thresholds that turn the CTF and drift of a micrograph into an alert. An empty field raises none.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -25,6 +25,22 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
   const [values, setValues] = useState<Record<StreamingMonitorThresholdName, string>>(() =>
     Object.fromEntries(names.map((name) => [name, toText(thresholds[name])])) as
       Record<StreamingMonitorThresholdName, string>);
+  const previousThresholds = useRef(thresholds);
+  useEffect(() => {
+    const previous = previousThresholds.current;
+    previousThresholds.current = thresholds;
+    setValues((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const name of names) {
+        if (current[name] === toText(previous[name]) && current[name] !== toText(thresholds[name])) {
+          next[name] = toText(thresholds[name]);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [thresholds, names]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 

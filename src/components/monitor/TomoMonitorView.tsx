@@ -16,6 +16,7 @@ import type {
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
+import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
 
 const THUMBNAIL_SIZE = 96;
@@ -40,6 +41,9 @@ const SESSION_HELP =
 
 
 type Props = {
+  thresholdChanges?: ThresholdChanges;
+  onThresholdChange?: (changes: ThresholdChanges) => void;
+  savingThresholds?: boolean;
   projectId: Id;
   pollSeconds: number;
   /** Changes when the thresholds are saved: everything is read again. */
@@ -118,7 +122,10 @@ function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string
   };
 }
 
-function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPick, empty, byOrder = false }: {
+function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPick, empty, byOrder = false, thresholdChanges = {}, onThresholdChange, savingThresholds }: {
+  thresholdChanges?: ThresholdChanges;
+  onThresholdChange?: (changes: ThresholdChanges) => void;
+  savingThresholds?: boolean;
   title: string; unit: string; rows: TomoMonitorTiltSeries[]; value: (row: TomoMonitorTiltSeries) => number | undefined;
   /** The thresholds that colour a point red; each one set is also drawn as a dashed line. */
   alerts: StreamingMonitorThresholdName[]; thresholds: TomoMonitor["thresholds"]; dark: boolean;
@@ -129,6 +136,7 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
   byOrder?: boolean;
 }) {
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
+  const shownThresholds = { ...thresholds, ...thresholdChanges };
   const order = new Map([...rows].sort((a, b) => a.id - b.id).map((row, index) => [row.id, index + 1]));
   const shown = rows.filter((row) => (byOrder || row.time) && value(row) !== undefined);
   const data = [{
@@ -139,11 +147,16 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
     y: shown.map(value),
     customdata: shown.map((row) => [row.tsId]),
     hovertemplate: `%{customdata[0]}<br>%{y:.1f} ${unit}<extra></extra>`,
-    marker: { size: 7, color: shown.map((row) => (row.alerts.some((alert) => alerts.includes(alert))
+    marker: { size: 7, color: shown.map((row) => (previewAlerts(row.alerts, thresholdChanges, {
+      minDefocus: row.defocusU == null ? undefined : Math.min(row.defocusU, row.defocusV || row.defocusU),
+      maxDefocus: row.defocusU == null ? undefined : Math.max(row.defocusU, row.defocusV || row.defocusU),
+      minTilts: row.complete ? row.enabledTilts : undefined,
+      maxResidual: row.residual,
+    }).some((alert) => alerts.includes(alert))
       ? tokens.danger : tokens.accent)) },
   }];
   const shapes = alerts
-    .map((name) => thresholds?.[name])
+    .map((name) => shownThresholds[name])
     .filter((limit): limit is number => limit !== null && limit !== undefined)
     .map((limit) => ({
       type: "line", xref: "paper", x0: 0, x1: 1, y0: limit, y1: limit,
@@ -152,8 +165,10 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="tomo-session-plot"
          data-threshold-lines={shapes.map((shape) => shape.y0).join(",")}>
+      <ThresholdSliders names={alerts} thresholds={shownThresholds} bounds={thresholds}
+                        onChange={onThresholdChange} disabled={savingThresholds} />
       {shown.length === 0 ? <EmptyPlot title={title} text={empty} height={PLOT_HEIGHT} /> : (
-      <Plot data={data} layout={{ ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
+      <Plot data={data} layout={{ uirevision: title, ...layoutFor(title, unit, dark, byOrder ? "Tilt series" : undefined,
                                           byOrder ? undefined : "date", false), shapes }}
             config={{ displaylogo: false, responsive: true }} useResizeHandler style={plotBox(PLOT_HEIGHT)}
             onClick={(event: any) => {
@@ -238,7 +253,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   );
 }
 
-export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null }: Props) {
+export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false }: Props) {
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -249,14 +264,27 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   const [viewing, setViewing] = useState<{ tsId: string; kind: "particles" | "tomogram" } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const reloadRequestedRef = useRef(false);
+  useEffect(() => () => {
+    reloadRequestedRef.current = false;
+    requestRevisionRef.current += 1;
+  }, []);
+  const requestRevisionRef = useRef(0);
+  const latestLoadRef = useRef<(force?: boolean) => Promise<void>>(async () => {});
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
 
-  const load = useCallback(async () => {
-    if (!svc.fetchTomoMonitor || loadingRef.current) return;
+  const load = useCallback(async (force = false) => {
+    if (!svc.fetchTomoMonitor) return;
+    if (loadingRef.current) {
+      if (force) reloadRequestedRef.current = true;
+      return;
+    }
+    const revision = requestRevisionRef.current;
     loadingRef.current = true;
     try {
       const answer = await svc.fetchTomoMonitor(projectId, { tsSetId });
+      if (revision !== requestRevisionRef.current) return;
       setMonitor(answer);
       setError(null);
       onLoadedRef.current(answer);
@@ -264,11 +292,17 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
       setError(reason instanceof Error ? reason.message : "The tomography monitor could not be read");
     } finally {
       loadingRef.current = false;
+      if (reloadRequestedRef.current) {
+        reloadRequestedRef.current = false;
+        void latestLoadRef.current(true);
+      }
     }
   }, [svc, projectId, tsSetId]);
+  latestLoadRef.current = load;
 
   useEffect(() => {
-    void load();
+    requestRevisionRef.current += 1;
+    void load(true);
   }, [load, reloadKey]);
 
   useEffect(() => {
@@ -279,6 +313,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
     return () => window.clearInterval(timer);
   }, [load, pollSeconds, isSeen]);
 
+  const sliderProps = { thresholdChanges, onThresholdChange: svc.saveStreamingMonitorThresholds ? onThresholdChange : undefined, savingThresholds };
   const rows = useMemo(() => [...(monitor?.tiltSeries ?? [])].reverse(), [monitor]);
 
   useEffect(() => {
@@ -364,14 +399,14 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle lg:col-span-3">
             Session <HelpHint text={SESSION_HELP} />
           </div>
-          <SessionPlot title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
+          <SessionPlot {...sliderProps} title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
                        alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} empty={emptyDefocus} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          <SessionPlot title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
+          <SessionPlot {...sliderProps} title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
                        alerts={["minTilts"]} thresholds={monitor.thresholds} empty="No tilt images in these tilt series yet." dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          <SessionPlot title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
+          <SessionPlot {...sliderProps} title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
                        alerts={["maxResidual"]} thresholds={monitor.thresholds} empty={emptyResidual} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
           {picking ? (
-            <SessionPlot title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
+            <SessionPlot {...sliderProps} title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
                          alerts={[]} thresholds={monitor.thresholds} empty="No particles picked on these tomograms yet." dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
           ) : null}
         </section>
