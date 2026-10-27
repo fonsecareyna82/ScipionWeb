@@ -181,6 +181,27 @@ describe("The tomography view of the monitor", () => {
     expect(screen.queryByRole("region", { name: "Tilt series TS_01" })).not.toBeInTheDocument();
   });
 
+  it("hides tomography sections while preserving its output selector and polling", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const data = tomo([row(1, "TS_01")]);
+    data.tiltSeriesOutputs.push({ setId: 11, protocolId: "2", label: "other", outputName: "tiltSeries" });
+    const service = render(data);
+    await screen.findByTestId("tomo-monitor");
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    const picker = screen.getByRole("dialog", { name: "Customize monitor view" });
+    expect(within(picker).queryByRole("checkbox", { name: "2D classes" })).not.toBeInTheDocument();
+    fireEvent.click(within(picker).getByRole("checkbox", { name: "Mean defocus" }));
+    fireEvent.click(within(picker).getByRole("checkbox", { name: "Pipeline" }));
+    fireEvent.click(within(picker).getByRole("checkbox", { name: "Tilt series table" }));
+    expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(2);
+    expect(screen.queryByTestId("tilt-series-row")).not.toBeInTheDocument();
+    expect(document.querySelector('section[aria-label="Tomography pipeline"]')).toBeNull();
+    fireEvent.keyDown(picker, { key: "Escape" });
+    expect(screen.getByRole("combobox", { name: "Tilt series to follow" })).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(15100); });
+    await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
+  });
+
   it("asks again as often as chosen", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const service = render(tomo([row(1, "TS_01")]));
@@ -201,7 +222,7 @@ describe("The tomography view of the monitor", () => {
     fireEvent.change(slider, { target: { value: "40" } });
     expect(slider).toHaveValue("40");
     expect(service.saveStreamingMonitorThresholds).not.toHaveBeenCalled();
-    await waitFor(() => expect(service.saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { minTilts: 40 }));
+    await waitFor(() => expect(service.saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { ...THRESHOLDS, minTilts: 40 }));
     await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
   });
 
@@ -218,7 +239,7 @@ describe("The tomography view of the monitor", () => {
 
     await waitFor(() => expect(service.saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, expect.objectContaining({
       minTilts: 30, maxResidual: 1.5 })));
-    expect(service.saveStreamingMonitorThresholds.mock.calls[0][1]).not.toHaveProperty("maxTotalDrift");
+    expect(service.saveStreamingMonitorThresholds.mock.calls[0][1]).toHaveProperty("maxTotalDrift", THRESHOLDS.maxTotalDrift);
     await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
   });
 

@@ -16,6 +16,7 @@ import type {
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
+import type { SectionVisibility } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
 
@@ -41,6 +42,7 @@ const SESSION_HELP =
 
 
 type Props = {
+  visibility?: SectionVisibility;
   thresholdChanges?: ThresholdChanges;
   onThresholdChange?: (changes: ThresholdChanges) => void;
   savingThresholds?: boolean;
@@ -253,7 +255,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   );
 }
 
-export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false }: Props) {
+export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false, visibility = {} }: Props) {
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -346,6 +348,8 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   const past = (row: TomoMonitorTiltSeries, ...names: StreamingMonitorThresholdName[]) =>
     names.some((name) => row.alerts.includes(name));
   const picking = monitor.stages.find((stage) => stage.stage === "coordinates3d") ?? null;
+  const sessionCount = (["defocus", "tilts", "residual", ...(picking ? ["particles"] : [])] as const)
+    .filter((section) => visibility[section as keyof SectionVisibility] !== false).length;
   const hasStage = (name: string) => monitor.stages.some((stage) => stage.stage === name);
   // Why a session plot has nothing to draw: what the stream lacks for it
   const emptyDefocus = hasStage("ctftomo")
@@ -366,46 +370,54 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   return (
     <div ref={rootRef} className="flex flex-col gap-4" data-testid="tomo-monitor">
       {error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div> : null}
+      {monitor.tiltSeriesOutputs.length > 1 ? (
+        <div className="flex justify-end">
+          <select aria-label="Tilt series to follow"
+                  className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                  value={monitor.stages.find((stage) => stage.stage === "tiltseries")?.setId ?? ""}
+                  onChange={(event) => {
+                    setSelected(null);
+                    setTsSetId(Number(event.target.value));
+                  }}>
+            {monitor.tiltSeriesOutputs.map((output) => (
+              <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       {monitor.stages.length === 0 ? (
         <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
           This project has no tilt series to follow yet.
         </div>
-      ) : (
+      ) : visibility.pipeline !== false ? (
         <section aria-label="Tomography pipeline">
           <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
             Pipeline <HelpHint text={PIPELINE_HELP} />
-            {monitor.tiltSeriesOutputs.length > 1 ? (
-              <select aria-label="Tilt series to follow"
-                      className="ml-auto rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs normal-case text-app-text"
-                      value={monitor.stages.find((stage) => stage.stage === "tiltseries")?.setId ?? ""}
-                      onChange={(event) => {
-                        setSelected(null);
-                        setTsSetId(Number(event.target.value));
-                      }}>
-                {monitor.tiltSeriesOutputs.map((output) => (
-                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
-                ))}
-              </select>
-            ) : null}
           </div>
           <div className="flex flex-wrap gap-3">
             {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} live={monitor.streaming} />)}
           </div>
         </section>
-      )}
+      ) : null}
 
-      {rows.length ? (
-        <section className="grid grid-cols-1 gap-3 lg:grid-cols-3" aria-label="Session">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle lg:col-span-3">
+      {rows.length && sessionCount > 0 ? (
+        <section className={`grid grid-cols-1 gap-3 ${sessionCount > 2 ? "lg:grid-cols-3" : sessionCount === 2 ? "lg:grid-cols-2" : ""}`} aria-label="Session">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle col-span-full">
             Session <HelpHint text={SESSION_HELP} />
           </div>
+          {visibility.defocus !== false ? (
           <SessionPlot {...sliderProps} title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
                        alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} empty={emptyDefocus} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+          ) : null}
+          {visibility.tilts !== false ? (
           <SessionPlot {...sliderProps} title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
                        alerts={["minTilts"]} thresholds={monitor.thresholds} empty="No tilt images in these tilt series yet." dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+          ) : null}
+          {visibility.residual !== false ? (
           <SessionPlot {...sliderProps} title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
                        alerts={["maxResidual"]} thresholds={monitor.thresholds} empty={emptyResidual} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          {picking ? (
+          ) : null}
+          {picking && visibility.particles !== false ? (
             <SessionPlot {...sliderProps} title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
                          alerts={[]} thresholds={monitor.thresholds} empty="No particles picked on these tomograms yet." dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
           ) : null}
@@ -418,7 +430,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                           onOpenTomogram={() => setViewing({ tsId: selectedRow.tsId, kind: "tomogram" })} />
       ) : null}
 
-      {rows.length ? (
+      {rows.length && visibility.tiltSeries !== false ? (
         <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Tilt series">
           <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
             Tilt series <HelpHint text={TABLE_HELP} />

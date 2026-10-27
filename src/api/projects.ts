@@ -4901,6 +4901,7 @@ export async function fetchTomoMonitorSliceObjectUrl(
   return { url, revoke: () => URL.revokeObjectURL(url) };
 }
 
+/** PUT replaces the project thresholds; send all current values to preserve untouched limits. */
 export async function saveStreamingMonitorThresholds(
   projectId: Id,
   thresholds: Partial<StreamingMonitorThresholds>,

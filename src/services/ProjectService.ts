@@ -2129,6 +2129,7 @@ export interface ProjectService<
   /** The central slice of one tomogram of the tomography stream. */
   fetchTomoMonitorSliceObjectUrl?(projectId: Id, setId: number, itemId: number,
     opts?: { size?: number; signal?: AbortSignal }): Promise<ObjectUrlResult>;
+  /** Replaces all thresholds; omitted limits return to server defaults. */
   saveStreamingMonitorThresholds?(
     projectId: Id,
     thresholds: Partial<StreamingMonitorThresholds>,

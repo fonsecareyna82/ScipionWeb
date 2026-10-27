@@ -43,6 +43,8 @@ import TomoMonitorView from "./TomoMonitorView";
 import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
+import CustomizeMonitorView from "./CustomizeMonitorView";
+import { MONITOR_SECTIONS, useMonitorViewPreferences, type MonitorSection } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 
 
@@ -50,6 +52,7 @@ const PLOT_HEIGHT = 260;
 const HISTOGRAM_HEIGHT = 240;
 
 type PlotSpec = {
+  section: MonitorSection;
   title: string;
   unit: string;
   /** What each point is: a micrograph, or a movie for the dose. */
@@ -81,6 +84,7 @@ const LATEST_HELP =
 const PLOTS: PlotSpec[] = [
   {
     title: "CTF resolution",
+    section: "resolution",
     unit: "Å",
     series: [{ name: "Resolution", value: (point) => point.resolution }],
     limits: ["maxResolution"],
@@ -91,6 +95,7 @@ const PLOTS: PlotSpec[] = [
   },
   {
     title: "Defocus",
+    section: "defocus",
     unit: "Å",
     series: [
       { name: "Defocus U", value: (point) => point.defocusU },
@@ -104,6 +109,7 @@ const PLOTS: PlotSpec[] = [
   },
   {
     title: "Astigmatism |U − V|",
+    section: "astigmatism",
     unit: "Å",
     series: [{ name: "Astigmatism", value: (point) => (point.astigmatism === undefined ? undefined
         : Math.abs(point.astigmatism)) }],
@@ -115,6 +121,7 @@ const PLOTS: PlotSpec[] = [
   },
   {
     title: "Drift",
+    section: "drift",
     unit: "Å",
     series: [
       { name: "Total drift", value: (point) => point.totalDrift },
@@ -130,6 +137,7 @@ const PLOTS: PlotSpec[] = [
 
 const PARTICLES_PLOT: PlotSpec = {
   title: "Particles per micrograph",
+    section: "particles",
   unit: "particles",
   series: [{ name: "Particles", value: (point) => point.particles }],
   limits: ["minParticles"],
@@ -142,6 +150,7 @@ const PARTICLES_PLOT: PlotSpec = {
 
 const DOSE_PLOT: PlotSpec = {
   title: "Dose stability",
+    section: "dose",
   unit: "%",
   item: "movie",
   symmetric: true,
@@ -360,6 +369,7 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
 export default function StreamingMonitorView({ projectId, embedded = false }: { projectId: Id; embedded?: boolean }) {
   const svc = useProjectService();
   const dark = useIsDark();
+  const { preferences, setVisible, restore } = useMonitorViewPreferences();
   const [monitor, setMonitor] = useState<StreamingMonitor | null>(null);
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
   const [picking, setPicking] = useState<PickingState>(EMPTY_PICKING);
@@ -376,12 +386,16 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [thresholdChanges, setThresholdChanges] = useState<ThresholdChanges>({});
   const thresholdAutosaveTimerRef = useRef<number | null>(null);
   const thresholdSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const thresholdValuesRef = useRef<StreamingMonitorThresholds | null>(null);
   const thresholdProjectRef = useRef(projectId);
   thresholdProjectRef.current = projectId;
   const changeThresholds = useCallback((changed: ThresholdChanges) => {
     setThresholdChanges((previous) => ({ ...previous, ...changed }));
   }, []);
-  useEffect(() => setThresholdChanges({}), [projectId]);
+  useEffect(() => {
+    setThresholdChanges({});
+    thresholdValuesRef.current = null;
+  }, [projectId]);
   // The tomography view: chosen, or the one shown when the project has tilt series and nothing else to follow
   const [view, setView] = useState<"spa" | "tomo" | null>(null);
   const [tomo, setTomo] = useState<TomoMonitor | null>(null);
@@ -440,6 +454,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       setSeries(current);
       setPicking(picks);
       setDose(doses);
+      thresholdValuesRef.current = answer.thresholds;
       setMonitor(answer);
       setUpdatedAt(new Date());
       setError(null);
@@ -484,6 +499,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const hasPicking = Boolean(monitor?.stages.some((stage) => stage.stage === "coordinates"));
   const plots = [...(seriesKind === "ctf" ? PLOTS : PLOTS.filter((spec) => spec.title === "Drift")),
                  ...(hasPicking ? [PARTICLES_PLOT] : [])];
+  const visiblePlots = plots.filter((spec) => preferences.spa[spec.section] !== false);
   const thresholds = monitor?.thresholds ?? null;
   // The points as shown: with the coordinates picked on their micrograph, which come later than the CTF
   const points = useMemo(() => withParticles(series.points, picking.counts, thresholds),
@@ -491,6 +507,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   // A movie of the dose analysis for a micrograph: drawn and alerted as one
   const dosePoints = useMemo(() => dosePlotPoints(dose.points), [dose.points]);
   const hasDose = dosePoints.length > 0;
+  const showDose = hasDose && preferences.spa.dose !== false;
   // Every alert of the monitor, newest first: micrographs, movies of the dose analysis and tilt series
   const alerts = useMemo<MonitorAlert[]>(() => [
     ...alertEpisodes(points).map((episode) => ({ ...episode, item: "micrograph" as const })),
@@ -574,8 +591,15 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     // Serialize writes so a slower earlier save cannot overwrite the latest slider position.
     const task = thresholdSaveQueueRef.current.catch(() => {}).then(async () => {
       if (!svc.saveStreamingMonitorThresholds) return;
-      const saved = await svc.saveStreamingMonitorThresholds(projectId, changed);
       if (thresholdProjectRef.current !== projectId) return;
+      if (!thresholdValuesRef.current) throw new Error("The monitor thresholds are not loaded yet");
+      // PUT replaces every threshold. Merge at execution time so queued saves retain
+      // both endpoints, the other view's limits, and the results of preceding saves.
+      const complete = { ...thresholdValuesRef.current, ...changed };
+      const answer = await svc.saveStreamingMonitorThresholds(projectId, complete);
+      if (thresholdProjectRef.current !== projectId) return;
+      const saved = { ...complete, ...answer };
+      thresholdValuesRef.current = saved;
       requestRevisionRef.current += 1;
       if (!fromSlider) setEditing(false);
       setThresholdChanges((previous) => {
@@ -649,23 +673,28 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           {updatedAt ? (
             <span className="text-xs text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
           ) : null}
-          <select
-            aria-label="Refresh every"
-            title="How often the monitor reads (in this browser)"
-            className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
-            value={pollSeconds}
-            onChange={(event) => {
-              const seconds = Number(event.target.value);
-              setPollSeconds(seconds);
-              savePollSeconds(seconds);
-            }}
-          >
-            {POLL_CHOICES.map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              aria-label="Refresh every"
+              title="How often the monitor reads (in this browser)"
+              className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+              value={pollSeconds}
+              onChange={(event) => {
+                const seconds = Number(event.target.value);
+                setPollSeconds(seconds);
+                savePollSeconds(seconds);
+              }}
+            >
+              {POLL_CHOICES.map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
+                </option>
+              ))}
+            </select>
+            <CustomizeMonitorView mode={mode} visibility={preferences[mode]}
+                                  onChange={(section, visible) => setVisible(mode, section, visible)}
+                                  onRestore={() => restore(mode)} />
+          </div>
           <div className="ml-auto flex items-center gap-2">
             {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
               <select
@@ -748,10 +777,17 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           </div>
         ) : null}
 
+        {MONITOR_SECTIONS[mode].every(([section]) => preferences[mode][section] === false) ? (
+          <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
+            No sections selected. Use Customize view to choose what to display. Alerts remain active.
+          </div>
+        ) : null}
+
         {mode === "tomo" ? (
           <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
                            isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus}
-                           thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds} />
+                           thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds}
+                           visibility={preferences.tomo} />
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
@@ -760,7 +796,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </div>
           ) : null}
 
-          {monitor && monitor.stages.length > 0 ? (
+          {monitor && monitor.stages.length > 0 && preferences.spa.pipeline !== false ? (
             <section aria-label="Pipeline">
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
                 Pipeline <HelpHint text={PIPELINE_HELP} />
@@ -771,27 +807,27 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {seriesKind || hasDose ? (
-            <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Quality over time">
-              {seriesKind === "micrographs" ? (
-                <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted lg:col-span-2">
+          {(seriesKind && visiblePlots.length > 0) || showDose ? (
+            <section className={`grid grid-cols-1 gap-3 ${visiblePlots.length + Number(showDose) > 1 ? "lg:grid-cols-2" : ""}`} aria-label="Quality over time">
+              {seriesKind === "micrographs" && visiblePlots.length > 0 ? (
+                <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted col-span-full">
                   No CTF estimation yet: the drift of the aligned micrographs is shown meanwhile.
                 </div>
               ) : null}
-              {plots.map((spec) => (
+              {visiblePlots.map((spec) => (
                 <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds} byOrder={!live}
                              dark={dark} thresholdChanges={thresholdChanges}
                              onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined}
                              onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
               ))}
-              {hasDose ? (
+              {showDose ? (
                 <MonitorPlot spec={DOSE_PLOT} points={dosePoints} thresholds={thresholds} byOrder={!live} dark={dark}
                              thresholdChanges={thresholdChanges} onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
               ) : null}
             </section>
           ) : null}
 
-          {seriesKind === "ctf" && ctfStage ? (
+          {seriesKind === "ctf" && ctfStage && preferences.spa.latest !== false ? (
             <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Latest micrographs">
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
                 Latest micrographs <HelpHint text={LATEST_HELP} />
@@ -801,7 +837,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {monitor?.classes ? (
+          {monitor?.classes && preferences.spa.classes !== false ? (
             <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="2D classes">
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
                 2D classes <HelpHint text={CLASSES_HELP} />
@@ -810,7 +846,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </section>
           ) : null}
 
-          {seriesKind === "ctf" ? (
+          {seriesKind === "ctf" && preferences.spa.distributions !== false ? (
             <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
               {HISTOGRAMS.map((spec) => (
                 <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark}

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import StreamingMonitorView from "@/components/monitor/StreamingMonitorView";
 import { POLL_STORAGE_KEY } from "@/components/monitor/streaming-monitor-data";
-import type { StreamingMonitor, StreamingMonitorPoint } from "@/services/ProjectService";
+import type { StreamingMonitor, StreamingMonitorPoint, StreamingMonitorThresholds } from "@/services/ProjectService";
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
 vi.mock("react-plotly.js", () => ({
@@ -99,6 +99,47 @@ describe("StreamingMonitorView", () => {
     expect(within(panel).getByRole("img", { name: /Each line is a run of consecutive items/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
     expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
+  });
+
+  it("customizes multiple sections without closing the picker or changing thresholds", async () => {
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1, { astigmatism: 1500, alerts: ["maxAstigmatism"] })]));
+    const saveStreamingMonitorThresholds = vi.fn();
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    await screen.findByText("ctffind");
+    expect(screen.getByRole("combobox", { name: "Refresh every" }).nextElementSibling)
+      .toBe(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    const picker = screen.getByRole("dialog", { name: "Customize monitor view" });
+    fireEvent.click(within(picker).getByRole("checkbox", { name: "Astigmatism" }));
+    expect(screen.getAllByTestId("monitor-plot")).toHaveLength(3);
+    expect(picker).toBeInTheDocument();
+    fireEvent.click(within(picker).getByRole("checkbox", { name: "Pipeline" }));
+    expect(document.querySelector('section[aria-label="Pipeline"]')).toBeNull();
+    fireEvent.keyDown(picker, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Alerts, 1 new" })).toBeInTheDocument();
+    expect(saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    expect(fetchStreamingMonitor).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore default view" }));
+    expect(screen.getAllByTestId("monitor-plot")).toHaveLength(4);
+    expect(document.querySelector('section[aria-label="Pipeline"]')).not.toBeNull();
+  });
+
+  it("restores hidden sections when the monitor is opened again", async () => {
+    const service = createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1)])) });
+    const first = renderWithProviders(<StreamingMonitorView projectId={7} />, { service });
+    await screen.findByText("ctffind");
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Drift" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Distributions" }));
+    first.unmount();
+    renderWithProviders(<StreamingMonitorView projectId={8} />, { service });
+    await screen.findByText("ctffind");
+    expect(screen.getAllByTestId("monitor-plot")).toHaveLength(3);
+    expect(screen.queryByTestId("monitor-histogram")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alerts" })).toBeInTheDocument();
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
@@ -440,7 +481,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
     expect(screen.getByLabelText("Astigmatism above")).toHaveValue(800);
-    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { maxAstigmatism: 800 }));
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { ...THRESHOLDS, maxAstigmatism: 800 }));
     expect(screen.getByRole("dialog", { name: "Monitor thresholds" })).toBeInTheDocument();
   });
 
@@ -470,7 +511,7 @@ describe("StreamingMonitorView", () => {
     expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1);
     await act(async () => finishFirst());
     await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(2));
-    expect(saveStreamingMonitorThresholds).toHaveBeenLastCalledWith(7, { maxAstigmatism: 500 });
+    expect(saveStreamingMonitorThresholds).toHaveBeenLastCalledWith(7, { ...THRESHOLDS, maxAstigmatism: 500 });
     await waitFor(() => expect(slider).toHaveValue("500"));
   });
 
@@ -493,6 +534,37 @@ describe("StreamingMonitorView", () => {
     await act(async () => finishSave({ ...THRESHOLDS, maxAstigmatism: 700 }));
     expect(saveStreamingMonitorThresholds).toHaveBeenCalledTimes(1);
     expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, expect.objectContaining({ maxAstigmatism: 700 }));
+  });
+
+  it("preserves both defocus endpoints and all other thresholds with the server's replacement PUT", async () => {
+    let stored: StreamingMonitorThresholds = { ...THRESHOLDS, maxDefocus: 57440, maxAstigmatism: 1770, minTilts: 45 };
+    const fetchStreamingMonitor = vi.fn().mockImplementation(async () => ({ ...answer([point(1)]), thresholds: { ...stored } }));
+    // The real PUT replaces the stored settings, filling omitted fields with defaults.
+    const saveStreamingMonitorThresholds = vi.fn().mockImplementation(async (_projectId, sent) => {
+      stored = { ...THRESHOLDS, ...sent };
+      return { ...stored };
+    });
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    const lower = (await screen.findAllByRole("slider", { name: "Defocus below slider" }))[0];
+    const upper = screen.getAllByRole("slider", { name: "Defocus above slider" })[0];
+    fireEvent.change(lower, { target: { value: "30000" } });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
+    expect(lower).toHaveValue("30000");
+    expect(upper).toHaveValue("57440");
+    expect(stored).toEqual({ ...THRESHOLDS, minDefocus: 30000, maxDefocus: 57440, maxAstigmatism: 1770, minTilts: 45 });
+    fireEvent.change(upper, { target: { value: "52000" } });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(3));
+    expect(lower).toHaveValue("30000");
+    expect(upper).toHaveValue("52000");
+    // Attempting to cross the lower endpoint must clamp the upper one, never reset the lower one.
+    fireEvent.change(upper, { target: { value: "5200" } });
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(4));
+    expect(lower).toHaveValue("30000");
+    expect(upper).toHaveValue("30010");
+    expect(stored.maxAstigmatism).toBe(1770);
+    expect(stored.minTilts).toBe(45);
   });
 
   it("shares defocus sliders with the histogram and converts its threshold lines to micrometres", async () => {
@@ -543,7 +615,7 @@ describe("StreamingMonitorView", () => {
     const slider = await screen.findByRole("slider", { name: "Astigmatism above slider" });
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     fireEvent.change(slider, { target: { value: "800" } });
-    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { maxAstigmatism: 800 }));
+    await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, { ...THRESHOLDS, maxAstigmatism: 800 }));
     await act(async () => finishPoll(answer([point(2)])));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(3));
     expect(fetchStreamingMonitor.mock.calls[2][1]).toEqual(expect.objectContaining({ afterSetId: null, afterRowId: null }));
@@ -576,9 +648,9 @@ describe("StreamingMonitorView", () => {
     fireEvent.change(screen.getByLabelText("Astigmatism above"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    // The single particle view saves its own thresholds only
+    // The replacement PUT includes the tomography limits too.
     await waitFor(() => expect(saveStreamingMonitorThresholds).toHaveBeenCalledWith(7, {
-      minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: null, maxResolution: 6, maxFrameShift: 10,
+      ...THRESHOLDS, minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: null, maxResolution: 6, maxFrameShift: 10,
       maxTotalDrift: 45, minParticles: null, maxDoseDifference: 5,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(

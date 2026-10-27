@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import Slider from "@mui/material/Slider";
 import type { StreamingMonitorThresholdName, StreamingMonitorThresholds } from "@/services/ProjectService";
 import { THRESHOLD_LABELS, thresholdUnit } from "./streaming-monitor-data";
@@ -18,9 +19,20 @@ export default function ThresholdSliders({ names, thresholds, bounds, onChange, 
   onChange?: (changes: ThresholdChanges) => void;
   disabled?: boolean;
 }) {
+  const domains = useRef<Record<string, number>>({});
   if (!thresholds || !onChange || !names.length) return null;
+  // Saving a dragged value must not rescale the track underneath the pointer. Only an
+  // external value beyond the current domain needs more room (for example a form edit).
+  const domainMax = (key: string, fallback: number, limits: StreamingMonitorThresholdName[]) => {
+    const largest = Math.max(0, ...limits.flatMap((name) => [bounds?.[name] ?? 0, thresholds[name] ?? 0]));
+    const current = domains.current[key];
+    if (current === undefined || largest > current) {
+      domains.current[key] = Math.max(current ?? fallback, largest * 2);
+    }
+    return domains.current[key];
+  };
   const defocusRange = names.includes("minDefocus") && names.includes("maxDefocus");
-  const rangeMax = Math.max(50000, (bounds?.minDefocus ?? 0) * 2, (bounds?.maxDefocus ?? 0) * 2);
+  const rangeMax = domainMax("defocusRange", 50000, ["minDefocus", "maxDefocus"]);
   const lower = thresholds.minDefocus ?? 10;
   const upper = thresholds.maxDefocus ?? rangeMax;
   const rangeEnabled = thresholds.minDefocus != null || thresholds.maxDefocus != null;
@@ -65,7 +77,7 @@ export default function ThresholdSliders({ names, thresholds, bounds, onChange, 
         const value = thresholds[name];
         const step = name.includes("Defocus") || name === "maxAstigmatism" ? 10
           : name === "minParticles" || name === "minTilts" ? 1 : name === "maxResidual" ? 0.01 : 0.1;
-        const max = Math.max(DEFAULT_MAX[name] ?? 100, (bounds?.[name] ?? 0) * 2);
+        const max = domainMax(name, DEFAULT_MAX[name] ?? 100, [name]);
         const label = THRESHOLD_LABELS[name];
         return (
           <div key={name} className="flex flex-wrap items-center gap-2 text-xs text-app-muted">

@@ -32,6 +32,38 @@ describe("ThresholdSliders", () => {
     expect(onChange).toHaveBeenLastCalledWith({ maxDefocus: 1010 });
   });
 
+  it("keeps the defocus track fixed when either endpoint is saved", () => {
+    const onChange = vi.fn();
+    const limits = { ...thresholds, minDefocus: 1000, maxDefocus: 40000 };
+    const view = render(<ThresholdSliders names={["minDefocus", "maxDefocus"]} thresholds={limits} bounds={limits} onChange={onChange} />);
+    const lower = screen.getByRole("slider", { name: "Defocus below slider" });
+    const upper = screen.getByRole("slider", { name: "Defocus above slider" });
+    expect(upper).toHaveAttribute("max", "80000");
+    fireEvent.change(upper, { target: { value: "30000" } });
+    expect(onChange).toHaveBeenLastCalledWith({ maxDefocus: 30000 });
+    const saved = { ...limits, maxDefocus: 30000 };
+    view.rerender(<ThresholdSliders names={["minDefocus", "maxDefocus"]} thresholds={saved} bounds={saved} onChange={onChange} />);
+    expect(upper).toHaveAttribute("max", "80000");
+    expect(lower).toHaveValue("1000");
+    const next = { ...saved, minDefocus: 2000 };
+    view.rerender(<ThresholdSliders names={["minDefocus", "maxDefocus"]} thresholds={next} bounds={next} onChange={onChange} />);
+    expect(upper).toHaveValue("30000");
+    expect(lower).toHaveAttribute("max", "80000");
+  });
+
+  it("keeps scalar slider scales fixed after saving, while allowing external values beyond the scale", () => {
+    const onChange = vi.fn();
+    const initial = { ...thresholds, maxResidual: 250 };
+    const view = render(<ThresholdSliders names={["maxResidual"]} thresholds={initial} bounds={initial} onChange={onChange} />);
+    const saved = { ...initial, maxResidual: 150 };
+    view.rerender(<ThresholdSliders names={["maxResidual"]} thresholds={saved} bounds={saved} onChange={onChange} />);
+    expect(screen.getByRole("slider")).toHaveAttribute("max", "500");
+    const external = { ...saved, maxResidual: 1000 };
+    view.rerender(<ThresholdSliders names={["maxResidual"]} thresholds={external} bounds={external} onChange={onChange} />);
+    expect(screen.getByRole("slider")).toHaveAttribute("max", "2000");
+    expect(screen.getByRole("slider")).toHaveValue("1000");
+  });
+
   it("switches both defocus limits off together", () => {
     const onChange = vi.fn();
     const limits = { ...thresholds, minDefocus: 1000, maxDefocus: 40000 };
