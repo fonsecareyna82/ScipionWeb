@@ -1,6 +1,7 @@
-// "Analyze results" of a stored protocol, as the desktop offers it: shown only
-// when the protocol has outputs and a viewer the dialog can open, or when it is
-// an Xmipp picking protocol (the button then reopens its picker).
+// "Analyze results" of a stored protocol, as the desktop offers it: shown when
+// the protocol has outputs and a viewer the dialog can open, when it has run and
+// has a viewer of its own (FSO keeps its results in files, with no outputs), or
+// when it is an Xmipp picking protocol (the button then reopens its picker).
 import { useEffect, useMemo, useState } from "react";
 import { Button, Tooltip } from "@mui/material";
 import { BarChart3 } from "lucide-react";
@@ -13,6 +14,8 @@ import ProtocolViewerDiscoveryDialog from "./ProtocolViewerDiscoveryDialog";
 
 // While these run (or before they run) the picker belongs to Launch, not here.
 const NOT_PICKABLE_STATUSES = ["running", "launched", "scheduled", "new", "saved", ""];
+// Statuses of a protocol that has run: its viewer can read what it wrote, outputs or not.
+const RAN_STATUSES = ["running", "finished", "failed", "aborted", "interactive"];
 
 type Props = {
   projectId: string | number | null | undefined;
@@ -59,7 +62,8 @@ export default function ProtocolAnalyzeAction({
 
   // Without the class, an interactive protocol may still be a picking one.
   const mayBePicking = !protocolClassName && status === "interactive";
-  const shouldAsk = isPersisted && (hasOutputs || mayBePicking);
+  const hasRun = RAN_STATUSES.includes(status);
+  const shouldAsk = isPersisted && (hasOutputs || hasRun || mayBePicking);
 
   useEffect(() => {
     setHasViewers(false);
@@ -69,12 +73,15 @@ export default function ProtocolAnalyzeAction({
     Promise.resolve(svc.fetchProtocolViewerCandidates(project, protocol))
       .then(result => {
         if (cancelled) return;
-        setHasViewers(hasOutputs && openableProtocolViewers(result).length > 0);
+        const viewers = openableProtocolViewers(result);
+        // Without outputs only a viewer of the protocol itself has something to show
+        setHasViewers(hasOutputs ? viewers.length > 0
+          : hasRun && viewers.some(viewer => viewer.viewerKind === "protocol-form"));
         setDiscoveredClass(typeof result?.protocolClassName === "string" ? result.protocolClassName : null);
       })
       .catch(() => { if (!cancelled) setHasViewers(false); });
     return () => { cancelled = true; };
-  }, [svc, project, protocol, shouldAsk, hasOutputs]);
+  }, [svc, project, protocol, shouldAsk, hasOutputs, hasRun]);
 
   const className = protocolClassName || discoveredClass;
   const canPick = isPersisted && isXmippPickingProtocol(className) && !NOT_PICKABLE_STATUSES.includes(status);

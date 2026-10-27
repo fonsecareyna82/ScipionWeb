@@ -44,6 +44,9 @@ import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from ".
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
 import QualitySummary from "./QualitySummary";
+import MonitorTimeRangeSelector from "./MonitorTimeRangeSelector";
+import { chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recordedTime, resolveTimeRange, useMonitorTimeRange,
+  type ChartViewport, type ResolvedTimeRange } from "./monitor-time-range";
 import { useQualityWindows } from "./quality-window-preferences";
 import { movieQualitySummary, spaQualitySummary } from "./quality-summary-data";
 import CustomizeMonitorView from "./CustomizeMonitorView";
@@ -181,7 +184,11 @@ function MonitorPlot({
   thresholdChanges = {},
   onThresholdChange,
   savingThresholds = false,
+  timeView, orderPositions, onTimeViewport,
 }: {
+  timeView: ResolvedTimeRange;
+  orderPositions: Map<number, number>;
+  onTimeViewport: (viewport: ChartViewport | "reset") => void;
   thresholdChanges?: ThresholdChanges;
   onThresholdChange?: (changes: ThresholdChanges) => void;
   savingThresholds?: boolean;
@@ -196,8 +203,8 @@ function MonitorPlot({
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   const shownThresholds = thresholds ? { ...thresholds, ...thresholdChanges } : null;
   const colours = [tokens.accent, tokens.success];
-  const order = new Map(points.map((point, index) => [point.id, index + 1]));
-  const usable = points.filter((point) => !point.failed && (byOrder || point.time));
+  const order = orderPositions;
+  const usable = points.filter((point) => !point.failed && (byOrder || recordedTime(point.time) !== null));
   const data = spec.series.map((serie, index) => {
     const shown = usable.filter((point) => serie.value(point) !== undefined);
     return {
@@ -242,22 +249,23 @@ function MonitorPlot({
     font: { color: tokens.textMuted, size: 11 },
     hovermode: "closest",
     showlegend: spec.series.length > 1,
-    xaxis: byOrder ? { title: { text: spec.item === "movie" ? "Movie" : "Micrograph" }, gridcolor: tokens.border, zeroline: false }
-      : { type: "date", gridcolor: tokens.border, zeroline: false },
+    xaxis: { ...(byOrder ? { title: { text: spec.item === "movie" ? "Movie" : "Micrograph" } } : { type: "date" }),
+      gridcolor: tokens.border, zeroline: false, ...chartXAxis(timeView) },
     yaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     shapes,
   };
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-plot">
-      <PlotHeader title={spec.title} help={`${spec.help} Each point is a ${spec.item ?? "micrograph"}, at the time it `
-        + "was processed; red ones go past a threshold (the dashed lines)."
+      <PlotHeader title={spec.title} help={`${spec.help} Each point is a ${spec.item ?? "micrograph"}, `
+        + (byOrder ? "in item order" : "at the time it was recorded")
+        + "; red ones go past a threshold (the dashed lines)."
         + (onPick ? " Click one to see the micrograph." : "")} />
       <ThresholdSliders names={spec.limits} thresholds={shownThresholds} bounds={thresholds}
                         onChange={onThresholdChange} disabled={savingThresholds} />
       {data.every((serie) => serie.y.length === 0) ? (
         <div className="flex items-center justify-center px-6 text-center text-sm text-app-muted" data-testid="empty-plot"
              style={plotBox(PLOT_HEIGHT)}>
-          {spec.empty}
+          {timeView.active ? "No measurements in the selected range." : spec.empty}
         </div>
       ) : (
         <Plot
@@ -266,6 +274,10 @@ function MonitorPlot({
           config={{ displaylogo: false, responsive: true }}
           useResizeHandler
           style={plotBox(PLOT_HEIGHT)}
+          onRelayout={(event: any) => {
+            const viewport = readChartRelayout(event, timeView);
+            if (viewport) onTimeViewport(viewport);
+          }}
           onClick={(event: any) => {
             const button = event?.event?.button;
             if (button != null && button !== 0) return;
@@ -314,8 +326,8 @@ const HISTOGRAMS: HistogramSpec[] = [
   },
 ];
 
-function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, onThresholdChange, savingThresholds = false }: {
-  spec: HistogramSpec; points: StreamingMonitorPoint[]; dark: boolean;
+function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, onThresholdChange, savingThresholds = false, filtered = false }: {
+  spec: HistogramSpec; points: StreamingMonitorPoint[]; dark: boolean; filtered?: boolean;
   thresholds: StreamingMonitorThresholds | null; thresholdChanges: ThresholdChanges;
   onThresholdChange?: (changes: ThresholdChanges) => void; savingThresholds?: boolean;
 }) {
@@ -329,7 +341,7 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
   const recent = points.length >= RECENT_FROM ? values(points.slice(-RECENT_MICROGRAPHS)) : [];
   const bins = { size: spec.binSize };
   const data: any[] = [{
-    type: "histogram", name: "All micrographs", x: all, xbins: bins, marker: { color: tokens.accent },
+    type: "histogram", name: filtered ? "Selected micrographs" : "All micrographs", x: all, xbins: bins, marker: { color: tokens.accent },
     hovertemplate: `%{x} ${spec.unit}: %{y}<extra>All</extra>`,
   }];
   if (recent.length) {
@@ -358,7 +370,7 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
   return (
     <div className="relative min-w-0 overflow-hidden rounded-xl border border-app-border bg-app-surface p-2" data-testid="monitor-histogram">
       <PlotHeader title={spec.title} help={spec.help + (recent.length
-        ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over the whole session.` : "")} />
+        ? ` The last ${RECENT_MICROGRAPHS} micrographs are drawn over ${filtered ? "the selected range" : "the whole session"}.` : "")} />
       <ThresholdSliders names={spec.limits} thresholds={shownThresholds} bounds={thresholds}
                         onChange={onThresholdChange} disabled={savingThresholds} />
       <Plot data={data} layout={layout} config={{ displaylogo: false, responsive: true }} useResizeHandler
@@ -372,6 +384,7 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
 export default function StreamingMonitorView({ projectId, embedded = false }: { projectId: Id; embedded?: boolean }) {
   const svc = useProjectService();
   const dark = useIsDark();
+  const timeRange = useMonitorTimeRange(projectId);
   const { sizes: qualityWindows, setSize: setQualityWindow } = useQualityWindows();
   const qualityWindowSizeRef = useRef(qualityWindows.spa);
   qualityWindowSizeRef.current = qualityWindows.spa;
@@ -526,6 +539,14 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   }, [points, thresholds, thresholdChanges, seriesKind, hasPicking, qualityWindows.spa, preferences.spa, monitor?.exposures]);
   // A movie of the dose analysis for a micrograph: drawn and alerted as one
   const dosePoints = useMemo(() => dosePlotPoints(dose.points), [dose.points]);
+  const spaTimeSelection = timeRange.selection("spa");
+  const timedItems = useMemo(() => [...points, ...dosePoints], [points, dosePoints]);
+  const orderPositions = useMemo(() => itemPositions(timedItems), [timedItems]);
+  const timeView = useMemo(() => resolveTimeRange(spaTimeSelection, timedItems, orderPositions,
+    monitor?.streaming ?? true, monitor?.now ?? ""),
+    [spaTimeSelection.preset, spaTimeSelection.custom, spaTimeSelection.revision, timedItems, orderPositions, monitor?.streaming, monitor?.now]);
+  const shownPoints = useMemo(() => filterTimeRange(points, timeView, orderPositions), [points, timeView, orderPositions]);
+  const shownDose = useMemo(() => filterTimeRange(dosePoints, timeView, orderPositions), [dosePoints, timeView, orderPositions]);
   const hasDose = dosePoints.length > 0;
   const showDose = hasDose && preferences.spa.dose !== false;
   // Every alert of the monitor, newest first: micrographs, movies of the dose analysis and tilt series
@@ -658,7 +679,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const tabs = Boolean(monitor?.tomography && monitor.stages.length > 0);
   const mode = view ?? (monitor?.tomography && monitor.stages.length === 0 ? "tomo" : "spa");
   // Without anything streaming the monitor is an overview of how the data came out: no rates, no backlogs
-  const live = Boolean(mode === "tomo" ? tomo?.streaming ?? true : monitor?.streaming ?? true);
+  const activeMonitor = mode === "tomo" ? tomo : monitor;
+  const live = activeMonitor?.streaming ?? true;
 
   if (!svc.fetchStreamingMonitor) {
     return <div className="p-6 text-sm text-app-muted">The streaming monitor is not available here.</div>;
@@ -685,10 +707,10 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           <div className="flex flex-wrap items-center gap-3">
             <Activity className="h-5 w-5 text-app-accent" />
             <h1 className="text-lg font-semibold text-app-text">{live ? "Streaming monitor" : "Quality overview"}</h1>
-            {monitor ? (
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${monitor.streaming
+            {activeMonitor ? (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${live
                 ? "bg-app-accent-soft text-app-accent" : "bg-app-surface-3 text-app-muted"}`}>
-                {monitor.streaming ? "Streaming" : "Not streaming"}
+                {live ? "Streaming" : "Not streaming"}
               </span>
             ) : null}
             <div className="ml-auto flex flex-col items-end gap-1.5">
@@ -706,24 +728,29 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <select
-                aria-label="Refresh every"
-                title="How often the monitor reads (in this browser)"
-                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
-                value={pollSeconds}
-                onChange={(event) => {
-                  const seconds = Number(event.target.value);
-                  setPollSeconds(seconds);
-                  savePollSeconds(seconds);
-                }}
-              >
-                {POLL_CHOICES.map((seconds) => (
-                  <option key={seconds} value={seconds}>
-                    {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
-                  </option>
-                ))}
-              </select>
+            <div className="flex w-full flex-wrap items-center gap-3">
+              <MonitorTimeRangeSelector selection={timeRange.selection(mode)} onChange={(preset) => timeRange.setPreset(mode, preset)} />
+              <label className="flex items-center gap-1.5 text-xs text-app-muted">
+                <span>Refresh every</span>
+                <select
+                  aria-label="Refresh every"
+                  title="How often the monitor reads (in this browser)"
+                  className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                  value={pollSeconds}
+                  onChange={(event) => {
+                    const seconds = Number(event.target.value);
+                    setPollSeconds(seconds);
+                    savePollSeconds(seconds);
+                  }}
+                >
+                  {POLL_CHOICES.map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {seconds === 0 ? "Paused" : seconds < 60 ? `${seconds} s` : `${seconds / 60} min`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="ml-auto flex items-center gap-2">
               <CustomizeMonitorView mode={mode} visibility={preferences[mode]}
                                     onChange={(section, visible) => setVisible(mode, section, visible)}
                                     onRestore={() => restore(mode)} />
@@ -733,6 +760,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 <Settings2 className="h-4 w-4" />
                 Thresholds
               </button>
+              </div>
             </div>
             {mode === "spa" && monitor && (monitor.ctfOutputs.length > 1
               || monitor.coordinatesOutputs.length > 1 || monitor.classesOutputs.length > 1) ? (
@@ -828,7 +856,8 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
                            isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus}
                            thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds}
-                           qualityWindowSize={qualityWindows.tomo} visibility={preferences.tomo} />
+                           qualityWindowSize={qualityWindows.tomo} visibility={preferences.tomo}
+                           timeSelection={timeRange.selection("tomo")} onTimeViewport={(viewport) => timeRange.setViewport("tomo", viewport)} />
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
@@ -860,13 +889,15 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 </div>
               ) : null}
               {visiblePlots.map((spec) => (
-                <MonitorPlot key={spec.title} spec={spec} points={points} thresholds={thresholds} byOrder={!live}
+                <MonitorPlot key={spec.title} spec={spec} points={shownPoints} thresholds={thresholds} byOrder={!live}
+                             timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
                              dark={dark} thresholdChanges={thresholdChanges}
                              onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined}
                              onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
               ))}
               {showDose ? (
-                <MonitorPlot spec={DOSE_PLOT} points={dosePoints} thresholds={thresholds} byOrder={!live} dark={dark}
+                <MonitorPlot spec={DOSE_PLOT} points={shownDose} thresholds={thresholds} byOrder={!live} dark={dark}
+                             timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
                              thresholdChanges={thresholdChanges} onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
               ) : null}
             </section>
@@ -878,7 +909,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                 Latest micrographs <HelpHint text={LATEST_HELP} />
               </div>
               <LatestMicrographsTable projectId={projectId} protocolId={ctfStage.protocolId} outputName={ctfStage.outputName}
-                                      points={points} onOpen={openMicrograph} showParticles={hasPicking} />
+                                      points={shownPoints} onOpen={openMicrograph} showParticles={hasPicking} />
             </section>
           ) : null}
 
@@ -894,7 +925,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           {seriesKind === "ctf" && preferences.spa.distributions !== false ? (
             <section className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Distributions">
               {HISTOGRAMS.map((spec) => (
-                <MonitorHistogram key={spec.title} spec={spec} points={points} dark={dark}
+                <MonitorHistogram key={spec.title} spec={spec} points={shownPoints} filtered={timeView.active} dark={dark}
                                   thresholds={thresholds} thresholdChanges={thresholdChanges}
                                   onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
               ))}

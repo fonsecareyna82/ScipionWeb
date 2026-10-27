@@ -7,9 +7,17 @@ import type { StreamingMonitor, StreamingMonitorPoint, StreamingMonitorThreshold
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
 vi.mock("react-plotly.js", () => ({
-  default: ({ data, layout, onClick }: { layout?: { shapes?: Array<{ y0: number; x0?: number }> }; data: Array<{ name: string; customdata?: unknown[][]; x: unknown[]; marker?: { color: string[] } }>; onClick?: (event: unknown) => void }) => (
+  default: ({ data, layout, onClick, onRelayout }: { onRelayout?: (event: Record<string, unknown>) => void; layout?: { xaxis?: { type?: string; range?: unknown[] }; shapes?: Array<{ y0: number; x0?: number }> }; data: Array<{ name: string; customdata?: unknown[][]; x: unknown[]; marker?: { color: string[] } }>; onClick?: (event: unknown) => void }) => (
     <div data-testid="mock-plotly" data-limits={JSON.stringify(layout?.shapes?.map((shape) => shape.y0) ?? [])}
-         data-x-limits={JSON.stringify(layout?.shapes?.map((shape) => shape.x0) ?? [])}>
+         data-x-limits={JSON.stringify(layout?.shapes?.map((shape) => shape.x0) ?? [])}
+         data-time-range={JSON.stringify(layout?.xaxis?.range ?? [])}>
+      {onRelayout ? <>
+        <button type="button" aria-label={`Zoom time ${data[0]?.name}`} onClick={() => onRelayout(layout?.xaxis?.type === "date"
+          ? { "xaxis.range[0]": "2026-10-21 11:45:00", "xaxis.range[1]": "2026-10-21 12:00:00" }
+          : { "xaxis.range[0]": 1.5, "xaxis.range[1]": 2.5 })}>Zoom time</button>
+        <button type="button" aria-label={`Reset time ${data[0]?.name}`} onClick={() => onRelayout({ "xaxis.autorange": true })}>Reset time</button>
+        <button type="button" aria-label={`Zoom Y ${data[0]?.name}`} onClick={() => onRelayout({ "yaxis.range[0]": 0, "yaxis.range[1]": 5 })}>Zoom Y</button>
+      </> : null}
       {data.map((serie) => (
         <button
           key={serie.name}
@@ -108,8 +116,8 @@ describe("StreamingMonitorView", () => {
       service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
     });
     await screen.findByText("ctffind");
-    expect(screen.getByRole("combobox", { name: "Refresh every" }).nextElementSibling)
-      .toBe(screen.getByRole("button", { name: "Customize view" }));
+    expect(screen.getByRole("combobox", { name: "Refresh every" }).closest("label"))
+      .toHaveTextContent("Refresh every");
     expect(screen.getByRole("button", { name: "Customize view" }).nextElementSibling)
       .toBe(screen.getByRole("button", { name: "Thresholds" }));
     fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
@@ -250,6 +258,59 @@ describe("StreamingMonitorView", () => {
     expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({ qualityWindowSize: 1, afterSetId: 30, afterRowId: 1 }));
     expect(screen.getByText("Latest 1 movie imported · window of 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "1");
+  });
+
+  it("filters time charts, histograms and latest images together and synchronizes zoom without changing quality or alerts", async () => {
+    const points = [
+      point(1, { time: "2026-10-21T09:00:00Z", totalDrift: 5, maxFrameShift: 1, astigmatism: 1500, alerts: ["maxAstigmatism"] }),
+      point(2, { time: "2026-10-21T11:40:00Z", totalDrift: 5, maxFrameShift: 1 }),
+      point(3, { time: "2026-10-21T11:55:00Z", totalDrift: 5, maxFrameShift: 1 }),
+      point(4, { time: null, totalDrift: 5, maxFrameShift: 1 }),
+    ];
+    const next = answer(points);
+    next.dose = { key: "dose", label: "dose", reset: false, lastRowId: 3, more: false, points:
+      ["2026-10-21T09:00:00Z", "2026-10-21T11:45:00Z", "2026-10-21T11:59:00Z"].map((time, index) => ({
+        id: index + 1, time, meanDose: 1, doseDifference: 0, discarded: false, alerts: [],
+      })) };
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(next);
+    renderWithProviders(<StreamingMonitorView projectId={7} />, { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+    await screen.findByText("ctffind");
+    fireEvent.change(screen.getByRole("combobox", { name: "Chart time range" }), { target: { value: "30m" } });
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "2");
+    expect(screen.getAllByRole("button", { name: "Selected micrographs" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Selected micrographs" })[0]).toHaveAttribute("data-points", "2");
+    expect(screen.getByText("Latest 4 micrographs · window of 100")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alerts, 1 new" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom time Resolution" }));
+    expect(screen.getByRole("combobox", { name: "Chart time range" })).toHaveValue("custom");
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "1");
+    const plots = screen.getAllByTestId("monitor-plot");
+    const ranges = plots.map((plot) => within(plot).getByTestId("mock-plotly").getAttribute("data-time-range"));
+    expect(new Set(ranges).size).toBe(1);
+    expect(JSON.parse(ranges[0]!)).toEqual(["2026-10-21T11:45:00.000Z", "2026-10-21T12:00:00.000Z"]);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom Y Resolution" }));
+    expect(screen.getByRole("combobox", { name: "Chart time range" })).toHaveValue("custom");
+    fireEvent.click(screen.getByRole("button", { name: "Reset time Resolution" }));
+    expect(screen.getByRole("combobox", { name: "Chart time range" })).toHaveValue("all");
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "3");
+    expect(screen.getAllByRole("button", { name: "All micrographs" })[0]).toHaveAttribute("data-points", "4");
+    expect(fetchStreamingMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves global item positions and synchronized item zoom in completed sessions", async () => {
+    const next = answer([point(1, { time: "2026-10-21T09:00:00Z" }),
+      point(2, { time: "2026-10-21T11:40:00Z" }), point(3, { time: "2026-10-21T11:55:00Z" })]);
+    next.streaming = false;
+    renderWithProviders(<StreamingMonitorView projectId={7} />, { service: createProjectServiceMock({ fetchStreamingMonitor: vi.fn().mockResolvedValue(next) }) });
+    await screen.findByText("ctffind");
+    fireEvent.change(screen.getByRole("combobox", { name: "Chart time range" }), { target: { value: "30m" } });
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-first-x", "2");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom time Resolution" }));
+    expect(screen.getByRole("option", { name: "Custom item range" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "1");
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-first-x", "2");
+    fireEvent.click(screen.getByRole("button", { name: "Reset time Resolution" }));
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-first-x", "1");
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {

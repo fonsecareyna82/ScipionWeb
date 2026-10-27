@@ -148,7 +148,7 @@ export function tomoQualitySummary(rows: TomoMonitorTiltSeries[], thresholds: St
     ...CTF_METRICS.map((metric): QualityMetric => ({ ...metric,
       section: metric.id === "defocus" ? "defocus" : "tiltSeries" })),
     { id: "tilts", label: "Tilts kept", limits: ["minTilts"] },
-    { id: "angle", label: "Angular coverage", limits: ["minAngleSpan"], section: "tiltSeries" },
+    { id: "angle", label: "Angular coverage", limits: ["minAngleSpan"], section: "angular" },
     { id: "ctfFailures", label: "Tilts without CTF", limits: ["maxFailedCtfTilts"], section: "tiltSeries" },
     { id: "residual", label: "Alignment residual", limits: ["maxResidual"] },
   ];

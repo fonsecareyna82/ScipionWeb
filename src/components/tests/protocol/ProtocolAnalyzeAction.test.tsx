@@ -35,10 +35,29 @@ describe("Analyze results of a protocol", () => {
     expect(screen.getByTestId("viewers")).toHaveTextContent("viewers of 115");
   });
 
-  it("is not offered without outputs", () => {
-    render(<ProtocolAnalyzeAction projectId={7} protocolId="115" protocolLabel="cl2d" protocolStatus="finished"
+  it("is not offered before the protocol has run", () => {
+    render(<ProtocolAnalyzeAction projectId={7} protocolId="115" protocolLabel="cl2d" protocolStatus="saved"
       hasOutputs={false} />);
     expect(fetchProtocolViewerCandidates).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
+  });
+
+  it("opens the viewer of a protocol whose results are only files, as FSO, which has no outputs", async () => {
+    const fsoViewer = { id: "xmipp3.viewers.XmippProtFSOViewer", name: "XmippProtFSOViewer",
+                        viewerKind: "protocol-form" };
+    fetchProtocolViewerCandidates.mockResolvedValue({ protocolClassName: "XmippProtFSO", viewers: [fsoViewer] });
+    render(<ProtocolAnalyzeAction projectId={14} protocolId="17" protocolLabel="fso" protocolStatus="finished"
+      hasOutputs={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Analyze results" }));
+    expect(screen.getByTestId("viewers")).toHaveTextContent("viewers of 17");
+  });
+
+  it("without outputs, viewers of single outputs are nothing to analyze", async () => {
+    const volumeViewer = { id: "pwem.viewers.DataViewer", name: "DataViewer", viewerKind: "object" };
+    fetchProtocolViewerCandidates.mockResolvedValue({ protocolClassName: "XmippProtFSO", viewers: [volumeViewer] });
+    render(<ProtocolAnalyzeAction projectId={14} protocolId="17" protocolLabel="fso" protocolStatus="finished"
+      hasOutputs={false} />);
+    await waitFor(() => expect(fetchProtocolViewerCandidates).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "Analyze results" })).not.toBeInTheDocument();
   });
 

@@ -7,8 +7,14 @@ import { POLL_STORAGE_KEY } from "@/components/monitor/streaming-monitor-data";
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
 vi.mock("react-plotly.js", () => ({
-  default: ({ data, onClick }: { data: Array<{ name: string; x: unknown[]; customdata?: unknown[][] }>; onClick?: (event: unknown) => void }) => (
-    <div data-testid="mock-plotly">
+  default: ({ data, layout, onClick, onRelayout }: { layout?: { xaxis?: { type?: string; range?: unknown[] } }; onRelayout?: (event: Record<string, unknown>) => void; data: Array<{ name: string; x: unknown[]; customdata?: unknown[][] }>; onClick?: (event: unknown) => void }) => (
+    <div data-testid="mock-plotly" data-time-range={JSON.stringify(layout?.xaxis?.range ?? [])}>
+      {onRelayout ? <>
+        <button type="button" aria-label={`Zoom time ${data[0]?.name}`} onClick={() => onRelayout({
+          "xaxis.range[0]": "2026-10-22 11:45:00", "xaxis.range[1]": "2026-10-22 12:00:00",
+        })}>Zoom time</button>
+        <button type="button" aria-label={`Reset time ${data[0]?.name}`} onClick={() => onRelayout({ "xaxis.autorange": true })}>Reset time</button>
+      </> : null}
       {data.map((serie) => (
         <button key={serie.name} type="button" data-points={serie.x.length} data-first-x={String(serie.x[0])}
                 onClick={() => onClick?.({ points: [{ customdata: serie.customdata?.[0] }], event: { button: 0 } })}>
@@ -87,6 +93,21 @@ afterEach(() => {
 });
 
 describe("The tomography view of the monitor", () => {
+  it.each([true, false])("uses the active view for the streaming badge (tomography streaming: %s)", async (streaming) => {
+    const tomoAnswer = { ...tomo([row(1, "TS_01")]), streaming };
+    const spaAnswer = spa([tomoAnswer.stages[0]]);
+    spaAnswer.streaming = !streaming;
+    render(tomoAnswer, spaAnswer);
+    await screen.findByRole("tab", { name: "Tomography" });
+    expect(screen.getByText(!streaming ? "Streaming" : "Not streaming")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Tomography" }));
+    await screen.findByTestId("tomo-monitor");
+    await waitFor(() => expect(screen.getByText(streaming ? "Streaming" : "Not streaming")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: streaming ? "Streaming monitor" : "Quality overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Single particle" }));
+    expect(screen.getByText(!streaming ? "Streaming" : "Not streaming")).toBeInTheDocument();
+  });
+
   it("shows itself when the project has tilt series and no single particle stream", async () => {
     render(tomo([row(1, "TS_01", { tomogramId: 7 }), row(2, "TS_02"), row(3, "TS_03", { complete: false, tilts: 12, enabledTilts: 12 })]));
 
@@ -234,6 +255,63 @@ describe("The tomography view of the monitor", () => {
     expect(screen.queryByTestId("quality-metric-defocus")).not.toBeInTheDocument();
     expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("100%");
     expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(2);
+  });
+
+  it("shares time filtering and zoom across tomography plots while retaining an open detail outside the interval", async () => {
+    const next = tomo([
+      row(1, "TS_01", { time: "2026-10-22T09:00:00Z", residual: 1 }),
+      row(2, "TS_02", { time: "2026-10-22T11:35:00Z", residual: 1 }),
+      row(3, "TS_03", { time: "2026-10-22T11:55:00Z", residual: 1 }),
+    ]);
+    next.now = "2026-10-22T12:00:00Z";
+    const service = render(next);
+    await screen.findByTestId("tomo-monitor");
+    fireEvent.click(screen.getByText("TS_01"));
+    await screen.findByRole("region", { name: "Tilt series TS_01" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Chart time range" }), { target: { value: "30m" } });
+    expect(screen.getAllByTestId("tilt-series-row")).toHaveLength(2);
+    expect(screen.getByTestId("tomo-complete-count")).toHaveTextContent("2");
+    expect(screen.getByRole("region", { name: "Tilt series TS_01" })).toBeInTheDocument();
+    expect(screen.getByText("Latest 3 tilt series · window of 20")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom time Mean defocus" }));
+    expect(screen.getAllByTestId("tilt-series-row")).toHaveLength(1);
+    expect(screen.getByTestId("tomo-complete-count")).toHaveTextContent("1");
+    const ranges = screen.getAllByTestId("tomo-session-plot")
+      .map((plot) => within(plot).getByTestId("mock-plotly").getAttribute("data-time-range"));
+    expect(new Set(ranges).size).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Reset time Mean defocus" }));
+    expect(screen.getAllByTestId("tilt-series-row")).toHaveLength(3);
+    expect(screen.getByTestId("tomo-complete-count")).toHaveTextContent("3");
+    expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(1);
+    expect(service.fetchTomoMonitorTiltSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it("summarizes tomography facts, inspects angular shortfalls and hides either summary independently", async () => {
+    const data = tomo([
+      row(1, "TS_01", { enabledTilts: 38, angleMin: -40 }), row(2, "TS_02"),
+      row(3, "TS_03", { complete: false, tilts: 5, enabledTilts: 5, angleMin: -5, angleMax: 5 }),
+      row(4, "TS_04", { enabledTilts: undefined, angleMin: undefined }),
+    ]);
+    const service = render(data);
+    const summary = await screen.findByRole("region", { name: "Tomography summary" });
+    expect(within(summary).getByTestId("tomo-complete-count")).toHaveTextContent("3");
+    expect(within(summary).getByTestId("tomo-incomplete-count")).toHaveTextContent("1");
+    expect(within(summary).getByTestId("tomo-outside-count")).toHaveTextContent("1");
+    expect(within(summary).getByTestId("tomo-excluded-tilts")).toHaveTextContent("3");
+    expect(within(summary).getByTestId("tomo-angular-coverage")).toHaveTextContent("1 / 2");
+    fireEvent.click(within(summary).getByRole("button", { name: "Inspect TS_01" }));
+    expect(await screen.findByRole("region", { name: "Tilt series TS_01" })).toBeInTheDocument();
+    expect(service.fetchTomoMonitorTiltSeries).toHaveBeenCalledWith(7, "TS_01", { tsSetId: null });
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Angular coverage" }));
+    expect(screen.queryByTestId("tomo-angular-coverage")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("quality-metric-angle")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tomo-outside-count")).toHaveTextContent("0");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tomography summary" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Customize monitor view" }), { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Tomography summary" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Quality summary" })).toBeInTheDocument();
+    expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(1);
   });
 
   it("asks again as often as chosen", async () => {

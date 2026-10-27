@@ -71,8 +71,9 @@ function normalizedKind(k?: string) {
 
 function isVolumeKind(k?: string) {
   const s = normalizedKind(k);
-  // Masks are volumes too, the tomography ones included.
-  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "tomomask" || s === "setoftomomasks";
+  // Masks are volumes too, the tomography ones included, and so is a single subtomogram or average.
+  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "tomomask" || s === "setoftomomasks" ||
+    s === "subtomogram" || s === "averagesubtomogram";
 }
 
 function isCoords2dKind(k?: string) {

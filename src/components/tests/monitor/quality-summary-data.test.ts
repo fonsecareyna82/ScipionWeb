@@ -96,10 +96,10 @@ describe("Quality summary", () => {
     const configured = { ...NO_LIMITS, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: 5,
       minTilts: 30, minAngleSpan: 50, maxResidual: 2, maxFailedCtfTilts: 1 };
     expect(tomoQualitySummary(rows, configured).recent.percent).toBe(0);
-    const hidden = tomoQualitySummary(rows, configured, 20, { tiltSeries: false });
+    const hidden = tomoQualitySummary(rows, configured, 20, { tiltSeries: false, angular: false });
     expect(hidden.recent.metrics.map((metric) => metric.id)).toEqual(["defocus", "tilts", "residual"]);
     expect(hidden.recent.percent).toBe(100);
-    expect(tomoQualitySummary(rows, configured, 20, { tiltSeries: false, tilts: false, residual: false })
+    expect(tomoQualitySummary(rows, configured, 20, { tiltSeries: false, angular: false, tilts: false, residual: false })
       .recent.metrics.map((metric) => metric.id)).toEqual(["defocus"]);
   });
 

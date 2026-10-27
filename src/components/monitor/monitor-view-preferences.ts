@@ -10,6 +10,8 @@ export const MONITOR_SECTIONS = {
     ["latest", "Latest micrographs"], ["distributions", "Distributions"],
   ],
   tomo: [
+    ["tomoSummary", "Tomography summary"],
+    ["angular", "Angular coverage"],
     ["summary", "Quality summary"],
     ["pipeline", "Pipeline"], ["defocus", "Mean defocus"], ["tilts", "Tilts kept"],
     ["residual", "Alignment residual"], ["particles", "Particles per tomogram"], ["tiltSeries", "Tilt series table"],

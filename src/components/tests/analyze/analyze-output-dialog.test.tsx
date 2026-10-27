@@ -192,6 +192,13 @@ describe("AnalyzeOutputDialog", () => {
         );
     });
 
+    it.each(["AverageSubTomogram", "SubTomogram"])("renders the volume viewer for a single %s", (className) => {
+        render(<AnalyzeOutputDialog {...makeProps({ outputRaw: { _class: className, paramClass: "PointerParam" } })} />);
+
+        expect(screen.getByText("Mock VolumeViewer")).toBeInTheDocument();
+        expect(mocks.volumeViewerSpy).toHaveBeenCalledWith(expect.objectContaining({ pointerClass: className }));
+    });
+
     it("renders the coords3d viewer for SetOfCoordinates3D outputs", async () => {
         render(
             <AnalyzeOutputDialog
