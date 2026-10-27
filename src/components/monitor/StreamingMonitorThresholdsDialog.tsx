@@ -4,11 +4,14 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import type { StreamingMonitorThresholdName, StreamingMonitorThresholds } from "@/services/ProjectService";
+import { isQualityWindowSize, MAX_QUALITY_WINDOW } from "./quality-window-preferences";
 import { THRESHOLD_LABELS, THRESHOLD_ORDER, thresholdUnit } from "./streaming-monitor-data";
 
 type Props = {
   thresholds: StreamingMonitorThresholds;
-  onSave: (thresholds: Partial<StreamingMonitorThresholds>) => Promise<void>;
+  onSave: (thresholds: Partial<StreamingMonitorThresholds>, summaryWindowSize?: number) => Promise<void>;
+  summaryWindowSize?: number;
+  summaryUnit?: "movies" | "micrographs" | "tilt series";
   onCancel: () => void;
   /** Where the dialog goes: the body of the window the monitor is in. */
   container?: HTMLElement;
@@ -21,7 +24,8 @@ function toText(value: number | null | undefined): string {
 }
 
 export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, onCancel, container,
-                                                           names = THRESHOLD_ORDER }: Props) {
+                                                           names = THRESHOLD_ORDER, summaryWindowSize, summaryUnit = "micrographs" }: Props) {
+  const [summarySize, setSummarySize] = useState(() => String(summaryWindowSize ?? ""));
   const [values, setValues] = useState<Record<StreamingMonitorThresholdName, string>>(() =>
     Object.fromEntries(names.map((name) => [name, toText(thresholds[name])])) as
       Record<StreamingMonitorThresholdName, string>);
@@ -54,6 +58,10 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
   }, [onCancel, container]);
 
   const save = async () => {
+    if (summaryWindowSize !== undefined && !isQualityWindowSize(Number(summarySize))) {
+      setError("Quality summary window: enter a positive whole number up to 5000");
+      return;
+    }
     const changed: Partial<StreamingMonitorThresholds> = {};
     for (const name of names) {
       const text = values[name].trim();
@@ -71,7 +79,7 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
     setSaving(true);
     setError(null);
     try {
-      await onSave(changed);
+      await onSave(changed, summaryWindowSize === undefined ? undefined : Number(summarySize));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The thresholds could not be saved");
     } finally {
@@ -84,16 +92,31 @@ export default function StreamingMonitorThresholdsDialog({ thresholds, onSave, o
       <div
         role="dialog"
         aria-label="Monitor thresholds"
-        className="w-full max-w-md rounded-2xl border border-app-border bg-app-surface shadow-xl"
+        className="flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-app-border bg-app-surface shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-app-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-app-text">Alert thresholds</h2>
+          <h2 className="text-sm font-semibold text-app-text">Monitor settings</h2>
           <button type="button" aria-label="Close" className="text-app-subtle hover:text-app-text" onClick={onCancel}>
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 py-3">
+          {summaryWindowSize !== undefined ? (
+            <div className="flex flex-col gap-2 border-b border-app-border pb-4">
+              <h3 className="text-sm font-semibold text-app-text">Quality summary</h3>
+              <label className="flex items-center justify-between gap-3 text-sm text-app-text">
+                <span>Recent window <span className="text-app-subtle">({summaryUnit})</span></span>
+                <input type="number" min={1} max={MAX_QUALITY_WINDOW} step={1} inputMode="numeric" aria-label="Quality summary window"
+                       className="w-32 rounded-lg border border-app-border bg-app-surface-2 px-2 py-1 text-right text-app-text"
+                       value={summarySize} onChange={(event) => setSummarySize(event.target.value)} />
+              </label>
+              <p className="text-xs text-app-muted">
+                Number of recent {summaryUnit} per window. Compared with the previous window of the same size.
+              </p>
+            </div>
+          ) : null}
+          <h3 className="text-sm font-semibold text-app-text">Alert thresholds</h3>
           <p className="text-xs text-app-muted">
             For every user of this project. Leave a field empty to raise no alert.
           </p>

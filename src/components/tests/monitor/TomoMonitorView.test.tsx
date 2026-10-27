@@ -202,6 +202,40 @@ describe("The tomography view of the monitor", () => {
     await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(2));
   });
 
+  it("summarizes completed and arriving tilt series separately before the pipeline", async () => {
+    render(tomo([row(1, "TS_01"), row(2, "TS_02", { complete: false, enabledTilts: 5 })]));
+    const summary = await screen.findByRole("region", { name: "Quality summary" });
+    expect(within(summary).getByTestId("quality-within-percent")).toHaveTextContent("100%");
+    expect(within(summary).getByText("Incomplete series").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByTestId("quality-assessment-coverage")).toHaveTextContent("50%");
+    expect(summary.compareDocumentPosition(screen.getByRole("region", { name: "Tomography pipeline" }))
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("changes the tomography summary window independently of SPA", async () => {
+    const service = render(tomo([row(1, "TS_01"), row(2, "TS_02"), row(3, "TS_03")]), spa(),
+      { saveStreamingMonitorThresholds: vi.fn() });
+    await screen.findByRole("region", { name: "Quality summary" });
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    expect(screen.getByLabelText("Quality summary window")).toHaveValue(20);
+    fireEvent.change(screen.getByLabelText("Quality summary window"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Latest 2 tilt series · window of 2")).toBeInTheDocument();
+    expect(service.saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    expect(service.fetchTomoMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes hidden tomography plots from the quality summary and its score", async () => {
+    render(tomo([row(1, "TS_01", { defocusU: 45000 })]));
+    await screen.findByRole("region", { name: "Quality summary" });
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("0%");
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mean defocus" }));
+    expect(screen.queryByTestId("quality-metric-defocus")).not.toBeInTheDocument();
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("100%");
+    expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(2);
+  });
+
   it("asks again as often as chosen", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const service = render(tomo([row(1, "TS_01")]));

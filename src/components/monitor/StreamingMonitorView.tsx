@@ -43,6 +43,9 @@ import TomoMonitorView from "./TomoMonitorView";
 import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
 import ClassesGallery from "./ClassesGallery";
+import QualitySummary from "./QualitySummary";
+import { useQualityWindows } from "./quality-window-preferences";
+import { movieQualitySummary, spaQualitySummary } from "./quality-summary-data";
 import CustomizeMonitorView from "./CustomizeMonitorView";
 import { MONITOR_SECTIONS, useMonitorViewPreferences, type MonitorSection } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
@@ -369,6 +372,9 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
 export default function StreamingMonitorView({ projectId, embedded = false }: { projectId: Id; embedded?: boolean }) {
   const svc = useProjectService();
   const dark = useIsDark();
+  const { sizes: qualityWindows, setSize: setQualityWindow } = useQualityWindows();
+  const qualityWindowSizeRef = useRef(qualityWindows.spa);
+  qualityWindowSizeRef.current = qualityWindows.spa;
   const { preferences, setVisible, restore } = useMonitorViewPreferences();
   const [monitor, setMonitor] = useState<StreamingMonitor | null>(null);
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
@@ -442,6 +448,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           afterPickRowId: picks.lastRowId,
           afterDoseKey: doses.key,
           afterDoseRowId: doses.lastRowId,
+          qualityWindowSize: qualityWindowSizeRef.current,
         });
         if (key !== requestKeyRef.current || revision !== requestRevisionRef.current) return;
         current = mergeSeries(current, answer.series);
@@ -475,6 +482,12 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   }, [load]);
 
   useEffect(() => {
+    if (!monitor?.exposures || monitor.exposures.windowSize === qualityWindows.spa) return;
+    if (loadingRef.current) reloadRequestedRef.current = true;
+    else void load();
+  }, [monitor?.exposures?.windowSize, qualityWindows.spa, load]);
+
+  useEffect(() => {
     if (!pollSeconds) return undefined;
     const ownerDocument = () => rootRef.current?.ownerDocument ?? document;
     const seen = () => ownerDocument().visibilityState === "visible";
@@ -504,6 +517,13 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   // The points as shown: with the coordinates picked on their micrograph, which come later than the CTF
   const points = useMemo(() => withParticles(series.points, picking.counts, thresholds),
     [series.points, picking.counts, thresholds]);
+  const quality = useMemo(() => {
+    if (!thresholds) return null;
+    const current = { ...thresholds, ...thresholdChanges };
+    return monitor?.exposures
+      ? movieQualitySummary(monitor.exposures, current, hasPicking, qualityWindows.spa, preferences.spa)
+      : spaQualitySummary(points, current, seriesKind === "ctf", hasPicking, qualityWindows.spa, preferences.spa);
+  }, [points, thresholds, thresholdChanges, seriesKind, hasPicking, qualityWindows.spa, preferences.spa, monitor?.exposures]);
   // A movie of the dose analysis for a micrograph: drawn and alerted as one
   const dosePoints = useMemo(() => dosePlotPoints(dose.points), [dose.points]);
   const hasDose = dosePoints.length > 0;
@@ -661,102 +681,123 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       ) : null}
       <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
-        <header className="flex flex-wrap items-center gap-3">
-          <Activity className="h-5 w-5 text-app-accent" />
-          <h1 className="text-lg font-semibold text-app-text">{live ? "Streaming monitor" : "Quality overview"}</h1>
-          {monitor ? (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${monitor.streaming
-              ? "bg-app-accent-soft text-app-accent" : "bg-app-surface-3 text-app-muted"}`}>
-              {monitor.streaming ? "Streaming" : "Not streaming"}
-            </span>
-          ) : null}
-          {updatedAt ? (
-            <span className="text-xs text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
-          ) : null}
-          <div className="flex items-center gap-2">
-            <select
-              aria-label="Refresh every"
-              title="How often the monitor reads (in this browser)"
-              className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
-              value={pollSeconds}
-              onChange={(event) => {
-                const seconds = Number(event.target.value);
-                setPollSeconds(seconds);
-                savePollSeconds(seconds);
-              }}
-            >
-              {POLL_CHOICES.map((seconds) => (
-                <option key={seconds} value={seconds}>
-                  {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
-                </option>
-              ))}
-            </select>
-            <CustomizeMonitorView mode={mode} visibility={preferences[mode]}
-                                  onChange={(section, visible) => setVisible(mode, section, visible)}
-                                  onRestore={() => restore(mode)} />
+        <header className="flex flex-col gap-3 border-b border-app-border pb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Activity className="h-5 w-5 text-app-accent" />
+            <h1 className="text-lg font-semibold text-app-text">{live ? "Streaming monitor" : "Quality overview"}</h1>
+            {monitor ? (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${monitor.streaming
+                ? "bg-app-accent-soft text-app-accent" : "bg-app-surface-3 text-app-muted"}`}>
+                {monitor.streaming ? "Streaming" : "Not streaming"}
+              </span>
+            ) : null}
+            <div className="ml-auto flex flex-col items-end gap-1.5">
+              {updatedAt ? (
+                <span className="text-xs text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
+              ) : null}
+              <div className="flex items-center gap-2">
+              <button type="button" className="pp-flowControlBtn" title="Refresh" aria-label="Refresh"
+                      onClick={() => void load()}>
+                <RefreshCw className="h-4 w-4" />
+              </button>
+                <AlertsButton unseen={unseenAlerts} total={alerts.length} open={alertsOpen}
+                              onToggle={() => setAlertsOpen((open) => !open)} />
+              </div>
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
               <select
-                aria-label="CTF output to follow"
-                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
-                value={ctfStage?.setId ?? ""}
-                onChange={(event) => setCtfSetId(Number(event.target.value))}
-              >
-                {monitor.ctfOutputs.map((output) => (
-                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
-                ))}
-              </select>
-            ) : null}
-            {mode === "spa" && monitor && monitor.coordinatesOutputs.length > 1 ? (
-              <select
-                aria-label="Picking to follow"
-                title="Picking to follow"
-                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
-                value={monitor.stages.find((stage) => stage.stage === "coordinates")?.setId ?? ""}
-                onChange={(event) => setCoordinatesSetId(Number(event.target.value))}
-              >
-                {monitor.coordinatesOutputs.map((output) => (
-                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
-                ))}
-              </select>
-            ) : null}
-            {mode === "spa" && monitor && monitor.classesOutputs.length > 1 ? (
-              <select
-                aria-label="2D classes to follow"
-                title="2D classes to follow"
-                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
-                value={monitor.classes?.setId ?? ""}
+                aria-label="Refresh every"
+                title="How often the monitor reads (in this browser)"
+                className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                value={pollSeconds}
                 onChange={(event) => {
-                  // The classes asked for bring their own picking
-                  setCoordinatesSetId(null);
-                  setClassesSetId(Number(event.target.value));
+                  const seconds = Number(event.target.value);
+                  setPollSeconds(seconds);
+                  savePollSeconds(seconds);
                 }}
               >
-                {monitor.classesOutputs.map((output) => (
-                  <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                {POLL_CHOICES.map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds === 0 ? "Paused" : seconds < 60 ? `Every ${seconds} s` : `Every ${seconds / 60} min`}
+                  </option>
                 ))}
               </select>
+              <CustomizeMonitorView mode={mode} visibility={preferences[mode]}
+                                    onChange={(section, visible) => setVisible(mode, section, visible)}
+                                    onRestore={() => restore(mode)} />
+              <button type="button" title="Alert thresholds" aria-label="Thresholds"
+                      className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-sm text-app-text hover:bg-app-hover disabled:opacity-60"
+                      onClick={() => setEditing(true)} disabled={!monitor}>
+                <Settings2 className="h-4 w-4" />
+                Thresholds
+              </button>
+            </div>
+            {mode === "spa" && monitor && (monitor.ctfOutputs.length > 1
+              || monitor.coordinatesOutputs.length > 1 || monitor.classesOutputs.length > 1) ? (
+              <span aria-hidden="true" className="w-full border-t border-app-border" />
             ) : null}
-            <button type="button" title="Alert thresholds" aria-label="Thresholds"
-                    className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-surface px-2.5 py-1 text-sm text-app-text hover:bg-app-hover disabled:opacity-60"
-                    onClick={() => setEditing(true)} disabled={!monitor}>
-              <Settings2 className="h-4 w-4" />
-              Thresholds
-            </button>
-            <button type="button" className="pp-flowControlBtn" title="Refresh" aria-label="Refresh"
-                    onClick={() => void load()}>
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            {embedded ? null : (
-              <Link className="text-sm text-app-accent hover:underline" to={`/project/load/${encodeURIComponent(String(projectId))}`}>
-                Back to the project
-              </Link>
-            )}
-            {/* In the top right corner, apart from the controls */}
-            <div className="ml-3 border-l border-app-border pl-4">
-              <AlertsButton unseen={unseenAlerts} total={alerts.length} open={alertsOpen}
-                            onToggle={() => setAlertsOpen((open) => !open)} />
+            <div className="flex w-full min-w-0 flex-wrap items-end gap-3 empty:hidden">
+              {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="text-center text-[11px] font-medium text-app-muted">CTF</span>
+                  <select
+                    aria-label="CTF output to follow"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    value={ctfStage?.setId ?? ""}
+                    onChange={(event) => setCtfSetId(Number(event.target.value))}
+                  >
+                    {monitor.ctfOutputs.map((output) => (
+                      <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {mode === "spa" && monitor && monitor.coordinatesOutputs.length > 1 ? (
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="text-center text-[11px] font-medium text-app-muted">Picking</span>
+                  <select
+                    aria-label="Picking to follow"
+                    title="Picking to follow"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    value={monitor.stages.find((stage) => stage.stage === "coordinates")?.setId ?? ""}
+                    onChange={(event) => setCoordinatesSetId(Number(event.target.value))}
+                  >
+                    {monitor.coordinatesOutputs.map((output) => (
+                      <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {mode === "spa" && monitor && monitor.classesOutputs.length > 1 ? (
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="text-center text-[11px] font-medium text-app-muted">2D classes</span>
+                  <select
+                    aria-label="2D classes to follow"
+                    title="2D classes to follow"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    value={monitor.classes?.setId ?? ""}
+                    onChange={(event) => {
+                      // The classes asked for bring their own picking
+                      setCoordinatesSetId(null);
+                      setClassesSetId(Number(event.target.value));
+                    }}
+                  >
+                    {monitor.classesOutputs.map((output) => (
+                      <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+
+              {embedded ? null : (
+                <Link className="ml-auto text-sm text-app-accent hover:underline" to={`/project/load/${encodeURIComponent(String(projectId))}`}>
+                  Back to the project
+                </Link>
+              )}
+
             </div>
           </div>
         </header>
@@ -787,13 +828,17 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           <TomoMonitorView projectId={projectId} pollSeconds={pollSeconds} reloadKey={tomoReload} dark={dark}
                            isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus}
                            thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds}
-                           visibility={preferences.tomo} />
+                           qualityWindowSize={qualityWindows.tomo} visibility={preferences.tomo} />
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
             <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
               This project has no movies, micrographs or CTF outputs to follow yet.
             </div>
+          ) : null}
+
+          {quality && monitor && monitor.stages.length > 0 && preferences.spa.summary !== false ? (
+            <QualitySummary data={quality} unit={monitor.exposures ? "movies" : "micrographs"} />
           ) : null}
 
           {monitor && monitor.stages.length > 0 && preferences.spa.pipeline !== false ? (
@@ -867,7 +912,16 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       {editing && monitor ? (
         <StreamingMonitorThresholdsDialog thresholds={{ ...(mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds), ...thresholdChanges }}
                                           names={mode === "tomo" ? TOMO_THRESHOLD_ORDER : THRESHOLD_ORDER}
-                                          onCancel={() => setEditing(false)} onSave={(changed) => saveThresholds(changed)}
+                                          summaryWindowSize={qualityWindows[mode]}
+                                          summaryUnit={mode === "tomo" ? "tilt series" : monitor.exposures ? "movies" : "micrographs"}
+                                          onCancel={() => setEditing(false)} onSave={async (changed, size) => {
+                                            const current = mode === "tomo" && tomo ? tomo.thresholds : monitor.thresholds;
+                                            const limitsChanged = Object.entries(changed).some(([name, value]) =>
+                                              value !== current[name as StreamingMonitorThresholdName]);
+                                            if (limitsChanged || Object.keys(thresholdChanges).length) await saveThresholds(changed);
+                                            else setEditing(false);
+                                            if (size !== undefined) setQualityWindow(mode, size);
+                                          }}
                                           container={rootRef.current?.ownerDocument.body ?? undefined} />
       ) : null}
     </div>

@@ -4804,6 +4804,15 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
   const series = raw?.series && typeof raw.series === "object" ? raw.series : {};
   const picking = raw?.picking && typeof raw.picking === "object" ? raw.picking : {};
   const dose = raw?.dose && typeof raw.dose === "object" ? raw.dose : {};
+  const exposures = raw?.exposures;
+  const positiveId = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  const validExposures = exposures && positiveId(exposures.setId) && positiveId(exposures.windowSize)
+    && (exposures.ctfSetId === null || positiveId(exposures.ctfSetId)) && Array.isArray(exposures.points)
+    && exposures.points.every((row: any) => row && positiveId(row.id) && positiveId(row.importRowId)
+      && typeof row.aligned === "boolean" && typeof row.ctfReady === "boolean"
+      && (row.point === null ? !row.ctfReady : row.point?.id === row.id))
+    && new Set(exposures.points.map((row: any) => row.id)).size === exposures.points.length
+    && new Set(exposures.points.map((row: any) => row.importRowId)).size === exposures.points.length;
   return {
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
@@ -4812,6 +4821,9 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
     coordinatesOutputs: list(raw?.coordinatesOutputs),
     classesOutputs: list(raw?.classesOutputs),
     thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
+    exposures: validExposures ? { ...exposures, points: exposures.points.map((row: any) => ({ ...row,
+      point: row.point ? { ...row.point, alerts: list(row.point.alerts) } : null,
+    })) } : null,
     series: {
       setId: series.setId ?? null,
       kind: series.kind === "ctf" || series.kind === "micrographs" ? series.kind : null,

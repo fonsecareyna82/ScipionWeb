@@ -1682,6 +1682,22 @@ export type StreamingMonitorPoint = {
   alerts: StreamingMonitorThresholdName[];
 };
 
+/** A refreshed window from the selected stream's unambiguous imported movie Set. */
+export type StreamingMonitorExposures = {
+  setId: number;
+  ctfSetId: number | null;
+  windowSize: number;
+  points: Array<{
+    id: number;
+    importRowId: number;
+    movieName: string;
+    time: string | null;
+    aligned: boolean;
+    ctfReady: boolean;
+    point: StreamingMonitorPoint | null;
+  }>;
+};
+
 /** The live monitor of a project's stream; the series holds the points after the ones asked for. */
 export type StreamingMonitor = {
   now: string;
@@ -1693,6 +1709,7 @@ export type StreamingMonitor = {
   /** The 2D classifications of the project (the monitor follows the nearest to the picking unless told). */
   classesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   thresholds: StreamingMonitorThresholds;
+  exposures?: StreamingMonitorExposures | null;
   series: {
     setId: number | null;
     /** What the points come from: the CTF output, or before there is one the micrographs (drift only). */
@@ -1790,6 +1807,7 @@ export type TomoMonitorTilt = {
 };
 
 export type StreamingMonitorQuery = {
+  qualityWindowSize?: number;
   ctfSetId?: number | null;
   coordinatesSetId?: number | null;
   classesSetId?: number | null;

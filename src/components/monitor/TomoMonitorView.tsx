@@ -16,6 +16,8 @@ import type {
   TomoMonitorTilt,
   TomoMonitorTiltSeries,
 } from "@/services/ProjectService";
+import QualitySummary from "./QualitySummary";
+import { tomoQualitySummary } from "./quality-summary-data";
 import type { SectionVisibility } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
@@ -42,6 +44,7 @@ const SESSION_HELP =
 
 
 type Props = {
+  qualityWindowSize?: number;
   visibility?: SectionVisibility;
   thresholdChanges?: ThresholdChanges;
   onThresholdChange?: (changes: ThresholdChanges) => void;
@@ -255,7 +258,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   );
 }
 
-export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false, visibility = {} }: Props) {
+export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false, visibility = {}, qualityWindowSize = 20 }: Props) {
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -341,6 +344,10 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   }, [svc, projectId, selected, tsSetId, selectedRow?.tilts, selectedRow?.aligned, selectedRow?.residual]);
 
 
+  const quality = useMemo(() => monitor
+    ? tomoQualitySummary(monitor.tiltSeries, { ...monitor.thresholds, ...thresholdChanges }, qualityWindowSize, visibility)
+    : null, [monitor, thresholdChanges, qualityWindowSize, visibility]);
+
   if (!monitor) {
     return error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
       : <div className="text-sm text-app-muted">Reading the tomography stream…</div>;
@@ -370,19 +377,25 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   return (
     <div ref={rootRef} className="flex flex-col gap-4" data-testid="tomo-monitor">
       {error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div> : null}
+      {quality && monitor.stages.length > 0 && visibility.summary !== false ? (
+        <QualitySummary data={quality} unit="tilt series" />
+      ) : null}
       {monitor.tiltSeriesOutputs.length > 1 ? (
         <div className="flex justify-end">
-          <select aria-label="Tilt series to follow"
-                  className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
-                  value={monitor.stages.find((stage) => stage.stage === "tiltseries")?.setId ?? ""}
-                  onChange={(event) => {
-                    setSelected(null);
-                    setTsSetId(Number(event.target.value));
-                  }}>
-            {monitor.tiltSeriesOutputs.map((output) => (
-              <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
-            ))}
-          </select>
+          <label className="flex min-w-0 flex-col gap-1">
+            <span className="text-center text-[11px] font-medium text-app-muted">Tilt series</span>
+            <select aria-label="Tilt series to follow"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                    value={monitor.stages.find((stage) => stage.stage === "tiltseries")?.setId ?? ""}
+                    onChange={(event) => {
+                      setSelected(null);
+                      setTsSetId(Number(event.target.value));
+                    }}>
+              {monitor.tiltSeriesOutputs.map((output) => (
+                <option key={output.setId} value={output.setId}>{`${output.label} · ${output.outputName}`}</option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
       {monitor.stages.length === 0 ? (

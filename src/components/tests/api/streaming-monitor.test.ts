@@ -31,6 +31,27 @@ describe("fetchStreamingMonitor", () => {
     expect([picking.protocolId, picking.outputName, picking.boxSize]).toEqual([null, null, null]);
   });
 
+  it("requests a bounded exposure window and preserves explicit missing processing", async () => {
+    const exposures = { setId: 10, ctfSetId: 30, windowSize: 50, points: [
+      { id: 7, importRowId: 200, movieName: "movie7", time: "t", aligned: false, ctfReady: false, point: null },
+    ] };
+    respond({ exposures });
+    const monitor = await fetchStreamingMonitor(7, { qualityWindowSize: 50 });
+    expect(fetchWithAuth).toHaveBeenCalledWith(expect.stringContaining("qualityWindowSize=50"), expect.anything());
+    expect(monitor.exposures).toEqual(exposures);
+  });
+
+  it("rejects exposure windows with mismatched identities or duplicate imports", async () => {
+    const movie = { id: 7, importRowId: 200, aligned: true, ctfReady: true, point: { id: 8 } };
+    respond({ exposures: { setId: 10, ctfSetId: 30, windowSize: 50, points: [movie] } });
+    expect((await fetchStreamingMonitor(7)).exposures).toBeNull();
+    const pending = { ...movie, aligned: false, ctfReady: false, point: null };
+    respond({ exposures: { setId: 10, ctfSetId: 30, windowSize: 50, points: [pending, pending] } });
+    expect((await fetchStreamingMonitor(7)).exposures).toBeNull();
+    respond({});
+    expect((await fetchStreamingMonitor(7)).exposures).toBeNull();
+  });
+
   it("keeps the 3D picking of a tomography stream and the particles of each tomogram", async () => {
     const picking = { stage: "coordinates3d", setId: 60, protocolId: "6", outputName: "coordinates", items: 120,
                       tomogramsPicked: 1, boxSize: 40, behind: 0 };

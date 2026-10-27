@@ -3,12 +3,14 @@ import { jwtDecode } from "jwt-decode";
 
 export const MONITOR_SECTIONS = {
   spa: [
+    ["summary", "Quality summary"],
     ["pipeline", "Pipeline"], ["resolution", "CTF resolution"], ["defocus", "Defocus"],
     ["astigmatism", "Astigmatism"], ["drift", "Drift"], ["dose", "Dose stability"],
     ["particles", "Particles per micrograph"], ["classes", "2D classes"],
     ["latest", "Latest micrographs"], ["distributions", "Distributions"],
   ],
   tomo: [
+    ["summary", "Quality summary"],
     ["pipeline", "Pipeline"], ["defocus", "Mean defocus"], ["tilts", "Tilts kept"],
     ["residual", "Alignment residual"], ["particles", "Particles per tomogram"], ["tiltSeries", "Tilt series table"],
   ],

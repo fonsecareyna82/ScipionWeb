@@ -98,7 +98,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(within(panel).getByRole("img", { name: /Each line is a run of consecutive items/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
   });
 
   it("customizes multiple sections without closing the picker or changing thresholds", async () => {
@@ -110,6 +110,8 @@ describe("StreamingMonitorView", () => {
     await screen.findByText("ctffind");
     expect(screen.getByRole("combobox", { name: "Refresh every" }).nextElementSibling)
       .toBe(screen.getByRole("button", { name: "Customize view" }));
+    expect(screen.getByRole("button", { name: "Customize view" }).nextElementSibling)
+      .toBe(screen.getByRole("button", { name: "Thresholds" }));
     fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
     const picker = screen.getByRole("dialog", { name: "Customize monitor view" });
     fireEvent.click(within(picker).getByRole("checkbox", { name: "Astigmatism" }));
@@ -140,6 +142,114 @@ describe("StreamingMonitorView", () => {
     expect(screen.getAllByTestId("monitor-plot")).toHaveLength(3);
     expect(screen.queryByTestId("monitor-histogram")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Alerts" })).toBeInTheDocument();
+  });
+
+  it("puts the quality summary before the pipeline, updates it with sliders and lets users hide it", async () => {
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({
+        fetchStreamingMonitor: vi.fn().mockResolvedValue(answer([point(1, { totalDrift: 5, maxFrameShift: 1, astigmatism: 900 })])),
+        saveStreamingMonitorThresholds: vi.fn(),
+      }),
+    });
+    const summary = await screen.findByRole("region", { name: "Quality summary" });
+    const pipeline = screen.getByRole("region", { name: "Pipeline" });
+    expect(summary.compareDocumentPosition(pipeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(summary).getByTestId("quality-within-percent")).toHaveTextContent("100%");
+    fireEvent.change(screen.getByRole("slider", { name: "Astigmatism above slider" }), { target: { value: "800" } });
+    expect(within(summary).getByTestId("quality-within-percent")).toHaveTextContent("0%");
+    expect(within(summary).getByTestId("quality-metric-astigmatism")).toHaveTextContent("1 / 1 measured");
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Quality summary" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Customize monitor view" }), { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Quality summary" })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("monitor-plot")).toHaveLength(4);
+  });
+
+  it("configures the quality window without changing project thresholds or the cached plots", async () => {
+    const points = [1, 2, 3, 4].map((id) => point(id, { totalDrift: 5, maxFrameShift: 1, astigmatism: id === 4 ? 1500 : 500 }));
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer(points));
+    const saveStreamingMonitorThresholds = vi.fn();
+    const service = createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds });
+    const view = renderWithProviders(<StreamingMonitorView projectId={7} />, { service });
+    await screen.findByText("ctffind");
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("75%");
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    expect(screen.getByLabelText("Quality summary window")).toHaveValue(100);
+    fireEvent.change(screen.getByLabelText("Quality summary window"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Latest 2 micrographs · window of 2");
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("50%");
+    expect(screen.getByText("-50 percentage points vs previous 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "4");
+    expect(saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    expect(fetchStreamingMonitor).toHaveBeenCalledTimes(1);
+    view.unmount();
+    renderWithProviders(<StreamingMonitorView projectId={7} />, { service });
+    await screen.findByText("Latest 2 micrographs · window of 2");
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    expect(screen.getByLabelText("Quality summary window")).toHaveValue(2);
+    fireEvent.change(screen.getByLabelText("Quality summary window"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Latest 2 micrographs · window of 2")).toBeInTheDocument();
+  });
+
+  it("hides a metric from recent quality and recalculates its score while keeping alerts active", async () => {
+    const next = answer([point(1, { resolution: 8, totalDrift: 5, maxFrameShift: 1, alerts: ["maxResolution"] })]);
+    next.thresholds = { ...THRESHOLDS, maxResolution: 5 };
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(next);
+    const saveStreamingMonitorThresholds = vi.fn();
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor, saveStreamingMonitorThresholds }),
+    });
+    await screen.findByRole("region", { name: "Quality summary" });
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("0%");
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "CTF resolution" }));
+    expect(screen.queryByTestId("quality-metric-resolution")).not.toBeInTheDocument();
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("100%");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Customize monitor view" }), { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Alerts, 1 new" })).toBeInTheDocument();
+    expect(saveStreamingMonitorThresholds).not.toHaveBeenCalled();
+    expect(fetchStreamingMonitor).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore default view" }));
+    expect(screen.getByTestId("quality-metric-resolution")).toBeInTheDocument();
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("0%");
+  });
+
+  it("summarizes imported movies including unavailable CTF, updates late results and resizes without dropping cached plots", async () => {
+    const next = answer([point(1, { totalDrift: 5, maxFrameShift: 1 })]);
+    next.exposures = { setId: 10, ctfSetId: 30, windowSize: 100, points: [
+      { id: 1, importRowId: 501, movieName: "movie1", time: null, aligned: true, ctfReady: true, point: next.series.points[0] },
+      { id: 2, importRowId: 502, movieName: "movie2", time: null, aligned: false, ctfReady: false, point: null },
+    ] };
+    const fetchStreamingMonitor = vi.fn().mockImplementation(async (_projectId, query) => ({
+      ...next, exposures: { ...next.exposures, windowSize: query.qualityWindowSize },
+    }));
+    renderWithProviders(<StreamingMonitorView projectId={7} />, {
+      service: createProjectServiceMock({ fetchStreamingMonitor }),
+    });
+    await screen.findByText("Latest 2 movies imported · window of 100");
+    expect(screen.getByText("Aligned 1 / 2")).toBeInTheDocument();
+    expect(screen.getByText("CTF available 1 / 2")).toBeInTheDocument();
+    expect(screen.getByTestId("quality-within-percent")).toHaveTextContent("100%");
+    expect(screen.getByText("No evaluation available").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByTestId("quality-assessment-coverage")).toHaveTextContent("50%");
+    expect(screen.queryByText("Awaiting evaluation")).not.toBeInTheDocument();
+    next.exposures!.points[1] = { ...next.exposures!.points[1], aligned: true, ctfReady: true,
+      point: point(2, { totalDrift: 5, maxFrameShift: 1 }) };
+    // No new incremental CTF points: the refreshed snapshot must still update the summary.
+    next.series = { ...next.series, points: [] };
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByText("No evaluation available").nextElementSibling).toHaveTextContent("0"));
+    expect(screen.getByTestId("quality-assessment-coverage")).toHaveTextContent("100%");
+    fireEvent.click(screen.getByRole("button", { name: "Thresholds" }));
+    fireEvent.change(screen.getByLabelText("Quality summary window"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(3));
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({ qualityWindowSize: 1, afterSetId: 30, afterRowId: 1 }));
+    expect(screen.getByText("Latest 1 movie imported · window of 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resolution" })).toHaveAttribute("data-points", "1");
   });
 
   it("shows how the CTF resolution and the defocus are spread, with the last micrographs over the session", async () => {
@@ -336,7 +446,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -378,7 +488,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
   });
 
   it("tints the cards of each phase of the stream with one quiet hue", async () => {
@@ -654,7 +764,7 @@ describe("StreamingMonitorView", () => {
       maxTotalDrift: 45, minParticles: null, maxDoseDifference: 5,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null }));
+      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {
