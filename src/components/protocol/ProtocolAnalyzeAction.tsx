@@ -106,6 +106,7 @@ export default function ProtocolAnalyzeAction({
           projectId={Number(project)}
           protocolId={Number(protocol)}
           protocolLabel={protocolLabel}
+          protocolStatus={protocolStatus}
           outputName="picking"
           displayName="Particle picking"
           outputRaw={{ pointerClass: "SetOfCoordinates" }}

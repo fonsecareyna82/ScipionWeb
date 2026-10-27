@@ -14,6 +14,7 @@ type ProtocolOutputsPanelProps = {
     projectId: number | string | null;
     protocolId: number | string | null;
     protocolLabel?: string;
+    protocolStatus?: string | null;
     outputsFromApi?: any[];
 };
 
@@ -29,6 +30,7 @@ export default function ProtocolOutputsPanel({
     projectId,
     protocolId,
     protocolLabel = "",
+    protocolStatus,
     outputsFromApi = [],
 }: ProtocolOutputsPanelProps) {
     const svc = useProjectService();
@@ -1062,6 +1064,7 @@ export default function ProtocolOutputsPanel({
                 projectId={Number(projectId)}
                 protocolId={Number(protocolId)}
                 protocolLabel={protocolLabel}
+                protocolStatus={protocolStatus}
                 outputName={activeOutput?.name || ""}
                 outputRaw={activeOutput?.raw ?? null}
             />

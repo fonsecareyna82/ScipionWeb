@@ -4241,6 +4241,7 @@ export default function ProtocolForm({
                 projectId={projectId}
                 protocolId={effectiveProtocolId}
                 protocolLabel={protocolDisplayName}
+                protocolStatus={protocolStatus}
                 outputsFromApi={outputsFromApi}
               />
             )}

@@ -2885,6 +2885,7 @@ export default function ProtocolNodeCard({
           projectId={analyzeProjectId}
           protocolId={analyzeProtocolId}
           protocolLabel={headerDisplayName}
+          protocolStatus={data.status}
           outputName={analyzeTarget.outputName}
           outputRaw={analyzeTarget.outputRaw}
         />

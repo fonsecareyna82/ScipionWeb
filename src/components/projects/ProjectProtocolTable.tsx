@@ -4345,6 +4345,7 @@ const ProjectProtocolTable =
                   analyzeTarget
                     .protocolLabel
                 }
+                protocolStatus={rows.find((row) => String(row.id) === String(analyzeTarget.protocolId))?.status}
                 outputName={
                   analyzeTarget
                     .outputName

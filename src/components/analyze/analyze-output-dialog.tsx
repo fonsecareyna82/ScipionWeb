@@ -1,4 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
+import { useProjectService } from "@/ProjectServiceContext";
 import { createAppTheme } from "@/theme/muiTheme";
 import {
   memo,
@@ -53,6 +54,7 @@ type AnalyzeOutputDialogProps = {
   projectId: string | number;
   protocolId: string | number;
   protocolLabel: string;
+  protocolStatus?: string | null;
   outputName: string;
   outputRaw: any | null;
   /** Shown instead of outputName, e.g. for a file opened by a protocol viewer. */
@@ -144,8 +146,31 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
   };
 }
 
-function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw, displayName, metadataFile = null, coords2dSource = null }: AnalyzeOutputDialogProps) {
+function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, protocolStatus, outputName, outputRaw, displayName, metadataFile = null, coords2dSource = null }: AnalyzeOutputDialogProps) {
   const shownName = displayName || outputName;
+  const service = useProjectService();
+  const statusScope = JSON.stringify([String(projectId), String(protocolId)]);
+  const [readStatus, setReadStatus] = useState<{ scope: string; status: string } | null>(null);
+  const suppliedStatus = String(protocolStatus ?? "").trim().toLowerCase();
+  const badgeStatus = suppliedStatus || (readStatus?.scope === statusScope ? readStatus.status : "");
+  useEffect(() => {
+    if (!open || suppliedStatus || !service.fetchProtocolDetails) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => service.fetchProtocolDetails(projectId, protocolId)).then((details) => {
+      if (cancelled || String(details?.id) !== String(protocolId)) return;
+      setReadStatus({ scope: statusScope, status: String(details.status ?? "").trim().toLowerCase() });
+    }).catch(() => {
+      // Status is decorative: failed reads leave the badge neutral and do not affect the viewer.
+    });
+    return () => { cancelled = true; };
+  }, [open, suppliedStatus, service, projectId, protocolId, statusScope]);
+  const statusHue: Record<string, string> = {
+    running: "amber", scheduled: "yellow", interactive: "yellow", finished: "green",
+    failed: "red", aborted: "red", saved: "blue", launched: "blue", new: "blue", root: "blue",
+  };
+  const hue = statusHue[badgeStatus];
+  const protocolBadgeSize = Math.max(28, String(protocolId).length * 6 + 12);
+
   const fileInitialTable = metadataFile ? metadataFile.initialTable ?? null : undefined;
   const { theme: appTheme } = useScipionTheme();
 
@@ -536,6 +561,22 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef.paramClass, onClose, fileInitialTable, coords2dSource, displayName]);
 
 
+  const protocolSubtitle = (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle">
+      <span className="shrink-0">Protocol:</span>
+      <span aria-label={`Protocol ID ${protocolId}`} data-protocol-status={badgeStatus || "unknown"}
+            title={badgeStatus ? `Protocol ${protocolId} · ${badgeStatus}` : `Protocol ${protocolId}`}
+            className="inline-flex shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold leading-none tabular-nums"
+            style={{ width: protocolBadgeSize, height: protocolBadgeSize,
+              backgroundColor: hue ? `var(--app-${hue}-100)` : "var(--app-surface-3)",
+              color: hue ? `var(--app-${hue}-800)` : "var(--app-muted)",
+              borderColor: hue ? `var(--app-${hue}-200)` : "var(--app-border)" }}>
+        {String(protocolId)}
+      </span>
+      <span className="truncate">{String(protocolLabel)}</span>
+    </span>
+  );
+
   return (
     <MuiThemeProvider
       theme={
@@ -617,11 +658,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
               title={
                 `Analyze Result - ${shownName}`
               }
-              subtitle={
-                `Protocol: ${String(
-                  protocolLabel,
-                )}`
-              }
+              subtitle={protocolSubtitle}
               badge={
                 pointerClass ||
                 undefined
@@ -787,10 +824,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
                         "rgba(229,231,235,0.78)",
                     }}
                   >
-                    Protocol:{" "}
-                    {String(
-                      protocolLabel,
-                    )}
+                    {protocolSubtitle}
                   </Typography>
                 </Box>
               }

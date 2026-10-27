@@ -4,6 +4,8 @@ import {
     render,
     screen,
     within,
+    waitFor,
+    act,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     ctfTomoViewerSpy: vi.fn(),
     metadataViewerSpy: vi.fn(),
     fscViewerSpy: vi.fn(),
+    fetchProtocolDetails: vi.fn().mockResolvedValue({ id: "34", status: "finished" }),
     ctfViewerSpy: vi.fn(),
     fetchIntegratedAnalyzeContext: vi.fn().mockResolvedValue({
         root: {},
@@ -29,11 +32,13 @@ vi.mock("@/icons", () => ({
     ),
 }));
 
-vi.mock("@/ProjectServiceContext", () => ({
-    useProjectService: () => ({
+vi.mock("@/ProjectServiceContext", () => {
+    const service = {
         fetchIntegratedAnalyzeContext: mocks.fetchIntegratedAnalyzeContext,
-    }),
-}));
+        fetchProtocolDetails: mocks.fetchProtocolDetails,
+    };
+    return { useProjectService: () => service };
+});
 
 vi.mock("@/context/ThemeContext", () => ({
     useTheme: () => ({
@@ -105,6 +110,7 @@ function makeProps(
         projectId: "12",
         protocolId: "34",
         protocolLabel: "Prot A",
+        protocolStatus: "finished",
         outputName: "outputA",
         outputRaw: {
             _class: "SetOfParticles",
@@ -119,6 +125,36 @@ function makeProps(
 describe("AnalyzeOutputDialog", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.fetchProtocolDetails.mockReset().mockResolvedValue({ id: "34", status: "finished" });
+    });
+
+    it("uses a circular status badge and updates its hue when the supplied status changes", () => {
+        const view = render(<AnalyzeOutputDialog {...makeProps({ protocolStatus: "running" })} />);
+        const badge = screen.getByLabelText("Protocol ID 34");
+        expect(badge).toHaveClass("rounded-full");
+        expect(badge.style.width).toBe(badge.style.height);
+        expect(badge.style.backgroundColor).toBe("var(--app-amber-100)");
+        view.rerender(<AnalyzeOutputDialog {...makeProps({ protocolStatus: "finished" })} />);
+        expect(badge.style.backgroundColor).toBe("var(--app-green-100)");
+        expect(mocks.fetchProtocolDetails).not.toHaveBeenCalled();
+    });
+
+    it("reads a missing status and rejects a detail response from another protocol", async () => {
+        mocks.fetchProtocolDetails.mockResolvedValueOnce({ id: "99", status: "failed" });
+        render(<AnalyzeOutputDialog {...makeProps({ protocolStatus: undefined })} />);
+        await waitFor(() => expect(mocks.fetchProtocolDetails).toHaveBeenCalledWith("12", "34"));
+        expect(screen.getByLabelText("Protocol ID 34")).toHaveAttribute("data-protocol-status", "unknown");
+    });
+
+    it("uses the matching fetched status and ignores a late response after switching protocols", async () => {
+        let finishOld!: (value: { id: string; status: string }) => void;
+        mocks.fetchProtocolDetails.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+            .mockResolvedValueOnce({ id: "35", status: "failed" });
+        const view = render(<AnalyzeOutputDialog {...makeProps({ protocolStatus: undefined })} />);
+        view.rerender(<AnalyzeOutputDialog {...makeProps({ protocolId: "35", protocolStatus: undefined })} />);
+        await waitFor(() => expect(screen.getByLabelText("Protocol ID 35")).toHaveAttribute("data-protocol-status", "failed"));
+        await act(async () => finishOld({ id: "34", status: "finished" }));
+        expect(screen.getByLabelText("Protocol ID 35").style.backgroundColor).toBe("var(--app-red-100)");
     });
 
     it("does not render the dialog title when closed", () => {
@@ -143,6 +179,8 @@ describe("AnalyzeOutputDialog", () => {
         );
 
         expect(screen.getByText("Mock VolumeViewer")).toBeInTheDocument();
+        expect(screen.getByLabelText("Protocol ID 34")).toHaveTextContent("34");
+        expect(screen.getByLabelText("Protocol ID 34").nextElementSibling).toHaveTextContent("Prot A");
         expect(mocks.volumeViewerSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 projectId: 12,
@@ -490,6 +528,8 @@ describe("AnalyzeOutputDialog", () => {
                     popup.document.body,
                 );
 
+
+            expect(externalDocument.getByLabelText("Protocol ID 34")).toHaveTextContent("34");
 
             const externalViewer =
                 externalDocument.getByText(

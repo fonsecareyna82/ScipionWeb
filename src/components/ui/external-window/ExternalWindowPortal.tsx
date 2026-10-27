@@ -66,7 +66,7 @@ type ExternalWindowPortalProps = {
 
     title: string;
 
-    subtitle?: string;
+    subtitle?: ReactNode;
 
     className?: string;
 
