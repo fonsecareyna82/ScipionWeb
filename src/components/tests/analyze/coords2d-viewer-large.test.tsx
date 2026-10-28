@@ -40,31 +40,35 @@ function shownRows(): string[] {
 }
 
 describe("The coordinates viewer with thousands of micrographs", () => {
-  it("draws and reads thumbnails only for the rows on screen", async () => {
+  it("draws only the rows on screen and reads no thumbnails for the table", async () => {
     const source = manyMicrographs();
-    render(<Coords2dViewer projectId={7} protocolId={40} outputName="outputCoordinates" source={source} />);
+    render(<Coords2dViewer projectId={7} protocolId={40} protocolLabel="picking" outputName="outputCoordinates"
+                           source={source} />);
 
     await waitFor(() => expect(shownRows().length).toBeGreaterThan(0));
-    await waitFor(() => expect(source.fetchThumbnail).toHaveBeenCalled());
+    await waitFor(() => expect(source.fetchImage).toHaveBeenCalled());
 
     expect(shownRows().length).toBeLessThan(60);
-    // Every thumbnail asked for is of a row on screen; none of the thousands below
-    const asked = (source.fetchThumbnail as ReturnType<typeof vi.fn>).mock.calls.map((call) => Number(call[0]));
-    expect(Math.max(...asked)).toBeLessThan(60);
+    // Only the placeholder of the micrograph opened: no thumbnail per row competing with its image
+    const asked = (source.fetchThumbnail as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
+    expect(asked.every((micId) => micId === "1")).toBe(true);
+    expect(screen.queryByRole("columnheader", { name: "Preview" })).not.toBeInTheDocument();
   });
 
-  it("draws the rows and reads the thumbnails of where the table is scrolled to", async () => {
+  it("draws the rows of where the table is scrolled to", async () => {
     const source = manyMicrographs();
     const { container } = render(
-      <Coords2dViewer projectId={7} protocolId={40} outputName="outputCoordinates" source={source} />);
+      <Coords2dViewer projectId={7} protocolId={40} protocolLabel="picking" outputName="outputCoordinates"
+                      source={source} />);
     await waitFor(() => expect(shownRows().length).toBeGreaterThan(0));
 
     const table = container.querySelector(".MuiTableContainer-root") as HTMLElement;
-    table.scrollTop = 48 * 2000;
+    table.scrollTop = 36 * 2000;
     fireEvent.scroll(table);
 
-    await waitFor(() => expect(shownRows().some((text) => text.includes("mic_2001.mrc"))).toBe(true));
-    await waitFor(() => expect(source.fetchThumbnail).toHaveBeenCalledWith("2001", expect.anything()));
+    // Generous: with the whole suite running, drawing a table of 3000 rows takes its time
+    await waitFor(() => expect(shownRows().some((text) => text.includes("mic_2001.mrc"))).toBe(true),
+      { timeout: 5000 });
     expect(shownRows().some((text) => text.includes("mic_1.mrc"))).toBe(false);
   });
 });

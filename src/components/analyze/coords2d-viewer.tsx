@@ -341,11 +341,8 @@ const VIEWER_TEXT_SX = {
   },
 };
 
-const THUMBNAIL_SIZE = 72;
-const THUMBNAIL_CONCURRENCY = 6;
-const THUMBNAIL_FLUSH_SIZE = 12;
-// Height of a row of the micrograph table (its thumbnail and padding): the table draws only the rows on screen
-const MICROGRAPH_ROW_HEIGHT = 48;
+// Height of a row of the micrograph table: the table draws only the rows on screen
+const MICROGRAPH_ROW_HEIGHT = 36;
 const TABLE_OVERSCAN = 8;
 const TABLE_INITIAL_HEIGHT = 800;
 const PARTICLE_CROP_BATCH_SIZE = 40;
@@ -754,7 +751,6 @@ type MicrographTableRowProps = {
   micrograph: Coords2dMicrograph;
   index: number;
   selected: boolean;
-  thumbnailUrl?: string;
   updated: boolean;
   onSelect: (micId: Id) => void;
 };
@@ -763,11 +759,9 @@ const MicrographTableRow = memo(function MicrographTableRow({
   micrograph,
   index,
   selected,
-  thumbnailUrl,
   updated,
   onSelect,
 }: MicrographTableRowProps) {
-  const micKey = toStringId(micrograph.id);
   const label = getMicrographLabel(micrograph);
 
   return (
@@ -788,33 +782,6 @@ const MicrographTableRow = memo(function MicrographTableRow({
       }}
     >
       <TableCell>{micrograph.index ?? index + 1}</TableCell>
-
-      <TableCell>
-        {thumbnailUrl ? (
-          <Box
-            component="img"
-            src={thumbnailUrl}
-            alt={label}
-            sx={{
-              width: 46,
-              height: 34,
-              objectFit: "cover",
-              display: "block",
-              border: "1px solid rgba(15,23,42,0.25)",
-              bgcolor: "#111827",
-            }}
-          />
-        ) : (
-          <Box
-            sx={{
-              width: 46,
-              height: 34,
-              bgcolor: "rgba(15,23,42,0.18)",
-              border: "1px solid rgba(15,23,42,0.25)",
-            }}
-          />
-        )}
-      </TableCell>
 
       <TableCell>{label}</TableCell>
 
@@ -860,11 +827,6 @@ function Coords2dViewer({
   const pendingTransformRef = useRef<ViewTransform | null>(null);
 
   const micrographsLoadKeyRef = useRef("");
-  const thumbnailSourceKeyRef = useRef("");
-  // Micrographs whose thumbnail is being read, so a row scrolled back into view does not ask for it again
-  const thumbnailInFlightRef = useRef<Set<string>>(new Set());
-  const thumbnailUrlsRef = useRef<Record<string, string>>({});
-  const thumbnailObjectUrlsRef = useRef<Record<string, ObjectUrlResult>>({});
 
   const imageCacheSourceKeyRef = useRef("");
   const imageObjectUrlCacheRef = useRef<Record<string, MicrographImageCacheEntry>>({});
@@ -874,7 +836,6 @@ function Coords2dViewer({
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
   const [pointsByMicId, setPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
   const [originalPointsByMicId, setOriginalPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
-  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
 
   const [boxSize, setBoxSize] = useState(DEFAULT_BOX_SIZE);
   const [totalPicks, setTotalPicks] = useState(0);
@@ -1004,10 +965,6 @@ function Coords2dViewer({
   }, [pointsByMicId]);
 
   useEffect(() => {
-    thumbnailUrlsRef.current = thumbnailUrls;
-  }, [thumbnailUrls]);
-
-  useEffect(() => {
     return () => {
       if (cropUpdateFrameRef.current !== null) {
         cancelAnimationFrame(cropUpdateFrameRef.current);
@@ -1020,12 +977,6 @@ function Coords2dViewer({
       if (transformFrameRef.current !== null) {
         cancelAnimationFrame(transformFrameRef.current);
       }
-
-      Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
-        item.revoke?.();
-      });
-
-      thumbnailObjectUrlsRef.current = {};
 
       Object.values(imageObjectUrlCacheRef.current).forEach((item) => {
         item.revoke?.();
@@ -1082,8 +1033,8 @@ function Coords2dViewer({
     };
   }, [dataSource]);
 
-  // The rows of the micrograph table on screen, plus a margin: only they are drawn and get a thumbnail, so a
-  // Set of thousands of micrographs opens as fast as one of a few
+  // The rows of the micrograph table on screen, plus a margin: only they are drawn, so a Set of thousands of
+  // micrographs opens as fast as one of a few
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [tableViewport, setTableViewport] = useState({ scrollTop: 0, height: TABLE_INITIAL_HEIGHT });
   const visibleRows = useMemo(() => ({
@@ -1123,120 +1074,6 @@ function Coords2dViewer({
     }
   }, [selectedMicKey, micrographs, readTableViewport]);
 
-  useEffect(() => {
-    const sourceKey = dataSource.key;
-
-    if (thumbnailSourceKeyRef.current !== sourceKey) {
-      Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
-        item.revoke?.();
-      });
-
-      thumbnailObjectUrlsRef.current = {};
-      thumbnailUrlsRef.current = {};
-      thumbnailInFlightRef.current = new Set();
-      thumbnailSourceKeyRef.current = sourceKey;
-      setThumbnailUrls({});
-    }
-
-    if (!micrographs.length) return;
-
-    let cancelled = false;
-    const shown = micrographs.slice(visibleRows.first, visibleRows.last);
-
-    // Thumbnails the server already gives
-    const directUrls: Record<string, string> = {};
-    for (const micrograph of shown) {
-      const micKey = toStringId(micrograph.id);
-      if (micKey && micrograph.thumbnailUrl && !thumbnailUrlsRef.current[micKey]) {
-        directUrls[micKey] = micrograph.thumbnailUrl;
-      }
-    }
-    if (Object.keys(directUrls).length > 0) {
-      setThumbnailUrls((current) => {
-        const next = { ...current, ...directUrls };
-        thumbnailUrlsRef.current = next;
-        return next;
-      });
-    }
-
-    const pendingMicrographs = shown.filter((micrograph) => {
-      const micKey = toStringId(micrograph.id);
-      return Boolean(micKey) && !micrograph.thumbnailUrl && !thumbnailUrlsRef.current[micKey]
-        && !thumbnailObjectUrlsRef.current[micKey] && !thumbnailInFlightRef.current.has(micKey);
-    });
-    if (!pendingMicrographs.length) return;
-
-    let cursor = 0;
-    let pendingUrls: Record<string, string> = {};
-
-    const flushPendingUrls = () => {
-      const keys = Object.keys(pendingUrls);
-      if (!keys.length) return;
-
-      const patch = pendingUrls;
-      pendingUrls = {};
-
-      setThumbnailUrls((current) => {
-        const next = {
-          ...current,
-          ...patch,
-        };
-
-        thumbnailUrlsRef.current = next;
-        return next;
-      });
-    };
-
-    async function worker() {
-      // Scrolled away: stop taking rows, but keep what is already on its way
-      while (!cancelled && cursor < pendingMicrographs.length) {
-        const micrograph = pendingMicrographs[cursor];
-        cursor += 1;
-
-        const micKey = toStringId(micrograph.id);
-        if (!micKey || thumbnailInFlightRef.current.has(micKey)) continue;
-        thumbnailInFlightRef.current.add(micKey);
-
-        try {
-          const result = normalizeObjectUrl(
-            await dataSource.fetchThumbnail(micrograph.id,
-              { size: THUMBNAIL_SIZE, format: "png" },
-            ),
-          );
-
-          if (!result) continue;
-          if (thumbnailSourceKeyRef.current !== sourceKey) {
-            result.revoke?.();
-            continue;
-          }
-
-          thumbnailObjectUrlsRef.current[micKey] = result;
-          pendingUrls[micKey] = result.url;
-
-          if (Object.keys(pendingUrls).length >= THUMBNAIL_FLUSH_SIZE) {
-            flushPendingUrls();
-          }
-        } catch {
-          continue;
-        } finally {
-          thumbnailInFlightRef.current.delete(micKey);
-        }
-      }
-    }
-
-    void Promise.all(
-      Array.from(
-        { length: Math.min(THUMBNAIL_CONCURRENCY, pendingMicrographs.length) },
-        () => worker(),
-      ),
-    ).then(() => {
-      if (thumbnailSourceKeyRef.current === sourceKey) flushPendingUrls();
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dataSource, micrographs, visibleRows.first, visibleRows.last]);
 
   useEffect(() => {
     if (!selectedMicKey || selectedMicId === null || selectedMicId === undefined) return;
@@ -3592,10 +3429,6 @@ function Coords2dViewer({
                   Index
                 </TableCell>
 
-                <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 72 }}>
-                  Preview
-                </TableCell>
-
                 <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700 }}>
                   File
                 </TableCell>
@@ -3630,7 +3463,6 @@ function Coords2dViewer({
                     micrograph={micrograph}
                     index={index}
                     selected={micKey === selectedMicKey}
-                    thumbnailUrl={thumbnailUrls[micKey]}
                     updated={updatedMicIds.has(micKey) || Boolean(micrograph.updated)
                       || (Boolean(dataSource.saveMicrograph) && sessionChangedMicIds.has(micKey))}
                     onSelect={handleSelectMicrograph}
