@@ -1061,6 +1061,24 @@ describe("Coords3dViewer", () => {
         await waitFor(() => expect(pickableCircles()).toBe(0));
     });
 
+    it("draws the slice position lines and the synthetic grid at a fixed width on screen", async () => {
+        const { container } = renderViewer();
+        const axisLines = () =>
+            Array.from(container.querySelectorAll("line")).filter((line) =>
+                ["#ef4444", "#22c55e", "#3b82f6"].includes(line.getAttribute("stroke") ?? ""));
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "3 Views" }));
+        await waitFor(() => expect(axisLines().length).toBeGreaterThan(0));
+        fireEvent.click(screen.getByLabelText("Debug synthetic grid"));
+        const gridLines = Array.from(container.querySelectorAll('line[stroke="#9ca3af"]'));
+        expect(gridLines.length).toBeGreaterThan(0);
+
+        // Widths in tomogram units grew with every voxel of a small tomogram
+        for (const line of [...axisLines(), ...gridLines]) {
+            expect(line).toHaveAttribute("vector-effect", "non-scaling-stroke");
+        }
+    });
+
     it("caches Z slice object URLs so revisiting an index skips a new fetch", async () => {
         renderViewer();
 

@@ -154,6 +154,24 @@ const SLICE_PREVIEW_QUALITY = 75;
 const SLICE_DRAG_PREVIEW_MAX_SIDE = 512;
 const SLICE_DRAG_PREVIEW_QUALITY = 70;
 
+// Lines drawn over the slices keep their width on screen: given in image units
+// they grew with every pixel of a small volume.
+const SLICE_LINE_PX = 1.5;
+const SLICE_CROSS_DOT_PX = 6;
+const MEASUREMENT_LINE_PX = 2.5;
+const MEASUREMENT_DOT_PX = 7;
+
+function screenStroke(widthPx: number) {
+  return { strokeWidth: widthPx, vectorEffect: "non-scaling-stroke" as const };
+}
+
+/** A dot of a fixed size on screen: a zero-length line with round caps. */
+function ScreenDot({ x, y, diameterPx, color }: { x: number; y: number; diameterPx: number; color: string }) {
+  return (
+    <line x1={x} y1={y} x2={x} y2={y} stroke={color} strokeLinecap="round" {...screenStroke(diameterPx)} />
+  );
+}
+
 const SLICE_WINDOW_LOW_QUANTILE = 0.005;
 const SLICE_WINDOW_HIGH_QUANTILE = 0.995;
 const EMPTY_REVIEWED_SCIPION_ITEM_IDS: Array<string | number> = [];
@@ -4511,7 +4529,6 @@ function OrthoSlicePanel({
   const viewportX = rotate90 ? (1 - viewportCenterY) * viewBoxW - viewportWidth / 2 : viewportCenterX * viewBoxW - viewportWidth / 2;
   const viewportY = rotate90 ? viewportCenterX * viewBoxH - viewportHeight / 2 : viewportCenterY * viewBoxH - viewportHeight / 2;
   const filterCss = `brightness(${1 + brightness}) contrast(${contrast})`;
-  const strokeW = Math.max(1, Math.min(viewBoxW, viewBoxH) * 0.0025);
 
   useEffect(() => {
     setMeasurement(null);
@@ -4584,44 +4601,44 @@ function OrthoSlicePanel({
     if (point) onNavigate(point.x, point.y);
   };
 
-  const renderCrosshair = () => (
-    <>
-      {crossV && (
-        <line
-          x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-          y1={0}
-          x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-          y2={imageHeight}
-          stroke={crossV.color}
-          strokeWidth={strokeW}
-          strokeLinecap="round"
-          opacity={0.95}
-        />
-      )}
-      {crossH && (
-        <line
-          x1={0}
-          y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-          x2={imageWidth}
-          y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-          stroke={crossH.color}
-          strokeWidth={strokeW}
-          strokeLinecap="round"
-          opacity={0.95}
-        />
-      )}
-      {crossV && crossH && (
-        <circle
-          cx={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
-          cy={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
-          r={Math.max(2.5, Math.min(imageWidth, imageHeight) * 0.009)}
-          fill="rgba(255,255,255,0.82)"
-          stroke="rgba(15,23,42,0.72)"
-          strokeWidth={strokeW}
-        />
-      )}
-    </>
-  );
+  const renderCrosshair = () => {
+    const crossX = crossV ? clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1)) : 0;
+    const crossY = crossH ? clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1)) : 0;
+    return (
+      <>
+        {crossV && (
+          <line
+            x1={crossX}
+            y1={0}
+            x2={crossX}
+            y2={imageHeight}
+            stroke={crossV.color}
+            {...screenStroke(SLICE_LINE_PX)}
+            strokeLinecap="round"
+            opacity={0.95}
+          />
+        )}
+        {crossH && (
+          <line
+            x1={0}
+            y1={crossY}
+            x2={imageWidth}
+            y2={crossY}
+            stroke={crossH.color}
+            {...screenStroke(SLICE_LINE_PX)}
+            strokeLinecap="round"
+            opacity={0.95}
+          />
+        )}
+        {crossV && crossH && (
+          <>
+            <ScreenDot x={crossX} y={crossY} diameterPx={SLICE_CROSS_DOT_PX + 2} color="rgba(15,23,42,0.72)" />
+            <ScreenDot x={crossX} y={crossY} diameterPx={SLICE_CROSS_DOT_PX} color="rgba(255,255,255,0.82)" />
+          </>
+        )}
+      </>
+    );
+  };
 
   const renderMeasurement = () => {
     if (!measurement) return null;
@@ -4644,11 +4661,15 @@ function OrthoSlicePanel({
           x2={end.x}
           y2={end.y}
           stroke="#fbbf24"
-          strokeWidth={Math.max(strokeW * 1.6, 1.5)}
+          {...screenStroke(MEASUREMENT_LINE_PX)}
           strokeLinecap="round"
         />
-        <circle cx={start.x} cy={start.y} r={Math.max(strokeW * 2.2, 2)} fill="#fbbf24" stroke="#111827" strokeWidth={strokeW} />
-        <circle cx={end.x} cy={end.y} r={Math.max(strokeW * 2.2, 2)} fill="#fbbf24" stroke="#111827" strokeWidth={strokeW} />
+        {[start, end].map((point, index) => (
+          <g key={index}>
+            <ScreenDot x={point.x} y={point.y} diameterPx={MEASUREMENT_DOT_PX + 2} color="#111827" />
+            <ScreenDot x={point.x} y={point.y} diameterPx={MEASUREMENT_DOT_PX} color="#fbbf24" />
+          </g>
+        ))}
         <text
           x={midX}
           y={midY - labelOffset}
@@ -4656,7 +4677,7 @@ function OrthoSlicePanel({
           dominantBaseline="auto"
           fill="#fef3c7"
           stroke="rgba(17,24,39,0.92)"
-          strokeWidth={Math.max(strokeW * 1.8, 1.5)}
+          strokeWidth={fontSize * 0.18}
           paintOrder="stroke"
           fontSize={fontSize}
           fontWeight={700}

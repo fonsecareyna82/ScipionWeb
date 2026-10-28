@@ -1123,6 +1123,30 @@ describe("VolumeViewer", () => {
         expect(yView).toHaveAttribute("aria-valuetext", "3 of 6");
     });
 
+    it("draws the lines over the slices of a small volume at a fixed width on screen", async () => {
+        serviceMocks.getVolumeInfo.mockResolvedValue({ ...makeInfo(1), samplingRate: 99, voxelSize: [2, 3, 4] });
+        renderViewer();
+
+        const zView = await screen.findByRole("application", { name: "Z (XY) slice view" });
+        vi.spyOn(zView, "getBoundingClientRect").mockReturnValue({
+            x: 0, y: 0, left: 0, top: 0, right: 700, bottom: 600, width: 700, height: 600, toJSON: () => ({}),
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Measure distance" }));
+        fireEvent.pointerDown(zView, { button: 0, pointerId: 7, clientX: 0, clientY: 0 });
+        fireEvent.pointerMove(zView, { pointerId: 7, clientX: 350, clientY: 480 });
+        fireEvent.pointerUp(zView, { button: 0, pointerId: 7, clientX: 350, clientY: 480 });
+        await screen.findByText("13.4 Å");
+
+        // A 7 x 6 slice: a width in image units of one pixel was a hundred pixels on screen
+        const lines = Array.from(zView.querySelectorAll("line"));
+        expect(lines.length).toBeGreaterThanOrEqual(4);
+        for (const line of lines) {
+            expect(line).toHaveAttribute("vector-effect", "non-scaling-stroke");
+            expect(Number(line.getAttribute("stroke-width"))).toBeLessThanOrEqual(10);
+        }
+        expect(zView.querySelectorAll("circle")).toHaveLength(0);
+    });
+
     it("synchronizes zoom and pan across orthogonal slice views", async () => {
         renderViewer();
 

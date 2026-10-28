@@ -125,6 +125,8 @@ const SLICE_PREVIEW_FORMAT = "webp" as const;
 // browsing quality.
 const SLICE_DRAG_PREVIEW_MAX_SIDE = 512;
 const SLICE_DRAG_PREVIEW_QUALITY = 70;
+// Width on screen of the slice position lines, whatever the size of the tomogram
+const SLICE_LINE_PX = 1.5;
 
 // Client-side cache for rendered tomogram slice object URLs, shared across
 // all three axes and kept across tomogram switches (keyed by tomogram id
@@ -3453,7 +3455,8 @@ export default function Coords3dViewer({
                                   x2={sliceIndexX}
                                   y2={tomoDimsZ}
                                   stroke={ORTHO_AXIS_COLORS.x}
-                                  strokeWidth={1.2}
+                                  strokeWidth={SLICE_LINE_PX}
+                                  vectorEffect="non-scaling-stroke"
                                   opacity={0.95}
                                 />
                               )}
@@ -3464,7 +3467,8 @@ export default function Coords3dViewer({
                                   x2={tomoDimsX}
                                   y2={sliceIndex}
                                   stroke={ORTHO_AXIS_COLORS.z}
-                                  strokeWidth={1.2}
+                                  strokeWidth={SLICE_LINE_PX}
+                                  vectorEffect="non-scaling-stroke"
                                   opacity={0.95}
                                 />
                               )}
@@ -3592,7 +3596,8 @@ export default function Coords3dViewer({
                                   x2={sliceIndexX}
                                   y2={tomoDimsY}
                                   stroke={ORTHO_AXIS_COLORS.x}
-                                  strokeWidth={1.2}
+                                  strokeWidth={SLICE_LINE_PX}
+                                  vectorEffect="non-scaling-stroke"
                                   opacity={0.95}
                                 />
                               )}
@@ -3603,7 +3608,8 @@ export default function Coords3dViewer({
                                   x2={tomoDimsX}
                                   y2={sliceIndexY}
                                   stroke="#22c55e"
-                                  strokeWidth={1.2}
+                                  strokeWidth={SLICE_LINE_PX}
+                                  vectorEffect="non-scaling-stroke"
                                   opacity={0.95}
                                 />
                               )}
@@ -3718,7 +3724,8 @@ export default function Coords3dViewer({
                                     x2={sliceIndexY}
                                     y2={tomoDimsZ}
                                     stroke="#22c55e"
-                                    strokeWidth={1.2}
+                                    strokeWidth={SLICE_LINE_PX}
+                                    vectorEffect="non-scaling-stroke"
                                     opacity={0.95}
                                   />
                                 )}
@@ -3729,7 +3736,8 @@ export default function Coords3dViewer({
                                     x2={tomoDimsY}
                                     y2={sliceIndex}
                                     stroke={ORTHO_AXIS_COLORS.z}
-                                    strokeWidth={1.2}
+                                    strokeWidth={SLICE_LINE_PX}
+                                    vectorEffect="non-scaling-stroke"
                                     opacity={0.95}
                                   />
                                 )}
@@ -4912,7 +4920,8 @@ function SyntheticGrid({ width, height }: { width: number; height: number }) {
         x2={x}
         y2={height}
         stroke="#9ca3af"
-        strokeWidth={0.5}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
         opacity={0.6}
       />,
     );
@@ -4927,7 +4936,8 @@ function SyntheticGrid({ width, height }: { width: number; height: number }) {
         x2={width}
         y2={y}
         stroke="#9ca3af"
-        strokeWidth={0.5}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
         opacity={0.6}
       />,
     );
