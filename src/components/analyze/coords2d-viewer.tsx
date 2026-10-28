@@ -1526,7 +1526,7 @@ function Coords2dViewer({
     return () => observer.disconnect();
   }, []);
 
-  const imageWorldSize = useMemo(() => {
+  const knownWorldSize = useMemo(() => {
     if (imageOriginalSize) {
       return imageOriginalSize;
     }
@@ -1552,6 +1552,15 @@ function Coords2dViewer({
     selectedMicrograph,
   ]);
 
+  // Until the size of a micrograph is known (its first image has not arrived), the one
+  // before it stands in: the micrographs of a Set share their size. With no size at all
+  // the coordinates are not drawn, or the view zoomed onto them and showed huge circles.
+  const [lastWorldSize, setLastWorldSize] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (knownWorldSize) setLastWorldSize(knownWorldSize);
+  }, [knownWorldSize]);
+  const imageWorldSize = knownWorldSize ?? lastWorldSize;
+
   const activeImageFilter = useMemo(() => {
     return buildCanvasFilter(filters);
   }, [filters]);
@@ -1565,7 +1574,7 @@ function Coords2dViewer({
   }, [bounds, size]);
 
   useEffect(() => {
-    if (!selectedMicKey || loadingCoordinates) return;
+    if (!selectedMicKey || loadingCoordinates || !imageWorldSize) return;
 
     // Deliberately NOT re-fitting when boxSize changes: getBounds() pads
     // maxX/maxY by boxSize (so an oversized circle near the image edge
@@ -2277,7 +2286,7 @@ function Coords2dViewer({
       ctx.fillRect(0, 0, size.width, size.height);
     }
 
-    if (markersVisible) {
+    if (markersVisible && imageWorldSize) {
       visiblePoints.forEach((point, index) => {
         const pointId = getPointId(point, index);
         const screen = worldToScreen(point.x, point.y);

@@ -21,6 +21,19 @@ class NoResizeObserver {
 }
 vi.stubGlobal("ResizeObserver", NoResizeObserver);
 
+// jsdom loads no images: let the micrograph load, so the viewer learns its size (from the
+// image's original size) and fits it into the view as in a browser.
+class LoadingImage {
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  naturalWidth = 400;
+  naturalHeight = 300;
+  set src(_url: string) {
+    setTimeout(() => this.onload?.(), 0);
+  }
+}
+vi.stubGlobal("Image", LoadingImage);
+
 function fakeImage() {
   return Promise.resolve({ url: "blob:micrograph", revoke: () => undefined, originalWidth: 400, originalHeight: 300 });
 }
