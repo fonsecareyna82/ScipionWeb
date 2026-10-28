@@ -954,7 +954,7 @@ describe("VolumeViewer", () => {
         });
 
         await waitFor(() => {
-            const readyCall = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.find((call) => call[4] === 2 && call[5]?.axis === "z" && Number.isFinite(call[5]?.windowMin));
+            const readyCall = serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.find((call) => call[4] === 2 && call[5]?.axis === "z");
             expect(readyCall).toBeTruthy();
         });
 
@@ -1254,45 +1254,20 @@ describe("VolumeViewer", () => {
         });
     });
 
-    it("uses the same global intensity window for all orthogonal slices", async () => {
+    it("leaves the intensity window of the slices to the server, which smooths them", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
 
         await waitFor(() => {
-            const calls =
-                serviceMocks.fetchVolumeSliceObjectUrl.mock.calls;
-
-            const latestByAxis = new Map<string, any>();
-
-            for (const call of calls) {
-                const options = call[5];
-                const axis = options?.axis;
-
-                if (
-                    axis &&
-                    Number.isFinite(options?.windowMin) &&
-                    Number.isFinite(options?.windowMax)
-                ) {
-                    latestByAxis.set(axis, options);
-                }
-            }
-
-            expect(latestByAxis.size).toBe(3);
-
-            const x = latestByAxis.get("x");
-            const y = latestByAxis.get("y");
-            const z = latestByAxis.get("z");
-
-            expect(x.windowMin).toBeCloseTo(y.windowMin, 6);
-            expect(x.windowMin).toBeCloseTo(z.windowMin, 6);
-
-            expect(x.windowMax).toBeCloseTo(y.windowMax, 6);
-            expect(x.windowMax).toBeCloseTo(z.windowMax, 6);
-
-            expect(x.windowMin).toBeCloseTo(0.00875, 5);
-            expect(x.windowMax).toBeCloseTo(2.965, 5);
+            const axes = new Set(serviceMocks.fetchVolumeSliceObjectUrl.mock.calls.map((call) => call[5]?.axis));
+            expect(axes).toEqual(new Set(["x", "y", "z"]));
         });
+
+        for (const call of serviceMocks.fetchVolumeSliceObjectUrl.mock.calls) {
+            expect(call[5]?.windowMin).toBeUndefined();
+            expect(call[5]?.windowMax).toBeUndefined();
+        }
     });
 
     it("reloads surface mesh after changing quality", async () => {

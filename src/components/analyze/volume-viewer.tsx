@@ -1013,6 +1013,8 @@ export default function VolumeViewer({
   const readyTripleSlices =
     selectedId != null && selectedMetaReady && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
+  // No intensity window: the server smooths the slices and picks one window for the
+  // whole volume itself (the histogram one is of the unsmoothed values).
   const buildSliceFetchOptions = useCallback(
     (isDragging: boolean) => ({
       thumb: isDragging
@@ -1023,10 +1025,8 @@ export default function VolumeViewer({
       quality: isDragging
         ? SLICE_DRAG_PREVIEW_QUALITY
         : SLICE_PREVIEW_QUALITY,
-      windowMin: sliceIntensityWindow?.[0],
-      windowMax: sliceIntensityWindow?.[1],
     }),
-    [sliceIntensityWindow],
+    [],
   );
 
   const singleSliceFetchOptions = useMemo(

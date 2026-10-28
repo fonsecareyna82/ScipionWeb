@@ -1047,6 +1047,20 @@ describe("Coords3dViewer", () => {
         expect(Number(chaseCallArgs[4])).toBe(59);
     });
 
+    it("keeps the coordinates following the Z slider with the tomogram hidden behind the synthetic grid", async () => {
+        const { container } = renderViewer();
+        // Slice 30 is shown first: every particle (z 30, 34, 38) is near it
+        const pickableCircles = () => container.querySelectorAll('circle[stroke="transparent"]').length;
+        await waitFor(() => expect(pickableCircles()).toBe(3));
+
+        fireEvent.click(screen.getByLabelText("Debug synthetic grid"));
+        const sliders = screen.getAllByRole("slider");
+        fireEvent.keyDown(sliders[0], { key: "End" });
+
+        // No particle lies within reach of the last slice, though no slice image is asked for any more
+        await waitFor(() => expect(pickableCircles()).toBe(0));
+    });
+
     it("caches Z slice object URLs so revisiting an index skips a new fetch", async () => {
         renderViewer();
 

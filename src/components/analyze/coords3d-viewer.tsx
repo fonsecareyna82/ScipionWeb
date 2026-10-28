@@ -1246,9 +1246,12 @@ export default function Coords3dViewer({
     });
   }, [filteredPoints, sliceIndex]);
 
-  const overlaySliceIndexZ = sliceImageUrl ? displayedSliceIndexZ : sliceIndex;
-  const overlaySliceIndexX = sliceXImageUrl ? displayedSliceIndexX : sliceIndexX;
-  const overlaySliceIndexY = sliceYImageUrl ? displayedSliceIndexY : sliceIndexY;
+  // Points stay on the slice image they are drawn over; behind the synthetic grid no image is
+  // fetched any more (the last one is kept), so they follow the sliders instead.
+  const followsSliceImage = !(viewMode === "slice" && debugGrid);
+  const overlaySliceIndexZ = sliceImageUrl && followsSliceImage ? displayedSliceIndexZ : sliceIndex;
+  const overlaySliceIndexX = sliceXImageUrl && followsSliceImage ? displayedSliceIndexX : sliceIndexX;
+  const overlaySliceIndexY = sliceYImageUrl && followsSliceImage ? displayedSliceIndexY : sliceIndexY;
 
   // Overlays the actively-dragged point's live position onto filteredPoints
   // for rendering only -- filteredPoints itself (and classOptions/
