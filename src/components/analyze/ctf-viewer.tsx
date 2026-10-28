@@ -42,6 +42,13 @@ import { MetadataViewer } from "./metadata-viewer";
 import { ImagePreviewDialog, type ImagePreviewSource } from "./image-preview-dialog";
 
 
+// Height of a row of the CTF table: the table draws only the rows on screen (see visibleRows)
+const CTF_ROW_HEIGHT = 34;
+const CTF_TABLE_OVERSCAN = 10;
+const CTF_TABLE_INITIAL_HEIGHT = 800;
+// After the images of the row shown: they go first
+const CTF_PREFETCH_DELAY_MS = 400;
+
 type CtfViewerProps = {
     projectId: Id;
     protocolId: Id;
@@ -369,8 +376,27 @@ export default function CtfViewer({
     const psdRevokeRef =
         useRef<(() => void) | null>(null);
 
-    const rowRefs =
-        useRef<Record<string, HTMLTableRowElement | null>>({});
+    // The table draws only the rows on screen, plus a margin: a Set of tens of thousands of CTFs opens as
+    // fast as one of a few
+    const tableContainerRef = useRef<HTMLDivElement | null>(null);
+    const [tableViewport, setTableViewport] = useState({ scrollTop: 0, height: CTF_TABLE_INITIAL_HEIGHT });
+    const readTableViewport = useCallback(() => {
+        const node = tableContainerRef.current;
+        if (!node) return;
+        setTableViewport((current) => {
+            const height = node.clientHeight || current.height;
+            return current.scrollTop === node.scrollTop && current.height === height
+                ? current : { scrollTop: node.scrollTop, height };
+        });
+    }, []);
+    useEffect(() => {
+        const node = tableContainerRef.current;
+        if (!node || typeof ResizeObserver === "undefined") return undefined;
+        const observer = new ResizeObserver(() => readTableViewport());
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [readTableViewport]);
+    const shownRowIdsRef = useRef<string[]>([]);
 
 
     const projectIdNum =
@@ -775,6 +801,37 @@ export default function CtfViewer({
         );
 
 
+    shownRowIdsRef.current = useMemo(() => filteredRows.map((row) => String(row.ctfId)), [filteredRows]);
+    const visibleRows = useMemo(() => ({
+        first: Math.max(0, Math.floor(tableViewport.scrollTop / CTF_ROW_HEIGHT) - CTF_TABLE_OVERSCAN),
+        last: Math.min(filteredRows.length,
+            Math.ceil((tableViewport.scrollTop + tableViewport.height) / CTF_ROW_HEIGHT) + CTF_TABLE_OVERSCAN),
+    }), [tableViewport, filteredRows.length]);
+
+
+    // The images of the next row are asked for while this one is looked at: the server renders and keeps
+    // them, so going down the table shows each micrograph at once
+    useEffect(() => {
+        if (mainMode !== "viewer" || selectedCtfId == null) return undefined;
+        const index = filteredRows.findIndex((row) => String(row.ctfId) === String(selectedCtfId));
+        const next = index >= 0 ? filteredRows[index + 1] : undefined;
+        if (!next) return undefined;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => {
+            const options = { size: 1024, format: "png" as const, quality: 80, signal: controller.signal };
+            const ask = (load: Promise<{ revoke: () => void }>) => {
+                load.then((result) => result.revoke()).catch(() => undefined);
+            };
+            ask(svc.fetchCTFMicrographImageObjectUrl(projectId, protocolId, outputName, next.ctfId, options));
+            if (next.psdFile) ask(svc.fetchCTFPsdImageObjectUrl(projectId, protocolId, outputName, next.ctfId, options));
+        }, CTF_PREFETCH_DELAY_MS);
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [svc, projectId, protocolId, outputName, mainMode, selectedCtfId, filteredRows]);
+
+
     const failedCount =
         useMemo(
             () =>
@@ -877,7 +934,7 @@ export default function CtfViewer({
 
             const traces: any[] = [
                 {
-                    type: "scatter",
+                    type: "scattergl",
                     mode: "markers",
                     name: "CTFs",
                     x: qualityRows.map(
@@ -1118,7 +1175,7 @@ export default function CtfViewer({
 
                 const traces: any[] = [
                     {
-                        type: "scatter",
+                        type: "scattergl",
                         mode: "lines+markers",
                         name: "DefocusU (Å)",
                         x,
@@ -1139,7 +1196,7 @@ export default function CtfViewer({
                         yaxis: "y",
                     },
                     {
-                        type: "scatter",
+                        type: "scattergl",
                         mode: "lines+markers",
                         name: "DefocusV (Å)",
                         x,
@@ -1160,7 +1217,7 @@ export default function CtfViewer({
                         yaxis: "y",
                     },
                     {
-                        type: "scatter",
+                        type: "scattergl",
                         mode: "lines+markers",
                         name: "Resolution (Å)",
                         x,
@@ -1191,7 +1248,7 @@ export default function CtfViewer({
 
                 if (excludedRows.length) {
                     traces.push({
-                        type: "scatter",
+                        type: "scattergl",
                         mode: "markers",
                         name: "Excluded",
                         x: excludedRows.map(
@@ -1448,14 +1505,18 @@ export default function CtfViewer({
                 }
 
                 requestAnimationFrame(() => {
-                    rowRefs.current[
-                        String(ctfId)
-                    ]?.scrollIntoView?.({
-                        block: "nearest",
-                    });
+                    // The row may not be drawn: the table is scrolled to where it is
+                    const node = tableContainerRef.current;
+                    const index = shownRowIdsRef.current.indexOf(String(ctfId));
+                    if (!node || index < 0) return;
+                    const top = index * CTF_ROW_HEIGHT;
+                    if (top < node.scrollTop || top + 2 * CTF_ROW_HEIGHT > node.scrollTop + node.clientHeight) {
+                        node.scrollTop = Math.max(0, top - node.clientHeight / 2);
+                        readTableViewport();
+                    }
                 });
             },
-            [],
+            [readTableViewport],
         );
 
 
@@ -1692,6 +1753,8 @@ export default function CtfViewer({
                 </Paper>
 
                 <Box
+                    ref={tableContainerRef}
+                    onScroll={readTableViewport}
                     sx={{
                         flex: 1,
                         minHeight: 0,
@@ -1812,7 +1875,10 @@ export default function CtfViewer({
                             </TableHead>
 
                             <TableBody>
-                                {filteredRows.map(
+                                {visibleRows.first > 0 ? (
+                                    <TableRow aria-hidden style={{ height: visibleRows.first * CTF_ROW_HEIGHT }} />
+                                ) : null}
+                                {filteredRows.slice(visibleRows.first, visibleRows.last).map(
                                     (row) => {
                                         const selected =
                                             selectedCtfId != null &&
@@ -1828,11 +1894,6 @@ export default function CtfViewer({
                                                 key={String(
                                                     row.ctfId,
                                                 )}
-                                                ref={(element) => {
-                                                    rowRefs.current[
-                                                        String(row.ctfId)
-                                                    ] = element;
-                                                }}
                                                 hover
                                                 selected={selected}
                                                 title={
@@ -1849,6 +1910,7 @@ export default function CtfViewer({
                                                 }
                                                 sx={{
                                                     cursor: "pointer",
+                                                    height: CTF_ROW_HEIGHT,
 
                                                     ...(row.failed && {
                                                         backgroundColor:
@@ -1987,6 +2049,10 @@ export default function CtfViewer({
                                         );
                                     },
                                 )}
+                                {visibleRows.last < filteredRows.length ? (
+                                    <TableRow aria-hidden
+                                              style={{ height: (filteredRows.length - visibleRows.last) * CTF_ROW_HEIGHT }} />
+                                ) : null}
                             </TableBody>
                         </Table>
                     )}

@@ -4601,9 +4601,10 @@ async function fetchCTFImageObjectUrl(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
     `/ctf/${enc(String(ctfId))}/${imageKind}?${params.toString()}`;
 
+  // The server ETags these images (by file version): a row shown again revalidates instead of rendering again
   const res = await fetchWithAuth(url, {
     method: "GET",
-    cache: "no-store",
+    cache: "default",
     signal: opts.signal,
   });
 
