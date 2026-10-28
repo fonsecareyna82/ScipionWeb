@@ -29,6 +29,38 @@ export function recordedTime(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const pad = (value: number, size = 2) => String(value).padStart(size, "0");
+
+/**
+ * A moment as Plotly's date axes take it: the local wall time, with no zone. Plotly reads a date string from
+ * its year to its seconds and drops any zone, so "14:43+01:00" and "13:43Z", the same moment, were an hour
+ * apart for it: points given with their offset fell outside a range given in UTC. Points and ranges both go
+ * in local time, which is also what the axis shows.
+ */
+export function plotlyTime(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
+}
+
+/** The time of a point as Plotly takes it (see plotlyTime); null when it has none. */
+export function plotlyPointTime(value: unknown): string | null {
+  const ms = recordedTime(value);
+  return ms === null ? null : plotlyTime(ms);
+}
+
+/** A time Plotly gives back (the range of a zoom): its local wall time, any zone dropped as Plotly does. */
+export function fromPlotlyTime(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ Tt](\d{1,2})(?::(\d{1,2})(?::(\d{1,2})(\.\d+)?)?)?)?/);
+  if (!match) return null;
+  const [, year, month, day, hours, minutes, seconds, fraction] = match;
+  const ms = new Date(Number(year), Number(month) - 1, Number(day), Number(hours ?? 0), Number(minutes ?? 0),
+    Number(seconds ?? 0), Math.round(Number(fraction ?? 0) * 1000)).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 export function itemPositions(items: TimedItem[]): Map<number, number> {
   return new Map([...new Set(items.map((item) => item.id))].sort((a, b) => a - b).map((id, index) => [id, index + 1]));
 }
@@ -88,7 +120,7 @@ export function filterTimeRange<T extends TimedItem>(items: T[], view: ResolvedT
 export function chartXAxis(view: ResolvedTimeRange) {
   return {
     autorange: view.range === null,
-    ...(view.range ? { range: view.kind === "time" ? view.range.map((time) => new Date(time).toISOString()) : view.range } : {}),
+    ...(view.range ? { range: view.kind === "time" ? view.range.map(plotlyTime) : view.range } : {}),
     uirevision: `${view.kind}:${view.revision}`,
   };
 }
@@ -99,7 +131,7 @@ export function readChartRelayout(event: Record<string, unknown>, view: Resolved
   const pair = Array.isArray(event["xaxis.range"]) ? event["xaxis.range"] as unknown[]
     : [event["xaxis.range[0]"], event["xaxis.range[1]"]];
   if (pair[0] == null || pair[1] == null) return null;
-  const parse = (value: unknown) => view.kind === "time" ? recordedTime(value)
+  const parse = (value: unknown) => view.kind === "time" ? fromPlotlyTime(value)
     : typeof value === "number" && Number.isFinite(value) ? value : null;
   const start = parse(pair[0]), end = parse(pair[1]);
   if (start === null || end === null || start >= end) return null;

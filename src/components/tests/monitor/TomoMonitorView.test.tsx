@@ -6,12 +6,21 @@ import type { StreamingMonitor, TomoMonitor, TomoMonitorTiltSeries } from "@/ser
 import { POLL_STORAGE_KEY } from "@/components/monitor/streaming-monitor-data";
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
 
+const { wall } = vi.hoisted(() => ({
+  // Plotly gives a zoom back in local wall time, with no zone (see plotlyTime)
+  wall: (iso: string) => {
+    const date = new Date(iso);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  },
+}));
+
 vi.mock("react-plotly.js", () => ({
   default: ({ data, layout, onClick, onRelayout }: { layout?: { xaxis?: { type?: string; range?: unknown[] } }; onRelayout?: (event: Record<string, unknown>) => void; data: Array<{ name: string; x: unknown[]; customdata?: unknown[][] }>; onClick?: (event: unknown) => void }) => (
     <div data-testid="mock-plotly" data-time-range={JSON.stringify(layout?.xaxis?.range ?? [])}>
       {onRelayout ? <>
         <button type="button" aria-label={`Zoom time ${data[0]?.name}`} onClick={() => onRelayout({
-          "xaxis.range[0]": "2026-10-22 11:45:00", "xaxis.range[1]": "2026-10-22 12:00:00",
+          "xaxis.range[0]": wall("2026-10-22T11:45:00Z"), "xaxis.range[1]": wall("2026-10-22T12:00:00Z"),
         })}>Zoom time</button>
         <button type="button" aria-label={`Reset time ${data[0]?.name}`} onClick={() => onRelayout({ "xaxis.autorange": true })}>Reset time</button>
       </> : null}

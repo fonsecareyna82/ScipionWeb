@@ -3,8 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import StreamingMonitorView from "@/components/monitor/StreamingMonitorView";
 import { POLL_STORAGE_KEY } from "@/components/monitor/streaming-monitor-data";
+import { plotlyTime } from "@/components/monitor/monitor-time-range";
 import type { StreamingMonitor, StreamingMonitorPoint, StreamingMonitorThresholds } from "@/services/ProjectService";
 import { createProjectServiceMock, renderWithProviders } from "@/components/tests/test-utils";
+
+const { wall } = vi.hoisted(() => ({
+  // Plotly gives a zoom back in local wall time, with no zone (see plotlyTime)
+  wall: (iso: string) => {
+    const date = new Date(iso);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  },
+}));
 
 vi.mock("react-plotly.js", () => ({
   default: ({ data, layout, onClick, onRelayout }: { onRelayout?: (event: Record<string, unknown>) => void; layout?: { xaxis?: { type?: string; range?: unknown[] }; shapes?: Array<{ y0: number; x0?: number }> }; data: Array<{ name: string; customdata?: unknown[][]; x: unknown[]; marker?: { color: string[] } }>; onClick?: (event: unknown) => void }) => (
@@ -13,7 +23,7 @@ vi.mock("react-plotly.js", () => ({
          data-time-range={JSON.stringify(layout?.xaxis?.range ?? [])}>
       {onRelayout ? <>
         <button type="button" aria-label={`Zoom time ${data[0]?.name}`} onClick={() => onRelayout(layout?.xaxis?.type === "date"
-          ? { "xaxis.range[0]": "2026-10-21 11:45:00", "xaxis.range[1]": "2026-10-21 12:00:00" }
+          ? { "xaxis.range[0]": wall("2026-10-21T11:45:00Z"), "xaxis.range[1]": wall("2026-10-21T12:00:00Z") }
           : { "xaxis.range[0]": 1.5, "xaxis.range[1]": 2.5 })}>Zoom time</button>
         <button type="button" aria-label={`Reset time ${data[0]?.name}`} onClick={() => onRelayout({ "xaxis.autorange": true })}>Reset time</button>
         <button type="button" aria-label={`Zoom Y ${data[0]?.name}`} onClick={() => onRelayout({ "yaxis.range[0]": 0, "yaxis.range[1]": 5 })}>Zoom Y</button>
@@ -331,7 +341,8 @@ describe("StreamingMonitorView", () => {
     const plots = screen.getAllByTestId("monitor-plot");
     const ranges = plots.map((plot) => within(plot).getByTestId("mock-plotly").getAttribute("data-time-range"));
     expect(new Set(ranges).size).toBe(1);
-    expect(JSON.parse(ranges[0]!)).toEqual(["2026-10-21T11:45:00.000Z", "2026-10-21T12:00:00.000Z"]);
+    expect(JSON.parse(ranges[0]!)).toEqual([plotlyTime(Date.parse("2026-10-21T11:45:00Z")),
+                                            plotlyTime(Date.parse("2026-10-21T12:00:00Z"))]);
     fireEvent.click(screen.getByRole("button", { name: "Zoom Y Resolution" }));
     expect(screen.getByRole("combobox", { name: "Chart time range" })).toHaveValue("custom");
     fireEvent.click(screen.getByRole("button", { name: "Reset time Resolution" }));
@@ -936,7 +947,9 @@ describe("StreamingMonitorView", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Streaming monitor" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-first-x", "2026-10-21T12:00:00Z");
+    // In local time, as Plotly takes it
+    expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute(
+      "data-first-x", plotlyTime(Date.parse("2026-10-21T12:00:00Z")));
   });
 
   it("says so when the project has nothing to follow", async () => {

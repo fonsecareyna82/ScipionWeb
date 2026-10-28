@@ -45,7 +45,7 @@ import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsT
 import ClassesGallery from "./ClassesGallery";
 import QualitySummary from "./QualitySummary";
 import MonitorTimeRangeSelector from "./MonitorTimeRangeSelector";
-import { chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recordedTime, resolveTimeRange, useMonitorTimeRange,
+import { chartXAxis, filterTimeRange, itemPositions, plotlyPointTime, readChartRelayout, recordedTime, resolveTimeRange, useMonitorTimeRange,
   type ChartViewport, type ResolvedTimeRange } from "./monitor-time-range";
 import { useQualityWindows } from "./quality-window-preferences";
 import { movieQualitySummary, spaQualitySummary } from "./quality-summary-data";
@@ -213,7 +213,7 @@ function MonitorPlot({
       type: "scattergl",
       mode: "markers",
       name: serie.name,
-      x: shown.map((point) => (byOrder ? order.get(point.id) : point.time)),
+      x: shown.map((point) => (byOrder ? order.get(point.id) : plotlyPointTime(point.time))),
       y: shown.map((point) => serie.value(point)),
       customdata: shown.map((point) => [point.id, point.micrographName ?? `Micrograph ${point.id}`]),
       hovertemplate: `%{customdata[1]}<br>%{y:.1f} ${spec.unit}<extra>${serie.name}</extra>`,

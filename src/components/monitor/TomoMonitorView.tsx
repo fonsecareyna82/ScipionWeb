@@ -19,7 +19,7 @@ import type {
 import QualitySummary from "./QualitySummary";
 import TomographySummary from "./TomographySummary";
 import { summarizeTomography } from "./tomo-overview-data";
-import { chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recordedTime, resolveTimeRange,
+import { chartXAxis, filterTimeRange, itemPositions, plotlyPointTime, readChartRelayout, recordedTime, resolveTimeRange,
   type ChartViewport, type ResolvedTimeRange, type TimeSelection } from "./monitor-time-range";
 import { tomoQualitySummary } from "./quality-summary-data";
 import type { SectionVisibility } from "./monitor-view-preferences";
@@ -161,7 +161,7 @@ function SessionPlot({ title, unit, rows, value, alerts, thresholds, dark, onPic
     type: "scatter",
     mode: "markers",
     name: title,
-    x: shown.map((row) => (byOrder ? order.get(row.id) : row.time)),
+    x: shown.map((row) => (byOrder ? order.get(row.id) : plotlyPointTime(row.time))),
     y: shown.map(value),
     customdata: shown.map((row) => [row.tsId]),
     hovertemplate: `%{customdata[0]}<br>%{y:.1f} ${unit}<extra></extra>`,

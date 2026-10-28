@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  TIME_RANGE_STORAGE_KEY, chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recordedTime,
+  TIME_RANGE_STORAGE_KEY, chartXAxis, filterTimeRange, fromPlotlyTime, itemPositions, plotlyPointTime, plotlyTime,
+  readChartRelayout, recordedTime,
   resolveTimeRange, useMonitorTimeRange, type TimeSelection,
 } from "@/components/monitor/monitor-time-range";
 
@@ -36,17 +37,35 @@ describe("Monitor time range", () => {
     expect(filterTimeRange(items, custom, positions).map((item) => item.id)).toEqual([2]);
   });
 
-  it("normalizes unzoned Plotly dates as UTC, ignores Y changes and equivalent X echoes", () => {
+  it("reads the API's unzoned dates as UTC, and Plotly's zooms in local time; ignores Y changes and X echoes", () => {
     expect(recordedTime("2026-10-21 11:30:00.000")).toBe(Date.parse("2026-10-21T11:30:00Z"));
     expect(recordedTime("2026-10-21T13:30:00+02:00")).toBe(Date.parse("2026-10-21T11:30:00Z"));
     expect(recordedTime("invalid")).toBeNull();
     const view = resolveTimeRange(selection("30m"), items, positions, true, now);
     expect(readChartRelayout({ "yaxis.range[0]": 0, "yaxis.range[1]": 5 }, view)).toBeNull();
-    expect(readChartRelayout({ "xaxis.range": ["2026-10-21 11:30:00", now] }, view)).toBeNull();
-    expect(readChartRelayout({ "xaxis.range[0]": "2026-10-21 11:45:00", "xaxis.range[1]": now }, view))
-      .toEqual({ kind: "time", range: [Date.parse("2026-10-21T11:45:00Z"), Date.parse(now)] });
+    // The range it was given, coming back
+    expect(readChartRelayout({ "xaxis.range": chartXAxis(view).range }, view)).toBeNull();
+    const zoomed = Date.parse("2026-10-21T11:45:00Z");
+    expect(readChartRelayout({ "xaxis.range[0]": plotlyTime(zoomed), "xaxis.range[1]": plotlyTime(Date.parse(now)) }, view))
+      .toEqual({ kind: "time", range: [zoomed, Date.parse(now)] });
     expect(readChartRelayout({ "xaxis.autorange": true }, view)).toBe("reset");
     expect(readChartRelayout({ "xaxis.range": [now, "invalid"] }, view)).toBeNull();
+  });
+
+  it("gives Plotly the points and the range of a stream in the same local time", () => {
+    // Plotly reads a date from its year to its seconds and drops any zone: a point given with its offset
+    // and a range given in UTC were an hour apart in Spain, and no point was drawn
+    const point = "2026-10-28T14:43:13.080310+01:00";
+    const instant = Date.parse(point);
+    const view = resolveTimeRange(selection(), [{ id: 1, time: point }, { id: 2, time: "2026-10-28T13:45:00Z" }],
+      new Map([[1, 1], [2, 2]]), true, "2026-10-28T13:46:00+00:00");
+    const [start, end] = chartXAxis(view).range as string[];
+    const plotlyWall = (value: string) => value.slice(0, 19).replace("T", " ");
+
+    expect(plotlyPointTime(point)).toBe(plotlyTime(instant));
+    expect(plotlyWall(plotlyPointTime(point)!) >= plotlyWall(start) && plotlyWall(plotlyPointTime(point)!) <= plotlyWall(end))
+      .toBe(true);
+    expect(fromPlotlyTime(plotlyPointTime(point))).toBe(Math.floor(instant));
   });
 
   it("preserves a custom interval when streaming finishes or starts", () => {
