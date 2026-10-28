@@ -58,6 +58,10 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 - Log search and full copy must operate on the complete log through the service API, not just the currently loaded window.
 - UI text and code comments use English.
 
+## Actions of a running protocol
+
+- Both menus of a protocol card (the dropdown and the right-click one) list, under Stop, what a running protocol offers (`ProtocolRunActions.tsx`): STOP STREAMING, APPROVE CHECKPOINT… They are read when a menu opens, never on page load (each read starts a short process on the server), and only for a running protocol. Choosing one asks for confirmation (each says what it does; neither can be undone) and posts it. Stop still aborts the protocol: Stop streaming lets a streaming import close its output and finish, and the protocols after it finish in turn.
+
 ## Class images in the metadata viewer
 
 The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=enhanced`; its representatives (`N@stack.mrcs`, or a volume file) are then drawn from their original data (`app/backend/utils/class_average_display.py`, read with pwem's pure-Python readers: a broken file raises instead of crashing the process), never from the renderer's 8-bit image. 2D averages are scaled to the noise of their background ring (inside any mask the plugin applied), so every class shows the same background gray, then lightly smoothed and enlarged with Lanczos. 3D classes show as a lit surface (largest connected body of the densest voxels, volume binned to 128), a projection or the central slice (`volumeView`). Display only: nothing stored changes. The image cache key (and so the browser ETag) includes `CLASS_DISPLAY_VERSION`: bump it when the drawing changes.

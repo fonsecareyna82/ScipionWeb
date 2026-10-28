@@ -2264,6 +2264,12 @@ export interface ProjectService<
     projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload,
   ) => Promise<unknown>;
 
+  /** The actions a running protocol offers (the desktop context menu): STOP STREAMING, APPROVE CHECKPOINT… */
+  fetchProtocolRunActions?: (projectId: Id, protocolId: Id) => Promise<string[]>;
+
+  /** Run one of them: it leaves the file the running protocol looks for. */
+  runProtocolRunAction?: (projectId: Id, protocolId: Id, action: string) => Promise<void>;
+
   /** Run one viewer action (the desktop "eye") with the current form values. */
   runProtocolViewerAction?: (
     projectId: Id, protocolId: Id, viewerId: string, action: string,

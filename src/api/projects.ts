@@ -1659,6 +1659,29 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   return safeJson<any>(response);
 }
 
+function runActionsUrl(projectId: Id, protocolId: Id): string {
+  return `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/run-actions`;
+}
+
+/** The actions a running protocol offers, as the desktop context menu (STOP STREAMING, APPROVE CHECKPOINT…). */
+export async function fetchProtocolRunActions(projectId: Id, protocolId: Id): Promise<string[]> {
+  const response = await fetchWithAuth(runActionsUrl(projectId, protocolId), { method: "GET", cache: "no-store" });
+  if (!response.ok) throw await toApiError(response, "The actions of the protocol could not be read");
+  const raw = await safeJson<any>(response);
+  return Array.isArray(raw?.actions) ? raw.actions.filter((label: unknown): label is string => typeof label === "string") : [];
+}
+
+/** Run one action a running protocol offers: it leaves the file the protocol looks for. */
+export async function runProtocolRunAction(projectId: Id, protocolId: Id, action: string): Promise<void> {
+  const response = await fetchWithAuth(runActionsUrl(projectId, protocolId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ action }),
+  });
+  if (!response.ok) throw await toApiError(response, `"${action}" could not be run`);
+}
+
 export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${ACTION_STOP}`,

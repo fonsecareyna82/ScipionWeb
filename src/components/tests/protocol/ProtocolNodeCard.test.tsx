@@ -95,7 +95,13 @@ vi.mock("@/components/files/RemoteFileDialog", () => ({
 vi.mock("@/components/ui/dropdown-menu", async () => {
     const React = await import("react");
     return {
-        DropdownMenu: ({ children }: any) => <div>{children}</div>,
+        // The hidden button opens the menu as a click on its trigger would
+        DropdownMenu: ({ children, onOpenChange }: any) => (
+            <div>
+                <button hidden data-testid="open-dropdown-menu" onClick={() => onOpenChange?.(true)} />
+                {children}
+            </div>
+        ),
         DropdownMenuTrigger: ({ children }: any) => <div>{children}</div>,
         DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
         DropdownMenuItem: ({ children, onClick, onSelect, ...props }: any) => (
@@ -165,6 +171,8 @@ vi.mock("lucide-react", () => {
         RotateCcw: makeIcon("rotate"),
         ArrowUpRight: makeIcon("arrow-up-right"),
         Square: makeIcon("square"),
+        Hand: makeIcon("hand"),
+        X: makeIcon("x"),
         ArrowLeft: makeIcon("arrow-left"),
         ArrowRight: makeIcon("arrow-right"),
         ArrowDown: makeIcon("arrow-down"),
@@ -688,6 +696,36 @@ describe("ProtocolNodeCard", () => {
         fireEvent.dragEnd(pill);
 
         expect(mockSetCurrentDraggedOutput).toHaveBeenLastCalledWith(null);
+    });
+
+    it("offers what a running protocol offers, as STOP STREAMING, and runs it once confirmed", async () => {
+        const { service } = renderComponent({ data: createProtocolData({ status: "running" }) }) as any;
+        service.fetchProtocolRunActions = vi.fn().mockResolvedValue(["STOP STREAMING"]);
+        service.runProtocolRunAction = vi.fn().mockResolvedValue(undefined);
+
+        fireEvent.click(screen.getByTestId("open-dropdown-menu"));
+        // Both menus show it once read
+        await waitFor(() => expect(screen.getAllByText("Stop streaming")).toHaveLength(2));
+        expect(service.fetchProtocolRunActions).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getAllByText("Stop streaming")[0]);
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("The import will take no more files.");
+        expect(dialog).toHaveTextContent("It registers the files it already has");
+        fireEvent.click(within(dialog).getByRole("button", { name: "Stop streaming" }));
+
+        await waitFor(() => expect(service.runProtocolRunAction).toHaveBeenCalled());
+        expect(service.runProtocolRunAction.mock.calls[0].slice(1)).toEqual([expect.anything(), "STOP STREAMING"]);
+    });
+
+    it("does not ask the actions of a protocol that does not run", () => {
+        const { service } = renderComponent({ data: createProtocolData({ status: "finished" }) }) as any;
+        service.fetchProtocolRunActions = vi.fn().mockResolvedValue(["STOP STREAMING"]);
+
+        fireEvent.click(screen.getByTestId("open-dropdown-menu"));
+
+        expect(service.fetchProtocolRunActions).not.toHaveBeenCalled();
+        expect(screen.queryByText("Stop streaming")).not.toBeInTheDocument();
     });
 
     it("shows reduced selection actions when path selection is active", () => {

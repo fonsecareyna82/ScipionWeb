@@ -59,6 +59,7 @@ import {
   ArrowUpRight,
   Ban,
   Square,
+  Hand,
   ArrowLeft,
   ArrowRight,
   ArrowDown,
@@ -86,6 +87,7 @@ import TagsSubmenu, { getTagCheckState } from "@/components/tags/TagsSubmenu";
 import { useProjectTagsContext } from "@/components/tags/ProjectTagsContext";
 import { apiErrorMessage, getReadableTextColor, normalizeTagColor, resolveAssignedTagIds } from "@/utils/protocol_tags";
 import { useProjectService } from "@/ProjectServiceContext";
+import { ProtocolRunActionDialog, runActionLabel, useProtocolRunActions } from "./ProtocolRunActions";
 import { CloseIcon } from "@/icons";
 import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import {
@@ -991,6 +993,14 @@ export default function ProtocolNodeCard({
     if (!isProjectNode) onStop?.(data.id);
   };
 
+  // What the protocol offers while it runs (STOP STREAMING...), read when one of its menus opens
+  const runActions = useProtocolRunActions(isProjectNode ? null : normalizedProjectId, isProjectNode ? null : data.id,
+                                           data.status === "running");
+  const [chosenRunAction, setChosenRunAction] = useState<string | null>(null);
+  const onMenuOpenChange = (open: boolean) => {
+    if (open) runActions.load();
+  };
+
   const handleBrowse = () => {
     if (!isProjectNode) onBrowse?.(data.id, data.projectId, headerDisplayName);
   };
@@ -1698,7 +1708,7 @@ export default function ProtocolNodeCard({
     stepsDone <= 0;
 
   return (
-    <ContextMenu modal={false}>
+    <ContextMenu modal={false} onOpenChange={onMenuOpenChange}>
       <ContextMenuTrigger asChild>
         <div
           ref={rootRef}
@@ -1765,7 +1775,7 @@ export default function ProtocolNodeCard({
 
             {!isProjectNode && (
               <div className={styles.headerRight}>
-                <DropdownMenu modal={false}>
+                <DropdownMenu modal={false} onOpenChange={onMenuOpenChange}>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -1863,6 +1873,17 @@ export default function ProtocolNodeCard({
                             </div>
                           </DropdownMenuItem>
                         )}
+
+                        {runActions.available && runActions.actions.map((action) => (
+                          <DropdownMenuItem key={action} onSelect={() => setChosenRunAction(action)}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Hand className={styles.menuItemIcon} />
+                                <span>{runActionLabel(action)}</span>
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
 
                         {isMenuItemVisible("restart") && (
                           <DropdownMenuItem onSelect={() => handleRestartAll()}>
@@ -2702,6 +2723,17 @@ export default function ProtocolNodeCard({
               </ContextMenuItem>
             )}
 
+            {runActions.available && runActions.actions.map((action) => (
+              <ContextMenuItem key={action} onClick={() => setChosenRunAction(action)}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Hand className={styles.menuItemIcon} />
+                    <span>{runActionLabel(action)}</span>
+                  </span>
+                </div>
+              </ContextMenuItem>
+            ))}
+
             {isMenuItemVisible("restart") && (
               <ContextMenuItem onClick={handleRestartAll}>
                 <div className={styles.menuRow}>
@@ -3015,6 +3047,11 @@ export default function ProtocolNodeCard({
           buildDownloadUrl={buildExportDownloadUrl}
           onPick={handlePickExportTarget}
         />
+      ) : null}
+
+      {chosenRunAction !== null && normalizedProjectId != null ? (
+        <ProtocolRunActionDialog projectId={normalizedProjectId} protocolId={data.id} protocolLabel={headerDisplayName}
+                                 action={chosenRunAction} onClose={() => setChosenRunAction(null)} />
       ) : null}
 
     </ContextMenu>

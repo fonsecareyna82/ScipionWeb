@@ -204,6 +204,12 @@ const defaultService: ProjectService = {
   runProtocolViewerWizard: (projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload) =>
     api.runProtocolViewerWizard(toId(projectId), toId(protocolId), payload),
 
+  fetchProtocolRunActions: (projectId: Id, protocolId: Id) =>
+    api.fetchProtocolRunActions(toId(projectId), toId(protocolId)),
+
+  runProtocolRunAction: (projectId: Id, protocolId: Id, action: string) =>
+    api.runProtocolRunAction(toId(projectId), toId(protocolId), action),
+
   runProtocolViewerAction: (
     projectId: Id, protocolId: Id, viewerId: string, action: string,
     values: ProtocolViewerActionValues, opts?: {signal?: AbortSignal},
