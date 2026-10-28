@@ -66,7 +66,9 @@ import {
   ProjectRevision,
   ProjectOverview,
   StreamingMonitor,
+  StreamingMonitorAcquisition,
   StreamingMonitorFlow,
+  TomoMonitorQuery,
   StreamingMonitorQuery,
   TomoMonitor,
   TomoMonitorTilt,
@@ -4812,6 +4814,18 @@ export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevisi
   return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
 }
 
+function monitorAcquisitions(raw: unknown): StreamingMonitorAcquisition[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((item: any) => item && typeof item.setId === "number")
+    .map((item: any) => ({
+      setId: item.setId,
+      stage: ["micrographs", "tiltseries", "tiltseriesmovies"].includes(item.stage) ? item.stage : "movies",
+      protocolId: String(item.protocolId ?? ""), label: String(item.label ?? ""),
+      outputName: String(item.outputName ?? ""), items: Number(item.items) || 0, streaming: Boolean(item.streaming),
+      lastItemAt: item.lastItemAt ?? null,
+    }));
+}
+
 const FLOW_STATES = new Set(["active", "paused", "stopped", "finished"]);
 
 function monitorFlow(raw: any): StreamingMonitorFlow | null {
@@ -4867,6 +4881,8 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
   return {
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
+    acquisitions: monitorAcquisitions(raw?.acquisitions),
+    acquisitionSetId: typeof raw?.acquisitionSetId === "number" ? raw.acquisitionSetId : null,
     stages: list(raw?.stages),
     flow: monitorFlow(raw?.flow),
     ctfOutputs: list(raw?.ctfOutputs),
@@ -4917,7 +4933,7 @@ function monitorQuery(query: Record<string, unknown>): string {
   return params.toString() ? `?${params.toString()}` : "";
 }
 
-export async function fetchTomoMonitor(projectId: Id, query: { tsSetId?: number | null } = {}): Promise<TomoMonitor> {
+export async function fetchTomoMonitor(projectId: Id, query: TomoMonitorQuery = {}): Promise<TomoMonitor> {
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/monitor/tomo${monitorQuery(query)}`,
     { method: "GET", cache: "no-store" },
@@ -4928,6 +4944,8 @@ export async function fetchTomoMonitor(projectId: Id, query: { tsSetId?: number 
   return {
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
+    acquisitions: monitorAcquisitions(raw?.acquisitions),
+    acquisitionSetId: typeof raw?.acquisitionSetId === "number" ? raw.acquisitionSetId : null,
     stages: list(raw?.stages),
     flow: monitorFlow(raw?.flow),
     tiltSeriesOutputs: list(raw?.tiltSeriesOutputs),

@@ -41,7 +41,7 @@ const THRESHOLDS = {
 
 function spa(stages: StreamingMonitor["stages"] = []): StreamingMonitor {
   return {
-    now: "", streaming: false, stages, flow: null, ctfOutputs: [], coordinatesOutputs: [], classesOutputs: [], thresholds: THRESHOLDS,
+    now: "", streaming: false, stages, flow: null, acquisitions: [], acquisitionSetId: null, ctfOutputs: [], coordinatesOutputs: [], classesOutputs: [], thresholds: THRESHOLDS,
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
     classes: null, tomography: true,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
@@ -56,7 +56,7 @@ function row(id: number, tsId: string, extra: Partial<TomoMonitorTiltSeries> = {
 
 function tomo(rows: TomoMonitorTiltSeries[], flow: TomoMonitor["flow"] = null): TomoMonitor {
   return {
-    now: "", streaming: true, flow,
+    now: "", streaming: true, flow, acquisitions: [], acquisitionSetId: null,
     stages: [
       { stage: "tiltseries", setId: 10, protocolId: "1", protocolClassName: "ProtComposeTS", label: "compose",
         status: "running", outputName: "tiltSeries", setClassName: "SetOfTiltSeries", items: 3, maxItemId: 3,
@@ -132,6 +132,22 @@ describe("The tomography view of the monitor", () => {
 
     expect(await screen.findByText(/No new tilts for 12 min/)).toBeInTheDocument();
     expect(screen.getByText(/no progress for 40 min, with 2 waiting/)).toBeInTheDocument();
+  });
+
+  it("follows another acquisition of tilt series when chosen", async () => {
+    const acquisitions = [
+      { setId: 10, stage: "tiltseriesmovies" as const, protocolId: "1", label: "import grid 1", outputName: "TiltSeriesMovies",
+        items: 12, streaming: false, lastItemAt: null },
+      { setId: 15, stage: "tiltseries" as const, protocolId: "9", label: "import grid 2", outputName: "tiltSeries",
+        items: 2, streaming: true, lastItemAt: null },
+    ];
+    const service = render({ ...tomo([row(1, "TS_01")]), acquisitions, acquisitionSetId: 15 });
+
+    const select = await screen.findByRole("combobox", { name: "Acquisition to follow" });
+    expect(screen.getByRole("option", { name: "import grid 1 · 12 tilt series" })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "10" } });
+
+    await waitFor(() => expect(service.fetchTomoMonitor).toHaveBeenLastCalledWith(7, { tsSetId: null, acquisitionSetId: 10 }));
   });
 
   it("shows the central slice of each tomogram once", async () => {

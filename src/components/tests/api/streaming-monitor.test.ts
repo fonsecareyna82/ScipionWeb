@@ -88,6 +88,19 @@ describe("fetchStreamingMonitor", () => {
     expect(flow).toMatchObject({ acquisition: "finished", unit: "tilt series", activityUnit: "tilts", complete: true });
   });
 
+  it("keeps the acquisitions of the project and the one followed", async () => {
+    respond({ acquisitions: [{ setId: 10, stage: "movies", protocolId: 1, label: "import", outputName: "outputMovies",
+                               items: 5, streaming: true, lastItemAt: "t" }, { label: "no id" }],
+              acquisitionSetId: 10 });
+
+    const monitor = await fetchStreamingMonitor(7, { acquisitionSetId: 10 });
+
+    expect(monitor.acquisitions).toEqual([{ setId: 10, stage: "movies", protocolId: "1", label: "import",
+                                            outputName: "outputMovies", items: 5, streaming: true, lastItemAt: "t" }]);
+    expect(monitor.acquisitionSetId).toBe(10);
+    expect(fetchWithAuth).toHaveBeenCalledWith(expect.stringContaining("acquisitionSetId=10"), expect.anything());
+  });
+
   it("keeps the dose of the movies a dose analysis measured", async () => {
     const movie = { id: 2, time: "t", movieName: "movie_002.tiff", meanDose: 1.4, doseDifference: 16, discarded: true,
                     alerts: ["maxDoseDifference"] };

@@ -49,6 +49,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
   return {
     now: "2026-10-21T12:00:00Z",
     streaming: true,
+    acquisitions: [], acquisitionSetId: null,
     flow: null,
     stages: [
       { stage: "micrographs", setId: 20, protocolId: "2", protocolClassName: "ProtMotionCorr", label: "motioncor",
@@ -87,6 +88,27 @@ afterEach(() => {
 });
 
 describe("StreamingMonitorView", () => {
+  it("follows another acquisition when chosen, from its own outputs", async () => {
+    const acquisitions = [
+      { setId: 10, stage: "movies" as const, protocolId: "1", label: "import grid 1", outputName: "outputMovies", items: 120, streaming: false, lastItemAt: null },
+      { setId: 110, stage: "movies" as const, protocolId: "11", label: "import grid 2", outputName: "outputMovies", items: 8, streaming: true, lastItemAt: null },
+    ];
+    const fetchStreamingMonitor = vi.fn().mockImplementation(async (_projectId, query) => ({
+      ...answer([point(1)]), acquisitions, acquisitionSetId: query.acquisitionSetId ?? 110,
+    }));
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+
+    const select = await screen.findByRole("combobox", { name: "Acquisition to follow" });
+    expect(select).toHaveValue("110");
+    expect(screen.getByRole("option", { name: "● import grid 2 · 8 movies" })).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "10" } });
+
+    await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      acquisitionSetId: 10, ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null })));
+  });
+
   it("shows the plots in the order they were dragged to, and restores the standard one", async () => {
     window.localStorage.setItem("scipionweb.monitor.cardOrder.v1", JSON.stringify({ spa: ["drift", "astigmatism"], tomo: [] }));
     const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1), point(2)]));
@@ -128,7 +150,7 @@ describe("StreamingMonitorView", () => {
     expect(screen.getByRole("img", { name: /Each card is a step of the processing chain/ })).toBeInTheDocument();
     expect(within(panel).getByRole("img", { name: /Each line is a run of consecutive items/ })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /Each point is a micrograph/ })).toHaveLength(4);
-    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
+    expect(fetchStreamingMonitor).toHaveBeenCalledWith(7, { acquisitionSetId: null, ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
   });
 
   it("customizes multiple sections without closing the picker or changing thresholds", async () => {
@@ -529,7 +551,7 @@ describe("StreamingMonitorView", () => {
     });
 
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenCalledTimes(2));
-    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
+    expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(7, { acquisitionSetId: null, ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 2, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "3"));
   });
 
@@ -571,7 +593,7 @@ describe("StreamingMonitorView", () => {
                         { service: createProjectServiceMock({ fetchStreamingMonitor }) });
 
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Resolution" })[0]).toHaveAttribute("data-points", "2"));
-    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
+    expect(fetchStreamingMonitor).toHaveBeenNthCalledWith(2, 7, { acquisitionSetId: null, ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: 30, afterRowId: 1, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 });
   });
 
   it("tints the cards of each phase of the stream with one quiet hue", async () => {
@@ -847,7 +869,7 @@ describe("StreamingMonitorView", () => {
       maxTotalDrift: 45, minParticles: null, maxDoseDifference: 5,
     }));
     await waitFor(() => expect(fetchStreamingMonitor).toHaveBeenLastCalledWith(
-      7, { ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 }));
+      7, { acquisitionSetId: null, ctfSetId: null, coordinatesSetId: null, classesSetId: null, afterSetId: null, afterRowId: null, afterPickSetId: null, afterPickRowId: null, afterDoseKey: null, afterDoseRowId: null, qualityWindowSize: 100 }));
   });
 
   it("refuses a threshold that is not a positive number", async () => {

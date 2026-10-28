@@ -2,6 +2,7 @@
 import { fetchWithAuth } from "@/api/auth";
 import * as api from "@/api/projects";
 import { BASE_URL } from "@/config";
+import type { TomoMonitorQuery } from "@/services/ProjectService";
 import type {
   ProjectService,
   ProjectPayload,
@@ -125,7 +126,7 @@ const defaultService: ProjectService = {
     api.fetchStreamingMonitor(toId(projectId), query),
   saveStreamingMonitorThresholds: (projectId: Id, thresholds: Partial<StreamingMonitorThresholds>) =>
     api.saveStreamingMonitorThresholds(toId(projectId), thresholds),
-  fetchTomoMonitor: (projectId: Id, query?: { tsSetId?: number | null }) => api.fetchTomoMonitor(toId(projectId), query),
+  fetchTomoMonitor: (projectId: Id, query?: TomoMonitorQuery) => api.fetchTomoMonitor(toId(projectId), query),
   fetchTomoMonitorTiltSeries: (projectId: Id, tsId: string, query?: { tsSetId?: number | null }) =>
     api.fetchTomoMonitorTiltSeries(toId(projectId), tsId, query),
   fetchTomoMonitorSliceObjectUrl: (projectId: Id, setId: number, itemId: number,

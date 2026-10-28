@@ -1743,9 +1743,29 @@ export type StreamingMonitorFlow = {
   complete: boolean;
 };
 
+/**
+ * One acquisition of a project: an import (of movies or micrographs, of tilt series or their movies). The
+ * monitor follows the branch of one of them: the import and everything made from it.
+ */
+export type StreamingMonitorAcquisition = {
+  setId: number;
+  /** What it imports: movies, micrographs, tilt series or their movies. */
+  stage: "movies" | "micrographs" | "tiltseries" | "tiltseriesmovies";
+  protocolId: string;
+  label: string;
+  outputName: string;
+  items: number;
+  /** Still open: more items come. */
+  streaming: boolean;
+  lastItemAt: string | null;
+};
+
 export type StreamingMonitor = {
   now: string;
   streaming: boolean;
+  /** The acquisitions of the project, and the one whose branch the answer follows. */
+  acquisitions: StreamingMonitorAcquisition[];
+  acquisitionSetId: number | null;
   stages: StreamingMonitorStage[];
   flow: StreamingMonitorFlow | null;
   ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
@@ -1827,6 +1847,8 @@ export type TomoMonitorTiltSeries = {
 export type TomoMonitor = {
   now: string;
   streaming: boolean;
+  acquisitions: StreamingMonitorAcquisition[];
+  acquisitionSetId: number | null;
   stages: StreamingMonitorStage[];
   flow: StreamingMonitorFlow | null;
   tiltSeriesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
@@ -1852,8 +1874,12 @@ export type TomoMonitorTilt = {
   residual?: number;
 };
 
+export type TomoMonitorQuery = { tsSetId?: number | null; acquisitionSetId?: number | null };
+
 export type StreamingMonitorQuery = {
   qualityWindowSize?: number;
+  /** The acquisition whose branch to follow; by default the open one that received something last. */
+  acquisitionSetId?: number | null;
   ctfSetId?: number | null;
   coordinatesSetId?: number | null;
   classesSetId?: number | null;
@@ -2188,7 +2214,7 @@ export interface ProjectService<
   fetchProjectRevision?(projectId: Id): Promise<ProjectRevision>;
   fetchProjectOverview?(projectId: Id): Promise<ProjectOverview>;
   fetchStreamingMonitor?(projectId: Id, query?: StreamingMonitorQuery): Promise<StreamingMonitor>;
-  fetchTomoMonitor?(projectId: Id, query?: { tsSetId?: number | null }): Promise<TomoMonitor>;
+  fetchTomoMonitor?(projectId: Id, query?: TomoMonitorQuery): Promise<TomoMonitor>;
   fetchTomoMonitorTiltSeries?(projectId: Id, tsId: string, query?: { tsSetId?: number | null }): Promise<{ tsId: string; tilts: TomoMonitorTilt[] }>;
   /** The central slice of one tomogram of the tomography stream. */
   fetchTomoMonitorSliceObjectUrl?(projectId: Id, setId: number, itemId: number,

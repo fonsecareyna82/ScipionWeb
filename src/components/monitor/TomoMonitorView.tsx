@@ -24,7 +24,7 @@ import { chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recorded
 import { tomoQualitySummary } from "./quality-summary-data";
 import type { SectionVisibility } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
-import { EmptyPlot, HelpHint, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
+import { AcquisitionSelect, EmptyPlot, HelpHint, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
 import SortableCards from "./SortableCards";
 
 const THUMBNAIL_SIZE = 96;
@@ -281,6 +281,8 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // null lets the server choose the acquisition (the open one that received something last)
+  const [acquisitionSetId, setAcquisitionSetId] = useState<number | null>(null);
   const [tsSetId, setTsSetId] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tilts, setTilts] = useState<TomoMonitorTilt[] | null>(null);
@@ -307,7 +309,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
     const revision = requestRevisionRef.current;
     loadingRef.current = true;
     try {
-      const answer = await svc.fetchTomoMonitor(projectId, { tsSetId });
+      const answer = await svc.fetchTomoMonitor(projectId, { tsSetId, acquisitionSetId });
       if (revision !== requestRevisionRef.current) return;
       setMonitor(answer);
       setError(null);
@@ -321,7 +323,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
         void latestLoadRef.current(true);
       }
     }
-  }, [svc, projectId, tsSetId]);
+  }, [svc, projectId, tsSetId, acquisitionSetId]);
   latestLoadRef.current = load;
 
   useEffect(() => {
@@ -406,8 +408,15 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
   return (
     <div ref={rootRef} className="flex flex-col gap-4" data-testid="tomo-monitor">
       {error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div> : null}
-      {monitor.tiltSeriesOutputs.length > 1 ? (
-        <div className="flex justify-end">
+      {monitor.tiltSeriesOutputs.length > 1 || monitor.acquisitions.length > 1 ? (
+        <div className="flex justify-end gap-3">
+          <AcquisitionSelect acquisitions={monitor.acquisitions} value={monitor.acquisitionSetId}
+                             onChange={(setId) => {
+                               setSelected(null);
+                               setTsSetId(null);
+                               setAcquisitionSetId(setId);
+                             }} />
+          {monitor.tiltSeriesOutputs.length > 1 ? (
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-center text-[11px] font-medium text-app-muted">Tilt series</span>
             <select aria-label="Tilt series to follow"
@@ -422,6 +431,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
               ))}
             </select>
           </label>
+          ) : null}
         </div>
       ) : null}
       {quality && monitor.stages.length > 0 && visibility.summary !== false ? (

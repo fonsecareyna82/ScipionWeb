@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CheckCircle2, HelpCircle, Info } from "lucide-react";
 
-import type { StreamingMonitorFlow, StreamingMonitorStage } from "@/services/ProjectService";
+import type { StreamingMonitorAcquisition, StreamingMonitorFlow, StreamingMonitorStage } from "@/services/ProjectService";
 
 export const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   movies: "Movies",
@@ -265,4 +265,35 @@ export function StreamFlowStatus({ flow }: { flow: StreamingMonitorFlow | null }
     );
   }
   return lines.length ? <div className="mb-3 flex flex-col gap-2" aria-label="Stream flow">{lines}</div> : null;
+}
+
+const ACQUISITION_UNITS: Record<StreamingMonitorAcquisition["stage"], string> = {
+  movies: "movies", micrographs: "micrographs", tiltseries: "tilt series", tiltseriesmovies: "tilt series",
+};
+
+/**
+ * Which acquisition (an import) the monitor follows, when the project has several: two grids, a second
+ * session on other movies. Shown only then; open ones are marked, as their imports still take files.
+ */
+export function AcquisitionSelect({ acquisitions, value, onChange }: {
+  acquisitions: StreamingMonitorAcquisition[];
+  value: number | null;
+  onChange: (setId: number) => void;
+}) {
+  if (acquisitions.length < 2) return null;
+  return (
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-center text-[11px] font-medium text-app-muted">Acquisition</span>
+      <select aria-label="Acquisition to follow" title="Each import of the project and what was made from it"
+              className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+              value={value ?? ""} onChange={(event) => onChange(Number(event.target.value))}>
+        {acquisitions.map((acquisition) => (
+          <option key={acquisition.setId} value={acquisition.setId}>
+            {`${acquisition.streaming ? "● " : ""}${acquisition.label} · ${acquisition.items.toLocaleString()} `
+              + ACQUISITION_UNITS[acquisition.stage]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }

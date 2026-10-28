@@ -38,7 +38,7 @@ import {
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
-import { HelpHint, PlotHeader, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
+import { AcquisitionSelect, HelpHint, PlotHeader, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
 import TomoMonitorView from "./TomoMonitorView";
 import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
@@ -401,6 +401,9 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [pollSeconds, setPollSeconds] = useState<number>(() => readPollSeconds());
+  // The acquisition whose branch is followed: null lets the server choose (the open one that received
+  // something last), so a new import is followed from its first movies
+  const [acquisitionSetId, setAcquisitionSetId] = useState<number | null>(null);
   const [ctfSetId, setCtfSetId] = useState<number | null>(null);
   const [coordinatesSetId, setCoordinatesSetId] = useState<number | null>(null);
   const [classesSetId, setClassesSetId] = useState<number | null>(null);
@@ -433,7 +436,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
     requestRevisionRef.current += 1;
   }, []);
   const requestRevisionRef = useRef(0);
-  const requestKey = JSON.stringify([projectId, ctfSetId, coordinatesSetId, classesSetId]);
+  const requestKey = JSON.stringify([projectId, acquisitionSetId, ctfSetId, coordinatesSetId, classesSetId]);
   const requestKeyRef = useRef(requestKey);
   requestKeyRef.current = requestKey;
   const latestLoadRef = useRef<(fromScratch?: boolean) => Promise<void>>(async () => {});
@@ -455,6 +458,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
       // Points come in batches: read until the server has no more.
       do {
         answer = await svc.fetchStreamingMonitor(projectId, {
+          acquisitionSetId,
           ctfSetId,
           coordinatesSetId,
           classesSetId,
@@ -490,7 +494,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         void latestLoadRef.current(true);
       }
     }
-  }, [svc, projectId, ctfSetId, coordinatesSetId, classesSetId]);
+  }, [svc, projectId, acquisitionSetId, ctfSetId, coordinatesSetId, classesSetId]);
   latestLoadRef.current = load;
 
   useEffect(() => {
@@ -765,11 +769,21 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               </button>
               </div>
             </div>
-            {mode === "spa" && monitor && (monitor.ctfOutputs.length > 1
+            {mode === "spa" && monitor && (monitor.acquisitions.length > 1 || monitor.ctfOutputs.length > 1
               || monitor.coordinatesOutputs.length > 1 || monitor.classesOutputs.length > 1) ? (
               <span aria-hidden="true" className="w-full border-t border-app-border" />
             ) : null}
             <div className="flex w-full min-w-0 flex-wrap items-end gap-3 empty:hidden">
+              {mode === "spa" && monitor ? (
+                <AcquisitionSelect acquisitions={monitor.acquisitions} value={monitor.acquisitionSetId}
+                                   onChange={(setId) => {
+                                     // The outputs of the other branch are not those of this one
+                                     setCtfSetId(null);
+                                     setCoordinatesSetId(null);
+                                     setClassesSetId(null);
+                                     setAcquisitionSetId(setId);
+                                   }} />
+              ) : null}
               {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
                 <label className="flex min-w-0 flex-col gap-1">
                   <span className="text-center text-[11px] font-medium text-app-muted">CTF</span>
