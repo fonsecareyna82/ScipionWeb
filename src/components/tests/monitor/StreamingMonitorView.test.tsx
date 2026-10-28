@@ -85,6 +85,26 @@ afterEach(() => {
 });
 
 describe("StreamingMonitorView", () => {
+  it("shows the plots in the order they were dragged to, and restores the standard one", async () => {
+    window.localStorage.setItem("scipionweb.monitor.cardOrder.v1", JSON.stringify({ spa: ["drift", "astigmatism"], tomo: [] }));
+    const fetchStreamingMonitor = vi.fn().mockResolvedValue(answer([point(1), point(2)]));
+    renderWithProviders(<StreamingMonitorView projectId={7} />,
+                        { service: createProjectServiceMock({ fetchStreamingMonitor }) });
+
+    await screen.findByText("ctffind");
+    const handles = () => screen.getAllByRole("button", { name: /^Move / }).map((button) => button.getAttribute("aria-label"));
+    expect(handles()).toEqual(["Move Drift", "Move Astigmatism |U − V|", "Move CTF resolution", "Move Defocus"]);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Move Defocus" }), { key: "ArrowLeft" });
+    expect(handles()).toEqual(["Move Drift", "Move Astigmatism |U − V|", "Move Defocus", "Move CTF resolution"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Customize view" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Restore default view" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Customize monitor view" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Customize monitor view" })).not.toBeInTheDocument());
+    expect(handles()).toEqual(["Move CTF resolution", "Move Defocus", "Move Astigmatism |U − V|", "Move Drift"]);
+  });
+
   it("shows the stages, the plots and the alerts of the stream", async () => {
     const fetchStreamingMonitor = vi.fn().mockResolvedValue(
       answer([point(1), point(2, { astigmatism: 1500, alerts: ["maxAstigmatism"] })]));

@@ -51,6 +51,8 @@ import { useQualityWindows } from "./quality-window-preferences";
 import { movieQualitySummary, spaQualitySummary } from "./quality-summary-data";
 import CustomizeMonitorView from "./CustomizeMonitorView";
 import { MONITOR_SECTIONS, useMonitorViewPreferences, type MonitorSection } from "./monitor-view-preferences";
+import { useCardOrder } from "./monitor-card-order";
+import SortableCards from "./SortableCards";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 
 
@@ -389,6 +391,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const qualityWindowSizeRef = useRef(qualityWindows.spa);
   qualityWindowSizeRef.current = qualityWindows.spa;
   const { preferences, setVisible, restore } = useMonitorViewPreferences();
+  const cardOrder = useCardOrder();
   const [monitor, setMonitor] = useState<StreamingMonitor | null>(null);
   const [series, setSeries] = useState<SeriesState>(EMPTY_SERIES);
   const [picking, setPicking] = useState<PickingState>(EMPTY_PICKING);
@@ -753,7 +756,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               <div className="ml-auto flex items-center gap-2">
               <CustomizeMonitorView mode={mode} visibility={preferences[mode]}
                                     onChange={(section, visible) => setVisible(mode, section, visible)}
-                                    onRestore={() => restore(mode)} />
+                                    onRestore={() => { restore(mode); cardOrder.restore(mode); }} />
               <button type="button" title="Alert thresholds" aria-label="Thresholds"
                       className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-sm text-app-text hover:bg-app-hover disabled:opacity-60"
                       onClick={() => setEditing(true)} disabled={!monitor}>
@@ -857,6 +860,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                            isSeen={isSeen} onLoaded={setTomo} focus={tomoFocus}
                            thresholdChanges={thresholdChanges} onThresholdChange={changeThresholds}
                            qualityWindowSize={qualityWindows.tomo} visibility={preferences.tomo}
+                           cardOrder={cardOrder.order.tomo} onCardOrderChange={(ids) => cardOrder.setShownOrder("tomo", ids)}
                            timeSelection={timeRange.selection("tomo")} onTimeViewport={(viewport) => timeRange.setViewport("tomo", viewport)} />
         ) : (
           <>
@@ -888,18 +892,20 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                   No CTF estimation yet: the drift of the aligned micrographs is shown meanwhile.
                 </div>
               ) : null}
-              {visiblePlots.map((spec) => (
-                <MonitorPlot key={spec.title} spec={spec} points={shownPoints} thresholds={thresholds} byOrder={!live}
-                             timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
-                             dark={dark} thresholdChanges={thresholdChanges}
-                             onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined}
-                             onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
-              ))}
-              {showDose ? (
-                <MonitorPlot spec={DOSE_PLOT} points={shownDose} thresholds={thresholds} byOrder={!live} dark={dark}
-                             timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
-                             thresholdChanges={thresholdChanges} onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
-              ) : null}
+              <SortableCards order={cardOrder.order.spa} onReorder={(ids) => cardOrder.setShownOrder("spa", ids)} cards={[
+                ...visiblePlots.map((spec) => ({ id: spec.section, label: spec.title, node: (
+                  <MonitorPlot spec={spec} points={shownPoints} thresholds={thresholds} byOrder={!live}
+                               timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
+                               dark={dark} thresholdChanges={thresholdChanges}
+                               onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined}
+                               onPick={spec === PARTICLES_PLOT && pickedCoordinates ? openParticles : openMicrograph} />
+                ) })),
+                ...(showDose ? [{ id: DOSE_PLOT.section, label: DOSE_PLOT.title, node: (
+                  <MonitorPlot spec={DOSE_PLOT} points={shownDose} thresholds={thresholds} byOrder={!live} dark={dark}
+                               timeView={timeView} orderPositions={orderPositions} onTimeViewport={(viewport) => timeRange.setViewport("spa", viewport)}
+                               thresholdChanges={thresholdChanges} onThresholdChange={svc.saveStreamingMonitorThresholds ? changeThresholds : undefined} />
+                ) }] : []),
+              ]} />
             </section>
           ) : null}
 

@@ -25,6 +25,7 @@ import { tomoQualitySummary } from "./quality-summary-data";
 import type { SectionVisibility } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
 import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
+import SortableCards from "./SortableCards";
 
 const THUMBNAIL_SIZE = 96;
 const SLICE_SIZE = 512;
@@ -52,6 +53,9 @@ type Props = {
   onTimeViewport?: (viewport: ChartViewport | "reset") => void;
   qualityWindowSize?: number;
   visibility?: SectionVisibility;
+  /** The order the user dragged the session plots to. */
+  cardOrder?: string[];
+  onCardOrderChange?: (ids: string[]) => void;
   thresholdChanges?: ThresholdChanges;
   onThresholdChange?: (changes: ThresholdChanges) => void;
   savingThresholds?: boolean;
@@ -273,7 +277,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   );
 }
 
-export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false, visibility = {}, qualityWindowSize = 20, timeSelection = { preset: "all", custom: null, revision: 0 }, onTimeViewport }: Props) {
+export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dark, isSeen, onLoaded, focus = null, thresholdChanges = {}, onThresholdChange, savingThresholds = false, visibility = {}, cardOrder = [], onCardOrderChange, qualityWindowSize = 20, timeSelection = { preset: "all", custom: null, revision: 0 }, onTimeViewport }: Props) {
   const svc = useProjectService();
   const [monitor, setMonitor] = useState<TomoMonitor | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -453,22 +457,24 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle col-span-full">
             Session <HelpHint text={SESSION_HELP} />
           </div>
-          {visibility.defocus !== false ? (
-          <SessionPlot {...plotProps} title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
-                       alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} empty={emptyDefocus} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          ) : null}
-          {visibility.tilts !== false ? (
-          <SessionPlot {...plotProps} title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
-                       alerts={["minTilts"]} thresholds={monitor.thresholds} empty="No tilt images in these tilt series yet." dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          ) : null}
-          {visibility.residual !== false ? (
-          <SessionPlot {...plotProps} title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
-                       alerts={["maxResidual"]} thresholds={monitor.thresholds} empty={emptyResidual} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
-          ) : null}
-          {picking && visibility.particles !== false ? (
-            <SessionPlot {...plotProps} title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
-                         alerts={[]} thresholds={monitor.thresholds} empty="No particles picked on these tomograms yet." dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
-          ) : null}
+          <SortableCards order={cardOrder} onReorder={(ids) => onCardOrderChange?.(ids)} cards={[
+            ...(visibility.defocus !== false ? [{ id: "defocus", label: "Mean defocus", node: (
+              <SessionPlot {...plotProps} title="Mean defocus" unit="Å" rows={rows} value={(row) => row.defocusU}
+                           alerts={["minDefocus", "maxDefocus"]} thresholds={monitor.thresholds} empty={emptyDefocus} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+            ) }] : []),
+            ...(visibility.tilts !== false ? [{ id: "tilts", label: "Tilts kept", node: (
+              <SessionPlot {...plotProps} title="Tilts kept" unit="tilts" rows={rows} value={(row) => row.enabledTilts}
+                           alerts={["minTilts"]} thresholds={monitor.thresholds} empty="No tilt images in these tilt series yet." dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+            ) }] : []),
+            ...(visibility.residual !== false ? [{ id: "residual", label: "Alignment residual", node: (
+              <SessionPlot {...plotProps} title="Alignment residual" unit="px" rows={rows} value={(row) => row.residual}
+                           alerts={["maxResidual"]} thresholds={monitor.thresholds} empty={emptyResidual} dark={dark} onPick={setSelected} byOrder={!monitor.streaming} />
+            ) }] : []),
+            ...(picking && visibility.particles !== false ? [{ id: "particles", label: "Particles per tomogram", node: (
+              <SessionPlot {...plotProps} title="Particles per tomogram" unit="particles" rows={rows} value={(row) => row.particles}
+                           alerts={[]} thresholds={monitor.thresholds} empty="No particles picked on these tomograms yet." dark={dark} onPick={(tsId) => setViewing({ tsId, kind: "particles" })} byOrder={!monitor.streaming} />
+            ) }] : []),
+          ]} />
         </section>
       ) : null}
 
