@@ -38,7 +38,7 @@ import {
   type SeriesState,
 } from "./streaming-monitor-data";
 import StreamingMonitorThresholdsDialog from "./StreamingMonitorThresholdsDialog";
-import { HelpHint, PlotHeader, StageCard, plotBox, plotFrame } from "./monitor-parts";
+import { HelpHint, PlotHeader, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
 import TomoMonitorView from "./TomoMonitorView";
 import { AlertsButton, AlertsPanel, useUnseenAlerts, type MonitorAlert } from "./MonitorAlertsPanel";
 import LatestMicrographsTable, { LATEST_MICROGRAPHS } from "./LatestMicrographsTable";
@@ -879,6 +879,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
                 Pipeline <HelpHint text={PIPELINE_HELP} />
               </div>
+              <StreamFlowStatus flow={monitor.flow} />
               <div className="flex flex-wrap gap-3">
                 {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} live={live} />)}
               </div>

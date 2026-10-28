@@ -86,7 +86,9 @@ describe("mergePicking", () => {
 describe("withParticles", () => {
   const thresholds = { minDefocus: null, maxDefocus: null, maxAstigmatism: null, maxResolution: null,
                        maxFrameShift: null, maxTotalDrift: null, minParticles: 10, minTilts: null,
-                       minAngleSpan: null, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: null };
+                       minAngleSpan: null, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: null,
+                       maxMoviePauseMinutes: null, maxStageStallMinutes: null, maxTiltPauseMinutes: null,
+                       maxTiltSeriesStallMinutes: null };
 
   it("gives each point its particles and the alert when they are too few", () => {
     const shown = withParticles([point(1), point(2), point(3)], { "1": 5, "2": 50 }, thresholds);

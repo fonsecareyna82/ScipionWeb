@@ -20,6 +20,10 @@ export const THRESHOLD_LABELS: Record<StreamingMonitorThresholdName, string> = {
   maxFailedCtfTilts: "Tilts without CTF above",
   maxResidual: "Alignment residual above",
   maxDoseDifference: "Dose off the session median by more than",
+  maxMoviePauseMinutes: "No new movies for more than",
+  maxStageStallMinutes: "A stage with items waiting gives nothing for more than",
+  maxTiltPauseMinutes: "No new tilts for more than",
+  maxTiltSeriesStallMinutes: "A stage with tilt series waiting gives nothing for more than",
 };
 
 const THRESHOLD_UNITS: Partial<Record<StreamingMonitorThresholdName, string>> = {
@@ -29,6 +33,10 @@ const THRESHOLD_UNITS: Partial<Record<StreamingMonitorThresholdName, string>> = 
   maxFailedCtfTilts: "tilts",
   maxResidual: "px",
   maxDoseDifference: "%",
+  maxMoviePauseMinutes: "min",
+  maxStageStallMinutes: "min",
+  maxTiltPauseMinutes: "min",
+  maxTiltSeriesStallMinutes: "min",
 };
 
 /** Every threshold is in Å but the particles one, a count. */
@@ -52,6 +60,8 @@ export const THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "maxTotalDrift",
   "minParticles",
   "maxDoseDifference",
+  "maxMoviePauseMinutes",
+  "maxStageStallMinutes",
 ];
 
 /** The thresholds of each view of the monitor: the CTF ones are shared. */
@@ -64,6 +74,8 @@ export const TOMO_THRESHOLD_ORDER: StreamingMonitorThresholdName[] = [
   "minAngleSpan",
   "maxFailedCtfTilts",
   "maxResidual",
+  "maxTiltPauseMinutes",
+  "maxTiltSeriesStallMinutes",
 ];
 
 /** How often the monitor reads; 0 pauses it. A preference of each browser, not of the project. */

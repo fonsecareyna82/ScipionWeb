@@ -36,11 +36,12 @@ vi.mock("@/components/analyze/integrated-tomography-viewer", () => ({
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
   minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: 5,
+  maxMoviePauseMinutes: 10, maxStageStallMinutes: 15, maxTiltPauseMinutes: 10, maxTiltSeriesStallMinutes: 30,
 };
 
 function spa(stages: StreamingMonitor["stages"] = []): StreamingMonitor {
   return {
-    now: "", streaming: false, stages, ctfOutputs: [], coordinatesOutputs: [], classesOutputs: [], thresholds: THRESHOLDS,
+    now: "", streaming: false, stages, flow: null, ctfOutputs: [], coordinatesOutputs: [], classesOutputs: [], thresholds: THRESHOLDS,
     series: { setId: null, kind: null, reset: false, lastRowId: null, more: false, points: [] },
     classes: null, tomography: true,
     picking: { setId: null, reset: false, lastRowId: null, complete: true, counts: {} },
@@ -53,9 +54,9 @@ function row(id: number, tsId: string, extra: Partial<TomoMonitorTiltSeries> = {
            angleMin: -60, angleMax: 60, dose: 120, defocusU: 30000, astigmatism: 400, aligned: true, alerts: [], ...extra };
 }
 
-function tomo(rows: TomoMonitorTiltSeries[]): TomoMonitor {
+function tomo(rows: TomoMonitorTiltSeries[], flow: TomoMonitor["flow"] = null): TomoMonitor {
   return {
-    now: "", streaming: true,
+    now: "", streaming: true, flow,
     stages: [
       { stage: "tiltseries", setId: 10, protocolId: "1", protocolClassName: "ProtComposeTS", label: "compose",
         status: "running", outputName: "tiltSeries", setClassName: "SetOfTiltSeries", items: 3, maxItemId: 3,
@@ -119,6 +120,18 @@ describe("The tomography view of the monitor", () => {
       expect.stringContaining("TS_03"), expect.stringContaining("TS_02"), expect.stringContaining("TS_01")]);
     expect(screen.getByText("12/12 …")).toBeInTheDocument();
     expect(screen.getAllByTestId("tomo-session-plot")).toHaveLength(3);
+  });
+
+  it("tells a pause of the acquisition in tilts, and a stage with tilt series waiting that gives nothing", async () => {
+    render(tomo([row(1, "TS_01")], {
+      acquisition: "paused", unit: "tilt series", activityUnit: "tilts", items: 3, protocolId: "1", label: "compose",
+      lastItemAt: "2026-10-28T11:48:00Z", idleMinutes: 12, stalled: [
+        { stage: "ctftomo", protocolId: "2", label: "ctffind", behind: 2, minutes: 40, protocolStatus: "running" }],
+      complete: false,
+    }));
+
+    expect(await screen.findByText(/No new tilts for 12 min/)).toBeInTheDocument();
+    expect(screen.getByText(/no progress for 40 min, with 2 waiting/)).toBeInTheDocument();
   });
 
   it("shows the central slice of each tomogram once", async () => {

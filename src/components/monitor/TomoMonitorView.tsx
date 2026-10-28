@@ -24,7 +24,7 @@ import { chartXAxis, filterTimeRange, itemPositions, readChartRelayout, recorded
 import { tomoQualitySummary } from "./quality-summary-data";
 import type { SectionVisibility } from "./monitor-view-preferences";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
-import { EmptyPlot, HelpHint, StageCard, plotBox, plotFrame } from "./monitor-parts";
+import { EmptyPlot, HelpHint, StageCard, StreamFlowStatus, plotBox, plotFrame } from "./monitor-parts";
 import SortableCards from "./SortableCards";
 
 const THUMBNAIL_SIZE = 96;
@@ -440,6 +440,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
           <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
             Pipeline <HelpHint text={PIPELINE_HELP} />
           </div>
+          <StreamFlowStatus flow={monitor.flow} />
           <div className="flex flex-wrap gap-3">
             {monitor.stages.map((stage) => <StageCard key={stage.setId} stage={stage} live={monitor.streaming} />)}
           </div>

@@ -1,8 +1,8 @@
 // Pieces both views of the streaming monitor (single particle and tomography) show.
-import type { CSSProperties } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, HelpCircle } from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, CheckCircle2, HelpCircle, Info } from "lucide-react";
 
-import type { StreamingMonitorStage } from "@/services/ProjectService";
+import type { StreamingMonitorFlow, StreamingMonitorStage } from "@/services/ProjectService";
 
 export const STAGE_LABELS: Record<StreamingMonitorStage["stage"], string> = {
   movies: "Movies",
@@ -165,9 +165,15 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
               {` · ${formatEta(stage.etaMinutes)}`}
             </span>
           ) : null}
-          {stage.stalled ? (
+          {stage.stalled && stage.stalledMinutes === undefined ? (
             <span className="font-normal" title="Nothing was processed in the last 10 minutes"> · stalled</span>
           ) : null}
+        </div>
+      ) : null}
+      {stage.stalledMinutes !== undefined ? (
+        <div className="mt-1 text-xs font-semibold text-app-danger" data-testid="stage-stalled">
+          No progress for {formatMinutes(stage.stalledMinutes)}
+          {stage.status && !LIVE_STATUSES.has(stage.status) ? ` · run ${stage.status}` : ""}
         </div>
       ) : null}
       <div className="mt-1 truncate text-[11px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>
@@ -175,4 +181,88 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
       </div>
     </div>
   );
+}
+
+const LIVE_STATUSES = new Set(["launched", "running", "scheduled"]);
+
+/** "12 min", "1 h 20 min". */
+export function formatMinutes(minutes: number): string {
+  const rounded = Math.max(1, Math.round(minutes));
+  if (rounded < 60) return `${rounded} min`;
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
+function clockTime(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const FLOW_TONES = {
+  warning: { color: "var(--app-warning)", Icon: AlertTriangle },
+  danger: { color: "var(--app-danger)", Icon: AlertTriangle },
+  info: { color: "var(--app-accent)", Icon: Info },
+  success: { color: "var(--app-success)", Icon: CheckCircle2 },
+} as const;
+
+function FlowLine({ tone, children }: { tone: keyof typeof FLOW_TONES; children: ReactNode }) {
+  const { color, Icon } = FLOW_TONES[tone];
+  return (
+    <div className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm text-app-text" data-tone={tone}
+         style={{ borderColor: `color-mix(in srgb, ${color} 40%, var(--app-border))`,
+                  background: `color-mix(in srgb, ${color} 8%, var(--app-surface))` }}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color }} />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Whether the stream flows: a pause of the acquisition, its end, a stage that stopped. A closed import is a
+ * finished acquisition, never a stopped microscope: the import closes itself once its timeout passes.
+ */
+export function StreamFlowStatus({ flow }: { flow: StreamingMonitorFlow | null }) {
+  if (!flow) return null;
+  const count = `${flow.items.toLocaleString()} ${flow.unit}`;
+  const lines = [];
+  if (flow.acquisition === "paused") {
+    lines.push(
+      <FlowLine key="acquisition" tone="warning">
+        No new {flow.activityUnit} for {formatMinutes(flow.idleMinutes ?? 0)} (last at {clockTime(flow.lastItemAt)}).
+        {flow.importClosesInMinutes !== undefined
+          ? ` If none come, the import closes on its own in ${formatMinutes(flow.importClosesInMinutes)}.` : ""}
+      </FlowLine>,
+    );
+  } else if (flow.acquisition === "stopped") {
+    lines.push(
+      <FlowLine key="acquisition" tone="danger">
+        The import ({flow.label}) is {flow.protocolStatus}, but it never closed its {flow.unit}: no more will come
+        until it runs again.
+      </FlowLine>,
+    );
+  } else if (flow.acquisition === "finished") {
+    lines.push(flow.complete ? (
+      <FlowLine key="acquisition" tone="success">
+        Session complete: the acquisition finished at {clockTime(flow.finishedAt)} with {count}, and everything
+        was processed.
+      </FlowLine>
+    ) : (
+      <FlowLine key="acquisition" tone="info">
+        Acquisition finished at {clockTime(flow.finishedAt)} with {count}. What is left is still being processed.
+      </FlowLine>
+    ));
+  }
+  for (const stalled of flow.stalled) {
+    lines.push(
+      <FlowLine key={`stalled-${stalled.protocolId}-${stalled.stage}`} tone="danger">
+        {STAGE_LABELS[stalled.stage]} ({stalled.label}): no progress for {formatMinutes(stalled.minutes)}, with
+        {" "}{stalled.behind.toLocaleString()} waiting
+        {stalled.protocolStatus && !LIVE_STATUSES.has(stalled.protocolStatus)
+          ? `. The run is ${stalled.protocolStatus}.` : "."}
+      </FlowLine>,
+    );
+  }
+  return lines.length ? <div className="mb-3 flex flex-col gap-2" aria-label="Stream flow">{lines}</div> : null;
 }

@@ -1621,6 +1621,10 @@ export type StreamingMonitorStage = {
   etaMinutes?: number;
   /** There is a backlog and nothing moved in the last minutes. */
   stalled?: boolean;
+  /** When the stage last gave an item. */
+  lastItemAt?: string | null;
+  /** Items wait and the stage gave nothing for longer than maxStageStallMinutes: for how long. */
+  stalledMinutes?: number;
   /** Coordinates: the micrographs the picker reads (e.g. those a CTF consensus kept), which it waits on. */
   pickedFrom?: { protocolId: string; label: string; outputName: string; items: number };
   /** 2D classes: the particles the classifier reads when a filter is in between, which it waits on. */
@@ -1653,7 +1657,11 @@ export type StreamingMonitorThresholdName =
   | "minAngleSpan"
   | "maxFailedCtfTilts"
   | "maxResidual"
-  | "maxDoseDifference";
+  | "maxDoseDifference"
+  | "maxMoviePauseMinutes"
+  | "maxStageStallMinutes"
+  | "maxTiltPauseMinutes"
+  | "maxTiltSeriesStallMinutes";
 
 /** Thresholds in A (minParticles: coordinates per micrograph); null raises no alert. */
 export type StreamingMonitorThresholds = Record<StreamingMonitorThresholdName, number | null>;
@@ -1699,10 +1707,47 @@ export type StreamingMonitorExposures = {
 };
 
 /** The live monitor of a project's stream; the series holds the points after the ones asked for. */
+/** A stage with items waiting that gives nothing (see StreamingMonitorFlow). */
+export type StreamingMonitorStalledStage = {
+  stage: StreamingMonitorStage["stage"];
+  protocolId: string;
+  label: string;
+  behind: number;
+  minutes: number;
+  protocolStatus: string;
+};
+
+/**
+ * Whether the stream flows. The import closes its Set itself once its timeout passes with no new files (or
+ * when told to stop): a closed import is a finished acquisition, never a stopped microscope.
+ */
+export type StreamingMonitorFlow = {
+  /** active; paused: open import, no new items for maxMoviePauseMinutes; stopped: open import whose
+   *  protocol does not run; finished: closed import. */
+  acquisition: "active" | "paused" | "stopped" | "finished";
+  /** What the acquisition's items are (movies, micrographs, tilt series)… */
+  unit: "movies" | "micrographs" | "tilt series";
+  /** …and what comes: the tilts of a tilt series come one by one. */
+  activityUnit: "movies" | "micrographs" | "tilts";
+  items: number;
+  protocolId: string;
+  label: string;
+  lastItemAt: string | null;
+  idleMinutes?: number;
+  /** Paused: how long the import still waits before it closes on its own. */
+  importClosesInMinutes?: number;
+  finishedAt?: string | null;
+  protocolStatus?: string;
+  stalled: StreamingMonitorStalledStage[];
+  /** Finished, and every stage closed. */
+  complete: boolean;
+};
+
 export type StreamingMonitor = {
   now: string;
   streaming: boolean;
   stages: StreamingMonitorStage[];
+  flow: StreamingMonitorFlow | null;
   ctfOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   /** The pickings the monitor could follow (it follows the one that goes furthest unless told). */
   coordinatesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
@@ -1783,6 +1828,7 @@ export type TomoMonitor = {
   now: string;
   streaming: boolean;
   stages: StreamingMonitorStage[];
+  flow: StreamingMonitorFlow | null;
   tiltSeriesOutputs: Array<{ setId: number; protocolId: string; label: string; outputName: string }>;
   tomograms: { setId: number; protocolId: string; outputName: string } | null;
   thresholds: StreamingMonitorThresholds;

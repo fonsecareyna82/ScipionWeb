@@ -63,6 +63,31 @@ describe("fetchStreamingMonitor", () => {
     expect(monitor.tiltSeries[0].particles).toBe(120);
   });
 
+  it("keeps whether the stream flows, and drops a flow it does not know", async () => {
+    respond({ flow: { acquisition: "paused", unit: "movies", items: 120, protocolId: 2, label: "import",
+                      lastItemAt: "t", idleMinutes: 12, importClosesInMinutes: 18,
+                      stalled: [{ stage: "ctf", protocolId: 3, label: "ctffind", behind: 40, minutes: 20,
+                                  protocolStatus: "running" }], complete: false } });
+
+    const { flow } = await fetchStreamingMonitor(7);
+
+    expect(flow).toMatchObject({ acquisition: "paused", protocolId: "2", importClosesInMinutes: 18,
+                                 stalled: [{ stage: "ctf", protocolId: "3", behind: 40, minutes: 20 }] });
+    respond({ flow: { acquisition: "sleeping" } });
+    expect((await fetchStreamingMonitor(7)).flow).toBeNull();
+    respond({});
+    expect((await fetchStreamingMonitor(7)).flow).toBeNull();
+  });
+
+  it("keeps whether the tomography stream flows, its acquisition told in tilts", async () => {
+    respond({ stages: [], tiltSeries: [], flow: { acquisition: "finished", unit: "tilt series", activityUnit: "tilts",
+                                                  items: 12, protocolId: 1, stalled: [], complete: true } });
+
+    const { flow } = await fetchTomoMonitor(7);
+
+    expect(flow).toMatchObject({ acquisition: "finished", unit: "tilt series", activityUnit: "tilts", complete: true });
+  });
+
   it("keeps the dose of the movies a dose analysis measured", async () => {
     const movie = { id: 2, time: "t", movieName: "movie_002.tiff", meanDose: 1.4, doseDifference: 16, discarded: true,
                     alerts: ["maxDoseDifference"] };

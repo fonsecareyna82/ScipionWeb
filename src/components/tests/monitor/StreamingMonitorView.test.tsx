@@ -37,6 +37,7 @@ vi.mock("react-plotly.js", () => ({
 const THRESHOLDS = {
   minDefocus: 1000, maxDefocus: 40000, maxAstigmatism: 1000, maxResolution: null, maxFrameShift: 10, maxTotalDrift: 45,
   minParticles: null, minTilts: 30, minAngleSpan: 50, maxFailedCtfTilts: null, maxResidual: null, maxDoseDifference: 5,
+  maxMoviePauseMinutes: 10, maxStageStallMinutes: 15, maxTiltPauseMinutes: 10, maxTiltSeriesStallMinutes: 30,
 };
 
 function point(id: number, extra: Partial<StreamingMonitorPoint> = {}): StreamingMonitorPoint {
@@ -48,6 +49,7 @@ function answer(points: StreamingMonitorPoint[], extra: Partial<StreamingMonitor
   return {
     now: "2026-10-21T12:00:00Z",
     streaming: true,
+    flow: null,
     stages: [
       { stage: "micrographs", setId: 20, protocolId: "2", protocolClassName: "ProtMotionCorr", label: "motioncor",
         status: "running", outputName: "outputMicrographs", setClassName: "SetOfMicrographs", items: 12, maxItemId: 12,

@@ -66,6 +66,7 @@ import {
   ProjectRevision,
   ProjectOverview,
   StreamingMonitor,
+  StreamingMonitorFlow,
   StreamingMonitorQuery,
   TomoMonitor,
   TomoMonitorTilt,
@@ -4788,6 +4789,33 @@ export async function fetchProjectRevision(projectId: Id): Promise<ProjectRevisi
   return { revision: String(raw?.revision ?? ""), protocols: Number(raw?.protocols ?? 0) };
 }
 
+const FLOW_STATES = new Set(["active", "paused", "stopped", "finished"]);
+
+function monitorFlow(raw: any): StreamingMonitorFlow | null {
+  if (!raw || typeof raw !== "object" || !FLOW_STATES.has(raw.acquisition)) return null;
+  const minutes = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+  return {
+    acquisition: raw.acquisition,
+    unit: raw.unit === "micrographs" || raw.unit === "tilt series" ? raw.unit : "movies",
+    activityUnit: raw.activityUnit === "micrographs" || raw.activityUnit === "tilts" ? raw.activityUnit
+      : raw.unit === "micrographs" ? "micrographs" : "movies",
+    items: Number(raw.items) || 0,
+    protocolId: String(raw.protocolId ?? ""),
+    label: String(raw.label ?? ""),
+    lastItemAt: raw.lastItemAt ?? null,
+    idleMinutes: minutes(raw.idleMinutes),
+    importClosesInMinutes: minutes(raw.importClosesInMinutes),
+    finishedAt: raw.finishedAt ?? null,
+    protocolStatus: raw.protocolStatus ?? undefined,
+    stalled: (Array.isArray(raw.stalled) ? raw.stalled : []).map((stage: any) => ({
+      stage: stage.stage, protocolId: String(stage.protocolId ?? ""), label: String(stage.label ?? ""),
+      behind: Number(stage.behind) || 0, minutes: Number(stage.minutes) || 0,
+      protocolStatus: String(stage.protocolStatus ?? ""),
+    })),
+    complete: Boolean(raw.complete),
+  };
+}
+
 export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonitorQuery = {}): Promise<StreamingMonitor> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -4817,6 +4845,7 @@ export async function fetchStreamingMonitor(projectId: Id, query: StreamingMonit
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
     stages: list(raw?.stages),
+    flow: monitorFlow(raw?.flow),
     ctfOutputs: list(raw?.ctfOutputs),
     coordinatesOutputs: list(raw?.coordinatesOutputs),
     classesOutputs: list(raw?.classesOutputs),
@@ -4877,6 +4906,7 @@ export async function fetchTomoMonitor(projectId: Id, query: { tsSetId?: number 
     now: String(raw?.now ?? ""),
     streaming: Boolean(raw?.streaming),
     stages: list(raw?.stages),
+    flow: monitorFlow(raw?.flow),
     tiltSeriesOutputs: list(raw?.tiltSeriesOutputs),
     tomograms: raw?.tomograms && typeof raw.tomograms === "object" ? raw.tomograms : null,
     thresholds: raw?.thresholds && typeof raw.thresholds === "object" ? raw.thresholds : {},
