@@ -18,6 +18,7 @@ function visit(node: ts.Node) {
     if (callback.includes("lastObservedWidthRef.current")) callbacks.set("observeWidth", callback);
     if (callback.includes("setNodes(seededWithLiveTicks)")) callbacks.set("reflowGrid", callback);
     if (callback.includes("!nodesLoadedOnce || !firstLoadRef.current")) callbacks.set("initialCenter", callback);
+    if (callback.includes("prevLayout.current.viewMode !== viewMode")) callbacks.set("switchLayout", callback);
   }
   ts.forEachChild(node, visit);
 }
@@ -176,5 +177,26 @@ describe("ProjectPage camera stability when protocol forms open and close", () =
     const harness = createHarness(mode);
     harness.context.handleFitView();
     expect(mode === "grid" ? harness.instance.setViewport : harness.instance.setCenter).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["the protocol selected in the table", "22", { x: 400, y: 600 }],
+    ["the whole graph with nothing selected", null, { x: 250, y: 400 }],
+  ] as const)("centers %s when coming back from the table", async (_label, selectedId, center) => {
+    const harness = createHarness("hierarchical");
+    const nodes = [{ id: "21", position: { x: 100, y: 200 }, data: {} }, { id: "22", position: { x: 400, y: 600 }, data: {} }];
+    Object.assign(harness.context, {
+      prevLayout: { current: { viewMode: "table", graphDirection: "TB" } },
+      buildGraphElements: () => ({ nodes, edges: [], table: [] }),
+      nodesRef: { current: nodes },
+      selectedIdRef: { current: selectedId },
+      pathEdgeModeRef: { current: "none" }, computeEdgesForMode: () => new Set(), paintPathHighlight: (edges: any) => edges,
+      disablePersistenceRef: { current: false }, setIsSwitchingLayout: vi.fn(),
+      handleRefreshRef: { current: null }, setTimeout: () => 0, window: { setTimeout: () => 0 },
+    });
+    harness.context.switchLayout();
+    await harness.flushFrames();
+    expect(harness.instance.setCenter).toHaveBeenCalledOnce();
+    expect(harness.instance.setCenter.mock.calls[0].slice(0, 2)).toEqual([center.x, center.y]);
   });
 });

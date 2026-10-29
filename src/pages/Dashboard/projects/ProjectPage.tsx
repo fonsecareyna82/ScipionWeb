@@ -5830,7 +5830,24 @@ export default function ProjectPage() {
         }
 
         if (viewMode === "hierarchical") {
-          centerLikeButton(nodesWithPositions, true);
+          // The protocol selected in another view (e.g. a row of the table) is the one shown, as the table
+          // scrolls to the node selected in the graph
+          const selectedId = pathSelRef.current.nodes.size === 0 ? selectedIdRef.current : null;
+          const selectedNode = selectedId
+            ? nodesWithPositions.find((n) => String(n.id) === String(selectedId))
+            : undefined;
+          if (selectedNode && typeof selectedNode.position?.x === "number" && typeof selectedNode.position?.y === "number") {
+            // Its size once drawn, when React Flow already measured it
+            const shown: any = nodesRef.current.find((n) => String(n.id) === String(selectedId)) ?? selectedNode;
+            const width = Number(shown.width ?? shown.measured?.width ?? 0) || 0;
+            const height = Number(shown.height ?? shown.measured?.height ?? 0) || 0;
+            inst.setCenter(selectedNode.position.x + width / 2, selectedNode.position.y + height / 2,
+              { zoom: clampZoom(inst.getViewport().zoom), duration: 0 });
+            const vp = inst.getViewport();
+            setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+          } else {
+            centerLikeButton(nodesWithPositions, true);
+          }
 
           window.setTimeout(() => {
             if (viewModeRef.current === "hierarchical") {
