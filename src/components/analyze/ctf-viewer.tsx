@@ -40,6 +40,7 @@ import type {
 
 import { MetadataViewer } from "./metadata-viewer";
 import { ImagePreviewDialog, type ImagePreviewSource } from "./image-preview-dialog";
+import { scatterTraceType } from "../../utils/plot-trace-type";
 
 
 // Height of a row of the CTF table: the table draws only the rows on screen (see visibleRows)
@@ -934,7 +935,7 @@ export default function CtfViewer({
 
             const traces: any[] = [
                 {
-                    type: "scattergl",
+                    type: scatterTraceType(qualityRows.length),
                     mode: "markers",
                     name: "CTFs",
                     x: qualityRows.map(
@@ -1175,7 +1176,7 @@ export default function CtfViewer({
 
                 const traces: any[] = [
                     {
-                        type: "scattergl",
+                        type: scatterTraceType(chartRows.length),
                         mode: "lines+markers",
                         name: "DefocusU (Å)",
                         x,
@@ -1196,7 +1197,7 @@ export default function CtfViewer({
                         yaxis: "y",
                     },
                     {
-                        type: "scattergl",
+                        type: scatterTraceType(chartRows.length),
                         mode: "lines+markers",
                         name: "DefocusV (Å)",
                         x,
@@ -1217,7 +1218,7 @@ export default function CtfViewer({
                         yaxis: "y",
                     },
                     {
-                        type: "scattergl",
+                        type: scatterTraceType(chartRows.length),
                         mode: "lines+markers",
                         name: "Resolution (Å)",
                         x,
@@ -1248,7 +1249,7 @@ export default function CtfViewer({
 
                 if (excludedRows.length) {
                     traces.push({
-                        type: "scattergl",
+                        type: scatterTraceType(chartRows.length),
                         mode: "markers",
                         name: "Excluded",
                         x: excludedRows.map(

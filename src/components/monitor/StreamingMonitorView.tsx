@@ -54,6 +54,7 @@ import { MONITOR_SECTIONS, useMonitorViewPreferences, type MonitorSection } from
 import { useCardOrder } from "./monitor-card-order";
 import SortableCards from "./SortableCards";
 import ThresholdSliders, { previewAlerts, type ThresholdChanges } from "./ThresholdSliders";
+import { scatterTraceType } from "../../utils/plot-trace-type";
 
 
 const PLOT_HEIGHT = 260;
@@ -210,7 +211,7 @@ function MonitorPlot({
   const data = spec.series.map((serie, index) => {
     const shown = usable.filter((point) => serie.value(point) !== undefined);
     return {
-      type: "scattergl",
+      type: scatterTraceType(shown.length),
       mode: "markers",
       name: serie.name,
       x: shown.map((point) => (byOrder ? order.get(point.id) : plotlyPointTime(point.time))),
