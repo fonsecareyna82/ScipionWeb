@@ -297,7 +297,8 @@ function WorkflowGraphPreview({ workflow }: { workflow: ProjectWorkflow }) {
         zoomOnScroll
         zoomOnPinch
         zoomOnDoubleClick
-        preventScrolling={false}
+        // The wheel zooms the preview (React Flow ignores it without Ctrl when preventScrolling is off)
+        preventScrolling
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={18} size={1} />
@@ -866,6 +867,13 @@ export default function WorkflowsPage() {
               </div>
             ) : (
               <div className="space-y-3">
+
+                <h3
+                  className="break-words px-1 text-lg font-semibold leading-7 text-gray-950 dark:text-white"
+                  data-testid="workflow-details-name"
+                >
+                  {selectedWorkflow.name}
+                </h3>
 
                 <WorkflowDescriptionCard workflow={selectedWorkflow} />
 
