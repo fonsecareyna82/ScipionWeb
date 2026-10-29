@@ -172,6 +172,7 @@ vi.mock("lucide-react", () => {
         ArrowUpRight: makeIcon("arrow-up-right"),
         Square: makeIcon("square"),
         Hand: makeIcon("hand"),
+        ListOrdered: makeIcon("list-ordered"),
         X: makeIcon("x"),
         ArrowLeft: makeIcon("arrow-left"),
         ArrowRight: makeIcon("arrow-right"),
@@ -716,6 +717,23 @@ describe("ProtocolNodeCard", () => {
 
         await waitFor(() => expect(service.runProtocolRunAction).toHaveBeenCalled());
         expect(service.runProtocolRunAction.mock.calls[0].slice(1)).toEqual([expect.anything(), "STOP STREAMING"]);
+    });
+
+    it.each(["running", "finished", "failed"])("opens the steps of a %s protocol from both menus", (status) => {
+        const onSteps = vi.fn();
+        renderComponent({ data: createProtocolData({ status }), onSteps });
+
+        const items = screen.getAllByText("Steps");
+        expect(items).toHaveLength(2);
+        fireEvent.click(items[0]);
+
+        expect(onSteps).toHaveBeenCalledWith(createProtocolData({ status }).id);
+    });
+
+    it.each(["saved", "new", "scheduled", "launched"])("offers no steps for a %s protocol, which has none yet", (status) => {
+        renderComponent({ data: createProtocolData({ status }), onSteps: vi.fn() });
+
+        expect(screen.queryByText("Steps")).not.toBeInTheDocument();
     });
 
     it("does not ask the actions of a protocol that does not run", () => {

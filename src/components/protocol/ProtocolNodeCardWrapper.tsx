@@ -23,6 +23,7 @@ type NodeActions = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
+  onSteps?: (id: string) => void;
 
   onManageTags?: (
     protocolId: string,
@@ -155,6 +156,7 @@ export const createStatusNodeWrapper = (
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
           onStop={actions.onStop}
+          onSteps={actions.onSteps}
           onManageTags={actions.onManageTags}
           onOpenProtocolClass={actions.onOpenProtocolClass}
           inPathSelection={inPathSelection}

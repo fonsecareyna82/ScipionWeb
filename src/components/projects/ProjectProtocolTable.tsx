@@ -30,6 +30,7 @@ import {
   ArrowUpRight,
   Eye,
   Filter,
+  ListOrdered,
 } from "lucide-react";
 
 import {
@@ -65,6 +66,7 @@ import {
   type TagFilterMode,
 } from "@/utils/protocol_tags";
 import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
+import { protocolHasSteps } from "@/utils/protocol_steps";
 
 import "./ProjectProtocolTable.css";
 import type { ExtraTableColumns, ExtraTableColumnType, ExtraTableColumnValue } from "@/types/extraTableColumns";
@@ -229,6 +231,11 @@ type Props = {
 
   onStop: (
     protocolIds: string[],
+  ) => void;
+
+  // The protocol's steps (only offered once it has run)
+  onSteps?: (
+    protocolId: string,
   ) => void;
 
   onSelectionChange: (
@@ -1134,6 +1141,7 @@ const ProjectProtocolTable =
         onContinueAll,
         onResetFrom,
         onStop,
+        onSteps,
         onSelectionChange,
         onToggleTag,
         onCreateTag,
@@ -3177,6 +3185,22 @@ const ProjectProtocolTable =
                     >
                       <Pencil />
                       Annotate
+                    </DropdownMenuItem>
+                  )}
+
+                {onSteps &&
+                  protocolHasSteps(
+                    status,
+                  ) && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        onSteps(
+                          row.id,
+                        )
+                      }
+                    >
+                      <ListOrdered />
+                      Steps
                     </DropdownMenuItem>
                   )}
 

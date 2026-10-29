@@ -71,6 +71,7 @@ import {
   FileIcon,
   ClipboardPaste,
   ClipboardCopy,
+  ListOrdered,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -89,6 +90,7 @@ import { apiErrorMessage, getReadableTextColor, normalizeTagColor, resolveAssign
 import { useProjectService } from "@/ProjectServiceContext";
 import { ProtocolRunActionDialog, runActionLabel, useProtocolRunActions } from "./ProtocolRunActions";
 import { CloseIcon } from "@/icons";
+import { protocolHasSteps } from "@/utils/protocol_steps";
 import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 import {
   isOutputWithoutViewerClass,
@@ -185,6 +187,7 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
+  onSteps?: (id: string) => void;
   onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   // opens the tag manager (create/edit tag definitions)
@@ -629,6 +632,7 @@ export default function ProtocolNodeCard({
   onSelectFrom,
   onSelectTo,
   onStop,
+  onSteps,
   onBrowse,
   onManageTags,
   onOpenProtocolClass, // addThis
@@ -993,6 +997,11 @@ export default function ProtocolNodeCard({
     if (!isProjectNode) onStop?.(data.id);
   };
 
+  const showSteps = !isProjectNode && Boolean(onSteps) && protocolHasSteps(data.status);
+  const handleSteps = () => {
+    if (!isProjectNode) onSteps?.(data.id);
+  };
+
   // What the protocol offers while it runs (STOP STREAMING...), read when one of its menus opens
   const runActions = useProtocolRunActions(isProjectNode ? null : normalizedProjectId, isProjectNode ? null : data.id,
                                            data.status === "running");
@@ -1330,6 +1339,7 @@ export default function ProtocolNodeCard({
     continueAll: `${modShift} + C`,
     resetFrom: `${modShift} + F`,
     stop: `${modShift} + S`,
+    steps: `${modShift} + D`,
     selectFrom: "Alt + ↓",
     selectTo: "Alt + ↑",
   } as const;
@@ -1830,6 +1840,17 @@ export default function ProtocolNodeCard({
                                 <span>Annotate</span>
                               </span>
                               <ShortcutHint text={shortcuts.rename} />
+                            </div>
+                          </DropdownMenuItem>)}
+
+                        {showSteps && (
+                          <DropdownMenuItem onSelect={() => handleSteps()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <ListOrdered className={styles.menuItemIcon} />
+                                <span>Steps</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.steps} />
                             </div>
                           </DropdownMenuItem>)}
 
@@ -2678,6 +2699,17 @@ export default function ProtocolNodeCard({
                     <span>Annotate</span>
                   </span>
                   <ShortcutHint text={shortcuts.rename} />
+                </div>
+              </ContextMenuItem>)}
+
+            {showSteps && (
+              <ContextMenuItem onClick={handleSteps}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <ListOrdered className={styles.menuItemIcon} />
+                    <span>Steps</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.steps} />
                 </div>
               </ContextMenuItem>)}
 

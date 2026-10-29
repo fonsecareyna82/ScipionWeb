@@ -535,6 +535,7 @@ type NodeActions = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
+  onSteps?: (id: string) => void;
   onManageTags?: () => void;
   onOpenProtocolClass?: (protocolClass: string) => void;
 };
@@ -3568,6 +3569,7 @@ export default function ProjectPage() {
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
       onStop: openStop,
+      onSteps: (id) => openProtocolStepsDialog(String(id)),
       onResetFrom: openResetFrom,
       onManageTags: () => setTagManagerOpen(true),
 
@@ -9606,6 +9608,9 @@ export default function ProjectPage() {
                   ids: protocolIds,
                 });
               }}
+              onSteps={
+                openProtocolStepsDialog
+              }
               onSelectionChange={
                 handleTableSelectionChange
               }

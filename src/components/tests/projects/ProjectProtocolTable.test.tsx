@@ -147,6 +147,31 @@ describe(
             window.localStorage.clear();
         });
 
+        it.each([
+            ["Motion correction", "20"],
+            ["Import movies", "10"],
+        ])("opens the steps of %s from its row menu", async (name, id) => {
+            const onSteps = vi.fn();
+            renderTable({ onSteps });
+
+            fireEvent.keyDown(screen.getByRole("button", { name: `Actions for ${name}` }), { key: "Enter" });
+            fireEvent.click(await screen.findByRole("menuitem", { name: "Steps" }));
+
+            expect(onSteps).toHaveBeenCalledWith(id);
+        });
+
+        it("offers no steps for a protocol that has not run", async () => {
+            renderTable({
+                onSteps: vi.fn(),
+                rows: [{ ...rows[0], status: "saved", stepsDone: 0, numberOfSteps: 0 }],
+            });
+
+            fireEvent.keyDown(screen.getByRole("button", { name: "Actions for Import movies" }), { key: "Enter" });
+            await screen.findByRole("menuitem", { name: "Open" });
+
+            expect(screen.queryByRole("menuitem", { name: "Steps" })).not.toBeInTheDocument();
+        });
+
         it(
             "renders protocol state progress below the state",
             () => {
