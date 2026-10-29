@@ -772,20 +772,21 @@ export default function WorkflowsPage() {
                     const disabledReason = getWorkflowDisabledReason(wf);
 
                     return (
+                      // The whole row selects the workflow, and a double click loads it
                       <div
                         key={wf.id}
+                        onClick={() => onRowClick(wf)}
+                        onDoubleClick={() => onRowDoubleClick(wf)}
+                        title="Click to select, double-click to load"
                         className={classNames(
-                          "grid grid-cols-12 gap-3 px-4 py-3.5 transition",
+                          "grid cursor-pointer grid-cols-12 gap-3 px-4 py-3.5 transition",
                           "hover:bg-gray-50 dark:hover:bg-gray-800/70",
                           isSelected ? "bg-gray-100 dark:bg-gray-800" : "",
                         )}
                       >
                         <button
                           type="button"
-                          onClick={() => onRowClick(wf)}
-                          onDoubleClick={() => onRowDoubleClick(wf)}
                           className="col-span-4 min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950"
-                          title="Click to select, double-click to load"
                         >
                           <div
                             className="truncate text-[15px] font-medium leading-6 text-gray-950 dark:text-white"
@@ -832,7 +833,11 @@ export default function WorkflowsPage() {
                           </div>
                         </div>
 
-                        <div className="col-span-8 flex items-center justify-end md:col-span-2">
+                        <div
+                          className="col-span-8 flex items-center justify-end md:col-span-2"
+                          // Load opens its dialog once, not a second time through the row's double click
+                          onDoubleClick={(event) => event.stopPropagation()}
+                        >
                           <PrimaryButton
                             onClick={() => openApply(wf)}
                             disabled={!isLoadable}

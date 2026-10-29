@@ -55,4 +55,15 @@ describe("WorkflowsPage", () => {
         expect(flowProps.last?.zoomOnScroll).toBe(true);
         expect(flowProps.last?.preventScrolling).not.toBe(false);
     });
+
+    it("selects a workflow by clicking anywhere in its row, as on its description", async () => {
+        render(<WorkflowsPage />);
+
+        // The description column, outside the name button (which repeats it for small screens)
+        const descriptions = await screen.findAllByText("Movies to 2D classes");
+        const description = descriptions.find((element) => !element.closest("button"));
+        fireEvent.click(description!);
+
+        expect(await screen.findByTestId("workflow-details-name")).toHaveTextContent("SPA streaming");
+    });
 });
