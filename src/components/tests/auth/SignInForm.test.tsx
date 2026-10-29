@@ -188,4 +188,18 @@ describe("SignInForm", () => {
       await screen.findByText("Unexpected error during login"),
     ).toBeInTheDocument();
   });
+
+  it("shows the notice it was sent with and fills in the email, as after signing up", () => {
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: "/signin",
+        state: { notice: "An administrator has to activate it.", email: "new@example.com" },
+      }]}>
+        <SignInForm />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("An administrator has to activate it.");
+    expect(screen.getByDisplayValue("new@example.com")).toBeInTheDocument();
+  });
 });

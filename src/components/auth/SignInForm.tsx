@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EyeCloseIcon, EyeIcon } from "../../icons";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
@@ -8,7 +8,11 @@ import Button from "../ui/button/Button";
 import { login } from "../../api/auth";
 
 export default function SignInForm() {
-  const [email, setEmail] = useState("");
+  // A notice from the previous page, e.g. an account waiting for its activation after signing up
+  const location = useLocation();
+  const notice = (location.state as { notice?: string; email?: string } | null)?.notice ?? "";
+  const [email, setEmail] = useState(
+    (location.state as { notice?: string; email?: string } | null)?.email ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
@@ -108,6 +112,9 @@ export default function SignInForm() {
                   Sign in
                 </Button>
               </div>
+              {notice && !error && (
+                <p role="status" className="text-sm text-center text-gray-700 dark:text-gray-300">{notice}</p>
+              )}
               {error && (
                 <p className="text-sm text-red-500 text-center">{error}</p>
               )}

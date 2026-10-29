@@ -123,4 +123,22 @@ describe("UserManagementPanel", () => {
         expect(screen.queryByText("admin@example.com")).not.toBeInTheDocument();
         expect(screen.getByText("user@example.com")).toBeInTheDocument();
     });
+
+    it("tells how many accounts wait for an administrator to activate them", async () => {
+        vi.mocked(listAdminUsers).mockResolvedValue([
+            ...users,
+            { ...users[1], id: 99, email: "pending@example.com", isActive: false },
+        ]);
+
+        renderPanel();
+
+        expect(await screen.findByText(/1 account is not active/)).toBeInTheDocument();
+    });
+
+    it("says nothing about inactive accounts when every account is active", async () => {
+        renderPanel();
+
+        await screen.findByText("admin@example.com");
+        expect(screen.queryByText(/not active/)).not.toBeInTheDocument();
+    });
 });

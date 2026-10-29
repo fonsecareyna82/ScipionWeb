@@ -6,6 +6,9 @@ import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 import { register, UserCreatePayload } from "@/api/auth";
 
+const ACCOUNT_PENDING_NOTICE =
+  "Your account has been created. An administrator has to activate it before you can sign in.";
+
 export default function SignUpForm() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -39,7 +42,8 @@ export default function SignUpForm() {
 
     try {
       await register(userData);
-      navigate("/verify-email", { state: { email: userData.email } });
+      // The account waits for an administrator before it can sign in
+      navigate("/signin", { state: { notice: ACCOUNT_PENDING_NOTICE, email: userData.email } });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message === "Email already registered") {

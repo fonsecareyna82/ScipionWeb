@@ -120,7 +120,7 @@ describe("SignUpForm", () => {
         expect(submitButton).toBeEnabled();
     });
 
-    it("submits user data and navigates to verify-email on success", async () => {
+    it("submits user data and sends the user to sign in, where the account waits for its activation", async () => {
         vi.mocked(register).mockResolvedValue(undefined as any);
 
         renderComponent();
@@ -138,8 +138,11 @@ describe("SignUpForm", () => {
             });
         });
 
-        expect(mockNavigate).toHaveBeenCalledWith("/verify-email", {
-            state: { email: "yun@example.com" },
+        expect(mockNavigate).toHaveBeenCalledWith("/signin", {
+            state: {
+                notice: "Your account has been created. An administrator has to activate it before you can sign in.",
+                email: "yun@example.com",
+            },
         });
     });
 

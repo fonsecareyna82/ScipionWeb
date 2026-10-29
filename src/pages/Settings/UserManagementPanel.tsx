@@ -99,6 +99,9 @@ export default function UserManagementPanel({
         });
     }, [users, filter]);
 
+    // New accounts wait, inactive, until an administrator activates them
+    const inactiveCount = useMemo(() => users.filter((user) => !user.isActive).length, [users]);
+
     const updateUser = useCallback(async (user: AdminUser, patch: AdminUserPatch) => {
         setUpdatingIds((prev) => new Set(prev).add(user.id));
 
@@ -155,6 +158,15 @@ export default function UserManagementPanel({
 
                 <CardContent sx={{ pt: 2 }}>
                     <Stack spacing={1.5}>
+                        {inactiveCount > 0 && (
+                            <Alert severity="info">
+                                {inactiveCount === 1
+                                    ? "1 account is not active. "
+                                    : `${inactiveCount} accounts are not active. `}
+                                New accounts cannot sign in until you turn on Active.
+                            </Alert>
+                        )}
+
                         <TextField
                             sx={fieldSx}
                             fullWidth
