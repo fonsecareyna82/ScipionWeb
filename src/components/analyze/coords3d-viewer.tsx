@@ -923,6 +923,8 @@ export default function Coords3dViewer({
     const cacheKey = String(selectedTomoId);
     const cached = coordsByTomoRef.current.get(cacheKey);
     if (cached) {
+      // The error of the tomogram shown before must not stay over this one
+      setPointsError(null);
       setPointsData({ tomoId: cached.tomoId, coords: cached.draft as any });
       setCoordsDraft(cached.draft);
       setCoordsDirty(cached.dirty);

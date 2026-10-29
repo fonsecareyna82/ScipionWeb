@@ -583,6 +583,27 @@ describe("Coords3dViewer", () => {
         });
     });
 
+    it("clears the error of a tomogram when going back to one already loaded", async () => {
+        serviceMocks.fetchCoords3dForTomogram.mockImplementation(
+            async (_projectId: number, _protocolId: number, _outputName: string, tomoId: string) => {
+                if (String(tomoId) === "t2") throw new Error("Coordinates of Tomo B failed");
+                return makeCoordsForTomogram(String(tomoId));
+            },
+        );
+
+        renderViewer();
+        expect(await screen.findByText("Total 3")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText("Tomo B"));
+        expect(await screen.findByText("Coordinates of Tomo B failed")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText("Tomo A"));
+        await waitFor(() => {
+            expect(screen.queryByText("Coordinates of Tomo B failed")).not.toBeInTheDocument();
+        });
+        expect(screen.getByText("Total 3")).toBeInTheDocument();
+    });
+
     it("auto-selects the first tomogram and loads its coordinates and Z slice", async () => {
         renderViewer();
 
