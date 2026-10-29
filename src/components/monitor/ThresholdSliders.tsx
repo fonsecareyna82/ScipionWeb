@@ -39,7 +39,7 @@ export default function ThresholdSliders({ names, thresholds, bounds, onChange, 
   return (
     <div className="flex flex-col gap-2 px-1 py-2" aria-label="Plot thresholds">
       {defocusRange ? (
-        <div className="flex flex-col gap-1 text-xs text-app-muted" role="group" aria-label="Defocus range">
+        <div className="flex flex-col gap-1 text-[13px] text-app-muted" role="group" aria-label="Defocus range">
           <div className="flex items-center justify-between gap-2">
             <label className="flex items-center gap-1.5">
               <input type="checkbox" aria-label="Enable defocus range" checked={rangeEnabled} disabled={disabled}
@@ -80,7 +80,7 @@ export default function ThresholdSliders({ names, thresholds, bounds, onChange, 
         const max = domainMax(name, DEFAULT_MAX[name] ?? 100, [name]);
         const label = THRESHOLD_LABELS[name];
         return (
-          <div key={name} className="flex flex-wrap items-center gap-2 text-xs text-app-muted">
+          <div key={name} className="flex flex-wrap items-center gap-2 text-[13px] text-app-muted">
             <div className="flex items-center gap-1.5">
               <input type="checkbox" checked={value != null} disabled={disabled}
                      aria-label={`Enable ${label}`}

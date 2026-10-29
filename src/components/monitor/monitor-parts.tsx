@@ -54,7 +54,7 @@ export function plotFrame(height: number, showLegend: boolean, titled = true) {
 /** The title of a plot card, with its help: above the plot, so Plotly's buttons never cover it. */
 export function PlotHeader({ title, help }: { title: string; help: string }) {
   return (
-    <div className="flex items-center gap-1.5 px-1 pb-0.5 text-[13px] text-app-text">
+    <div className="flex items-center gap-1.5 px-1 pb-0.5 text-[15px] text-app-text">
       <span className="truncate">{title}</span>
       <HelpHint text={help} />
     </div>
@@ -70,8 +70,8 @@ export function plotBox(height: number) {
 export function EmptyPlot({ title, text, height }: { title: string; text: string; height: number }) {
   return (
     <div className="flex flex-col" style={{ height }} data-testid="empty-plot">
-      <span className="px-2 pt-1 text-[13px] text-app-text">{title}</span>
-      <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-app-muted">{text}</div>
+      <span className="px-2 pt-1 text-[15px] text-app-text">{title}</span>
+      <div className="flex flex-1 items-center justify-center px-6 text-center text-[15px] text-app-muted">{text}</div>
     </div>
   );
 }
@@ -119,44 +119,44 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
       <span aria-hidden className="absolute inset-x-3 top-0 h-[3px] rounded-b-full opacity-70"
             style={{ background: "var(--stage-hue)" }} />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-app-subtle">{STAGE_LABELS[stage.stage]}</span>
+        <span className="text-[13px] font-semibold uppercase tracking-wide text-app-subtle">{STAGE_LABELS[stage.stage]}</span>
         {stage.streaming ? (
           <span className="h-2 w-2 rounded-full bg-app-success" title="Still receiving items" />
         ) : null}
       </div>
       <div className="mt-1 text-2xl font-semibold text-app-text">{stage.items.toLocaleString()}</div>
       {live && stage.perMinute !== null ? (
-        <div className="mt-1 flex items-center gap-1 text-xs text-app-muted">
+        <div className="mt-1 flex items-center gap-1 text-[13px] text-app-muted">
           <TrendIcon trend={stage.trend} />
           <span>{stage.perMinute.toFixed(1)} / min</span>
         </div>
       ) : null}
       {stage.stage === "classes2d" && stage.particles != null ? (
-        <div className="mt-1 text-xs text-app-muted">{stage.particles.toLocaleString()} particles classified</div>
+        <div className="mt-1 text-[13px] text-app-muted">{stage.particles.toLocaleString()} particles classified</div>
       ) : null}
       {stage.classifiedFrom ? (
-        <div className="mt-1 truncate text-[11px] text-app-subtle"
+        <div className="mt-1 truncate text-[13px] text-app-subtle"
              title={`Classifies the ${stage.classifiedFrom.items} particles of ${stage.classifiedFrom.label} (${stage.classifiedFrom.outputName})`}>
           from {stage.classifiedFrom.label}
         </div>
       ) : null}
       {stage.micrographs !== undefined ? (
-        <div className="mt-1 text-xs text-app-muted">
+        <div className="mt-1 text-[13px] text-app-muted">
           {stage.counting ? "Counting micrographs…" : `from ${stage.micrographs.toLocaleString()} micrographs`}
         </div>
       ) : null}
       {stage.tomogramsPicked !== undefined ? (
-        <div className="mt-1 text-xs text-app-muted">from {stage.tomogramsPicked.toLocaleString()} tomograms</div>
+        <div className="mt-1 text-[13px] text-app-muted">from {stage.tomogramsPicked.toLocaleString()} tomograms</div>
       ) : null}
       {stage.pickedFrom ? (
-        <div className="mt-1 truncate text-[11px] text-app-subtle"
+        <div className="mt-1 truncate text-[13px] text-app-subtle"
              title={`Picks the ${stage.pickedFrom.items} ${stage.tomogramsPicked !== undefined ? "tomograms" : "micrographs"} `
                + `of ${stage.pickedFrom.label} (${stage.pickedFrom.outputName})`}>
           from {stage.pickedFrom.label}
         </div>
       ) : null}
       {live && stage.behind ? (
-        <div className="mt-1 text-xs font-medium text-app-warning">
+        <div className="mt-1 text-[13px] font-medium text-app-warning">
           {stage.behind.toLocaleString()}
           {stage.micrographs !== undefined ? " micrographs" : stage.tomogramsPicked !== undefined ? " tomograms"
             : stage.stage === "classes2d" ? " particles" : ""} waiting
@@ -171,12 +171,12 @@ export function StageCard({ stage, live = true }: { stage: StreamingMonitorStage
         </div>
       ) : null}
       {stage.stalledMinutes !== undefined ? (
-        <div className="mt-1 text-xs font-semibold text-app-danger" data-testid="stage-stalled">
+        <div className="mt-1 text-[13px] font-semibold text-app-danger" data-testid="stage-stalled">
           No progress for {formatMinutes(stage.stalledMinutes)}
           {stage.status && !LIVE_STATUSES.has(stage.status) ? ` · run ${stage.status}` : ""}
         </div>
       ) : null}
-      <div className="mt-1 truncate text-[11px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>
+      <div className="mt-1 truncate text-[13px] text-app-subtle" title={`${stage.label} · ${stage.outputName}`}>
         {stage.label}
       </div>
     </div>
@@ -210,7 +210,7 @@ const FLOW_TONES = {
 function FlowLine({ tone, children }: { tone: keyof typeof FLOW_TONES; children: ReactNode }) {
   const { color, Icon } = FLOW_TONES[tone];
   return (
-    <div className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm text-app-text" data-tone={tone}
+    <div className="flex items-start gap-2 rounded-lg border px-3 py-2 text-[15px] text-app-text" data-tone={tone}
          style={{ borderColor: `color-mix(in srgb, ${color} 40%, var(--app-border))`,
                   background: `color-mix(in srgb, ${color} 8%, var(--app-surface))` }}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color }} />
@@ -283,9 +283,9 @@ export function AcquisitionSelect({ acquisitions, value, onChange }: {
   if (acquisitions.length < 2) return null;
   return (
     <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-center text-[11px] font-medium text-app-muted">Acquisition</span>
+      <span className="text-center text-[13px] font-medium text-app-muted">Acquisition</span>
       <select aria-label="Acquisition to follow" title="Each import of the project and what was made from it"
-              className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+              className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[15px] text-app-text"
               value={value ?? ""} onChange={(event) => onChange(Number(event.target.value))}>
         {acquisitions.map((acquisition) => (
           <option key={acquisition.setId} value={acquisition.setId}>

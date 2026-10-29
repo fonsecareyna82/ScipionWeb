@@ -70,7 +70,7 @@ function Thumbnail({ projectId, protocolId, outputName, pointId, kind, onOpen }:
   }
   if (url) return <img src={url} alt={label} className="h-14 w-14 rounded object-cover" />;
   return (
-    <div className="flex h-14 w-14 items-center justify-center rounded bg-app-surface-3 text-[10px] text-app-subtle"
+    <div className="flex h-14 w-14 items-center justify-center rounded bg-app-surface-3 text-[12px] text-app-subtle"
          aria-label={failed ? `${label} not available` : `${label} loading`}>
       {failed ? "—" : "…"}
     </div>
@@ -94,9 +94,9 @@ export default function LatestMicrographsTable({ projectId, protocolId, outputNa
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-xs" aria-label="Latest micrographs">
+      <table className="w-full min-w-[720px] text-[13px]" aria-label="Latest micrographs">
         <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-app-subtle">
+          <tr className="text-left text-[13px] uppercase tracking-wide text-app-subtle">
             <th className="px-2 py-1">Micrograph</th>
             <th className="px-2 py-1">PSD</th>
             <th className="px-2 py-1">Name</th>

@@ -101,7 +101,7 @@ function TomogramSlice({ projectId, setId, itemId, size }: { projectId: Id; setI
 
   if (url) return <img src={url} alt="Central slice of the tomogram" className="h-full w-full object-contain" />;
   return (
-    <div className="flex h-full w-full items-center justify-center text-[10px] text-app-subtle"
+    <div className="flex h-full w-full items-center justify-center text-[12px] text-app-subtle"
          aria-label={failed ? "Tomogram not available" : "Tomogram loading"}>
       {failed ? "—" : "…"}
     </div>
@@ -126,10 +126,10 @@ function layoutFor(title: string, yTitle: string, dark: boolean, xTitle?: string
   const tokens = APP_TOKENS[dark ? "dark" : "light"];
   return {
     ...plotFrame(PLOT_HEIGHT, showLegend),
-    title: { text: title, font: { size: 13, color: tokens.text }, x: 0.02 },
+    title: { text: title, font: { size: 15, color: tokens.text }, x: 0.02 },
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
-    font: { color: tokens.textMuted, size: 11 },
+    font: { color: tokens.textMuted, size: 13 },
     hovermode: "closest",
     showlegend: showLegend,
     xaxis: { type: xType, title: xTitle ? { text: xTitle } : undefined, gridcolor: tokens.border, zeroline: false },
@@ -229,14 +229,14 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
   return (
     <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label={`Tilt series ${row.tsId}`}>
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-sm font-semibold text-app-text">{row.tsId}</span>
-        <span className="text-xs text-app-subtle">Excluded tilts are grey.</span>
+        <span className="text-[15px] font-semibold text-app-text">{row.tsId}</span>
+        <span className="text-[13px] text-app-subtle">Excluded tilts are grey.</span>
         <button type="button" onClick={onClose} aria-label="Close the tilt series"
                 className="ml-auto rounded p-1 text-app-subtle hover:bg-app-hover hover:text-app-text">
           <X className="h-4 w-4" />
         </button>
       </div>
-      {tilts === null ? <div className="text-sm text-app-muted">Reading its tilts…</div> : (
+      {tilts === null ? <div className="text-[15px] text-app-muted">Reading its tilts…</div> : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="min-w-0 overflow-hidden rounded-xl border border-app-border p-2" data-testid="tilt-plot">
             <Plot data={[series("Defocus U", tokens.accent, (t) => t.defocusU),
@@ -263,7 +263,7 @@ function TiltSeriesDetail({ projectId, row, tomograms, tilts, dark, onClose, onO
           ) : null}
           {tomograms && row.tomogramId !== undefined ? (
             <div className="flex flex-col items-center gap-1 rounded-xl border border-app-border p-2">
-              <span className="self-start text-[13px] text-app-text">Tomogram, central slice</span>
+              <span className="self-start text-[15px] text-app-text">Tomogram, central slice</span>
               <button type="button" onClick={onOpenTomogram} aria-label={`Open the tomogram of ${row.tsId}`}
                       title="Open in the tomography viewer"
                       className="aspect-square w-full max-w-[420px] overflow-hidden rounded bg-black">
@@ -380,8 +380,8 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
     : null, [monitor, rows, thresholdChanges, visibility]);
 
   if (!monitor) {
-    return error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
-      : <div className="text-sm text-app-muted">Reading the tomography stream…</div>;
+    return error ? <div className="text-[15px] text-red-600 dark:text-red-400">{error}</div>
+      : <div className="text-[15px] text-app-muted">Reading the tomography stream…</div>;
   }
   const past = (row: TomoMonitorTiltSeries, ...names: StreamingMonitorThresholdName[]) =>
     names.some((name) => row.alerts.includes(name));
@@ -407,7 +407,7 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
 
   return (
     <div ref={rootRef} className="flex flex-col gap-4" data-testid="tomo-monitor">
-      {error ? <div className="text-sm text-red-600 dark:text-red-400">{error}</div> : null}
+      {error ? <div className="text-[15px] text-red-600 dark:text-red-400">{error}</div> : null}
       {monitor.tiltSeriesOutputs.length > 1 || monitor.acquisitions.length > 1 ? (
         <div className="flex justify-end gap-3">
           <AcquisitionSelect acquisitions={monitor.acquisitions} value={monitor.acquisitionSetId}
@@ -418,9 +418,9 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                              }} />
           {monitor.tiltSeriesOutputs.length > 1 ? (
           <label className="flex min-w-0 flex-col gap-1">
-            <span className="text-center text-[11px] font-medium text-app-muted">Tilt series</span>
+            <span className="text-center text-[13px] font-medium text-app-muted">Tilt series</span>
             <select aria-label="Tilt series to follow"
-                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[13px] text-app-text"
                     value={monitor.stages.find((stage) => stage.stage === "tiltseries")?.setId ?? ""}
                     onChange={(event) => {
                       setSelected(null);
@@ -442,12 +442,12 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
                            showAngles={visibility.angular !== false} />
       ) : null}
       {monitor.stages.length === 0 ? (
-        <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
+        <div className="rounded-xl border border-app-border bg-app-surface p-6 text-[15px] text-app-muted">
           This project has no tilt series to follow yet.
         </div>
       ) : visibility.pipeline !== false ? (
         <section aria-label="Tomography pipeline">
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle">
             Pipeline <HelpHint text={PIPELINE_HELP} />
           </div>
           <StreamFlowStatus flow={monitor.flow} />
@@ -458,14 +458,14 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
       ) : null}
 
       {timeView.active && allRows.length > 0 && rows.length === 0 && visibility.tomoSummary === false ? (
-        <div role="status" className="rounded-xl border border-app-border bg-app-surface p-4 text-sm text-app-muted">
+        <div role="status" className="rounded-xl border border-app-border bg-app-surface p-4 text-[15px] text-app-muted">
           No tilt series in the selected range.
         </div>
       ) : null}
 
       {rows.length && sessionCount > 0 ? (
         <section className={`grid grid-cols-1 gap-3 ${sessionCount > 2 ? "lg:grid-cols-3" : sessionCount === 2 ? "lg:grid-cols-2" : ""}`} aria-label="Session">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle col-span-full">
+          <div className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle col-span-full">
             Session <HelpHint text={SESSION_HELP} />
           </div>
           <SortableCards order={cardOrder} onReorder={(ids) => onCardOrderChange?.(ids)} cards={[
@@ -497,13 +497,13 @@ export default function TomoMonitorView({ projectId, pollSeconds, reloadKey, dar
 
       {rows.length && visibility.tiltSeries !== false ? (
         <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Tilt series">
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle">
             Tilt series <HelpHint text={TABLE_HELP} />
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-xs" aria-label="Tilt series of the stream">
+            <table className="w-full min-w-[900px] text-[13px]" aria-label="Tilt series of the stream">
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-app-subtle">
+                <tr className="text-left text-[13px] uppercase tracking-wide text-app-subtle">
                   <th className="px-2 py-1">Tomogram</th>
                   <th className="px-2 py-1">Tilt series</th>
                   <th className="px-2 py-1 text-right">Tilts</th>

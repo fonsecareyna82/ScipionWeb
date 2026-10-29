@@ -55,6 +55,13 @@ function pickingSource(overrides: Partial<Coords2dDataSource> = {}): Coords2dDat
   };
 }
 
+// A click on the canvas only hits a particle once the micrograph's particles and image are in: on a
+// slow machine (CI) a click before that picks a new particle instead of selecting the existing one.
+async function waitForMicrographShown(particles: number) {
+  expect(await screen.findByText(new RegExp(`^${particles} particles?`), {}, { timeout: 5000 })).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), { timeout: 5000 });
+}
+
 describe("Xmipp picking session in the coordinates viewer", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -139,6 +146,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
       outputName="picking" source={source} />);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
     expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await waitForMicrographShown(1);
     fireEvent.click(screen.getByRole("button", { name: "Particle picker" }));
     const canvas = container.querySelector("canvas")!;
     // jsdom has no layout: the micrograph is fitted into a canvas of no size,
@@ -292,6 +300,7 @@ describe("Xmipp picker tools in the coordinates viewer", () => {
     const source = pickingSource({ templates });
     const { container } = renderPicker(source);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
+    await waitForMicrographShown(1);
     const centerButton = await screen.findByRole("button", { name: "Center" });
     expect(centerButton).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(centerButton);
@@ -316,6 +325,7 @@ describe("Xmipp picker tools in the coordinates viewer", () => {
     const { container } = renderPicker(source);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
     expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await waitForMicrographShown(2);
     const canvas = container.querySelector("canvas")!;
     // A click selects a particle; Delete removes it.
     fireEvent.mouseDown(canvas, { clientX: 0, clientY: 0 });

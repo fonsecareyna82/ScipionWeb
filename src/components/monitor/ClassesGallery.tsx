@@ -47,7 +47,7 @@ function ClassAverage({ projectId, classes, classId }: { projectId: Id; classes:
 
   if (url) return <img src={url} alt={`Class ${classId}`} className="h-full w-full object-contain" />;
   return (
-    <div className="flex h-full w-full items-center justify-center text-[10px] text-app-subtle"
+    <div className="flex h-full w-full items-center justify-center text-[12px] text-app-subtle"
          aria-label={failed ? `Class ${classId} not available` : `Class ${classId} loading`}>
       {failed ? "—" : "…"}
     </div>
@@ -56,7 +56,7 @@ function ClassAverage({ projectId, classes, classId }: { projectId: Id; classes:
 
 export default function ClassesGallery({ projectId, classes, onOpen }: Props) {
   if (!classes.classes.length) {
-    return <div className="text-sm text-app-muted">No class has been made yet.</div>;
+    return <div className="text-[15px] text-app-muted">No class has been made yet.</div>;
   }
   const total = classes.particles || 1;
   return (
@@ -64,12 +64,12 @@ export default function ClassesGallery({ projectId, classes, onOpen }: Props) {
       {classes.classes.map((item) => (
         <li key={item.id}>
           <button type="button" onClick={() => onOpen(item.id)} data-testid="class-average"
-                  className={`flex w-full flex-col items-center gap-1 rounded-lg border border-app-border bg-app-surface-2 p-1.5 text-xs hover:bg-app-hover ${item.enabled ? "" : "opacity-50"}`}>
+                  className={`flex w-full flex-col items-center gap-1 rounded-lg border border-app-border bg-app-surface-2 p-1.5 text-[13px] hover:bg-app-hover ${item.enabled ? "" : "opacity-50"}`}>
             <div className="aspect-square w-full overflow-hidden rounded bg-black">
               <ClassAverage projectId={projectId} classes={classes} classId={item.id} />
             </div>
             <span className="text-app-text">{item.particles.toLocaleString()}</span>
-            <span className="text-[10px] text-app-subtle">{((100 * item.particles) / total).toFixed(1)} %</span>
+            <span className="text-[12px] text-app-subtle">{((100 * item.particles) / total).toFixed(1)} %</span>
           </button>
         </li>
       ))}

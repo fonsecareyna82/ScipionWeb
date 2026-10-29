@@ -249,7 +249,7 @@ function MonitorPlot({
     uirevision: spec.title,
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
-    font: { color: tokens.textMuted, size: 11 },
+    font: { color: tokens.textMuted, size: 13 },
     hovermode: "closest",
     showlegend: spec.series.length > 1,
     xaxis: { ...(byOrder ? { title: { text: spec.item === "movie" ? "Movie" : "Micrograph" } } : { type: "date" }),
@@ -266,7 +266,7 @@ function MonitorPlot({
       <ThresholdSliders names={spec.limits} thresholds={shownThresholds} bounds={thresholds}
                         onChange={onThresholdChange} disabled={savingThresholds} />
       {data.every((serie) => serie.y.length === 0) ? (
-        <div className="flex items-center justify-center px-6 text-center text-sm text-app-muted" data-testid="empty-plot"
+        <div className="flex items-center justify-center px-6 text-center text-[15px] text-app-muted" data-testid="empty-plot"
              style={plotBox(PLOT_HEIGHT)}>
           {timeView.active ? "No measurements in the selected range." : spec.empty}
         </div>
@@ -365,7 +365,7 @@ function MonitorHistogram({ spec, points, dark, thresholds, thresholdChanges, on
     bargap: 0.05,
     paper_bgcolor: tokens.surface,
     plot_bgcolor: tokens.surface,
-    font: { color: tokens.textMuted, size: 11 },
+    font: { color: tokens.textMuted, size: 13 },
     showlegend: recent.length > 0,
     xaxis: { title: { text: spec.unit }, gridcolor: tokens.border, zeroline: false },
     yaxis: { title: { text: "Micrographs" }, gridcolor: tokens.border, zeroline: false },
@@ -691,7 +691,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
   const live = activeMonitor?.streaming ?? true;
 
   if (!svc.fetchStreamingMonitor) {
-    return <div className="p-6 text-sm text-app-muted">The streaming monitor is not available here.</div>;
+    return <div className="p-6 text-[15px] text-app-muted">The streaming monitor is not available here.</div>;
   }
 
   return (
@@ -716,14 +716,14 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
             <Activity className="h-5 w-5 text-app-accent" />
             <h1 className="text-lg font-semibold text-app-text">{live ? "Streaming monitor" : "Quality overview"}</h1>
             {activeMonitor ? (
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${live
+              <span className={`rounded-full px-2 py-0.5 text-[13px] font-medium ${live
                 ? "bg-app-accent-soft text-app-accent" : "bg-app-surface-3 text-app-muted"}`}>
                 {live ? "Streaming" : "Not streaming"}
               </span>
             ) : null}
             <div className="ml-auto flex flex-col items-end gap-1.5">
               {updatedAt ? (
-                <span className="text-xs text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
+                <span className="text-[13px] text-app-subtle">Updated {updatedAt.toLocaleTimeString()}</span>
               ) : null}
               <div className="flex items-center gap-2">
               <button type="button" className="pp-flowControlBtn" title="Refresh" aria-label="Refresh"
@@ -738,12 +738,12 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex w-full flex-wrap items-center gap-3">
               <MonitorTimeRangeSelector selection={timeRange.selection(mode)} onChange={(preset) => timeRange.setPreset(mode, preset)} />
-              <label className="flex items-center gap-1.5 text-xs text-app-muted">
+              <label className="flex items-center gap-1.5 text-[13px] text-app-muted">
                 <span>Refresh every</span>
                 <select
                   aria-label="Refresh every"
                   title="How often the monitor reads (in this browser)"
-                  className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-text"
+                  className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[13px] text-app-text"
                   value={pollSeconds}
                   onChange={(event) => {
                     const seconds = Number(event.target.value);
@@ -763,7 +763,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
                                     onChange={(section, visible) => setVisible(mode, section, visible)}
                                     onRestore={() => { restore(mode); cardOrder.restore(mode); }} />
               <button type="button" title="Alert thresholds" aria-label="Thresholds"
-                      className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-sm text-app-text hover:bg-app-hover disabled:opacity-60"
+                      className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-[15px] text-app-text hover:bg-app-hover disabled:opacity-60"
                       onClick={() => setEditing(true)} disabled={!monitor}>
                 <Settings2 className="h-4 w-4" />
                 Thresholds
@@ -787,10 +787,10 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               ) : null}
               {mode === "spa" && monitor && monitor.ctfOutputs.length > 1 ? (
                 <label className="flex min-w-0 flex-col gap-1">
-                  <span className="text-center text-[11px] font-medium text-app-muted">CTF</span>
+                  <span className="text-center text-[13px] font-medium text-app-muted">CTF</span>
                   <select
                     aria-label="CTF output to follow"
-                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[15px] text-app-text"
                     value={ctfStage?.setId ?? ""}
                     onChange={(event) => setCtfSetId(Number(event.target.value))}
                   >
@@ -802,11 +802,11 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               ) : null}
               {mode === "spa" && monitor && monitor.coordinatesOutputs.length > 1 ? (
                 <label className="flex min-w-0 flex-col gap-1">
-                  <span className="text-center text-[11px] font-medium text-app-muted">Picking</span>
+                  <span className="text-center text-[13px] font-medium text-app-muted">Picking</span>
                   <select
                     aria-label="Picking to follow"
                     title="Picking to follow"
-                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[15px] text-app-text"
                     value={monitor.stages.find((stage) => stage.stage === "coordinates")?.setId ?? ""}
                     onChange={(event) => setCoordinatesSetId(Number(event.target.value))}
                   >
@@ -818,11 +818,11 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
               ) : null}
               {mode === "spa" && monitor && monitor.classesOutputs.length > 1 ? (
                 <label className="flex min-w-0 flex-col gap-1">
-                  <span className="text-center text-[11px] font-medium text-app-muted">2D classes</span>
+                  <span className="text-center text-[13px] font-medium text-app-muted">2D classes</span>
                   <select
                     aria-label="2D classes to follow"
                     title="2D classes to follow"
-                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-sm text-app-text"
+                    className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-[15px] text-app-text"
                     value={monitor.classes?.setId ?? ""}
                     onChange={(event) => {
                       // The classes asked for bring their own picking
@@ -839,7 +839,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
 
               {embedded ? null : (
-                <Link className="ml-auto text-sm text-app-accent hover:underline" to={`/project/load/${encodeURIComponent(String(projectId))}`}>
+                <Link className="ml-auto text-[15px] text-app-accent hover:underline" to={`/project/load/${encodeURIComponent(String(projectId))}`}>
                   Back to the project
                 </Link>
               )}
@@ -849,14 +849,14 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         </header>
 
         {error ? (
-          <div className="rounded-lg border border-app-border bg-app-surface p-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+          <div className="rounded-lg border border-app-border bg-app-surface p-3 text-[15px] text-red-600 dark:text-red-400">{error}</div>
         ) : null}
 
         {tabs ? (
           <div className="flex gap-1 border-b border-app-border" role="tablist" aria-label="Monitor view">
             {(["spa", "tomo"] as const).map((view) => (
               <button key={view} type="button" role="tab" aria-selected={mode === view} onClick={() => setView(view)}
-                      className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${mode === view
+                      className={`-mb-px border-b-2 px-3 py-1.5 text-[15px] ${mode === view
                         ? "border-app-accent font-medium text-app-text" : "border-transparent text-app-muted hover:text-app-text"}`}>
                 {view === "spa" ? "Single particle" : "Tomography"}
               </button>
@@ -865,7 +865,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         ) : null}
 
         {MONITOR_SECTIONS[mode].every(([section]) => preferences[mode][section] === false) ? (
-          <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
+          <div className="rounded-xl border border-app-border bg-app-surface p-6 text-[15px] text-app-muted">
             No sections selected. Use Customize view to choose what to display. Alerts remain active.
           </div>
         ) : null}
@@ -880,7 +880,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
         ) : (
           <>
           {monitor && monitor.stages.length === 0 ? (
-            <div className="rounded-xl border border-app-border bg-app-surface p-6 text-sm text-app-muted">
+            <div className="rounded-xl border border-app-border bg-app-surface p-6 text-[15px] text-app-muted">
               This project has no movies, micrographs or CTF outputs to follow yet.
             </div>
           ) : null}
@@ -891,7 +891,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
           {monitor && monitor.stages.length > 0 && preferences.spa.pipeline !== false ? (
             <section aria-label="Pipeline">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle">
                 Pipeline <HelpHint text={PIPELINE_HELP} />
               </div>
               <StreamFlowStatus flow={monitor.flow} />
@@ -904,7 +904,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
           {(seriesKind && visiblePlots.length > 0) || showDose ? (
             <section className={`grid grid-cols-1 gap-3 ${visiblePlots.length + Number(showDose) > 1 ? "lg:grid-cols-2" : ""}`} aria-label="Quality over time">
               {seriesKind === "micrographs" && visiblePlots.length > 0 ? (
-                <div className="rounded-xl border border-app-border bg-app-surface p-3 text-sm text-app-muted col-span-full">
+                <div className="rounded-xl border border-app-border bg-app-surface p-3 text-[15px] text-app-muted col-span-full">
                   No CTF estimation yet: the drift of the aligned micrographs is shown meanwhile.
                 </div>
               ) : null}
@@ -927,7 +927,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
           {seriesKind === "ctf" && ctfStage && preferences.spa.latest !== false ? (
             <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="Latest micrographs">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle">
                 Latest micrographs <HelpHint text={LATEST_HELP} />
               </div>
               <LatestMicrographsTable projectId={projectId} protocolId={ctfStage.protocolId} outputName={ctfStage.outputName}
@@ -937,7 +937,7 @@ export default function StreamingMonitorView({ projectId, embedded = false }: { 
 
           {monitor?.classes && preferences.spa.classes !== false ? (
             <section className="rounded-xl border border-app-border bg-app-surface p-3" aria-label="2D classes">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-app-subtle">
+              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-app-subtle">
                 2D classes <HelpHint text={CLASSES_HELP} />
               </div>
               <ClassesGallery projectId={projectId} classes={monitor.classes} onOpen={openClass} />

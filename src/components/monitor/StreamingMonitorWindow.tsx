@@ -117,8 +117,8 @@ export default function StreamingMonitorWindow({ open, projectId, projectLabel, 
           minHeight={520}
           title={
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-semibold text-gray-100">Streaming monitor</span>
-              {subtitle ? <span className="truncate text-xs text-gray-300">{subtitle}</span> : null}
+              <span className="truncate text-[15px] font-semibold text-gray-100">Streaming monitor</span>
+              {subtitle ? <span className="truncate text-[13px] text-gray-300">{subtitle}</span> : null}
             </div>
           }
           headerActions={

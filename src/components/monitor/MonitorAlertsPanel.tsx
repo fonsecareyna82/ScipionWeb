@@ -80,7 +80,7 @@ export function AlertsButton({ unseen, total, open, onToggle }: {
       <Icon className="h-4 w-4" />
       {unseen > 0 ? (
         <span data-testid="monitor-alerts-badge"
-              className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+              className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[13px] font-bold text-white">
           {unseen > 9 ? "9+" : unseen}
         </span>
       ) : null}
@@ -105,7 +105,7 @@ export function AlertsPanel({ alerts, thresholds, onClose, onOpen }: {
            className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-[92%] flex-col border-l border-app-border bg-app-surface shadow-2xl">
       <div className="flex items-center gap-2 border-b border-app-border px-4 py-3">
         <Bell className="h-4 w-4 text-app-subtle" />
-        <span className="text-sm font-semibold text-app-text">Alerts</span>
+        <span className="text-[15px] font-semibold text-app-text">Alerts</span>
         <HelpHint text={ALERTS_HELP} />
         <button type="button" onClick={onClose} aria-label="Close the alerts"
                 className="ml-auto rounded p-1 text-app-muted hover:bg-app-hover hover:text-app-text">
@@ -114,23 +114,23 @@ export function AlertsPanel({ alerts, thresholds, onClose, onOpen }: {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
         {alerts.length === 0 ? (
-          <div className="py-6 text-center text-sm text-app-muted">Nothing goes past the thresholds.</div>
+          <div className="py-6 text-center text-[15px] text-app-muted">Nothing goes past the thresholds.</div>
         ) : (
           <ul className="divide-y divide-app-border">
             {alerts.map((alert) => (
-              <li key={alertKey(alert)} className="flex flex-col gap-0.5 py-2 text-sm">
+              <li key={alertKey(alert)} className="flex flex-col gap-0.5 py-2 text-[15px]">
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 shrink-0 rounded-full ${alert.ongoing ? "bg-app-danger" : "bg-app-subtle"}`} />
                   <span className="font-medium text-app-text">
                     {THRESHOLD_LABELS[alert.kind]} {formatLimit(alert.kind, thresholds?.[alert.kind])}
                   </span>
                 </div>
-                <div className="pl-4 text-xs text-app-muted">
+                <div className="pl-4 text-[13px] text-app-muted">
                   {alert.count === 1 ? `1 ${alert.item}` : `${alert.count} ${alert.item}${alert.item === "tilt series" ? "" : "s"} in a row`}
                   {" · "}{timeOf(alert, "first")}{alert.count > 1 ? ` – ${timeOf(alert, "last")}` : ""}
                   {alert.ongoing ? " · still going on" : ""}
                 </div>
-                <div className="truncate pl-4 text-xs">
+                <div className="truncate pl-4 text-[13px]">
                   {alert.item === "movie" ? (
                     <span className="text-app-muted">{alert.first.micrographName}</span>
                   ) : (

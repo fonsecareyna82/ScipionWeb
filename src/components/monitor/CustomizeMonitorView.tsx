@@ -15,7 +15,7 @@ export default function CustomizeMonitorView({ mode, visibility, onChange, onRes
     <>
       <button type="button" aria-expanded={Boolean(anchor)} aria-controls={anchor ? id : undefined}
               aria-haspopup="dialog" onClick={(event) => setAnchor(event.currentTarget)}
-              className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-sm text-app-text hover:bg-app-hover">
+              className="flex items-center gap-1.5 rounded-lg border border-app-border bg-app-accent-soft px-2.5 py-1 text-[15px] text-app-text hover:bg-app-hover">
         <SlidersHorizontal className="h-4 w-4" />Customize view
       </button>
       <Popover open={Boolean(anchor)} anchorEl={anchor} onClose={() => setAnchor(null)}
@@ -26,21 +26,21 @@ export default function CustomizeMonitorView({ mode, visibility, onChange, onRes
                  backgroundColor: "var(--app-surface)", color: "var(--app-text)",
                  border: "1px solid var(--app-border)", borderRadius: 2 } } }}>
         <div id={id} role="dialog" aria-label="Customize monitor view" className="p-3">
-          <h2 className="text-sm font-semibold">Visible sections</h2>
-          <p className="mt-1 text-xs text-app-muted">{mode === "spa" ? "Single particle" : "Tomography"}</p>
+          <h2 className="text-[15px] font-semibold">Visible sections</h2>
+          <p className="mt-1 text-[13px] text-app-muted">{mode === "spa" ? "Single particle" : "Tomography"}</p>
           <div className="my-3 flex flex-col gap-0.5">
             {MONITOR_SECTIONS[mode].map(([section, label]) => (
-              <label key={section} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-app-hover">
+              <label key={section} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[15px] hover:bg-app-hover">
                 <input type="checkbox" checked={visibility[section] !== false}
                        onChange={(event) => onChange(section, event.target.checked)} className="accent-app-accent" />
                 {label}
               </label>
             ))}
           </div>
-          <p className="border-t border-app-border pt-2 text-xs text-app-muted">
+          <p className="border-t border-app-border pt-2 text-[13px] text-app-muted">
             Sections appear when data is available. Hidden sections still generate alerts.
           </p>
-          <button type="button" onClick={onRestore} className="mt-2 rounded px-2 py-1.5 text-xs text-app-accent hover:bg-app-hover">
+          <button type="button" onClick={onRestore} className="mt-2 rounded px-2 py-1.5 text-[13px] text-app-accent hover:bg-app-hover">
             Restore default view
           </button>
         </div>
