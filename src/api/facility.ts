@@ -168,9 +168,9 @@ export const addFacilityImage = (kind: ImageOwnerKind, ownerId: number, file: Bl
     "Failed to upload the image",
     { method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
 
-/** Remove an image; answers the sample's new tree. */
-export const deleteFacilityImage = (imageId: number) =>
-  request<Sample>(`/facility/images/${imageId}`, "Failed to remove the image", { method: "DELETE" });
+/** Remove an image; answers the new tree of the sample (or the session) it was in. */
+export const deleteFacilityImage = <T = Sample>(imageId: number) =>
+  request<T>(`/facility/images/${imageId}`, "Failed to remove the image", { method: "DELETE" });
 
 // An image never changes: its object URL is kept for the session
 const imageUrls = new Map<number, Promise<string>>();
@@ -186,4 +186,113 @@ export function fetchFacilityImageUrl(imageId: number): Promise<string> {
     imageUrls.set(imageId, url);
   }
   return url;
+}
+
+// Acquisition sessions: a stay on a microscope, and its datasets (the ATLAS and DATA_NN folders the microscope writes)
+export type SessionStatus = "planned" | "acquiring" | "finished" | "archived";
+export type SessionTechnique = "spa" | "tomo";
+// What the list shows: the sessions to come or under way, all of them, or those in one status
+export type SessionFilter = "active" | "all" | SessionStatus;
+
+export type SessionGrid = {
+  gridNumber: number | null;
+  position: number;
+  gridType: string;
+  specimen: string;
+  status: GridStatus;
+  boxLabel: string;
+  sampleId: number;
+  sampleCode: string;
+};
+
+export type SessionDataset = {
+  id: number;
+  kind: "atlas" | "data";
+  // 0 for the ATLAS, 1 to 12 for DATA_NN
+  number: number;
+  gridId: number | null;
+  detectorId: number | null;
+  detectorName?: string | null;
+  notes: string;
+  grid?: SessionGrid | null;
+  // The folder the microscope writes it to, e.g. <session>_DATA_01
+  folder: string;
+  images?: FacilityImage[];
+};
+
+export type FacilitySession = {
+  id: number;
+  name: string;
+  microscopeId: number;
+  microscopeName: string;
+  technique: SessionTechnique;
+  status: SessionStatus;
+  groupId: number | null;
+  groupName?: string | null;
+  userId: number | null;
+  userEmail?: string | null;
+  userName?: string | null;
+  bookingRef: string;
+  scheduledOn: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  notes: string;
+  datasets: SessionDataset[];
+  images?: FacilityImage[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SessionDatasetPayload = {
+  id?: number | null;
+  kind?: "atlas" | "data";
+  number?: number;
+  gridId?: number | null;
+  detectorId?: number | null;
+  notes?: string;
+};
+
+export type SessionPayload = Pick<FacilitySession, "microscopeId" | "technique" | "status" | "groupId" | "userId"
+  | "bookingRef" | "scheduledOn" | "notes"> & {
+  // Empty: the facility's name, YYYY_MM_DD_<Name-Surname>_<id>
+  name: string;
+  datasets: SessionDatasetPayload[];
+};
+
+export const listSessions = (filter: SessionFilter = "active", text = "") =>
+  request<FacilitySession[]>(
+    `/facility/sessions?status=${filter}${text ? `&q=${encodeURIComponent(text)}` : ""}`, "Failed to load the sessions");
+export const createSession = (payload: SessionPayload) =>
+  request<FacilitySession>("/facility/sessions", "Failed to create the session",
+    { method: "POST", body: JSON.stringify(payload) });
+export const updateSession = (sessionId: number, payload: SessionPayload) =>
+  request<FacilitySession>(`/facility/sessions/${sessionId}`, "Failed to save the session",
+    { method: "PUT", body: JSON.stringify(payload) });
+export const deleteSession = (sessionId: number) =>
+  request<null>(`/facility/sessions/${sessionId}`, "Failed to delete the session", { method: "DELETE" });
+
+/** Keep an image with a session or one of its datasets; answers it and the session's new tree. */
+export const addSessionImage = (kind: "session" | "dataset", ownerId: number, file: Blob, caption = "") =>
+  request<{ image: FacilityImage; session: FacilitySession }>(
+    `/facility/${kind === "session" ? "sessions" : "datasets"}/${ownerId}/images${caption ? `?caption=${encodeURIComponent(caption)}` : ""}`,
+    "Failed to upload the image",
+    { method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+
+/** A session as a save sends it back, e.g. to change only its status. */
+export function sessionPayloadOf(session: FacilitySession): SessionPayload {
+  return {
+    name: session.name,
+    microscopeId: session.microscopeId,
+    technique: session.technique,
+    status: session.status,
+    groupId: session.groupId,
+    userId: session.userId,
+    bookingRef: session.bookingRef,
+    scheduledOn: session.scheduledOn ? session.scheduledOn.slice(0, 10) : null,
+    notes: session.notes,
+    datasets: session.datasets.map((dataset) => ({
+      id: dataset.id, kind: dataset.kind, number: dataset.number, gridId: dataset.gridId,
+      detectorId: dataset.detectorId, notes: dataset.notes,
+    })),
+  };
 }

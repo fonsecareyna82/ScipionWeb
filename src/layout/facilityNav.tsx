@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
-import { FlaskConical, Microscope } from "lucide-react";
+import { CalendarClock, FlaskConical, Microscope } from "lucide-react";
 
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
 // The tabs of the Facility page, in their order; each one shows to whom holds one of its permissions.
-// Sessions, calendar, samples and grids, the monitor and reports come here as they are built.
+// The calendar, the monitor and reports come here as they are built.
 const FACILITY_STAFF = ["facility.monitor", "facility.thresholds", "facility.sessions", "facility.manage"] as const;
 
 export const FACILITY_TABS = [
+  { key: "sessions", label: "Sessions", icon: CalendarClock, permissions: FACILITY_STAFF },
   { key: "samples", label: "Samples & grids", icon: FlaskConical, permissions: FACILITY_STAFF },
   { key: "microscopes", label: "Microscopes", icon: Microscope, permissions: ["facility.manage"] },
 ] as const;

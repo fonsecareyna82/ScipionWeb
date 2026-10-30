@@ -8,6 +8,7 @@ import { useFacilityTabs, type FacilityTabKey } from "@/layout/facilityNav";
 import { useFacilityStyles } from "./facilityStyles";
 import MicroscopesPanel from "./MicroscopesPanel";
 import SamplesPanel from "./SamplesPanel";
+import SessionsPanel from "./SessionsPanel";
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
 const wrapperMaxWidth = 1120;
@@ -28,9 +29,12 @@ export default function FacilityPage() {
   }, [loaded, navigate, requestedTab, tab]);
 
   const renderTab = (key: FacilityTabKey) => {
+    const keepsSessions = facilityCan("facility.sessions") || facilityCan("facility.manage");
     switch (key) {
+      case "sessions":
+        return <SessionsPanel {...styles} canEdit={keepsSessions} />;
       case "samples":
-        return <SamplesPanel {...styles} canEdit={facilityCan("facility.sessions") || facilityCan("facility.manage")} />;
+        return <SamplesPanel {...styles} canEdit={keepsSessions} />;
       case "microscopes":
         return <MicroscopesPanel {...styles} />;
     }
