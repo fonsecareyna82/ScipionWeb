@@ -1520,7 +1520,8 @@ export type ProtocolRunEvent = {
   protocolId: string;
   protocolClassName: string;
   label: string;
-  /** "alert": micrographs of a streaming project started going past a monitor threshold. */
+  /** "alert": micrographs of a streaming project started going past a monitor threshold.
+   *  "account": a new account waits for activation (its projectId is 0). */
   status: "finished" | "failed" | "aborted" | "interactive" | "alert" | string;
   /** When the run ended; for an alert, when its first micrograph went past the threshold. */
   endedAt: string;
@@ -2055,6 +2056,10 @@ export type ResolveBrowserPathsResult = {
   protocolRoot?: string;
   /** The project folder, absolute (when browsing for a project). */
   projectRootAbs?: string | null;
+  /** The only folders the user may browse, when limited (the project and the data folders). */
+  allowedRoots?: string[] | null;
+  /** Among them, the data folders (offered as shortcuts). */
+  dataRoots?: string[] | null;
 };
 
 /**

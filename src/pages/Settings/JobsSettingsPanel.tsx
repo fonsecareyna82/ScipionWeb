@@ -37,7 +37,10 @@ import {
     Play,
     RefreshCw,
     Square,
+    TriangleAlert,
 } from "lucide-react";
+
+import SettingsDialog from "./SettingsDialog";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import {
@@ -331,6 +334,14 @@ export default function JobsSettingsPanel() {
     const [workerAction, setWorkerAction] =
         useState<string | null>(null);
 
+    // A stop or restart that would interrupt active tasks waits for the user to confirm it
+    const [pendingWorkerAction, setPendingWorkerAction] =
+        useState<{
+            workerKind: JobWorkerKind;
+            action: JobWorkerAction;
+            activeTasks: number;
+        } | null>(null);
+
     const requestInFlightRef =
         useRef(false);
 
@@ -434,33 +445,11 @@ export default function JobsSettingsPanel() {
     );
 
 
-    const handleWorkerAction = useCallback(
+    const runWorkerAction = useCallback(
         async (
             workerKind: JobWorkerKind,
             action: JobWorkerAction,
-            activeTasks: number,
         ) => {
-            if (
-                activeTasks > 0
-                && (
-                    action === "stop"
-                    || action === "restart"
-                )
-            ) {
-                const confirmed =
-                    window.confirm(
-                        `The ${workerKind} worker has `
-                        + `${activeTasks} active task(s). `
-                        + `${action === "restart"
-                            ? "Restarting"
-                            : "Stopping"} it may interrupt them. Continue?`
-                    );
-
-                if (!confirmed) {
-                    return;
-                }
-            }
-
             const actionKey =
                 `${workerKind}:${action}`;
 
@@ -505,6 +494,36 @@ export default function JobsSettingsPanel() {
             }
         },
         [loadJobs],
+    );
+
+
+    const handleWorkerAction = useCallback(
+        async (
+            workerKind: JobWorkerKind,
+            action: JobWorkerAction,
+            activeTasks: number,
+        ) => {
+            if (
+                activeTasks > 0
+                && (
+                    action === "stop"
+                    || action === "restart"
+                )
+            ) {
+                setPendingWorkerAction({
+                    workerKind,
+                    action,
+                    activeTasks,
+                });
+                return;
+            }
+
+            await runWorkerAction(
+                workerKind,
+                action,
+            );
+        },
+        [runWorkerAction],
     );
 
 
@@ -1558,6 +1577,33 @@ export default function JobsSettingsPanel() {
                     </CardContent>
                 </Card>
             ) : null}
+
+            {pendingWorkerAction !== null && (
+                <SettingsDialog
+                    title={`${pendingWorkerAction.action === "restart"
+                        ? "Restart"
+                        : "Stop"} the ${pendingWorkerAction.workerKind} worker?`}
+                    description={`It has ${pendingWorkerAction.activeTasks} active task(s). `
+                        + `${pendingWorkerAction.action === "restart"
+                            ? "Restarting"
+                            : "Stopping"} it may interrupt them.`}
+                    icon={<TriangleAlert size={20} color="#fca5a5" />}
+                    confirmLabel={pendingWorkerAction.action === "restart"
+                        ? "Restart"
+                        : "Stop"}
+                    destructive
+                    maxWidth="xs"
+                    onConfirm={() => {
+                        const { workerKind, action } = pendingWorkerAction;
+                        setPendingWorkerAction(null);
+                        void runWorkerAction(
+                            workerKind,
+                            action,
+                        );
+                    }}
+                    onClose={() => setPendingWorkerAction(null)}
+                />
+            )}
         </Stack>
     );
 }

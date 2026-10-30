@@ -73,6 +73,29 @@ describe("RemoteFileDialog", () => {
     expect(listRemoteDirectory).toHaveBeenCalledWith("");
   });
 
+  it("offers the data folders a limited user may reach as shortcuts", async () => {
+    resolveBrowserPaths.mockResolvedValue({
+      rootAbs: "/", startPath: "home/ana/projects/demo", projectRootAbs: "/home/ana/projects/demo",
+      allowedRoots: ["/home/ana/projects/demo", "/data/lab-ana"], dataRoots: ["/data/lab-ana"],
+    });
+    listRemoteDirectory.mockResolvedValue([]);
+
+    renderDialog();
+
+    fireEvent.click(await screen.findByRole("button", { name: "lab-ana" }));
+    await waitFor(() => expect(listRemoteDirectory).toHaveBeenLastCalledWith("data/lab-ana"));
+  });
+
+  it("offers no data folder to a user who may browse the whole server", async () => {
+    resolveBrowserPaths.mockResolvedValue({ rootAbs: "/", startPath: "", allowedRoots: null, dataRoots: null });
+    listRemoteDirectory.mockResolvedValue([]);
+
+    renderDialog();
+
+    expect(await screen.findByRole("button", { name: "Root" })).toBeInTheDocument();
+    expect(screen.queryByTitle(/^Go to \//)).not.toBeInTheDocument();
+  });
+
   it("filters visible entries by search text", async () => {
     listRemoteDirectory.mockResolvedValue([
       { name: "folderA", path: "folderA", isDir: true },

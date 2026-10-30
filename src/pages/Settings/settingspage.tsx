@@ -1,5 +1,6 @@
 // src/pages/settingspage.tsx
 import { useTheme as useAppTheme } from "@/context/ThemeContext";
+import { useSearchParams } from "react-router-dom";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/Grid";
@@ -521,6 +522,17 @@ export default function SettingsPage() {
   }, []);
 
   const [tab, setTab] = useState<TabKey>("user");
+  // /settings?tab=users (e.g. from the bell, for a new account) opens that tab once permissions are known
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  useEffect(() => {
+    const allowed: Partial<Record<TabKey, boolean>> = {
+      user: true, tags: true, instance: can("settings.manage"), host: can("settings.manage"),
+      environment: can("settings.manage"), jobs: can("jobs.manage"), users: can("users.manage"),
+      roles: can("roles.manage"), groups: can("groups.manage"),
+    };
+    if (requestedTab && allowed[requestedTab as TabKey]) setTab(requestedTab as TabKey);
+  }, [requestedTab, can]);
 
   const [userLoading, setUserLoading] = useState(true);
   const [userError, setUserError] = useState<string | null>(null);

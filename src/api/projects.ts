@@ -2069,6 +2069,8 @@ export type ResolveBrowserPathsResult = {
   startPath?: string; // relative-to-root preferred ("" means root); absolute allowed
   protocolRoot?: string; // relative preferred; absolute allowed
   projectRootAbs?: string | null; // the project folder, absolute
+  allowedRoots?: string[] | null; // the only folders reachable, when limited
+  dataRoots?: string[] | null; // among them, the data folders
 };
 
 function scopeQuery(opts?: BrowseOptions): string {
@@ -2096,6 +2098,8 @@ export async function resolveBrowserPaths(
     startPath: j.startPath ?? "",
     protocolRoot: j.protocolRoot,
     projectRootAbs: j.projectRootAbs ?? null,
+    allowedRoots: j.allowedRoots ?? null,
+    dataRoots: j.dataRoots ?? null,
   };
 }
 

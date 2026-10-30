@@ -85,6 +85,8 @@ type ResolveBrowserPathsResult = {
   rootAbs?: string; // absolute browser root
   startPath?: string; // relative to the root ("" means root)
   projectRootAbs?: string | null; // the project folder, when browsing for a project
+  allowedRoots?: string[] | null; // the only folders reachable, when limited
+  dataRoots?: string[] | null; // among them, the data folders
 };
 
 /** Where a picked entry is, for callers that need more than the root-relative path. */
@@ -214,6 +216,8 @@ export default function RemoteFileDialog({
   const [error, setError] = useState<string | null>(null);
   const [rootAbs, setRootAbs] = useState<string>("");
   const [projectRootAbs, setProjectRootAbs] = useState<string | null>(null);
+  // The data folders a user without files.browseServer may reach, offered as shortcuts
+  const [dataRootsAbs, setDataRootsAbs] = useState<string[]>([]);
   const [protocolRootRel, setProtocolRootRel] = useState<string>("");
 
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
@@ -408,6 +412,7 @@ export default function RemoteFileDialog({
       setProtocolRootRel("");
       setRootAbs("");
       setProjectRootAbs(null);
+      setDataRootsAbs([]);
       setSelected(null);
       setFilterText("");
       clearPreviewState();
@@ -418,6 +423,7 @@ export default function RemoteFileDialog({
       let startRel = normalizeRelPath(initialPath || "");
       let root = "";
       let projectRoot: string | null = null;
+      let dataRoots: string[] = [];
       if (resolveBrowserPaths) {
         try {
           const resolved = await resolveBrowserPaths();
@@ -425,6 +431,7 @@ export default function RemoteFileDialog({
           startRel = normalizeRelPath(normalizePosixPath(resolved?.startPath || ""));
           root = normalizePosixPath(resolved?.rootAbs || "");
           projectRoot = resolved?.projectRootAbs ? normalizePosixPath(resolved.projectRootAbs) : null;
+          dataRoots = (resolved?.dataRoots ?? []).map((path) => normalizePosixPath(path));
         } catch (e: unknown) {
           if (!mounted) return;
           setError(e instanceof Error ? e.message : "The server did not say where to browse");
@@ -433,6 +440,7 @@ export default function RemoteFileDialog({
       }
       setRootAbs(root);
       setProjectRootAbs(projectRoot);
+      setDataRootsAbs(dataRoots);
       setProtocolRootRel(startRel);
       await refresh(startRel);
     };
@@ -825,6 +833,14 @@ export default function RemoteFileDialog({
               Project folder
             </button>
           )}
+
+          {rootAbs && dataRootsAbs.map((dataRoot) => (
+            <button key={dataRoot} type="button" onClick={() => void refresh(absoluteToRelPath(dataRoot, rootAbs))}
+              className={styles.ppChipBtn} title={`Go to ${dataRoot}`}>
+              <FolderTree className={styles.iconSm} />
+              {dataRoot.split("/").filter(Boolean).pop() || dataRoot}
+            </button>
+          ))}
 
           {protocolId !== null && protocolId !== undefined && !!protocolRootRel && (
             <button type="button" onClick={() => void refresh(protocolRootRel)} className={styles.ppChipBtn}

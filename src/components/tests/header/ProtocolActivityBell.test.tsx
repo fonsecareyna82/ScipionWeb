@@ -115,6 +115,23 @@ describe("ProtocolActivityBell", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("/project/load/7?monitor=1");
   });
 
+  it("tells administrators of a new account and opens the users of the settings", async () => {
+    const account = {
+      projectId: 0, projectName: "Users", protocolId: "user-12", protocolClassName: "",
+      label: "Ana Pi (ana@example.com) signed up and waits for activation", status: "account",
+      endedAt: "2026-10-19T12:02:00+00:00",
+    };
+    service.fetchProtocolActivity.mockResolvedValue({ now: "T1", live: 0, events: [account] });
+    localStorage.setItem("scipionweb.activity.since", JSON.stringify("T0"));
+    renderBell();
+
+    await waitFor(() => expect(toastMocks.custom).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: /Protocol activity, 1 new/ }));
+    fireEvent.click(screen.getByText("Ana Pi (ana@example.com) signed up and waits for activation"));
+
+    expect(screen.getByTestId("where")).toHaveTextContent("/settings?tab=users");
+  });
+
   it("links protocols safely", () => {
     expect(eventLink({ projectId: 7, protocolId: "12", status: "failed" })).toBe("/project/load/7?protocol=12");
     expect(protocolLink({ projectId: 7, protocolId: "12" })).toBe("/project/load/7?protocol=12");

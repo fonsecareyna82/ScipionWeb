@@ -84,6 +84,9 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
 - Settings shows each tab to whoever may use it: Instance, Host and Environment (`settings.manage`), Jobs (`jobs.manage`), Users (`users.manage`), Roles (`roles.manage`), Groups (`groups.manage`). The plugin pages hide installing, updating and removing without `plugins.manage`.
 - Sharing a project picks an access level (view, work, manage) and users or groups (`ShareProjectModal`, `/access/groups/names`).
 - A project the user only views (`project.access === "view"`, from `GET /projects/{id}`) is read only in `ProjectPage`: its menus hide the items that change it (`READ_ONLY_HIDDEN_MENU_ITEMS`, merged into the menu visibility policy; run actions such as Stop streaming follow Stop), the actions they and the shortcuts call refuse with a toast (`refuseWhenReadOnly`), the canvas menu has no Add protocol, protocol forms open with `readOnly` (no Save nor Launch) and the header shows a View only badge.
+- Administrators (`users.manage`) see new sign-ups waiting for activation in the activity bell (`status: "account"`); the event opens `/settings?tab=users`, as Settings opens the tab named in `?tab=` when the user may see it.
+- In the file browser, a user limited to the project and the data folders (`SCIPIONWEB_DATA_ROOTS`) gets each data folder as a shortcut chip (`dataRoots` of `start-path`; none when the data folder is the whole server).
+- Settings dialogs and confirmations use `pages/Settings/SettingsDialog.tsx` (the web's dark header, rounded buttons, red gradient for what destroys or interrupts), never `window.confirm`.
 
 ## Known gotchas
 
