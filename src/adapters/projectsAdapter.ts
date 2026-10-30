@@ -205,6 +205,8 @@ const defaultService: ProjectService = {
   runProtocolViewerWizard: (projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload) =>
     api.runProtocolViewerWizard(toId(projectId), toId(protocolId), payload),
 
+  fetchProtocolSummary: (projectId: Id, protocolId: Id) =>
+    api.fetchProtocolSummary(toId(projectId), toId(protocolId)),
   fetchProtocolRunActions: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolRunActions(toId(projectId), toId(protocolId)),
 

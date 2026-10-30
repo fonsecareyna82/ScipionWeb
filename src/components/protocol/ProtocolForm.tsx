@@ -47,6 +47,7 @@ import ExecuteModeButton from "./ExecuteModeButton";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
+import ProtocolSummaryPanel from "./ProtocolSummaryPanel";
 import ProtocolAnalyzeAction from "./ProtocolAnalyzeAction";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
@@ -201,6 +202,9 @@ type PendingWorkflowExecution = {
   queueOverride: QueueLaunchDraft | null;
   preflight: ProtocolWorkflowExecutionPreflight;
 };
+
+// The Summary tab's value: added after the others, it is shown between Outputs and Logs
+const SUMMARY_TAB = 4;
 
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
   if (!Array.isArray(raw)) return [];
@@ -4161,10 +4165,12 @@ export default function ProtocolForm({
               },
             }}
           >
-            <Tab label="Inputs and Parameters" />
-            <Tab label="Outputs" />
-            <Tab label="Logs" />
-            <Tab label="Metadata" />
+            {/* Fixed values: Summary sits between Outputs and Logs */}
+            <Tab label="Inputs and Parameters" value={0} />
+            <Tab label="Outputs" value={1} />
+            <Tab label="Summary" value={SUMMARY_TAB} disabled={!effectiveProtocolId} />
+            <Tab label="Logs" value={2} />
+            <Tab label="Metadata" value={3} />
           </Tabs>
 
           <Box
@@ -4247,6 +4253,15 @@ export default function ProtocolForm({
                 protocolLabel={protocolDisplayName}
                 protocolStatus={protocolStatus}
                 outputsFromApi={outputsFromApi}
+              />
+            )}
+
+            {topTab === SUMMARY_TAB && (
+              <ProtocolSummaryPanel
+                projectId={projectId}
+                protocolId={effectiveProtocolId}
+                protocolLabel={protocolDisplayName}
+                protocolStatus={protocolStatus}
               />
             )}
 

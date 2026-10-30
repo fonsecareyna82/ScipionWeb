@@ -1,7 +1,8 @@
-import { useRef, type PointerEvent } from "react";
-import { Terminal, X } from "lucide-react";
+import { useRef, useState, type PointerEvent } from "react";
+import { FileText, Terminal, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import ProtocolLogsPanel from "@/components/protocol/ProtocolLogsPanel";
+import ProtocolSummaryPanel from "@/components/protocol/ProtocolSummaryPanel";
 import ProtocolAnalyzeAction from "@/components/protocol/ProtocolAnalyzeAction";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 
@@ -29,6 +30,8 @@ export default function WorkflowLogsDock({
   onClose,
 }: WorkflowLogsDockProps) {
   const svc = useProjectService();
+  // The selected protocol's summary or its logs, as the desktop's tabs under the graph
+  const [view, setView] = useState<"summary" | "logs">("logs");
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const {
     sortedLogChannels,
@@ -44,7 +47,7 @@ export default function WorkflowLogsDock({
     onClearLogSearch,
   } = useProtocolLogs({
     svc,
-    enabled: projectId != null && protocolId != null,
+    enabled: view === "logs" && projectId != null && protocolId != null,
     projectId,
     protocolId,
     protocolStatus,
@@ -110,8 +113,26 @@ export default function WorkflowLogsDock({
       </div>
 
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-3">
-        <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="shrink-0 text-sm font-semibold">Logs</span>
+        <div role="tablist" aria-label="Protocol details" className="flex shrink-0 items-center gap-1">
+          {([
+            ["summary", "Summary", FileText],
+            ["logs", "Logs", Terminal],
+          ] as const).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              onClick={() => setView(value)}
+              className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-sm ${
+                view === value ? "bg-background font-semibold shadow-sm" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={protocolLabel}>
           {protocolId ? `#${protocolId} · ${protocolLabel || "Protocol"}` : "Select a protocol in the workflow"}
         </span>
@@ -137,7 +158,14 @@ export default function WorkflowLogsDock({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-1">
-        {protocolId && projectId != null ? (
+        {protocolId && projectId != null && view === "summary" ? (
+          <ProtocolSummaryPanel
+            projectId={projectId}
+            protocolId={protocolId}
+            protocolLabel={protocolLabel}
+            protocolStatus={protocolStatus}
+          />
+        ) : protocolId && projectId != null ? (
           <ProtocolLogsPanel
             sortedLogChannels={sortedLogChannels}
             activeLogChannelId={activeLogChannelId}
@@ -153,7 +181,7 @@ export default function WorkflowLogsDock({
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Select a protocol to inspect its logs.
+            Select a protocol to see its summary and logs.
           </div>
         )}
       </div>

@@ -37,6 +37,16 @@ export type ProtocolViewerCandidatesResponse = {
   runtimePreviewAvailable?: boolean;
 };
 
+/** An object a summary line links to ([[sci-open:ID][name]]): the protocol output it is. */
+export type ProtocolSummaryObject = { protocolId: number; outputName: string; className: string; label: string };
+
+/** A protocol's summary as the desktop Summary tab shows it; the lines keep Scipion's markup. */
+export type ProtocolSummary = {
+  lines: string[];
+  objects: Record<string, ProtocolSummaryObject>;
+  hasWarnings: boolean;
+};
+
 /** Inert schema returned only by the explicit experimental admin POST. */
 export type ProtocolViewerRuntimePreview = {
   status: "runtime-preview";
@@ -2294,6 +2304,9 @@ export interface ProjectService<
   runProtocolViewerWizard?: (
     projectId: Id, protocolId: Id, payload: RunProtocolViewerWizardPayload,
   ) => Promise<unknown>;
+
+  /** The protocol's summary (the desktop Summary tab): its lines and the objects they link to. */
+  fetchProtocolSummary?: (projectId: Id, protocolId: Id) => Promise<ProtocolSummary>;
 
   /** The actions a running protocol offers (the desktop context menu): STOP STREAMING, APPROVE CHECKPOINT… */
   fetchProtocolRunActions?: (projectId: Id, protocolId: Id) => Promise<string[]>;

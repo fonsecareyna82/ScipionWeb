@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const serviceMocks = vi.hoisted(() => ({
     fetchJobsOverview: vi.fn(),
@@ -55,7 +55,7 @@ describe("JobsSettingsPanel worker actions", () => {
         fireEvent.click(screen.getByRole("button", { name: "Restart" }));
         const restart = await screen.findByRole("dialog");
         expect(restart).toHaveTextContent("Restart the protocols worker?");
-        fireEvent.click(screen.getAllByRole("button", { name: "Restart" }).at(-1)!);
+        fireEvent.click(within(restart).getByRole("button", { name: "Restart" }));
 
         await waitFor(() => expect(controlJobWorker).toHaveBeenCalledWith("protocols", "restart"));
         confirmSpy.mockRestore();

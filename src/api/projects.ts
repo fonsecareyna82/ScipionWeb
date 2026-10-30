@@ -5,6 +5,7 @@ import type {
   ProtocolViewerActionValues,
   ProtocolViewerCandidatesResponse,
   ProtocolViewerRuntimePreview,
+  ProtocolSummary,
 } from "@/services/ProjectService";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
@@ -1678,6 +1679,20 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   if (!response.ok)
     throw await toApiError(response, "Failed to reset from protocol");
   return safeJson<any>(response);
+}
+
+export async function fetchProtocolSummary(projectId: Id, protocolId: Id): Promise<ProtocolSummary> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/summary`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!response.ok) throw await toApiError(response, "The summary of the protocol could not be read");
+  const raw = await safeJson<any>(response);
+  return {
+    lines: Array.isArray(raw?.lines) ? raw.lines.map((line: unknown) => String(line ?? "")) : [],
+    objects: raw?.objects && typeof raw.objects === "object" ? raw.objects : {},
+    hasWarnings: Boolean(raw?.hasWarnings),
+  };
 }
 
 function runActionsUrl(projectId: Id, protocolId: Id): string {
