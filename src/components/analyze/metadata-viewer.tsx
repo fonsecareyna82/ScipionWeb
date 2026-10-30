@@ -428,6 +428,15 @@ const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
 // Cap on how many compatible cells one fetchMetadataImageCellsBatch request
 // bundles together -- keep comfortably under the backend's own 64-item cap.
 const IMAGE_BATCH_MAX_ITEMS = 32;
+// The server draws the cells of one request one after the other, so a screenful is split over the free
+// request slots (drawn at the same time) rather than sent as one request: never fewer than this per request.
+const IMAGE_BATCH_MIN_ITEMS = 4;
+
+/** How many cells one request carries: the compatible pending ones spread over the free request slots. */
+export function imageBatchLimit(compatible: number, freeSlots: number): number {
+  const share = Math.ceil(compatible / Math.max(1, freeSlots));
+  return Math.max(IMAGE_BATCH_MIN_ITEMS, Math.min(IMAGE_BATCH_MAX_ITEMS, share));
+}
 
 const METADATA_IMAGE_PRIMARY_FORMAT = "webp";
 
@@ -589,17 +598,21 @@ function scheduleNextImageJob() {
 
     if (anchor.batch) {
       const remaining: ImageJob[] = [];
+      const fits = (candidate: ImageJob) =>
+        candidate !== anchor &&
+        !candidate.isCancelled() &&
+        !!candidate.batch &&
+        candidate.batch.groupKey === anchor.batch!.groupKey &&
+        candidate.getPriority() === anchor.getPriority();
+      const limit = imageBatchLimit(
+        1 + imageJobQueue.filter(fits).length,
+        MAX_CONCURRENT_IMAGE_REQUESTS - activeImageJobs,
+      );
 
       for (const candidate of imageJobQueue) {
         if (candidate === anchor) continue;
 
-        if (
-          batch.length < IMAGE_BATCH_MAX_ITEMS &&
-          !candidate.isCancelled() &&
-          candidate.batch &&
-          candidate.batch.groupKey === anchor.batch.groupKey &&
-          candidate.getPriority() === anchor.getPriority()
-        ) {
+        if (batch.length < limit && fits(candidate)) {
           batch.push(candidate);
         } else {
           remaining.push(candidate);
