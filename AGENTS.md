@@ -91,6 +91,10 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
 - Settings → Audit (`audit.view`, `AuditPanel`) reads the audit log newest first, by kind and search, with Older events for the next page.
 - Settings dialogs and confirmations use `pages/Settings/SettingsDialog.tsx` (the web's dark header, rounded buttons, red gradient for what destroys or interrupts), never `window.confirm`.
 
+## Facility mode (branch `lims`, in progress)
+
+Off by default, set per installation (API `SCIPIONWEB_FACILITY_MODE`). `hooks/useFacilityStatus` reads `GET /facility/status` once per session (`api/facility.loadFacilityStatusOnce`; a change of the mode shows after a reload) and gives `facilityCan(permission)`, false for everything when the mode is off. The facility is one menu entry, "Facility" (after Workflows), leading to `/facility/<tab>` (`pages/Facility/FacilityPage.tsx`): a tab per part, in the order of `layout/facilityNav.FACILITY_TABS`, each shown to whom holds one of its permissions; `/facility` or a tab the user may not open goes to their first one. The entry is absent when the user has no tab, so without facility mode the menu is the one it always was. Today: Microscopes (`MicroscopesPanel`, `facility.manage`, with their calibrated pixel size per magnification); sessions, calendar, samples and grids, the monitor, reports and templates come as tabs. Pages built like Settings share its look through `pages/Settings/useSettingsStyles(isDark)`. A sidebar entry stays lit on the pages under its path (`/facility/…`, `/plugins/<name>`).
+
 ## Known gotchas
 
 - Vitest is the only test runner (Jest was removed). `@testing-library/jest-dom` is still a dependency on purpose — it provides DOM matchers for Vitest, not Jest itself.

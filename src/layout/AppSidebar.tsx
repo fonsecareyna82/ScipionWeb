@@ -18,7 +18,8 @@ import { useTheme as useAppTheme } from "../context/ThemeContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { FolderKanban, LucideSettings2} from "lucide-react";
+import { FolderKanban, LucideSettings2 } from "lucide-react";
+import { useFacilityNavItem } from "./facilityNav";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
@@ -110,11 +111,21 @@ const AppSidebar: React.FC = () => {
   const isDark = theme === "dark";
   const location = useLocation();
 
+  // Facility, after Workflows: only when this installation runs a facility and the user has a tab there
+  const facilityItem = useFacilityNavItem();
+  const mainItems: NavItem[] = facilityItem
+    ? [...navItems.slice(0, 3), facilityItem, ...navItems.slice(3)]
+    : navItems;
+
   const [openSubmenu, setOpenSubmenu] = useState<{ type: "main" | "others"; index: number } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const isActive = useCallback((path: string) => location.pathname === path, [location.pathname]);
+  // A page under an entry (/facility/microscopes, /plugins/<name>) keeps that entry lit
+  const isActive = useCallback(
+    (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+    [location.pathname],
+  );
 
   useEffect(() => {
     let submenuMatched = false;
@@ -329,7 +340,7 @@ const AppSidebar: React.FC = () => {
               >
                 {isExpanded || isMobileOpen ? "Menu" : <HorizontaLDots className="size-6" />}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(mainItems, "main")}
             </div>
             <div className={`my-1 border-t ${secondarySeparatorClassName}`} />
           </div>

@@ -37,6 +37,7 @@ const Plugins = lazy(() => import("./pages/Dashboard/plugins/Plugins"));
 const PluginPage = lazy(() => import("./pages/Dashboard/plugins/PluginPage"));
 const WorkflowsPage = lazy(() => import("./pages/Dashboard/workflows/WorkflowsPage"));
 const SettingsPage = lazy(() => import("./pages/Settings/settingspage"));
+const FacilityPage = lazy(() => import("./pages/Facility/FacilityPage"));
 const VerifyEmailForm = lazy(() => import("./components/auth/VerifyEmailForm"));
 const ReleaseNotes = lazy(() => import("./pages/Dashboard/homepage/releasenotespage"));
 const ReleaseNoteDetailPage = lazy(() => import("./pages/Dashboard/homepage/releasenotedetailpage"));
@@ -88,6 +89,8 @@ export default function App({ service }: AppProps) {
                   <Route path="/profile" element={<UserProfiles />} />
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/facility" element={<FacilityPage />} />
+                  <Route path="/facility/:tab" element={<FacilityPage />} />
                   <Route path="/blank" element={<Blank />} />
                   <Route path="/release-notes" element={<ReleaseNotes />} />
                   <Route path="/release-notes/:version" element={<ReleaseNoteDetailPage />} />
