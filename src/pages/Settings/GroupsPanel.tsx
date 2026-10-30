@@ -27,6 +27,7 @@ import {
     updateGroup,
     type Group,
     type GroupPayload,
+    type PiAccess,
     type Role,
 } from "@/api/access";
 import { listAdminUsers, type AdminUser } from "@/api/users";
@@ -41,6 +42,13 @@ type PanelStyles = {
     saveButtonSx?: any;
     colors: { border: string; text: string; muted: string; surface: string; hover: string };
 };
+
+const PI_ACCESS_OPTIONS: { value: PiAccess; label: string }[] = [
+    { value: "none", label: "None" },
+    { value: "view", label: "View" },
+    { value: "work", label: "Work" },
+    { value: "manage", label: "Manage" },
+];
 
 function userName(user: { firstName?: string | null; lastName?: string | null; email?: string }) {
     return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "—";
@@ -140,6 +148,9 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                                             {group.roleIds.map((id) => roleNames.get(id) ?? `#${id}`).join(", ") || "none"}
                                         </Typography>
                                         <Typography sx={{ fontSize: 12, color: colors.muted }}>
+                                            PI access to the members' projects: {group.piAccess ?? "view"}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: 12, color: colors.muted }}>
                                             {group.members.length
                                                 ? group.members.map((member) =>
                                                     userName(member) + (member.groupRole === "pi" ? " (PI)" : "")).join(", ")
@@ -221,6 +232,7 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, acti
     const [memberIds, setMemberIds] = useState<number[]>((group?.members ?? []).map((member) => member.userId));
     const [piIds, setPiIds] = useState<number[]>(
         (group?.members ?? []).filter((member) => member.groupRole === "pi").map((member) => member.userId));
+    const [piAccess, setPiAccess] = useState<PiAccess>(group?.piAccess ?? "view");
     const [saving, setSaving] = useState(false);
     const usersById = new Map(users.map((user) => [user.id, user]));
 
@@ -230,6 +242,7 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, acti
             description: description.trim(),
             roleIds,
             members: memberIds.map((userId) => ({ userId, groupRole: piIds.includes(userId) ? "pi" : "member" })),
+            piAccess,
         };
         setSaving(true);
         try {
@@ -301,8 +314,20 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, acti
                             ))}
                         </Select>
                     </FormControl>
+                    <FormControl size="small" fullWidth>
+                        <InputLabel id="group-pi-access-label">PI access to the members' projects</InputLabel>
+                        <Select labelId="group-pi-access-label" label="PI access to the members' projects"
+                                sx={selectSx} MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={piAccess}
+                                onChange={(e) => setPiAccess(e.target.value as PiAccess)}>
+                            {PI_ACCESS_OPTIONS.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                     <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
-                        You can only give roles whose permissions you hold yourself.
+                        You can only give roles whose permissions you hold yourself. Raising the PI access
+                        needs as much over every project (view: projects.viewAll; work or manage:
+                        projects.manageAll).
                     </Typography>
                 </Stack>
         </SettingsDialog>

@@ -16,6 +16,7 @@ import {
 } from "@/icons";
 import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
+import { projectAccessLabel } from "@/utils/project-access";
 import type {
   ProjectThumbnailGroup,
   ProjectThumbnailOutputItem,
@@ -46,6 +47,7 @@ interface ProjectCardProps {
   isShared?: boolean | string | number;
   isOwner?: boolean | string | number;
   permission?: string;
+  accessVia?: string | null;
 
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
@@ -314,6 +316,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     isShared,
     isOwner,
     permission,
+    accessVia,
     thumbnailUrl,
     thumbnailRebuildUrl,
     thumbnailItemsUrl,
@@ -357,13 +360,10 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
 
-  const accessLabel = useMemo(() => {
-    if (showGuestBadge) {
-      return permission?.trim() ? `Shared · ${permission}` : "Shared";
-    }
-    if (permission?.trim()) return permission;
-    return normalizedIsOwner ? "Owner" : "Private";
-  }, [showGuestBadge, permission, normalizedIsOwner]);
+  const accessLabel = useMemo(
+    () => projectAccessLabel({ isOwner: normalizedIsOwner, isShared: normalizedIsShared, permission, accessVia }),
+    [normalizedIsOwner, normalizedIsShared, permission, accessVia],
+  );
 
   const statusLabel = useMemo(() => {
     const raw = String(status ?? badgeValue ?? "").trim();

@@ -71,6 +71,7 @@ import type { UserProfile } from "@/types/user";
 import UserManagementPanel from "@/pages/Settings/UserManagementPanel";
 import RolesPanel from "@/pages/Settings/RolesPanel";
 import GroupsPanel from "@/pages/Settings/GroupsPanel";
+import AuditPanel from "@/pages/Settings/AuditPanel";
 import { usePermissions } from "@/hooks/usePermissions";
 
 
@@ -82,6 +83,7 @@ type TabKey =
   | "users"
   | "roles"
   | "groups"
+  | "audit"
   | "tags"
   | "environment";
 
@@ -529,7 +531,7 @@ export default function SettingsPage() {
     const allowed: Partial<Record<TabKey, boolean>> = {
       user: true, tags: true, instance: can("settings.manage"), host: can("settings.manage"),
       environment: can("settings.manage"), jobs: can("jobs.manage"), users: can("users.manage"),
-      roles: can("roles.manage"), groups: can("groups.manage"),
+      roles: can("roles.manage"), groups: can("groups.manage"), audit: can("audit.view"),
     };
     if (requestedTab && allowed[requestedTab as TabKey]) setTab(requestedTab as TabKey);
   }, [requestedTab, can]);
@@ -1400,7 +1402,9 @@ export default function SettingsPage() {
   ]);
 
   const headerRight = useMemo(() => {
-    if (tab === "tags" || tab === "jobs" || tab === "users") return null;
+    // The panels with their own actions (Save, Reload…) have none up here
+    if (tab === "tags" || tab === "jobs" || tab === "users" || tab === "roles" || tab === "groups"
+        || tab === "audit") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
@@ -2657,6 +2661,7 @@ export default function SettingsPage() {
               {can("users.manage") && <Tab value="users" label="Users" />}
               {can("roles.manage") && <Tab value="roles" label="Roles" />}
               {can("groups.manage") && <Tab value="groups" label="Groups" />}
+              {can("audit.view") && <Tab value="audit" label="Audit" />}
               <Tab value="tags" label="Tags" />
               {can("settings.manage") && <Tab value="environment" label="Environment" />}
             </Tabs>
@@ -2702,11 +2707,17 @@ export default function SettingsPage() {
                                            selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors}
                                            actionButtonSx={actionButtonSx} saveButtonSx={saveButtonSx} />
                             )
-                            : tab === "tags"
-                              ? renderTagsContent()
-                              : renderEnvironmentContent()}
+                            : tab === "audit"
+                              ? (
+                                <AuditPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
+                                            selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors}
+                                            actionButtonSx={actionButtonSx} />
+                              )
+                              : tab === "tags"
+                                ? renderTagsContent()
+                                : renderEnvironmentContent()}
 
-              {tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" ? (
+              {tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />
 

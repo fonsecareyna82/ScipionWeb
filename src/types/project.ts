@@ -14,6 +14,8 @@ export interface Project {
   isShared: boolean,
   isOwner: boolean,
   permission: string,
+  // owner, share, group (a PI of the owner's group) or role
+  accessVia?: string | null;
   projectOwnerId: string | number;
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;

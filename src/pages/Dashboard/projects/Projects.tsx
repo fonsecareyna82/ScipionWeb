@@ -83,6 +83,7 @@ function normalizeProject(raw: any): ProjectCardProject {
     isShared: isSharedFlag,
     isOwner: isOwnerFlag,
     permission: p.permission ?? "full",
+    accessVia: p.accessVia ?? null,
     projectOwnerId: p.projectOwnerId ?? p.ownerId ?? p.owner_id ?? null,
     thumbnailUrl: p.thumbnailUrl ?? p.thumbnail_url ?? null,
     thumbnailRebuildUrl: p.thumbnailRebuildUrl ?? p.thumbnail_rebuild_url ?? null,
@@ -664,6 +665,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             isShared={project.isShared}
             isOwner={project.isOwner}
             permission={project.permission?.toString()}
+            accessVia={project.accessVia ?? null}
             projectOwnerId={project.projectOwnerId ?? null}
             thumbnailUrl={project.thumbnailUrl ?? null}
             thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
@@ -697,6 +699,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           isShared={project.isShared}
           isOwner={project.isOwner}
           permission={project.permission?.toString()}
+          accessVia={project.accessVia ?? null}
         />
       ))}
     </div>

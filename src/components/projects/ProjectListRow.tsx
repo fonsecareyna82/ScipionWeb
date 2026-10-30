@@ -7,6 +7,7 @@ import { CalendarDays, Database, FolderOpen, Hash, Layers3 } from "lucide-react"
 
 import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
+import { projectAccessLabel } from "@/utils/project-access";
 
 interface ProjectListRowProps {
   id: string | number;
@@ -25,6 +26,7 @@ interface ProjectListRowProps {
   isShared?: boolean | string | number | null;
   isOwner?: boolean | string | number | null;
   permission?: string | null;
+  accessVia?: string | null;
 }
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -158,6 +160,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
     isShared,
     isOwner,
     permission,
+    accessVia,
   } = props;
 
   const navigate = useNavigate();
@@ -175,13 +178,10 @@ export default function ProjectListRow(props: ProjectListRowProps) {
 
   const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
 
-  const accessLabel = useMemo(() => {
-    if (normalizedIsShared && !normalizedIsOwner) {
-      return permission?.trim() ? `Shared · ${permission}` : "Shared";
-    }
-    if (permission?.trim()) return permission;
-    return normalizedIsOwner ? "Owner" : "Private";
-  }, [normalizedIsOwner, normalizedIsShared, permission]);
+  const accessLabel = useMemo(
+    () => projectAccessLabel({ isOwner: normalizedIsOwner, isShared: normalizedIsShared, permission, accessVia }),
+    [normalizedIsOwner, normalizedIsShared, permission, accessVia],
+  );
 
   const statusLabel = String(status ?? "").trim() || "unknown";
 

@@ -87,11 +87,18 @@ describe("Roles and groups panels", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Ana Pi" }));
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
 
+    // The PIs see their members' projects; a new group starts at View
+    const piAccess = within(dialog).getByLabelText("PI access to the members' projects");
+    expect(piAccess).toHaveTextContent("View");
+    fireEvent.mouseDown(piAccess);
+    fireEvent.click(await screen.findByRole("option", { name: "Work" }));
+
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(accessMocks.createGroup).toHaveBeenCalledWith({
       name: "Lab of Ana", description: "", roleIds: [4],
       members: [{ userId: 2, groupRole: "pi" }, { userId: 3, groupRole: "member" }],
+      piAccess: "work",
     }));
   });
 
