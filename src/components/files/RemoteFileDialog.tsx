@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { fetchWithAuth } from "@/api/auth";
+import { usePermissions } from "@/hooks/usePermissions";
 import styles from "./RemoteFileDialog.module.css";
 import {
   PARENT_ENTRY,
@@ -238,6 +239,7 @@ export default function RemoteFileDialog({
 
   const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
   const [downloading, setDownloading] = useState(false);
+  const { can } = usePermissions();
 
   // List viewport (virtualization).
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -788,7 +790,9 @@ export default function RemoteFileDialog({
   const dialogHeightClass = mode === "save" ? `${styles.dialogHeight} ${styles.dialogHeightSave}` : styles.dialogHeight;
   const browserHeightClass = mode === "save" ? `${styles.browserHeight} ${styles.browserHeightSave}` : styles.browserHeight;
   const previewHeightClass = mode === "save" ? `${styles.previewHeight} ${styles.previewHeightSave}` : styles.previewHeight;
-  const canDownload = (!!buildDownloadUrl || !!getDownloadLink) && !!selected && !selected.isDir;
+  // Downloading needs files.download (the API refuses it otherwise), so the button is only offered with it
+  const offersDownload = (!!buildDownloadUrl || !!getDownloadLink) && can("files.download");
+  const canDownload = offersDownload && !!selected && !selected.isDir;
 
   return (
     <Dialog
@@ -856,7 +860,7 @@ export default function RemoteFileDialog({
             Refresh
           </button>
 
-          {(buildDownloadUrl || getDownloadLink) && (
+          {offersDownload && (
             <button type="button" onClick={() => void downloadSelected()} disabled={!canDownload || downloading}
               title={canDownload ? `Download ${selected?.name}` : "Select a file to download it"}
               className={[styles.ppChipBtn, styles.toolbarEnd].join(" ")}>

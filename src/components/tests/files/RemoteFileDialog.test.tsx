@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import RemoteFileDialog from "../../files/RemoteFileDialog";
 import { TablePreview } from "../../files/remote-preview-parts";
 
-const authMocks = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
+const authMocks = vi.hoisted(() => ({ fetchWithAuth: vi.fn(), loadCurrentUserOnce: vi.fn() }));
 vi.mock("@/api/auth", () => authMocks);
 
 vi.mock("@/components/ui/dialog/dialog", () => ({
@@ -40,6 +40,7 @@ describe("RemoteFileDialog", () => {
     });
     previewRemoteEntry.mockResolvedValue(null);
     buildDownloadUrl.mockReturnValue("");
+    authMocks.loadCurrentUserOnce.mockResolvedValue({ id: 2, permissions: ["files.download"] });
   });
 
   function renderDialog(
@@ -304,6 +305,15 @@ describe("RemoteFileDialog", () => {
     expect(buildDownloadUrl).toHaveBeenCalledWith("logs/run.log", false);
     expect(authMocks.fetchWithAuth).toHaveBeenCalledWith("http://api/download?path=logs/run.log");
     click.mockRestore();
+  });
+
+  it("offers no Download button to a user without the download permission", async () => {
+    authMocks.loadCurrentUserOnce.mockResolvedValue({ id: 2, permissions: ["projects.create"] });
+    listRemoteDirectory.mockResolvedValue([{ name: "movie.tif", path: "Runs/m/movie.tif", isDir: false, size: 9 }]);
+    renderDialog({ getDownloadLink: vi.fn() });
+    expect(await screen.findByText("movie.tif")).toBeInTheDocument();
+    await act(async () => undefined);
+    expect(screen.queryByRole("button", { name: /Download/ })).not.toBeInTheDocument();
   });
 
   it("downloads big files with a signed link the browser downloads on its own", async () => {
