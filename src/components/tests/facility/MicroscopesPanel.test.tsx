@@ -6,6 +6,9 @@ const facilityMocks = vi.hoisted(() => ({
   createMicroscope: vi.fn(),
   updateMicroscope: vi.fn(),
   deleteMicroscope: vi.fn(),
+  fetchMicroscopePhotoUrl: vi.fn(),
+  uploadMicroscopePhoto: vi.fn(),
+  deleteMicroscopePhoto: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
@@ -28,6 +31,8 @@ describe("The microscopes of the facility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     facilityMocks.listMicroscopes.mockResolvedValue([talos]);
+    facilityMocks.fetchMicroscopePhotoUrl.mockResolvedValue("blob:talos-photo");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:chosen"), revokeObjectURL: vi.fn() }));
   });
 
   it("lists each microscope with its calibrated pixel sizes", async () => {
@@ -90,5 +95,49 @@ describe("The microscopes of the facility", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(facilityMocks.deleteMicroscope).toHaveBeenCalledWith(1));
+  });
+
+  it("shows the photo of a microscope that has one, and its icon otherwise", async () => {
+    facilityMocks.listMicroscopes.mockResolvedValue([{ ...talos, photoUpdatedAt: "2026-10-30T18:00:00Z" },
+                                                     { ...talos, id: 2, name: "Krios G5", photoUpdatedAt: null }]);
+    render(<MicroscopesPanel {...styles} />);
+
+    expect(await screen.findByRole("img", { name: "Photo of Talos 200kV" })).toHaveAttribute("src", "blob:talos-photo");
+    expect(facilityMocks.fetchMicroscopePhotoUrl).toHaveBeenCalledWith(1, "2026-10-30T18:00:00Z");
+    expect(screen.queryByRole("img", { name: "Photo of Krios G5" })).not.toBeInTheDocument();
+  });
+
+  it("uploads the photo chosen when the microscope is saved", async () => {
+    facilityMocks.updateMicroscope.mockResolvedValue(talos);
+    facilityMocks.uploadMicroscopePhoto.mockResolvedValue(talos);
+    render(<MicroscopesPanel {...styles} />);
+    await screen.findByText("Talos 200kV");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    const photo = new File(["jpeg"], "talos.jpg", { type: "image/jpeg" });
+    fireEvent.change(within(dialog).getByLabelText("Photo file"), { target: { files: [photo] } });
+    expect(await within(dialog).findByRole("img", { name: "Photo of Talos 200kV" })).toHaveAttribute("src", "blob:chosen");
+    expect(facilityMocks.uploadMicroscopePhoto).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(facilityMocks.uploadMicroscopePhoto).toHaveBeenCalledWith(1, photo));
+  });
+
+  it("removes the stored photo when the microscope is saved", async () => {
+    facilityMocks.listMicroscopes.mockResolvedValue([{ ...talos, photoUpdatedAt: "2026-10-30T18:00:00Z" }]);
+    facilityMocks.updateMicroscope.mockResolvedValue(talos);
+    facilityMocks.deleteMicroscopePhoto.mockResolvedValue(talos);
+    render(<MicroscopesPanel {...styles} />);
+    await screen.findByText("Talos 200kV");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove photo" }));
+    expect(within(dialog).getByRole("button", { name: "Add photo" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(facilityMocks.deleteMicroscopePhoto).toHaveBeenCalledWith(1));
+    expect(facilityMocks.uploadMicroscopePhoto).not.toHaveBeenCalled();
   });
 });

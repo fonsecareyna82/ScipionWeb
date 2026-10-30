@@ -27,11 +27,13 @@ export type Microscope = {
   sessionsEnabled: boolean;
   notes: string;
   pixelSizes: PixelSize[];
+  // When its photo was last changed; null without a photo
+  photoUpdatedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type MicroscopePayload = Omit<Microscope, "id" | "createdAt" | "updatedAt">;
+export type MicroscopePayload = Omit<Microscope, "id" | "createdAt" | "updatedAt" | "photoUpdatedAt">;
 
 async function request<T>(path: string, fallback: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithAuth(`${BASE_URL}${path}`, init);
@@ -67,3 +69,19 @@ export const updateMicroscope = (microscopeId: number, payload: MicroscopePayloa
     { method: "PUT", body: JSON.stringify(payload) });
 export const deleteMicroscope = (microscopeId: number) =>
   request<null>(`/facility/microscopes/${microscopeId}`, "Failed to delete the microscope", { method: "DELETE" });
+
+/** The microscope's photo as an object URL (the caller revokes it); the version keeps a changed photo from the cache. */
+export async function fetchMicroscopePhotoUrl(microscopeId: number, version: string): Promise<string> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/facility/microscopes/${microscopeId}/photo?v=${encodeURIComponent(version)}`,
+    { cache: "default" },
+  );
+  if (!response.ok) throw await buildApiError(response, "Failed to load the photo");
+  return URL.createObjectURL(await response.blob());
+}
+
+export const uploadMicroscopePhoto = (microscopeId: number, file: Blob) =>
+  request<Microscope>(`/facility/microscopes/${microscopeId}/photo`, "Failed to upload the photo",
+    { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+export const deleteMicroscopePhoto = (microscopeId: number) =>
+  request<Microscope>(`/facility/microscopes/${microscopeId}/photo`, "Failed to remove the photo", { method: "DELETE" });

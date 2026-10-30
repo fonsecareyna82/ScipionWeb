@@ -6,7 +6,7 @@ import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 // The tabs of the Facility page, in their order; each one shows to whom holds one of its permissions.
 // Sessions, calendar, samples and grids, the monitor and reports come here as they are built.
 export const FACILITY_TABS = [
-  { key: "microscopes", label: "Microscopes", permissions: ["facility.manage"] },
+  { key: "microscopes", label: "Microscopes", icon: Microscope, permissions: ["facility.manage"] },
 ] as const;
 
 export type FacilityTabKey = (typeof FACILITY_TABS)[number]["key"];

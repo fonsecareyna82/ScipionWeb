@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import { useTheme } from "@mui/material/styles";
 
-const fieldFontSize = 14;
-const helperFontSize = 12.75;
+// Settings' own sizes; other pages built like it (Facility) ask for bigger ones
+export type SettingsFontSizes = { field: number; helper: number; button: number };
+export const SETTINGS_FONT_SIZES: SettingsFontSizes = { field: 14, helper: 12.75, button: 12 };
 
 /** The look of the Settings panels (cards, fields, menus, tabs, buttons), shared by the pages built like them. */
-export function useSettingsStyles(isDarkMode: boolean) {
+export function useSettingsStyles(isDarkMode: boolean, fontSizes: SettingsFontSizes = SETTINGS_FONT_SIZES) {
   const muiTheme = useTheme();
+  const { field: fieldFontSize, helper: helperFontSize, button: buttonFontSize } = fontSizes;
 
   const colors = useMemo(() => {
     // colors
@@ -61,14 +63,14 @@ export function useSettingsStyles(isDarkMode: boolean) {
       },
       "& .MuiSvgIcon-root": { color: colors.muted },
     } as const;
-  }, [colors.border, colors.muted, colors.primary, colors.text, isDarkMode]);
+  }, [colors.border, colors.muted, colors.primary, colors.text, isDarkMode, fieldFontSize, helperFontSize]);
   const selectSx = useMemo(() => {
     // selectSx
     return {
       ...fieldSx,
       "& .MuiSelect-select": { fontSize: fieldFontSize, color: colors.text },
     } as const;
-  }, [colors.text, fieldSx]);
+  }, [colors.text, fieldSx, fieldFontSize]);
   const menuPaperSx = useMemo(() => {
     // menuPaperSx
     return {
@@ -78,7 +80,7 @@ export function useSettingsStyles(isDarkMode: boolean) {
       borderColor: colors.border,
       "& .MuiMenuItem-root": { fontSize: fieldFontSize },
     } as const;
-  }, [colors.border, colors.menu, colors.text]);
+  }, [colors.border, colors.menu, colors.text, fieldFontSize]);
   const cardHeaderSx = useMemo(() => {
     // cardHeaderSx
     return {
@@ -122,6 +124,9 @@ export function useSettingsStyles(isDarkMode: boolean) {
         textTransform: "none",
         fontWeight: 800,
         color: colors.muted,
+        // An icon at the start keeps the tab as low as one with text only
+        gap: 0.75,
+        "& .MuiTab-iconWrapper": { m: 0 },
       },
       "& .MuiTab-root.Mui-selected": {
         color: colors.text,
@@ -142,7 +147,7 @@ export function useSettingsStyles(isDarkMode: boolean) {
 
     return {
       textTransform: "none",
-      fontSize: 12,
+      fontSize: buttonFontSize,
       color: colors.text,
       borderColor: colors.border,
       borderRadius: 3,
@@ -157,7 +162,7 @@ export function useSettingsStyles(isDarkMode: boolean) {
         boxShadow: `${inset}, ${isDarkMode ? "0 10px 22px rgba(0,0,0,0.34)" : "0 12px 26px rgba(17,24,39,0.14)"}`,
       },
     } as const;
-  }, [colors.border, colors.text, isDarkMode]);
+  }, [colors.border, colors.text, isDarkMode, buttonFontSize]);
   const saveButtonSx = useMemo(() => {
     // saveButtonSx
     const inset = "0 1px 0 rgba(255,255,255,0.18) inset";
@@ -165,7 +170,7 @@ export function useSettingsStyles(isDarkMode: boolean) {
 
     return {
       textTransform: "none",
-      fontSize: 12,
+      fontSize: buttonFontSize,
       borderRadius: 3,
       bgcolor: colors.primary,
       color: colors.primaryContrast,
@@ -177,7 +182,7 @@ export function useSettingsStyles(isDarkMode: boolean) {
         boxShadow: `${inset}, ${isDarkMode ? "0 14px 30px rgba(0,0,0,0.36)" : "0 14px 30px rgba(17,24,39,0.20)"}`,
       },
     } as const;
-  }, [colors.primary, colors.primaryContrast, isDarkMode]);
+  }, [colors.primary, colors.primaryContrast, isDarkMode, buttonFontSize]);
 
   return { colors, fieldSx, selectSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
            saveButtonSx };

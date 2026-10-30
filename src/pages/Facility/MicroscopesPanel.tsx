@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Alert,
     Box,
@@ -18,15 +18,19 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { Microscope as MicroscopeIcon, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ImagePlus, Microscope as MicroscopeIcon, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
+import { FACILITY_TEXT } from "./facilityStyles";
 import toast from "react-hot-toast";
 
 import {
     createMicroscope,
     deleteMicroscope,
+    deleteMicroscopePhoto,
+    fetchMicroscopePhotoUrl,
     listMicroscopes,
     updateMicroscope,
+    uploadMicroscopePhoto,
     type GainFlip,
     type Microscope,
     type MicroscopePayload,
@@ -72,6 +76,52 @@ function pixelRowsOf(microscope: Microscope | null): PixelRow[] {
 function optionalNumber(text: string): number | null {
     const value = Number(text.trim());
     return text.trim() && Number.isFinite(value) ? value : null;
+}
+
+const PHOTO_TYPES = "image/png,image/jpeg,image/webp";
+
+/** The photo of a microscope (read with the session), or its icon while it has none. */
+function MicroscopePhoto({ microscope, src, width, height, colors }: {
+    microscope?: Microscope | null;
+    // A photo chosen and not yet uploaded, shown instead of the stored one
+    src?: string | null;
+    width: number;
+    height: number;
+    colors: PanelStyles["colors"];
+}) {
+    const [storedUrl, setStoredUrl] = useState<string | null>(null);
+    const version = microscope?.photoUpdatedAt ?? null;
+
+    useEffect(() => {
+        if (!microscope || !version || src !== undefined) {
+            setStoredUrl(null);
+            return;
+        }
+        let cancelled = false;
+        let url: string | null = null;
+        fetchMicroscopePhotoUrl(microscope.id, version)
+            .then((loaded) => {
+                url = loaded;
+                if (cancelled) URL.revokeObjectURL(loaded);
+                else setStoredUrl(loaded);
+            })
+            .catch(() => !cancelled && setStoredUrl(null));
+        return () => {
+            cancelled = true;
+            if (url) URL.revokeObjectURL(url);
+        };
+    }, [microscope, version, src]);
+
+    const shown = src !== undefined ? src : storedUrl;
+    return (
+        <Box sx={{ width, height, flexShrink: 0, borderRadius: 1.5, overflow: "hidden", border: `1px solid ${colors.border}`,
+                   display: "flex", alignItems: "center", justifyContent: "center", bgcolor: colors.hover }}>
+            {shown
+                ? <img src={shown} alt={microscope ? `Photo of ${microscope.name}` : "Photo"}
+                       style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <MicroscopeIcon size={Math.round(height * 0.45)} color={colors.muted} />}
+        </Box>
+    );
 }
 
 export function describeMicroscope(microscope: Microscope): string {
@@ -156,23 +206,26 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
                         {microscopes.map((microscope) => (
                             <Box key={microscope.id} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
                                 <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                                    <MicroscopePhoto microscope={microscope} width={96} height={72} colors={colors} />
                                     <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                                        <Typography sx={{ fontSize: 14, fontWeight: 800, color: colors.text }}>
+                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800, color: colors.text }}>
                                             {microscope.name}
-                                            <Typography component="span" sx={{ fontSize: 12, fontWeight: 600, color: colors.muted, ml: 1 }}>
+                                            <Typography component="span" sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 600, color: colors.muted, ml: 1 }}>
                                                 {STATUS_LABELS[microscope.status]}
                                                 {microscope.sessionsEnabled ? " · sessions" : ""}
                                             </Typography>
                                         </Typography>
-                                        <Typography sx={{ fontSize: 12.5, color: colors.muted }}>
+                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
                                             {describeMicroscope(microscope)}
                                         </Typography>
-                                        <Typography sx={{ fontSize: 12, color: colors.muted }}>
+                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
                                             {microscope.pixelSizes.length
                                                 ? "Calibrated: " + microscope.pixelSizes
                                                     .map((row) => `${row.magnification.toLocaleString("en-US")}× ${row.pixelSize} Å`).join(", ")
                                                 : "No calibrated pixel sizes: the nominal ones of the movies are used"}
                                         </Typography>
+                                    </Stack>
                                     </Stack>
                                     <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
                                         <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(microscope)}>
@@ -204,7 +257,7 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: 14 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine }}>
                         <strong>{deleting.name}</strong> · {describeMicroscope(deleting)}
                     </Typography>
                 </SettingsDialog>
@@ -213,6 +266,7 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
             {editing !== null && (
                 <MicroscopeDialog
                     microscope={editing === "new" ? null : editing}
+                    colors={colors}
                     fieldSx={fieldSx}
                     selectSx={selectSx}
                     menuPaperSx={menuPaperSx}
@@ -229,9 +283,10 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
     );
 }
 
-function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionButtonSx, saveButtonSx, onClose,
+function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, actionButtonSx, saveButtonSx, onClose,
                             onSaved }: {
     microscope: Microscope | null;
+    colors: PanelStyles["colors"];
     fieldSx: any;
     selectSx: any;
     menuPaperSx: any;
@@ -256,6 +311,23 @@ function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionBu
     const [notes, setNotes] = useState(microscope?.notes ?? "");
     const [pixelRows, setPixelRows] = useState<PixelRow[]>(() => pixelRowsOf(microscope));
     const [saving, setSaving] = useState(false);
+    // The photo is changed with the rest, on Save: a file chosen, or the stored one removed
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoRemoved, setPhotoRemoved] = useState(false);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+    const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        if (!photoFile) {
+            setPhotoPreview(null);
+            return;
+        }
+        const url = URL.createObjectURL(photoFile);
+        setPhotoPreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [photoFile]);
+
+    const hasPhoto = !!photoFile || (!photoRemoved && !!microscope?.photoUpdatedAt);
 
     const setPixelRow = (key: number, change: Partial<PixelRow>) =>
         setPixelRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...change } : row)));
@@ -283,8 +355,9 @@ function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionBu
         };
         setSaving(true);
         try {
-            if (microscope) await updateMicroscope(microscope.id, payload);
-            else await createMicroscope(payload);
+            const saved = microscope ? await updateMicroscope(microscope.id, payload) : await createMicroscope(payload);
+            if (photoFile) await uploadMicroscopePhoto(saved.id, photoFile);
+            else if (photoRemoved && microscope?.photoUpdatedAt) await deleteMicroscopePhoto(saved.id);
             toast.success("Microscope saved.");
             onSaved();
         } catch (e: any) {
@@ -310,6 +383,39 @@ function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionBu
             onClose={onClose}
         >
             <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                    <MicroscopePhoto microscope={photoRemoved ? null : microscope}
+                                     src={photoFile ? photoPreview : photoRemoved ? null : undefined}
+                                     width={160} height={120} colors={colors} />
+                    <Stack spacing={1} alignItems="flex-start">
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
+                            A PNG, JPEG or WebP photo, up to 15 MB; it is kept reduced to 1600 px.
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                            <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ImagePlus size={14} />}
+                                    onClick={() => photoInputRef.current?.click()}>
+                                {hasPhoto ? "Change photo" : "Add photo"}
+                            </Button>
+                            {hasPhoto && (
+                                <Button size="small" variant="outlined" sx={{ ...actionButtonSx, color: "error.main" }}
+                                        onClick={() => {
+                                            setPhotoFile(null);
+                                            setPhotoRemoved(true);
+                                        }}>
+                                    Remove photo
+                                </Button>
+                            )}
+                        </Stack>
+                        <input ref={photoInputRef} type="file" accept={PHOTO_TYPES} hidden aria-label="Photo file"
+                               onChange={(e) => {
+                                   const file = e.target.files?.[0];
+                                   e.target.value = "";
+                                   if (!file) return;
+                                   setPhotoFile(file);
+                                   setPhotoRemoved(false);
+                               }} />
+                    </Stack>
+                </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                     <TextField sx={fieldSx} size="small" fullWidth label="Name" value={name}
                                onChange={(e) => setName(e.target.value)} />
@@ -374,7 +480,7 @@ function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionBu
 
                 <Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                        <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Calibrated pixel sizes</Typography>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Calibrated pixel sizes</Typography>
                         <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
                                 onClick={() => setPixelRows((rows) => [...rows, {
                                     key: Math.max(0, ...rows.map((row) => row.key + 1)), magnification: "", pixelSize: "",
@@ -383,7 +489,7 @@ function MicroscopeDialog({ microscope, fieldSx, selectSx, menuPaperSx, actionBu
                         </Button>
                     </Stack>
                     {pixelRows.length === 0 && (
-                        <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
                             None: the nominal pixel size of each movie is used.
                         </Typography>
                     )}

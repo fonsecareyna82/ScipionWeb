@@ -4,9 +4,8 @@ import { Alert, Box, CircularProgress, Divider, Paper, Stack, Tab, Tabs, Typogra
 
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { useIsDark } from "@/context/ThemeContext";
 import { useFacilityTabs, type FacilityTabKey } from "@/layout/facilityNav";
-import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
+import { useFacilityStyles } from "./facilityStyles";
 import MicroscopesPanel from "./MicroscopesPanel";
 
 const wrapperMaxWidth = 1120;
@@ -16,7 +15,7 @@ export default function FacilityPage() {
   const { tab: requestedTab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
   const { loaded, tabs } = useFacilityTabs();
-  const styles = useSettingsStyles(useIsDark());
+  const styles = useFacilityStyles();
   const { colors, dividerSx, tabsSx } = styles;
   const tab = tabs.find((candidate) => candidate.key === requestedTab)?.key ?? tabs[0]?.key;
 
@@ -59,7 +58,7 @@ export default function FacilityPage() {
                 color: colors.text, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
         >
           <Box sx={{ px: 2, pt: 1.75, pb: 1.25, flexShrink: 0 }}>
-            <Typography sx={{ color: colors.muted, fontSize: 13 }}>
+            <Typography sx={{ color: colors.muted, fontSize: 14 }}>
               The facility's acquisition sessions, their processing and its microscopes.
             </Typography>
           </Box>
@@ -68,7 +67,9 @@ export default function FacilityPage() {
             <>
               <Tabs value={tab ?? false} onChange={(_, value) => navigate(`/facility/${value}`)} variant="scrollable"
                     scrollButtons="auto" sx={{ ...tabsSx, flexShrink: 0 }}>
-                {tabs.map((candidate) => <Tab key={candidate.key} value={candidate.key} label={candidate.label} />)}
+                {tabs.map(({ key, label, icon: Icon }) => (
+                  <Tab key={key} value={key} label={label} icon={<Icon size={16} />} iconPosition="start" />
+                ))}
               </Tabs>
               <Divider sx={dividerSx} />
             </>

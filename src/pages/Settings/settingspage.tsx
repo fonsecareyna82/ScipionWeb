@@ -41,7 +41,10 @@ import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";
-import { LayoutGrid, Table, Search, Save, RotateCcw, RefreshCw, Plus } from "lucide-react";
+import {
+  Braces, Cpu, LayoutGrid, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck, Table,
+  Tag, UserCog, UserRound, UsersRound,
+} from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
@@ -2487,16 +2490,16 @@ export default function SettingsPage() {
               scrollButtons="auto"
               sx={{ ...tabsSx, flexShrink: 0 }}
             >
-              <Tab value="user" label="User" />
-              {can("settings.manage") && <Tab value="instance" label="Instance" />}
-              {can("jobs.manage") && <Tab value="jobs" label="Jobs" />}
-              {can("settings.manage") && <Tab value="host" label="Host" />}
-              {can("users.manage") && <Tab value="users" label="Users" />}
-              {can("roles.manage") && <Tab value="roles" label="Roles" />}
-              {can("groups.manage") && <Tab value="groups" label="Groups" />}
-              {can("audit.view") && <Tab value="audit" label="Audit" />}
-              <Tab value="tags" label="Tags" />
-              {can("settings.manage") && <Tab value="environment" label="Environment" />}
+              <Tab value="user" label="User" icon={<UserRound size={16} />} iconPosition="start" />
+              {can("settings.manage") && <Tab value="instance" label="Instance" icon={<Server size={16} />} iconPosition="start" />}
+              {can("jobs.manage") && <Tab value="jobs" label="Jobs" icon={<Cpu size={16} />} iconPosition="start" />}
+              {can("settings.manage") && <Tab value="host" label="Host" icon={<Network size={16} />} iconPosition="start" />}
+              {can("users.manage") && <Tab value="users" label="Users" icon={<UserCog size={16} />} iconPosition="start" />}
+              {can("roles.manage") && <Tab value="roles" label="Roles" icon={<ShieldCheck size={16} />} iconPosition="start" />}
+              {can("groups.manage") && <Tab value="groups" label="Groups" icon={<UsersRound size={16} />} iconPosition="start" />}
+              {can("audit.view") && <Tab value="audit" label="Audit" icon={<ScrollText size={16} />} iconPosition="start" />}
+              <Tab value="tags" label="Tags" icon={<Tag size={16} />} iconPosition="start" />
+              {can("settings.manage") && <Tab value="environment" label="Environment" icon={<Braces size={16} />} iconPosition="start" />}
             </Tabs>
 
             <Divider sx={dividerSx} />
