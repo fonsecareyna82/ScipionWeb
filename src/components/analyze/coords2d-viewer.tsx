@@ -289,7 +289,22 @@ type HistogramImageData = {
 
 const DEFAULT_BOX_SIZE = 50;
 const MIN_BOX_SIZE = 10;
+// The slider reaches at least this, or a quarter of the micrograph when that is more; the number
+// field takes any size up to the micrograph's smaller side (or BOX_SIZE_LIMIT before it is known).
 const MAX_BOX_SIZE = 240;
+const BOX_SIZE_LIMIT = 4096;
+
+function boxSizeRange(worldSize: { width: number; height: number } | null, boxSize: number) {
+  const limit = worldSize
+    ? Math.max(MAX_BOX_SIZE, Math.floor(Math.min(worldSize.width, worldSize.height)))
+    : BOX_SIZE_LIMIT;
+  const sliderMax = Math.min(limit, Math.max(MAX_BOX_SIZE, Math.round(limit / 4), boxSize));
+  return { limit, sliderMax };
+}
+
+function clampBoxSize(value: number, limit: number = BOX_SIZE_LIMIT) {
+  return Math.max(MIN_BOX_SIZE, Math.min(limit, Math.round(value)));
+}
 const PARTICLE_GALLERY_SIZE = 74;
 
 const PANEL_BORDER = "1px solid rgba(148,163,184,0.4)";
@@ -1009,7 +1024,7 @@ function Coords2dViewer({
         setTotalPicks(result.totalPicks ?? 0);
 
         if (result.boxSize && Number.isFinite(result.boxSize)) {
-          setBoxSize(Math.max(MIN_BOX_SIZE, Math.min(MAX_BOX_SIZE, Number(result.boxSize))));
+          setBoxSize(clampBoxSize(Number(result.boxSize)));
         }
         setBoxSizeEditable(result.boxSizeEditable !== false);
 
@@ -1560,6 +1575,16 @@ function Coords2dViewer({
     if (knownWorldSize) setLastWorldSize(knownWorldSize);
   }, [knownWorldSize]);
   const imageWorldSize = knownWorldSize ?? lastWorldSize;
+
+  const { limit: boxSizeLimit, sliderMax: boxSizeSliderMax } = boxSizeRange(imageWorldSize, boxSize);
+  // What is being typed in the number field; it is applied on Enter or when the field is left
+  const [boxSizeText, setBoxSizeText] = useState<string | null>(null);
+  const applyBoxSizeText = useCallback(() => {
+    if (boxSizeText === null) return;
+    const value = Number(boxSizeText);
+    if (boxSizeText.trim() && Number.isFinite(value)) setBoxSize(clampBoxSize(value, boxSizeLimit));
+    setBoxSizeText(null);
+  }, [boxSizeLimit, boxSizeText]);
 
   const activeImageFilter = useMemo(() => {
     return buildCanvasFilter(filters);
@@ -3071,7 +3096,7 @@ function Coords2dViewer({
         <Slider
           size="small"
           min={MIN_BOX_SIZE}
-          max={MAX_BOX_SIZE}
+          max={boxSizeSliderMax}
           step={1}
           value={boxSize}
           disabled={!boxSizeEditable}
@@ -3079,9 +3104,20 @@ function Coords2dViewer({
           sx={{ width: 260 }}
         />
 
-        <Typography variant="body2" sx={{ minWidth: 42 }}>
-          ({boxSize})
-        </Typography>
+        <TextField
+          size="small"
+          type="number"
+          value={boxSizeText ?? String(boxSize)}
+          disabled={!boxSizeEditable}
+          onChange={(event) => setBoxSizeText(event.target.value)}
+          onBlur={applyBoxSizeText}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") applyBoxSizeText();
+            if (event.key === "Escape") setBoxSizeText(null);
+          }}
+          inputProps={{ min: MIN_BOX_SIZE, max: boxSizeLimit, step: 1, "aria-label": "Box size in pixels" }}
+          sx={{ width: 92, "& .MuiInputBase-input": { py: 0.5 } }}
+        />
 
         {!boxSizeEditable && (
           <Typography variant="caption" color="text.secondary">
