@@ -360,6 +360,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("shareProject", "shareProject");
   mapFn("listProjectShares", "listProjectShares");
   mapFn("revokeProjectShare", "revokeProjectShare");
+  mapFn("revokeProjectGroupShare", "revokeProjectGroupShare");
   mapFn(
     "resolveProtocolRelationCandidates",
     "resolveProtocolRelationCandidates",

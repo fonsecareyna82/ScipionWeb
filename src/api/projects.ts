@@ -972,16 +972,25 @@ export async function listUsers(): Promise<any[]> {
  * Backend endpoint: POST /projects/{projectId}/share
  * Body: { userIds: [...] }
  */
+export type ProjectAccessLevel = "view" | "work" | "manage";
+
+export type ShareOptions = { groupIds?: (string | number)[]; permission?: ProjectAccessLevel };
+
 export async function shareProject(
   projectId: Id,
   userIds: (string | number)[],
+  options: ShareOptions = {},
 ): Promise<void | { success: boolean }> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/share`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userIds }),
+      body: JSON.stringify({
+        userIds,
+        groupIds: options.groupIds ?? [],
+        permission: options.permission ?? "work",
+      }),
     },
   );
 
@@ -1028,6 +1037,16 @@ export async function revokeProjectShare(
     return JSON.parse(text) as { success: boolean };
   } catch {
     return;
+  }
+}
+
+/** Revoke the share of a project with a group. */
+export async function revokeProjectGroupShare(projectId: Id, groupId: Id): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/share/group/${groupId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to revoke the group's access");
   }
 }
 

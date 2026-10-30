@@ -2953,6 +2953,7 @@ export interface ProjectService<
   shareProject(
     projectId: Id,
     userIds: Id[],
+    options?: { groupIds?: Id[]; permission?: "view" | "work" | "manage" },
   ): Promise<void | { success: boolean }>;
 
   listProjectShares(
@@ -2963,6 +2964,11 @@ export interface ProjectService<
     projectId: Id,
     userId: Id,
   ): Promise<void | { success: boolean }>;
+
+  revokeProjectGroupShare?(
+    projectId: Id,
+    groupId: Id,
+  ): Promise<void>;
 
 
   // ─────────────────────────────────────────────────────────────────────────────

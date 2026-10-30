@@ -6,6 +6,10 @@ import toast from "react-hot-toast";
 import { makeShareableUser, resetFactories } from "../factories";
 import { createProjectServiceMock, renderWithProviders } from "../test-utils";
 
+// The groups a project can be shared with
+const accessMocks = vi.hoisted(() => ({ listGroupNames: vi.fn() }));
+vi.mock("@/api/access", () => accessMocks);
+
 vi.mock("react-hot-toast", () => ({
   default: {
     success: vi.fn(),
@@ -19,6 +23,7 @@ describe("ShareProjectModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetFactories();
+    accessMocks.listGroupNames.mockResolvedValue([]);
   });
 
   it("does not render when closed", () => {
@@ -60,7 +65,7 @@ describe("ShareProjectModal", () => {
 
     const service = createProjectServiceMock({
       listUsers: vi.fn().mockResolvedValue([ownerUser, sharedUser, inviteUser]),
-      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2 }]),
+      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2, permission: "view" }]),
       shareProject: vi.fn().mockResolvedValue(undefined),
       revokeProjectShare: vi.fn().mockResolvedValue(undefined),
     });
@@ -86,7 +91,7 @@ describe("ShareProjectModal", () => {
     expect(screen.getByText("Invite User")).toBeInTheDocument();
 
     expect(screen.getByText("Owner")).toBeInTheDocument();
-    expect(screen.getByText("Shared")).toBeInTheDocument();
+    expect(screen.getByText("Shared · View")).toBeInTheDocument();
     expect(screen.getByText("Invite")).toBeInTheDocument();
 
     expect(service.listUsers).toHaveBeenCalledTimes(1);
@@ -183,12 +188,12 @@ describe("ShareProjectModal", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[2]);
 
-    expect(screen.getByText("1 user selected.")).toBeInTheDocument();
+    expect(screen.getByText("1 selected.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Share (1)" }));
 
     await waitFor(() => {
-      expect(service.shareProject).toHaveBeenCalledWith("123", ["3"]);
+      expect(service.shareProject).toHaveBeenCalledWith("123", ["3"], { groupIds: [], permission: "work" });
     });
 
     expect(toast.success).toHaveBeenCalledWith("Project shared successfully");
@@ -253,5 +258,33 @@ describe("ShareProjectModal", () => {
     expect(toast.success).toHaveBeenCalledWith(
       "Access revoked for shared@example.com",
     );
+  });
+
+  it("shares with a group at the chosen access level, and removes a group's access", async () => {
+    accessMocks.listGroupNames.mockResolvedValue([{ id: 7, name: "Lab of X" }, { id: 8, name: "Facility staff" }]);
+    const service = createProjectServiceMock({
+      listUsers: vi.fn().mockResolvedValue([makeShareableUser({ id: 1, name: "Owner User", email: "o@example.com" })]),
+      listProjectShares: vi.fn().mockResolvedValue([{ groupId: 8, permission: "manage" }]),
+      shareProject: vi.fn().mockResolvedValue(undefined),
+      revokeProjectShare: vi.fn().mockResolvedValue(undefined),
+      revokeProjectGroupShare: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderWithProviders(
+      <ShareProjectModal open={true} projectId={123} projectName="Project A" projectOwnerId={1} onClose={onClose} />,
+      { service },
+    );
+
+    expect(await screen.findByText("Shared · Manage")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Share with Lab of X"));
+    fireEvent.change(screen.getByLabelText("Access level"), { target: { value: "view" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share (1)" }));
+
+    await waitFor(() => {
+      expect(service.shareProject).toHaveBeenCalledWith("123", [], { groupIds: [7], permission: "view" });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(service.revokeProjectGroupShare).toHaveBeenCalledWith("123", 8));
   });
 });

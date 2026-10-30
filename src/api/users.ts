@@ -1,25 +1,26 @@
 import { BASE_URL } from "@/config";
 import { fetchWithAuth } from "./auth";
 
-export type AdminUserRole = "user" | "admin";
-
 export type AdminUser = {
   id: number;
   email: string;
   firstName: string;
   lastName?: string | null;
   institution?: string | null;
-  role: AdminUserRole;
+  role: string;
   isActive: boolean;
   isVerified: boolean;
+  roleIds: number[];
+  groupIds: number[];
 };
 
 export type AdminUserPatch = {
-  role?: AdminUserRole;
   isActive?: boolean;
+  roleIds?: number[];
+  groupIds?: number[];
 };
 
-async function readPayload(response: Response): Promise<any> {
+export async function readPayload(response: Response): Promise<any> {
   const text = await response.text();
   if (!text) return null;
 
@@ -30,7 +31,7 @@ async function readPayload(response: Response): Promise<any> {
   }
 }
 
-async function buildApiError(response: Response, fallback: string): Promise<Error> {
+export async function buildApiError(response: Response, fallback: string): Promise<Error> {
   const data = await readPayload(response);
   const message =
     (typeof data?.detail === "string" && data.detail) ||

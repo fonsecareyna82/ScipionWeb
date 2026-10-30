@@ -2,6 +2,23 @@
 import { BASE_URL } from "@/config";
 import { UserProfile } from "@/types/user";
 
+// The signed-in user, read once per session (see hooks/usePermissions)
+let currentUserRequest: Promise<UserProfile> | null = null;
+
+export function loadCurrentUserOnce(): Promise<UserProfile> {
+  if (!currentUserRequest) {
+    currentUserRequest = getCurrentUser().catch((error) => {
+      currentUserRequest = null;
+      throw error;
+    });
+  }
+  return currentUserRequest;
+}
+
+export function forgetCurrentUser() {
+  currentUserRequest = null;
+}
+
 export interface UserCreatePayload {
   email: string;
   password: string;
@@ -33,6 +50,7 @@ export async function login(email: string, password: string) {
   if (data.refreshToken) {
     localStorage.setItem("refreshToken", data.refreshToken);
   }
+  forgetCurrentUser();
 
   return data;
 }
@@ -134,6 +152,7 @@ export async function getCurrentUser() {
 export function logout() {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
+  forgetCurrentUser();
 }
 
 /**

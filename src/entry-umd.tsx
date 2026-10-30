@@ -879,6 +879,7 @@ function normalizeServiceAPI(
   mapFn("shareProject", "shareProject");
   mapFn("listProjectShares", "listProjectShares");
   mapFn("revokeProjectShare", "revokeProjectShare");
+  mapFn("revokeProjectGroupShare", "revokeProjectGroupShare");
 
   // tagsApiAliases
   mapFn(

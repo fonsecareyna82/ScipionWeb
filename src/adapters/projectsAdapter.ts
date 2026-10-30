@@ -1137,13 +1137,16 @@ const defaultService: ProjectService = {
    * Share a project with one or more users.
    * userIds must be array of string/number → convert to string.
    */
-  shareProject: (projectId: Id, userIds: Id[]) =>
-    api.shareProject(toId(projectId), userIds.map(toId)),
+  shareProject: (projectId: Id, userIds: Id[], options?: api.ShareOptions) =>
+    api.shareProject(toId(projectId), userIds.map(toId), options),
 
   listProjectShares: (projectId: Id,) => api.listProjectShares(projectId),
 
   revokeProjectShare: (projectId: Id, userId: Id) =>
     api.revokeProjectShare(toId(projectId), userId),
+
+  revokeProjectGroupShare: (projectId: Id, groupId: Id) =>
+    api.revokeProjectGroupShare(toId(projectId), groupId),
 
 
   // ──────────────────────────── Settings (user + instance + environment) ────────────────────────────

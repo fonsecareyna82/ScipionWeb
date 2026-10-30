@@ -68,6 +68,9 @@ import type {
 import { getCurrentUser } from "@/api/auth";
 import type { UserProfile } from "@/types/user";
 import UserManagementPanel from "@/pages/Settings/UserManagementPanel";
+import RolesPanel from "@/pages/Settings/RolesPanel";
+import GroupsPanel from "@/pages/Settings/GroupsPanel";
+import { usePermissions } from "@/hooks/usePermissions";
 
 
 type TabKey =
@@ -76,6 +79,8 @@ type TabKey =
   | "jobs"
   | "host"
   | "users"
+  | "roles"
+  | "groups"
   | "tags"
   | "environment";
 
@@ -494,7 +499,8 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const isAdmin = String(currentUser?.role ?? "").trim().toLowerCase() === "admin";
+  // Each tab is shown to whoever may use it (the API refuses the others anyway)
+  const { can } = usePermissions();
 
   const [darkClassEnabled, setDarkClassEnabled] = useState(false);
 
@@ -2633,12 +2639,14 @@ export default function SettingsPage() {
               sx={{ ...tabsSx, flexShrink: 0 }}
             >
               <Tab value="user" label="User" />
-              <Tab value="instance" label="Instance" />
-              <Tab value="jobs" label="Jobs" />
-              <Tab value="host" label="Host" />
-              {isAdmin && <Tab value="users" label="Users" />}
+              {can("settings.manage") && <Tab value="instance" label="Instance" />}
+              {can("jobs.manage") && <Tab value="jobs" label="Jobs" />}
+              {can("settings.manage") && <Tab value="host" label="Host" />}
+              {can("users.manage") && <Tab value="users" label="Users" />}
+              {can("roles.manage") && <Tab value="roles" label="Roles" />}
+              {can("groups.manage") && <Tab value="groups" label="Groups" />}
               <Tab value="tags" label="Tags" />
-              <Tab value="environment" label="Environment" />
+              {can("settings.manage") && <Tab value="environment" label="Environment" />}
             </Tabs>
 
             <Divider sx={dividerSx} />
@@ -2672,11 +2680,18 @@ export default function SettingsPage() {
                             colors={colors}
                           />
                         )
-                        : tab === "tags"
-                          ? renderTagsContent()
-                          : renderEnvironmentContent()}
+                        : tab === "roles"
+                          ? <RolesPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors} />
+                          : tab === "groups"
+                            ? (
+                              <GroupsPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
+                                           selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors} />
+                            )
+                            : tab === "tags"
+                              ? renderTagsContent()
+                              : renderEnvironmentContent()}
 
-              {tab !== "jobs" && tab !== "users" ? (
+              {tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />
 

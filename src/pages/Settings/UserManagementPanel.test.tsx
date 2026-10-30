@@ -12,6 +12,15 @@ vi.mock("@/api/users", () => ({
     updateAdminUser: vi.fn(),
 }));
 
+vi.mock("@/api/access", () => ({
+    listRoles: vi.fn().mockResolvedValue([
+        { id: 1, name: "Administrator", isSystem: true },
+        { id: 4, name: "User", isSystem: false },
+        { id: 3, name: "Technician", isSystem: false },
+    ]),
+    listGroupNames: vi.fn().mockResolvedValue([{ id: 7, name: "Facility staff" }]),
+}));
+
 vi.mock("react-hot-toast", () => ({
     default: {
         success: vi.fn(),
@@ -26,9 +35,11 @@ const users = [
         firstName: "Admin",
         lastName: "User",
         institution: "CNB-CSIC",
-        role: "admin" as const,
+        role: "admin",
         isActive: true,
         isVerified: true,
+        roleIds: [1],
+        groupIds: [],
     },
     {
         id: 2,
@@ -36,9 +47,11 @@ const users = [
         firstName: "Normal",
         lastName: "User",
         institution: "Lab",
-        role: "user" as const,
+        role: "user",
         isActive: true,
         isVerified: true,
+        roleIds: [4],
+        groupIds: [7],
     },
 ];
 
@@ -75,17 +88,37 @@ describe("UserManagementPanel", () => {
         expect(screen.getByText("user@example.com")).toBeInTheDocument();
     });
 
-    it("prevents editing the current admin", async () => {
+    it("prevents deactivating the current admin", async () => {
         renderPanel();
 
         await screen.findByText("admin@example.com");
 
         expect(screen.getByLabelText("Active admin@example.com")).toBeDisabled();
-        expect(
-            screen.getByRole("combobox", {
-                name: "Role admin@example.com",
-            })
-        ).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("shows each user's roles and groups by name", async () => {
+        renderPanel();
+
+        await screen.findByText("user@example.com");
+
+        expect(screen.getByRole("combobox", { name: "Roles admin@example.com" })).toHaveTextContent("Administrator");
+        expect(screen.getByRole("combobox", { name: "Roles user@example.com" })).toHaveTextContent("User");
+        expect(screen.getByRole("combobox", { name: "Groups user@example.com" })).toHaveTextContent("Facility staff");
+        expect(screen.getByRole("combobox", { name: "Groups admin@example.com" })).toHaveTextContent("None");
+    });
+
+    it("gives a user another role", async () => {
+        vi.mocked(updateAdminUser).mockResolvedValue({ ...users[1], roleIds: [4, 3] });
+
+        renderPanel();
+
+        await screen.findByText("user@example.com");
+        fireEvent.mouseDown(screen.getByRole("combobox", { name: "Roles user@example.com" }));
+        fireEvent.click(await screen.findByRole("option", { name: "Technician" }));
+
+        await waitFor(() => {
+            expect(updateAdminUser).toHaveBeenCalledWith(2, { roleIds: [4, 3] });
+        });
     });
 
     it("deactivates another user", async () => {

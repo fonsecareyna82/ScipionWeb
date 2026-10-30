@@ -15,6 +15,7 @@ import {
 } from "@/api/plugins";
 import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, ExecuteIcon } from "@/icons";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type LocationState = { plugin?: Plugin };
 
@@ -519,6 +520,9 @@ function LogViewer(props: {
 
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
+    // Installing and removing are for whoever holds plugins.manage; the others only read
+    const { can } = usePermissions();
+    const canManagePlugins = can("plugins.manage");
     const navigate = useNavigate();
     const location = useLocation();
     const state = (location.state as LocationState | null) ?? null;
@@ -779,7 +783,7 @@ export default function PluginPage() {
     );
 
     const isUpdateAvailable = Boolean(plugin?.installed && plugin?.toUpdate);
-    const canInstallOrUpdate = !plugin?.installed || isUpdateAvailable;
+    const canInstallOrUpdate = canManagePlugins && (!plugin?.installed || isUpdateAvailable);
 
     const binaries = plugin?.binaries ?? [];
 
@@ -1527,7 +1531,7 @@ export default function PluginPage() {
                             </div>
                         ) : null}
 
-                        <SecondaryButton
+                        {canManagePlugins && <SecondaryButton
                             onClick={handleRemove}
                             disabled={isRemoving || !plugin.installed}
                             title="Remove plugin"
@@ -1545,7 +1549,7 @@ export default function PluginPage() {
                             ) : (
                                 "Remove"
                             )}
-                        </SecondaryButton>
+                        </SecondaryButton>}
                     </div>
                 }
             >
@@ -1738,7 +1742,7 @@ export default function PluginPage() {
                                         </div>
 
                                         <div className="flex min-w-[110px] justify-start md:justify-end">
-                                            {binary.installed ? (
+                                            {!canManagePlugins ? null : binary.installed ? (
                                                 <SecondaryButton
                                                     onClick={() =>
                                                         void handleBinaryOperation(

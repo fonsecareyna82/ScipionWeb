@@ -31,9 +31,9 @@ import {
     listAdminUsers,
     updateAdminUser,
     type AdminUser,
-    type AdminUserRole,
     type AdminUserPatch,
 } from "@/api/users";
+import { listGroupNames, listRoles, type Role } from "@/api/access";
 
 type UserManagementPanelProps = {
     currentUserId: number | null;
@@ -65,13 +65,20 @@ export default function UserManagementPanel({
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState("");
     const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
 
     const loadUsers = useCallback(async () => {
         setLoading(true);
         setError(null);
 
         try {
-            setUsers(await listAdminUsers());
+            const [loadedUsers, loadedRoles, loadedGroups] = await Promise.all([
+                listAdminUsers(), listRoles(), listGroupNames(),
+            ]);
+            setRoles(loadedRoles);
+            setGroups(loadedGroups);
+            setUsers(loadedUsers);
         } catch (e: any) {
             setError(String(e?.message || "Failed to load users"));
         } finally {
@@ -94,10 +101,11 @@ export default function UserManagementPanel({
                 fullName.includes(query) ||
                 user.email.toLowerCase().includes(query) ||
                 String(user.institution ?? "").toLowerCase().includes(query) ||
-                user.role.toLowerCase().includes(query)
+                roles.some((role) => user.roleIds?.includes(role.id) && role.name.toLowerCase().includes(query)) ||
+                groups.some((group) => user.groupIds?.includes(group.id) && group.name.toLowerCase().includes(query))
             );
         });
-    }, [users, filter]);
+    }, [users, filter, roles, groups]);
 
     // New accounts wait, inactive, until an administrator activates them
     const inactiveCount = useMemo(() => users.filter((user) => !user.isActive).length, [users]);
@@ -141,7 +149,7 @@ export default function UserManagementPanel({
             <Card variant="outlined" sx={cardSx}>
                 <CardHeader
                     title="Users"
-                    subheader="Manage account access and administrative privileges."
+                    subheader="Activate accounts and choose their roles and groups."
                     sx={cardHeaderSx}
                     action={
                         <Button
@@ -174,7 +182,7 @@ export default function UserManagementPanel({
                             label="Search users"
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
-                            placeholder="Name, email, institution or role"
+                            placeholder="Name, email, institution, role or group"
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">
@@ -197,7 +205,7 @@ export default function UserManagementPanel({
                             <MuiTable size="small">
                                 <TableHead>
                                     <TableRow>
-                                        {["User", "Email", "Institution", "Role", "Active", "Verified"].map((label) => (
+                                        {["User", "Email", "Institution", "Roles", "Groups", "Active", "Verified"].map((label) => (
                                             <TableCell
                                                 key={label}
                                                 sx={{
@@ -241,26 +249,28 @@ export default function UserManagementPanel({
                                                     {user.institution || "—"}
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border, minWidth: 130 }}>
-                                                    <FormControl fullWidth size="small">
-                                                        <Select
-                                                            sx={selectSx}
-                                                            MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                                            value={user.role}
-                                                            disabled={updating || isCurrentUser}
-                                                            SelectDisplayProps={{
-                                                                "aria-label": `Role ${user.email}`,
-                                                            }}
-                                                            onChange={(e) =>
-                                                                void updateUser(user, {
-                                                                    role: e.target.value as AdminUserRole,
-                                                                })
-                                                            }
-                                                        >
-                                                            <MenuItem value="user">User</MenuItem>
-                                                            <MenuItem value="admin">Admin</MenuItem>
-                                                        </Select>
-                                                    </FormControl>
+                                                <TableCell sx={{ borderColor: colors.border, minWidth: 190 }}>
+                                                    <IdsSelect
+                                                        label={`Roles ${user.email}`}
+                                                        options={roles}
+                                                        value={user.roleIds ?? []}
+                                                        disabled={updating}
+                                                        selectSx={selectSx}
+                                                        menuPaperSx={menuPaperSx}
+                                                        onChange={(roleIds) => void updateUser(user, { roleIds })}
+                                                    />
+                                                </TableCell>
+
+                                                <TableCell sx={{ borderColor: colors.border, minWidth: 170 }}>
+                                                    <IdsSelect
+                                                        label={`Groups ${user.email}`}
+                                                        options={groups}
+                                                        value={user.groupIds ?? []}
+                                                        disabled={updating}
+                                                        selectSx={selectSx}
+                                                        menuPaperSx={menuPaperSx}
+                                                        onChange={(groupIds) => void updateUser(user, { groupIds })}
+                                                    />
                                                 </TableCell>
 
                                                 <TableCell sx={{ borderColor: colors.border, minWidth: 135 }}>
@@ -309,5 +319,44 @@ export default function UserManagementPanel({
                 </CardContent>
             </Card>
         </Stack>
+    );
+}
+
+
+// A multiple choice of roles or groups, shown as their names
+function IdsSelect({ label, options, value, disabled, selectSx, menuPaperSx, onChange }: {
+    label: string;
+    options: { id: number; name: string }[];
+    value: number[];
+    disabled: boolean;
+    selectSx: any;
+    menuPaperSx: any;
+    onChange: (ids: number[]) => void;
+}) {
+    const names = new Map(options.map((option) => [option.id, option.name]));
+    return (
+        <FormControl fullWidth size="small">
+            <Select
+                multiple
+                sx={selectSx}
+                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                value={value}
+                disabled={disabled}
+                displayEmpty
+                SelectDisplayProps={{ "aria-label": label }}
+                renderValue={(selected) =>
+                    (selected as number[]).length === 0
+                        ? "None"
+                        : (selected as number[]).map((id) => names.get(id) ?? `#${id}`).join(", ")
+                }
+                onChange={(e) => onChange((e.target.value as number[]).map(Number))}
+            >
+                {options.map((option) => (
+                    <MenuItem key={option.id} value={option.id}>
+                        {option.name}
+                    </MenuItem>
+                ))}
+            </Select>
+        </FormControl>
     );
 }

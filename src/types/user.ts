@@ -11,4 +11,7 @@ export interface UserProfile {
     postalCode?: string;
     role?: string;
     isVerified?: boolean;
+    // What the user may do: the permissions of their roles and of their groups' roles
+    permissions?: string[];
+    isSystemAdmin?: boolean;
   }

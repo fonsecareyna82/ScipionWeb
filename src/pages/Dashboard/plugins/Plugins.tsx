@@ -1,5 +1,6 @@
 // src/pages/Dashboard/plugins/Plugins.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { usePermissions } from "@/hooks/usePermissions";
 import { FolderPlus, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -133,6 +134,9 @@ function TabButton(props: {
 
 export default function Plugins() {
   const navigate = useNavigate();
+  // Installing and updating are for whoever holds plugins.manage; the others only read
+  const { can } = usePermissions();
+  const canManagePlugins = can("plugins.manage");
   const {
     tasks,
     installing,
@@ -437,14 +441,14 @@ export default function Plugins() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <SecondaryButton
+                    {canManagePlugins && <SecondaryButton
                       onClick={() => setInstallDevelOpen(true)}
                       title="Install a local Scipion plugin in devel mode"
                       className="!border-[#333d49] !bg-[#333d49] !text-white shadow-sm shadow-slate-900/10 hover:!border-[#2b3440] hover:!bg-[#2b3440] hover:!text-white hover:shadow-md dark:!border-slate-600 dark:!bg-[#333d49] dark:!text-white dark:hover:!border-slate-500 dark:hover:!bg-[#2b3440]"
                     >
                       <FolderPlus className="h-4 w-4 text-white" />
                       Install local plugin
-                    </SecondaryButton>
+                    </SecondaryButton>}
                     {/*
                     <StatPill label="Installed" value={installedPlugins.length} />
                     <StatPill label="Available" value={availablePlugins.length} />
@@ -540,7 +544,7 @@ export default function Plugins() {
               ) : (
                 <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-                    <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-gray-950/90">
+                    {canManagePlugins && <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-gray-950/90">
                       <PluginSelectionBar
                         selectedCount={selectedPlugins.length}
                         actionableCount={actionableSelectedPlugins.length}
@@ -554,7 +558,7 @@ export default function Plugins() {
                         onPrimaryAction={installSelectedPlugins}
                         onClearSelection={() => setSelectedPipNames(new Set())}
                       />
-                    </div>
+                    </div>}
 
                     <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl">
                       <PluginListTable
