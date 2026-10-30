@@ -31,6 +31,8 @@ import {
     listMicroscopes,
     updateMicroscope,
     uploadMicroscopePhoto,
+    type Detector,
+    type DetectorPayload,
     type GainFlip,
     type Microscope,
     type MicroscopePayload,
@@ -65,12 +67,66 @@ const GAIN_ROTATIONS = [0, 90, 180, 270] as const;
 // A row of the calibration table while it is edited: text, so a half-typed number stays as typed
 type PixelRow = { key: number; magnification: string; pixelSize: string };
 
-function pixelRowsOf(microscope: Microscope | null): PixelRow[] {
-    return (microscope?.pixelSizes ?? []).map((row, index) => ({
-        key: index,
-        magnification: String(row.magnification),
-        pixelSize: String(row.pixelSize),
-    }));
+// A detector while it is edited; id null until it is saved
+type DetectorDraft = Omit<Detector, "id" | "pixelSizes" | "gainRotation"> & {
+    key: number;
+    id: number | null;
+    gainRotation: number;
+    pixelRows: PixelRow[];
+};
+
+function detectorDraftOf(detector: Detector | null, key: number): DetectorDraft {
+    return {
+        key,
+        id: detector?.id ?? null,
+        name: detector?.name ?? "",
+        metadataName: detector?.metadataName ?? "",
+        energyFiltered: detector?.energyFiltered ?? false,
+        gainPath: detector?.gainPath ?? "",
+        gainFlip: detector?.gainFlip ?? "none",
+        gainRotation: detector?.gainRotation ?? 0,
+        notes: detector?.notes ?? "",
+        pixelRows: (detector?.pixelSizes ?? []).map((row, index) => ({
+            key: index,
+            magnification: String(row.magnification),
+            pixelSize: String(row.pixelSize),
+        })),
+    };
+}
+
+function nextKey(items: { key: number }[]): number {
+    return Math.max(0, ...items.map((item) => item.key + 1));
+}
+
+function isEmptyDraft(draft: DetectorDraft): boolean {
+    return draft.id === null && !draft.name.trim() && !draft.metadataName.trim() && !draft.gainPath.trim()
+        && !draft.notes.trim() && draft.pixelRows.every((row) => !row.magnification.trim() && !row.pixelSize.trim());
+}
+
+function detectorPayloadOf(draft: DetectorDraft): DetectorPayload {
+    return {
+        id: draft.id,
+        name: draft.name.trim(),
+        metadataName: draft.metadataName.trim(),
+        energyFiltered: draft.energyFiltered,
+        gainPath: draft.gainPath.trim(),
+        gainFlip: draft.gainFlip,
+        gainRotation: draft.gainRotation as Detector["gainRotation"],
+        notes: draft.notes.trim(),
+        // Rows left empty are dropped; the API checks the rest
+        pixelSizes: draft.pixelRows
+            .filter((row) => row.magnification.trim() || row.pixelSize.trim())
+            .map((row) => ({ magnification: Number(row.magnification), pixelSize: Number(row.pixelSize) })),
+    };
+}
+
+/** One detector's line in the list: its name and how its movies are calibrated. */
+export function describeDetector(detector: Detector): string {
+    const calibration = detector.pixelSizes.length
+        ? detector.pixelSizes.map((row) => `${row.magnification.toLocaleString("en-US")}× ${row.pixelSize} Å`).join(", ")
+        : "nominal pixel sizes";
+    const named = detector.metadataName ? `${detector.name} (${detector.metadataName})` : detector.name;
+    return `${named}${detector.energyFiltered ? ", energy filtered" : ""}: ${calibration}`;
 }
 
 function optionalNumber(text: string): number | null {
@@ -125,7 +181,7 @@ function MicroscopePhoto({ microscope, src, width, height, colors }: {
 }
 
 export function describeMicroscope(microscope: Microscope): string {
-    return [microscope.model, microscope.detectors, microscope.energyFilter && `filter ${microscope.energyFilter}`,
+    return [microscope.model, microscope.detectors.map((detector) => detector.name).join(", "), microscope.energyFilter && `filter ${microscope.energyFilter}`,
         microscope.voltageKv && `${microscope.voltageKv} kV`, microscope.csMm && `Cs ${microscope.csMm} mm`]
         .filter(Boolean).join(" · ") || "—";
 }
@@ -219,12 +275,16 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
                                         <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
                                             {describeMicroscope(microscope)}
                                         </Typography>
-                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                            {microscope.pixelSizes.length
-                                                ? "Calibrated: " + microscope.pixelSizes
-                                                    .map((row) => `${row.magnification.toLocaleString("en-US")}× ${row.pixelSize} Å`).join(", ")
-                                                : "No calibrated pixel sizes: the nominal ones of the movies are used"}
-                                        </Typography>
+                                        {microscope.detectors.length === 0 && (
+                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                                                No detectors: the nominal pixel sizes of the movies are used
+                                            </Typography>
+                                        )}
+                                        {microscope.detectors.map((detector) => (
+                                            <Typography key={detector.id} sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                                                {describeDetector(detector)}
+                                            </Typography>
+                                        ))}
                                     </Stack>
                                     </Stack>
                                     <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
@@ -246,7 +306,7 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
             {deleting !== null && (
                 <SettingsDialog
                     title="Delete microscope?"
-                    description="Its calibrated pixel sizes go with it. Mark it out of service instead to keep its history."
+                    description="Its detectors and their calibrated pixel sizes go with it. Mark it out of service instead to keep its history."
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -298,18 +358,16 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
     const [name, setName] = useState(microscope?.name ?? "");
     const [model, setModel] = useState(microscope?.model ?? "");
     const [status, setStatus] = useState<MicroscopeStatus>(microscope?.status ?? "operational");
-    const [detectors, setDetectors] = useState(microscope?.detectors ?? "");
+    // A new microscope starts with one detector to fill
+    const [detectors, setDetectors] = useState<DetectorDraft[]>(() =>
+        microscope ? microscope.detectors.map((detector, index) => detectorDraftOf(detector, index)) : [detectorDraftOf(null, 0)]);
     const [energyFilter, setEnergyFilter] = useState(microscope?.energyFilter ?? "");
     const [acquisitionSoftware, setAcquisitionSoftware] = useState(microscope?.acquisitionSoftware ?? "");
     const [voltageKv, setVoltageKv] = useState(microscope?.voltageKv != null ? String(microscope.voltageKv) : "");
     const [csMm, setCsMm] = useState(microscope?.csMm != null ? String(microscope.csMm) : "");
-    const [gainPath, setGainPath] = useState(microscope?.gainPath ?? "");
-    const [gainFlip, setGainFlip] = useState<GainFlip>(microscope?.gainFlip ?? "none");
-    const [gainRotation, setGainRotation] = useState<number>(microscope?.gainRotation ?? 0);
     const [offloadPath, setOffloadPath] = useState(microscope?.offloadPath ?? "");
     const [sessionsEnabled, setSessionsEnabled] = useState(microscope?.sessionsEnabled ?? false);
     const [notes, setNotes] = useState(microscope?.notes ?? "");
-    const [pixelRows, setPixelRows] = useState<PixelRow[]>(() => pixelRowsOf(microscope));
     const [saving, setSaving] = useState(false);
     // The photo is changed with the rest, on Save: a file chosen, or the stored one removed
     const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -329,29 +387,23 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
 
     const hasPhoto = !!photoFile || (!photoRemoved && !!microscope?.photoUpdatedAt);
 
-    const setPixelRow = (key: number, change: Partial<PixelRow>) =>
-        setPixelRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...change } : row)));
+    const setDetector = (key: number, change: Partial<DetectorDraft>) =>
+        setDetectors((drafts) => drafts.map((draft) => (draft.key === key ? { ...draft, ...change } : draft)));
 
     const save = async () => {
         const payload: MicroscopePayload = {
             name: name.trim(),
             model: model.trim(),
             status,
-            detectors: detectors.trim(),
             energyFilter: energyFilter.trim(),
             acquisitionSoftware: acquisitionSoftware.trim(),
             voltageKv: optionalNumber(voltageKv),
             csMm: optionalNumber(csMm),
-            gainPath: gainPath.trim(),
-            gainFlip,
-            gainRotation: gainRotation as MicroscopePayload["gainRotation"],
             offloadPath: offloadPath.trim(),
             sessionsEnabled,
             notes: notes.trim(),
-            // Rows left empty are dropped; the API checks the rest
-            pixelSizes: pixelRows
-                .filter((row) => row.magnification.trim() || row.pixelSize.trim())
-                .map((row) => ({ magnification: Number(row.magnification), pixelSize: Number(row.pixelSize) })),
+            // A new detector left untouched is dropped
+            detectors: detectors.filter((draft) => !isEmptyDraft(draft)).map(detectorPayloadOf),
         };
         setSaving(true);
         try {
@@ -370,7 +422,7 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
     return (
         <SettingsDialog
             title={microscope ? `Edit ${microscope.name}` : "New microscope"}
-            description="Voltage, magnification and the nominal pixel size are read from each movie; the calibrated pixel size of its magnification replaces the nominal one."
+            description="Voltage, magnification and the nominal pixel size are read from each movie, which also names its detector; that detector's calibrated pixel size at the magnification replaces the nominal one."
             icon={<MicroscopeIcon size={20} color="white" />}
             confirmLabel="Save"
             busyLabel="Saving…"
@@ -433,8 +485,6 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
                     </FormControl>
                 </Stack>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Detectors" value={detectors}
-                               placeholder="Falcon 4i, Ceta-D" onChange={(e) => setDetectors(e.target.value)} />
                     <TextField sx={fieldSx} size="small" fullWidth label="Energy filter" value={energyFilter}
                                placeholder="None" onChange={(e) => setEnergyFilter(e.target.value)} />
                     <TextField sx={fieldSx} size="small" fullWidth label="Acquisition software"
@@ -449,28 +499,6 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
                                helperText="Not in the movies' metadata" inputProps={{ inputMode: "decimal" }}
                                onChange={(e) => setCsMm(e.target.value)} />
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Gain reference" value={gainPath}
-                               placeholder="/data/gains/*Talos*gain*.mrc" onChange={(e) => setGainPath(e.target.value)} />
-                    <FormControl size="small" sx={{ flex: 1 }}>
-                        <InputLabel id="microscope-gain-flip-label">Gain flip</InputLabel>
-                        <Select labelId="microscope-gain-flip-label" label="Gain flip" sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={gainFlip}
-                                onChange={(e) => setGainFlip(e.target.value as GainFlip)}>
-                            {(Object.keys(GAIN_FLIP_LABELS) as GainFlip[]).map((value) => (
-                                <MenuItem key={value} value={value}>{GAIN_FLIP_LABELS[value]}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ flex: 1 }}>
-                        <InputLabel id="microscope-gain-rotation-label">Gain rotation</InputLabel>
-                        <Select labelId="microscope-gain-rotation-label" label="Gain rotation" sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={gainRotation}
-                                onChange={(e) => setGainRotation(Number(e.target.value))}>
-                            {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value}°</MenuItem>)}
-                        </Select>
-                    </FormControl>
-                </Stack>
                 <TextField sx={fieldSx} size="small" label="Folder the microscope writes to" value={offloadPath}
                            placeholder="/mnt/micros/talos_offload" onChange={(e) => setOffloadPath(e.target.value)} />
                 <FormControlLabel
@@ -480,33 +508,23 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
 
                 <Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Calibrated pixel sizes</Typography>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Detectors</Typography>
                         <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
-                                onClick={() => setPixelRows((rows) => [...rows, {
-                                    key: Math.max(0, ...rows.map((row) => row.key + 1)), magnification: "", pixelSize: "",
-                                }])}>
-                            Add magnification
+                                onClick={() => setDetectors((drafts) => [...drafts, detectorDraftOf(null, nextKey(drafts))])}>
+                            Add detector
                         </Button>
                     </Stack>
-                    {pixelRows.length === 0 && (
+                    {detectors.length === 0 && (
                         <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
                             None: the nominal pixel size of each movie is used.
                         </Typography>
                     )}
-                    <Stack spacing={1}>
-                        {pixelRows.map((row) => (
-                            <Stack key={row.key} direction="row" spacing={1} alignItems="center">
-                                <TextField sx={fieldSx} size="small" label="Magnification (×)" value={row.magnification}
-                                           inputProps={{ inputMode: "numeric", "aria-label": "Magnification" }}
-                                           onChange={(e) => setPixelRow(row.key, { magnification: e.target.value })} />
-                                <TextField sx={fieldSx} size="small" label="Pixel size (Å)" value={row.pixelSize}
-                                           inputProps={{ inputMode: "decimal", "aria-label": "Pixel size" }}
-                                           onChange={(e) => setPixelRow(row.key, { pixelSize: e.target.value })} />
-                                <IconButton size="small" aria-label="Remove magnification"
-                                            onClick={() => setPixelRows((rows) => rows.filter((other) => other.key !== row.key))}>
-                                    <X size={16} />
-                                </IconButton>
-                            </Stack>
+                    <Stack spacing={1.5}>
+                        {detectors.map((draft) => (
+                            <DetectorEditor key={draft.key} draft={draft} colors={colors} fieldSx={fieldSx}
+                                            selectSx={selectSx} menuPaperSx={menuPaperSx} actionButtonSx={actionButtonSx}
+                                            onChange={(change) => setDetector(draft.key, change)}
+                                            onRemove={() => setDetectors((drafts) => drafts.filter((other) => other.key !== draft.key))} />
                         ))}
                     </Stack>
                 </Box>
@@ -515,5 +533,102 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
                            onChange={(e) => setNotes(e.target.value)} />
             </Stack>
         </SettingsDialog>
+    );
+}
+
+
+function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, actionButtonSx, onChange, onRemove }: {
+    draft: DetectorDraft;
+    colors: PanelStyles["colors"];
+    fieldSx: any;
+    selectSx: any;
+    menuPaperSx: any;
+    actionButtonSx: any;
+    onChange: (change: Partial<DetectorDraft>) => void;
+    onRemove: () => void;
+}) {
+    const setPixelRow = (key: number, change: Partial<PixelRow>) =>
+        onChange({ pixelRows: draft.pixelRows.map((row) => (row.key === key ? { ...row, ...change } : row)) });
+    const label = draft.name.trim() || "New detector";
+
+    return (
+        <Box role="group" aria-label={`Detector ${label}`}
+             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
+            <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                    <TextField sx={fieldSx} size="small" fullWidth label="Detector" value={draft.name}
+                               placeholder="Falcon 4i" onChange={(e) => onChange({ name: e.target.value })} />
+                    <TextField sx={fieldSx} size="small" fullWidth label="Name in the movies' metadata"
+                               value={draft.metadataName} placeholder="BM-Falcon"
+                               onChange={(e) => onChange({ metadataName: e.target.value })} />
+                    <FormControlLabel
+                        sx={{ flexShrink: 0, mr: 0 }}
+                        control={<Switch checked={draft.energyFiltered}
+                                         onChange={(e) => onChange({ energyFiltered: e.target.checked })} />}
+                        label="Behind the energy filter"
+                    />
+                    <IconButton size="small" aria-label={`Remove detector ${label}`} onClick={onRemove}>
+                        <Trash2 size={16} />
+                    </IconButton>
+                </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Gain reference" value={draft.gainPath}
+                               placeholder="/data/gains/*Talos*gain*.mrc" onChange={(e) => onChange({ gainPath: e.target.value })} />
+                    <FormControl size="small" sx={{ flex: 1 }}>
+                        <InputLabel id={`detector-${draft.key}-gain-flip-label`}>Gain flip</InputLabel>
+                        <Select labelId={`detector-${draft.key}-gain-flip-label`} label="Gain flip" sx={selectSx}
+                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainFlip}
+                                onChange={(e) => onChange({ gainFlip: e.target.value as GainFlip })}>
+                            {(Object.keys(GAIN_FLIP_LABELS) as GainFlip[]).map((value) => (
+                                <MenuItem key={value} value={value}>{GAIN_FLIP_LABELS[value]}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ flex: 1 }}>
+                        <InputLabel id={`detector-${draft.key}-gain-rotation-label`}>Gain rotation</InputLabel>
+                        <Select labelId={`detector-${draft.key}-gain-rotation-label`} label="Gain rotation" sx={selectSx}
+                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainRotation}
+                                onChange={(e) => onChange({ gainRotation: Number(e.target.value) })}>
+                            {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value}°</MenuItem>)}
+                        </Select>
+                    </FormControl>
+                </Stack>
+
+                <Box>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Calibrated pixel sizes</Typography>
+                        <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
+                                onClick={() => onChange({ pixelRows: [...draft.pixelRows, {
+                                    key: nextKey(draft.pixelRows), magnification: "", pixelSize: "",
+                                }] })}>
+                            Add magnification
+                        </Button>
+                    </Stack>
+                    {draft.pixelRows.length === 0 && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
+                            None: the nominal pixel size of each movie is used.
+                        </Typography>
+                    )}
+                    <Stack spacing={1}>
+                        {draft.pixelRows.map((row) => (
+                            <Stack key={row.key} direction="row" spacing={1} alignItems="center">
+                                <TextField sx={fieldSx} size="small" label="Magnification (×)" value={row.magnification}
+                                           inputProps={{ inputMode: "numeric", "aria-label": "Magnification" }}
+                                           onChange={(e) => setPixelRow(row.key, { magnification: e.target.value })} />
+                                <TextField sx={fieldSx} size="small" label="Pixel size (Å)" value={row.pixelSize}
+                                           inputProps={{ inputMode: "decimal", "aria-label": "Pixel size" }}
+                                           onChange={(e) => setPixelRow(row.key, { pixelSize: e.target.value })} />
+                                <IconButton size="small" aria-label="Remove magnification"
+                                            onClick={() => onChange({ pixelRows: draft.pixelRows.filter((other) => other.key !== row.key) })}>
+                                    <X size={16} />
+                                </IconButton>
+                            </Stack>
+                        ))}
+                    </Stack>
+                </Box>
+                <TextField sx={fieldSx} size="small" label="Detector notes" value={draft.notes}
+                           onChange={(e) => onChange({ notes: e.target.value })} />
+            </Stack>
+        </Box>
     );
 }

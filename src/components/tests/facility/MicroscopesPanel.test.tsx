@@ -20,11 +20,19 @@ const styles = {
   colors: { border: "#ddd", text: "#111", muted: "#666", surface: "#fff", hover: "#fafafa" },
 };
 
-const talos = {
-  id: 1, name: "Talos 200kV", model: "Talos Arctica", status: "operational", detectors: "Falcon 4i, Ceta-D",
-  energyFilter: "", acquisitionSoftware: "EPU", voltageKv: 200, csMm: 2.7, gainPath: "/data/gains/*Talos*gain*.mrc",
-  gainFlip: "none", gainRotation: 0, offloadPath: "/mnt/micros/talos_offload", sessionsEnabled: true, notes: "",
+const falcon = {
+  id: 11, name: "Falcon 4i", metadataName: "BM-Falcon", energyFiltered: false, gainPath: "/data/gains/*Talos*gain*.mrc",
+  gainFlip: "none", gainRotation: 0, notes: "",
   pixelSizes: [{ magnification: 120000, pixelSize: 0.84 }, { magnification: 92000, pixelSize: 1.14 }],
+};
+const ceta = {
+  id: 12, name: "Ceta-D", metadataName: "", energyFiltered: false, gainPath: "", gainFlip: "vertical", gainRotation: 90,
+  notes: "microED", pixelSizes: [],
+};
+const talos = {
+  id: 1, name: "Talos 200kV", model: "Talos Arctica", status: "operational", energyFilter: "", acquisitionSoftware: "EPU",
+  voltageKv: 200, csMm: 2.7, offloadPath: "/mnt/micros/talos_offload", sessionsEnabled: true, notes: "",
+  detectors: [falcon, ceta],
 };
 
 describe("The microscopes of the facility", () => {
@@ -35,15 +43,16 @@ describe("The microscopes of the facility", () => {
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:chosen"), revokeObjectURL: vi.fn() }));
   });
 
-  it("lists each microscope with its calibrated pixel sizes", async () => {
+  it("lists each microscope with the calibrated pixel sizes of each detector", async () => {
     render(<MicroscopesPanel {...styles} />);
 
     expect(await screen.findByText("Talos 200kV")).toBeInTheDocument();
     expect(screen.getByText(/Talos Arctica · Falcon 4i, Ceta-D · 200 kV · Cs 2.7 mm/)).toBeInTheDocument();
-    expect(screen.getByText(/120,000× 0.84 Å, 92,000× 1.14 Å/)).toBeInTheDocument();
+    expect(screen.getByText("Falcon 4i (BM-Falcon): 120,000× 0.84 Å, 92,000× 1.14 Å")).toBeInTheDocument();
+    expect(screen.getByText("Ceta-D: nominal pixel sizes")).toBeInTheDocument();
   });
 
-  it("creates a microscope with its calibration table, leaving empty rows out", async () => {
+  it("creates a microscope with a detector and its calibration table, leaving empty rows out", async () => {
     facilityMocks.createMicroscope.mockResolvedValue({ ...talos, id: 2 });
     render(<MicroscopesPanel {...styles} />);
     await screen.findByText("Talos 200kV");
@@ -52,6 +61,9 @@ describe("The microscopes of the facility", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Krios G5" } });
     fireEvent.change(within(dialog).getByLabelText("Spherical aberration, Cs (mm)"), { target: { value: "2.7" } });
+    fireEvent.change(within(dialog).getByLabelText("Detector"), { target: { value: "K3" } });
+    fireEvent.change(within(dialog).getByLabelText("Name in the movies' metadata"), { target: { value: "EF-K3" } });
+    fireEvent.click(within(dialog).getByLabelText("Behind the energy filter"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add magnification" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add magnification" }));
     const magnifications = within(dialog).getAllByLabelText("Magnification");
@@ -62,27 +74,45 @@ describe("The microscopes of the facility", () => {
     await waitFor(() => expect(facilityMocks.createMicroscope).toHaveBeenCalled());
     const payload = facilityMocks.createMicroscope.mock.calls[0][0];
     expect(payload).toMatchObject({ name: "Krios G5", csMm: 2.7, voltageKv: null, status: "operational",
-                                     gainFlip: "none", gainRotation: 0, sessionsEnabled: false });
-    expect(payload.pixelSizes).toEqual([{ magnification: 105000, pixelSize: 0.83 }]);
+                                     sessionsEnabled: false });
+    expect(payload.detectors).toEqual([{ id: null, name: "K3", metadataName: "EF-K3", energyFiltered: true, gainPath: "",
+                                         gainFlip: "none", gainRotation: 0, notes: "",
+                                         pixelSizes: [{ magnification: 105000, pixelSize: 0.83 }] }]);
     expect(facilityMocks.listMicroscopes).toHaveBeenCalledTimes(2);
   });
 
-  it("edits a microscope keeping its table, and removes a row", async () => {
+  it("leaves out the detector of a new microscope left empty", async () => {
+    facilityMocks.createMicroscope.mockResolvedValue({ ...talos, id: 2 });
+    render(<MicroscopesPanel {...styles} />);
+    await screen.findByText("Talos 200kV");
+
+    fireEvent.click(screen.getByRole("button", { name: "New microscope" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Glacios" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(facilityMocks.createMicroscope).toHaveBeenCalled());
+    expect(facilityMocks.createMicroscope.mock.calls[0][0].detectors).toEqual([]);
+  });
+
+  it("edits a microscope keeping its detectors' ids, removes a row and a detector", async () => {
     facilityMocks.updateMicroscope.mockResolvedValue(talos);
     render(<MicroscopesPanel {...styles} />);
     await screen.findByText("Talos 200kV");
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getAllByLabelText("Magnification")).toHaveLength(2);
-    fireEvent.click(within(dialog).getAllByRole("button", { name: "Remove magnification" })[1]);
+    const falconBox = within(dialog).getByRole("group", { name: "Detector Falcon 4i" });
+    expect(within(falconBox).getAllByLabelText("Magnification")).toHaveLength(2);
+    fireEvent.click(within(falconBox).getAllByRole("button", { name: "Remove magnification" })[1]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove detector Ceta-D" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.updateMicroscope).toHaveBeenCalled());
     const [microscopeId, payload] = facilityMocks.updateMicroscope.mock.calls[0];
     expect(microscopeId).toBe(1);
     expect(payload).toMatchObject({ name: "Talos 200kV", csMm: 2.7, voltageKv: 200, sessionsEnabled: true });
-    expect(payload.pixelSizes).toEqual([{ magnification: 120000, pixelSize: 0.84 }]);
+    expect(payload.detectors).toEqual([{ ...falcon, pixelSizes: [{ magnification: 120000, pixelSize: 0.84 }] }]);
   });
 
   it("deletes a microscope after confirming", async () => {

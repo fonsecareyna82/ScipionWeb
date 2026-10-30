@@ -10,30 +10,45 @@ export type GainFlip = "none" | "horizontal" | "vertical";
 
 export type PixelSize = { magnification: number; pixelSize: number };
 
+// A camera of a microscope, with its gain and its calibrated pixel size at each magnification
+export type Detector = {
+  id: number;
+  name: string;
+  // How the acquisition metadata names it (EPU: BM-Falcon, EF-CCD...): it tells which detector took a movie
+  metadataName: string;
+  energyFiltered: boolean;
+  gainPath: string;
+  gainFlip: GainFlip;
+  gainRotation: 0 | 90 | 180 | 270;
+  notes: string;
+  pixelSizes: PixelSize[];
+};
+
+// A detector as a save sends it: without an id it is new
+export type DetectorPayload = Omit<Detector, "id"> & { id?: number | null };
+
 export type Microscope = {
   id: number;
   name: string;
   model: string;
   status: MicroscopeStatus;
-  detectors: string;
   energyFilter: string;
   acquisitionSoftware: string;
   voltageKv: number | null;
   csMm: number | null;
-  gainPath: string;
-  gainFlip: GainFlip;
-  gainRotation: 0 | 90 | 180 | 270;
   offloadPath: string;
   sessionsEnabled: boolean;
   notes: string;
-  pixelSizes: PixelSize[];
+  detectors: Detector[];
   // When its photo was last changed; null without a photo
   photoUpdatedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type MicroscopePayload = Omit<Microscope, "id" | "createdAt" | "updatedAt" | "photoUpdatedAt">;
+export type MicroscopePayload = Omit<Microscope, "id" | "createdAt" | "updatedAt" | "photoUpdatedAt" | "detectors"> & {
+  detectors: DetectorPayload[];
+};
 
 async function request<T>(path: string, fallback: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithAuth(`${BASE_URL}${path}`, init);
