@@ -21,10 +21,15 @@ describe("The Facility entry of the menu and its tabs", () => {
     expect(await settle({ enabled: false, permissions: ["facility.manage"] })).toEqual({ item: null, tabs: [] });
   });
 
-  it("leads the facility manager to the Facility page, with the microscopes tab", async () => {
+  it("leads the facility manager to the Facility page, with every tab", async () => {
     const { item, tabs } = await settle({ enabled: true, permissions: ["facility.manage"] });
     expect(item).toMatchObject({ name: "Facility", path: "/facility" });
-    expect(tabs).toEqual(["microscopes"]);
+    expect(tabs).toEqual(["samples", "microscopes"]);
+  });
+
+  it("gives the staff who run sessions the samples, not the microscopes", async () => {
+    const { tabs } = await settle({ enabled: true, permissions: ["facility.sessions"] });
+    expect(tabs).toEqual(["samples"]);
   });
 
   it("is not there for whom has no tab in the facility", async () => {

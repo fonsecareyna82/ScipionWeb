@@ -7,6 +7,8 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useFacilityTabs, type FacilityTabKey } from "@/layout/facilityNav";
 import { useFacilityStyles } from "./facilityStyles";
 import MicroscopesPanel from "./MicroscopesPanel";
+import SamplesPanel from "./SamplesPanel";
+import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
 const wrapperMaxWidth = 1120;
 
@@ -15,6 +17,7 @@ export default function FacilityPage() {
   const { tab: requestedTab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
   const { loaded, tabs } = useFacilityTabs();
+  const { facilityCan } = useFacilityStatus();
   const styles = useFacilityStyles();
   const { colors, dividerSx, tabsSx } = styles;
   const tab = tabs.find((candidate) => candidate.key === requestedTab)?.key ?? tabs[0]?.key;
@@ -26,6 +29,8 @@ export default function FacilityPage() {
 
   const renderTab = (key: FacilityTabKey) => {
     switch (key) {
+      case "samples":
+        return <SamplesPanel {...styles} canEdit={facilityCan("facility.sessions") || facilityCan("facility.manage")} />;
       case "microscopes":
         return <MicroscopesPanel {...styles} />;
     }

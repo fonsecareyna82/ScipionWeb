@@ -8,6 +8,10 @@ const facilityMocks = vi.hoisted(() => ({
   createMicroscope: vi.fn(),
   updateMicroscope: vi.fn(),
   deleteMicroscope: vi.fn(),
+  listSamples: vi.fn(),
+  createSample: vi.fn(),
+  updateSample: vi.fn(),
+  deleteSample: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("@/components/common/PageMeta", () => ({ default: () => null }));
@@ -35,6 +39,7 @@ describe("The Facility page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     facilityMocks.listMicroscopes.mockResolvedValue([]);
+    facilityMocks.listSamples.mockResolvedValue([]);
   });
 
   it("opens the first tab the user may use, with its own address", async () => {
@@ -42,18 +47,27 @@ describe("The Facility page", () => {
     renderAt("/facility");
 
     expect(screen.getByRole("heading", { name: "Facility" })).toBeInTheDocument();
-    expect(await screen.findByText("No microscopes yet.", undefined, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Microscopes", selected: true })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/facility/microscopes"));
+    expect(await screen.findByText("No samples yet.", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Samples & grids", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Microscopes" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/facility/samples"));
   });
 
-  it("does not open a tab the user may not use", async () => {
+  it("does not open a tab the user may not use: it goes to one they may", async () => {
     facilityMocks.loadFacilityStatusOnce.mockResolvedValue({ enabled: true, permissions: ["facility.sessions"] });
     renderAt("/facility/microscopes");
 
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/facility/samples"));
+    expect(screen.queryByRole("tab", { name: "Microscopes" })).not.toBeInTheDocument();
+    expect(facilityMocks.listMicroscopes).not.toHaveBeenCalled();
+  });
+
+  it("has nothing for whom has no facility permission", async () => {
+    facilityMocks.loadFacilityStatusOnce.mockResolvedValue({ enabled: true, permissions: [] });
+    renderAt("/facility/samples");
+
     expect(await screen.findByText(/There is nothing for you here/)).toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-    expect(facilityMocks.listMicroscopes).not.toHaveBeenCalled();
   });
 
   it("shows nothing of the facility when the installation runs none", async () => {

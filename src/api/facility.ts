@@ -85,3 +85,54 @@ export const uploadMicroscopePhoto = (microscopeId: number, file: Blob) =>
     { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
 export const deleteMicroscopePhoto = (microscopeId: number) =>
   request<Microscope>(`/facility/microscopes/${microscopeId}/photo`, "Failed to remove the photo", { method: "DELETE" });
+
+// Samples (their NZ code), the boxes their grids were vitrified into, and the grids in each box
+export type GridStatus = "stored" | "loaded" | "used" | "discarded";
+
+export type Grid = {
+  id?: number | null;
+  position: number;
+  gridNumber: number | null;
+  gridType: string;
+  concentration: string;
+  specimen: string;
+  status: GridStatus;
+  notes: string;
+};
+
+export type GridBox = {
+  id?: number | null;
+  label: string;
+  vitrificationCode: string;
+  vitrifiedOn: string | null;
+  notes: string;
+  grids: Grid[];
+};
+
+export type Sample = {
+  id: number;
+  code: string;
+  description: string;
+  groupId: number | null;
+  groupName?: string | null;
+  ownerId: number | null;
+  ownerEmail?: string | null;
+  ownerName?: string | null;
+  accessRoute: string;
+  notes: string;
+  boxes: GridBox[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SamplePayload = Pick<Sample, "code" | "description" | "groupId" | "ownerId" | "accessRoute" | "notes" | "boxes">;
+
+export const listSamples = (text = "") =>
+  request<Sample[]>(`/facility/samples${text ? `?q=${encodeURIComponent(text)}` : ""}`, "Failed to load the samples");
+export const createSample = (payload: SamplePayload) =>
+  request<Sample>("/facility/samples", "Failed to create the sample", { method: "POST", body: JSON.stringify(payload) });
+export const updateSample = (sampleId: number, payload: SamplePayload) =>
+  request<Sample>(`/facility/samples/${sampleId}`, "Failed to save the sample",
+    { method: "PUT", body: JSON.stringify(payload) });
+export const deleteSample = (sampleId: number) =>
+  request<null>(`/facility/samples/${sampleId}`, "Failed to delete the sample", { method: "DELETE" });
