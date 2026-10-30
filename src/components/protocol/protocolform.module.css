@@ -530,3 +530,10 @@
   border-color: rgba(147, 197, 253, 0.56);
   background-color: rgba(59, 130, 246, 0.10);
 }
+
+/* Shown instead of Save and Launch in a project shared to view */
+.formFooterNote {
+  align-self: center;
+  font-size: 13px;
+  opacity: 0.8;
+}

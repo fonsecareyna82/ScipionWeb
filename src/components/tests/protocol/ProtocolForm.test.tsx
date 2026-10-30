@@ -2565,6 +2565,17 @@ describe("ProtocolForm", () => {
 // RED 51: ScipionAPI exposes two *different* ancestries on persisted Sets.
 // ProtocolForm must forward both to the selector, rather than filtering the
 // Set out because its pointerClass does not match the *item* class.
+describe("ProtocolForm in a project shared to view", () => {
+    it("shows the protocol without saving or launching it", async () => {
+        renderComponent({ readOnly: true });
+
+        expect(await screen.findByRole("status")).toHaveTextContent("View only");
+        expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Launch" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    });
+});
+
 describe("ProtocolForm nested pointer candidates (RED 51)", () => {
     const volumeHierarchy = [
         "Volume",

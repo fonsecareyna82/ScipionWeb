@@ -34,6 +34,7 @@ import {
     type AdminUserPatch,
 } from "@/api/users";
 import { listGroupNames, listRoles, type Role } from "@/api/access";
+import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 
 type UserManagementPanelProps = {
     currentUserId: number | null;
@@ -42,6 +43,7 @@ type UserManagementPanelProps = {
     cardHeaderSx: any;
     selectSx: any;
     menuPaperSx: any;
+    actionButtonSx?: any;
     colors: {
         border: string;
         text: string;
@@ -58,6 +60,7 @@ export default function UserManagementPanel({
     cardHeaderSx,
     selectSx,
     menuPaperSx,
+    actionButtonSx,
     colors,
 }: UserManagementPanelProps) {
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -155,6 +158,7 @@ export default function UserManagementPanel({
                         <Button
                             size="small"
                             variant="outlined"
+                            sx={actionButtonSx ?? ROUNDED_BUTTON_SX}
                             startIcon={<RefreshCw size={15} />}
                             disabled={loading}
                             onClick={() => void loadUsers()}

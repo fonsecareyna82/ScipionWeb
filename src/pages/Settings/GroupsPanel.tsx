@@ -7,10 +7,6 @@ import {
     CardContent,
     CardHeader,
     CircularProgress,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
     FormControl,
     InputLabel,
     MenuItem,
@@ -19,7 +15,8 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Users } from "lucide-react";
+import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 import toast from "react-hot-toast";
 
 import {
@@ -40,6 +37,8 @@ type PanelStyles = {
     cardHeaderSx: any;
     selectSx: any;
     menuPaperSx: any;
+    actionButtonSx?: any;
+    saveButtonSx?: any;
     colors: { border: string; text: string; muted: string; surface: string; hover: string };
 };
 
@@ -47,13 +46,18 @@ function userName(user: { firstName?: string | null; lastName?: string | null; e
     return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "—";
 }
 
-export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, menuPaperSx, colors }: PanelStyles) {
+export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, menuPaperSx, colors, actionButtonSx,
+                                      saveButtonSx }: PanelStyles) {
+    const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
+    const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
     const [groups, setGroups] = useState<Group[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [editing, setEditing] = useState<Group | "new" | null>(null);
+    const [deleting, setDeleting] = useState<Group | null>(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -77,13 +81,16 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
     }, [load]);
 
     const remove = useCallback(async (group: Group) => {
-        if (!window.confirm(`Delete the group ${group.name}? Its members lose its roles and its shared projects.`)) return;
+        setDeleteBusy(true);
         try {
             await deleteGroup(group.id);
             toast.success("Group deleted.");
+            setDeleting(null);
             await load();
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to delete the group"));
+        } finally {
+            setDeleteBusy(false);
         }
     }, [load]);
 
@@ -107,11 +114,11 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                     sx={cardHeaderSx}
                     action={
                         <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" startIcon={<RefreshCw size={15} />}
+                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
                                     disabled={loading} onClick={() => void load()}>
                                 Reload
                             </Button>
-                            <Button size="small" variant="contained" startIcon={<Plus size={15} />}
+                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
                                     onClick={() => setEditing("new")}>
                                 New group
                             </Button>
@@ -140,10 +147,10 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                                         </Typography>
                                     </Stack>
                                     <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                        <Button size="small" variant="outlined" onClick={() => setEditing(group)}>
+                                        <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(group)}>
                                             Edit
                                         </Button>
-                                        <Button size="small" color="error" onClick={() => void remove(group)}>
+                                        <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }} onClick={() => setDeleting(group)}>
                                             Delete
                                         </Button>
                                     </Stack>
@@ -154,8 +161,30 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                 </CardContent>
             </Card>
 
+            {deleting !== null && (
+                <SettingsDialog
+                    title="Delete group?"
+                    description="This action cannot be undone. Its members lose its roles and the projects shared with it."
+                    icon={<Trash2 size={20} color="#fca5a5" />}
+                    confirmLabel="Delete"
+                    busyLabel="Deleting…"
+                    busy={deleteBusy}
+                    destructive
+                    maxWidth="xs"
+                    actionButtonSx={actionSx}
+                    onConfirm={() => void remove(deleting)}
+                    onClose={() => setDeleting(null)}
+                >
+                    <Typography sx={{ fontSize: 14 }}>
+                        <strong>{deleting.name}</strong> · {deleting.members.length} members
+                    </Typography>
+                </SettingsDialog>
+            )}
+
             {editing !== null && (
                 <GroupDialog
+                    actionButtonSx={actionSx}
+                    saveButtonSx={saveSx}
                     group={editing === "new" ? null : editing}
                     roles={roles}
                     users={users}
@@ -173,7 +202,10 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
     );
 }
 
-function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, onClose, onSaved }: {
+function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, actionButtonSx, saveButtonSx, onClose,
+                       onSaved }: {
+    actionButtonSx: any;
+    saveButtonSx: any;
     group: Group | null;
     roles: Role[];
     users: AdminUser[];
@@ -213,10 +245,20 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, onCl
     };
 
     return (
-        <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>{group ? `Edit ${group.name}` : "New group"}</DialogTitle>
-            <DialogContent>
-                <Stack spacing={1.5} sx={{ pt: 1 }}>
+        <SettingsDialog
+            title={group ? `Edit ${group.name}` : "New group"}
+            description="Its members hold the group's roles and see the projects shared with it."
+            icon={<Users size={20} color="white" />}
+            confirmLabel="Save"
+            busyLabel="Saving…"
+            busy={saving}
+            confirmDisabled={!name.trim()}
+            actionButtonSx={actionButtonSx}
+            saveButtonSx={saveButtonSx}
+            onConfirm={() => void save()}
+            onClose={onClose}
+        >
+                <Stack spacing={1.5} sx={{ pt: 0.5 }}>
                     <TextField sx={fieldSx} size="small" label="Name" value={name}
                                onChange={(e) => setName(e.target.value)} />
                     <TextField sx={fieldSx} size="small" label="Description" value={description}
@@ -263,13 +305,6 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, onCl
                         You can only give roles whose permissions you hold yourself.
                     </Typography>
                 </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancel</Button>
-                <Button variant="contained" disabled={saving || !name.trim()} onClick={() => void save()}>
-                    Save
-                </Button>
-            </DialogActions>
-        </Dialog>
+        </SettingsDialog>
     );
 }

@@ -1942,3 +1942,17 @@
     transition: none;
   }
 }
+
+/* A project shared to view only */
+.projectpage-widget-root .pp-readOnlyBadge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--app-warning, #d97706);
+  color: var(--app-warning, #d97706);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}

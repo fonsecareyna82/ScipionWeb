@@ -736,6 +736,30 @@ describe("ProtocolNodeCard", () => {
         expect(screen.queryByText("Steps")).not.toBeInTheDocument();
     });
 
+    it.each([
+        ["shows", undefined, 2],
+        ["hides", { stop: false }, 0],
+    ])("%s the run actions where Stop is shown or hidden (a project shared to view hides it)",
+        async (_label, visibility, expected) => {
+        const { service } = renderComponent({
+            data: createProtocolData({ status: "running" }),
+            contextMenuVisibility: visibility,
+        } as any) as any;
+        service.fetchProtocolRunActions = vi.fn().mockResolvedValue(["STOP STREAMING"]);
+        service.runProtocolRunAction = vi.fn().mockResolvedValue(undefined);
+
+        fireEvent.click(screen.getByTestId("open-dropdown-menu"));
+        await waitFor(() => expect(service.fetchProtocolRunActions).toHaveBeenCalled());
+
+        if (expected) {
+            await waitFor(() => expect(screen.getAllByText("Stop streaming")).toHaveLength(expected));
+        } else {
+            // Given the time the shown case needs, it never appears
+            await expect(waitFor(() => expect(screen.getAllByText("Stop streaming").length).toBeGreaterThan(0),
+                                 { timeout: 500 })).rejects.toThrow();
+        }
+    });
+
     it("does not ask the actions of a protocol that does not run", () => {
         const { service } = renderComponent({ data: createProtocolData({ status: "finished" }) }) as any;
         service.fetchProtocolRunActions = vi.fn().mockResolvedValue(["STOP STREAMING"]);

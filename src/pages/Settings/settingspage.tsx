@@ -2677,15 +2677,18 @@ export default function SettingsPage() {
                             cardHeaderSx={cardHeaderSx}
                             selectSx={selectSx}
                             menuPaperSx={menuPaperSx}
+                            actionButtonSx={actionButtonSx}
                             colors={colors}
                           />
                         )
                         : tab === "roles"
-                          ? <RolesPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors} />
+                          ? <RolesPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
+                                        actionButtonSx={actionButtonSx} saveButtonSx={saveButtonSx} />
                           : tab === "groups"
                             ? (
                               <GroupsPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
-                                           selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors} />
+                                           selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors}
+                                           actionButtonSx={actionButtonSx} saveButtonSx={saveButtonSx} />
                             )
                             : tab === "tags"
                               ? renderTagsContent()

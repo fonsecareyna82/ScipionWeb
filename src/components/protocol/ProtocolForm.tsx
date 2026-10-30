@@ -161,6 +161,9 @@ type ProtocolFormProps = {
 
   interactivePreviewLoading?:
   boolean;
+
+  /** The project is shared to view: the form shows the protocol but neither saves nor launches it. */
+  readOnly?: boolean;
 };
 
 type EffectiveHostQueueParam = {
@@ -276,6 +279,7 @@ export default function ProtocolForm({
   variant = "drawer",
   onPresentationChange,
   projectEffectiveSettings = null,
+  readOnly = false,
 }: ProtocolFormProps) {
   const svc =
     useProjectService();
@@ -4273,6 +4277,11 @@ export default function ProtocolForm({
         >
           Close
         </Button>
+        {readOnly ? (
+          <span className={styles.formFooterNote} role="status">
+            View only: saving and launching need work access to the project.
+          </span>
+        ) : (<>
         <Button
           variant="contained"
           startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
@@ -4317,6 +4326,7 @@ export default function ProtocolForm({
             {isExecuting ? "Processing..." : "Launch"}
           </Button>
         )}
+        </>)}
 
       </div>
 

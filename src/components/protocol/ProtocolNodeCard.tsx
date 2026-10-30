@@ -1895,7 +1895,7 @@ export default function ProtocolNodeCard({
                           </DropdownMenuItem>
                         )}
 
-                        {runActions.available && runActions.actions.map((action) => (
+                        {runActions.available && isMenuItemVisible("stop") && runActions.actions.map((action) => (
                           <DropdownMenuItem key={action} onSelect={() => setChosenRunAction(action)}>
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
@@ -2755,7 +2755,7 @@ export default function ProtocolNodeCard({
               </ContextMenuItem>
             )}
 
-            {runActions.available && runActions.actions.map((action) => (
+            {runActions.available && isMenuItemVisible("stop") && runActions.actions.map((action) => (
               <ContextMenuItem key={action} onClick={() => setChosenRunAction(action)}>
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>

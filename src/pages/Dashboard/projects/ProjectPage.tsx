@@ -98,6 +98,15 @@ import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
 import { Typography, Link } from "@mui/material";
 import toast from "react-hot-toast";
+
+const READ_ONLY_PROJECT_MESSAGE =
+  "This project is shared with you to view: changing it needs work access.";
+
+// What a project shared to view does not offer in the menus of its protocols
+const READ_ONLY_HIDDEN_MENU_ITEMS: NodeMenuVisibility = {
+  continue: false, delete: false, duplicate: false, pasteWorkflow: false, manageTags: false, nextSteps: false,
+  rename: false, reset: false, restart: false, stop: false, upload: false,
+};
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
 
@@ -1180,6 +1189,15 @@ export default function ProjectPage() {
 
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+  // A project shared to view: everything that would change it is hidden or refused (the API refuses it too)
+  const readOnly = (project as any)?.access === "view";
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  const refuseWhenReadOnly = useCallback(() => {
+    if (!readOnlyRef.current) return false;
+    toast.error(READ_ONLY_PROJECT_MESSAGE);
+    return true;
+  }, []);
 
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
@@ -1569,6 +1587,12 @@ export default function ProjectPage() {
   const [policyRevision, setPolicyRevision] = useState(0);
 
   useEffect(() => {
+    if (!readOnly) return;
+    contextMenuVisibilityPolicyRef.current = { ...contextMenuVisibilityPolicyRef.current, ...READ_ONLY_HIDDEN_MENU_ITEMS };
+    setPolicyRevision((v) => v + 1);
+  }, [readOnly]);
+
+  useEffect(() => {
     let isCancelled = false;
 
     const loadContextMenuVisibilityPolicy = async () => {
@@ -1594,6 +1618,7 @@ export default function ProjectPage() {
           selectTo: Boolean(remotePolicy.selectTo),
           stop: Boolean(remotePolicy.stop),
           upload: Boolean(remotePolicy.upload),
+          ...(readOnlyRef.current ? READ_ONLY_HIDDEN_MENU_ITEMS : {}),
         };
 
         setPolicyRevision((v) => v + 1);
@@ -3522,6 +3547,7 @@ export default function ProjectPage() {
     ) => {
       // handleAddProtocolFromDrawer
       if (!projectName) return;
+      if (opts?.mode !== "help" && refuseWhenReadOnly()) return;
 
       if (opts?.mode === "help") {
         await openProtocolHelp(protocolClass, opts.protocolLabel);
@@ -8145,6 +8171,7 @@ export default function ProjectPage() {
 
   const handleAddProtocolFromContext = () => {
     handleCloseMenu();
+    if (refuseWhenReadOnly()) return;
 
     // Ensure mutual exclusivity: opening Protocols closes Workflows
     setWorkflowsOpen(false);
@@ -8493,6 +8520,7 @@ export default function ProjectPage() {
 
   const handlePasteWorkflow = async () => {
     if (pasteBusyRef.current) return;
+    if (refuseWhenReadOnly()) return;
     const currentProjectId = getProjectId();
     const clipboard = workflowClipboardMemory ?? workflowClipboard;
 
@@ -8617,6 +8645,7 @@ export default function ProjectPage() {
   const duplicateBusyRef = useRef(false);
 
   const duplicateNow = async (ids: string[]) => {
+    if (refuseWhenReadOnly()) return;
     if (!projectName || duplicateBusyRef.current) return;
 
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
@@ -8700,7 +8729,7 @@ export default function ProjectPage() {
 
 
   const openRename = (id: string) =>
-    setDlgRename({
+    !refuseWhenReadOnly() && setDlgRename({
       open: true,
       id,
       value: findNodeEditableRunName(id),
@@ -8708,6 +8737,7 @@ export default function ProjectPage() {
     });
 
   const openDelete = (id: string) => {
+    if (refuseWhenReadOnly()) return;
     const selected =
       pathSelRef.current.nodes.size > 0
         ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
@@ -8716,13 +8746,14 @@ export default function ProjectPage() {
     setDlgDelete({ open: true, ids: selected });
   };
 
-  const openRestartAll = (id: string) => setDlgRestartAll({ open: true, id: String(id) });
+  const openRestartAll = (id: string) => !refuseWhenReadOnly() && setDlgRestartAll({ open: true, id: String(id) });
 
-  const openContinueAll = (id: string) => setDlgContinueAll({ open: true, id: String(id) });
+  const openContinueAll = (id: string) => !refuseWhenReadOnly() && setDlgContinueAll({ open: true, id: String(id) });
 
-  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id: String(id) });
+  const openResetFrom = (id: string) => !refuseWhenReadOnly() && setDlgResetFrom({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
+    if (refuseWhenReadOnly()) return;
     const clickedId = String(id);
 
     const clickedNode = nodesRef.current.find(
@@ -9228,6 +9259,9 @@ export default function ProjectPage() {
         {/* Header */}
         <div className="pp-headerRow">
           <div className="pp-headerLeft">
+            {readOnly && (
+              <span className="pp-readOnlyBadge" title={READ_ONLY_PROJECT_MESSAGE}>View only</span>
+            )}
             <div ref={searchBoxRef} className="pp-searchBox">
               <div className="pp-searchIconWrap" aria-hidden="true">
                 <svg
@@ -9653,10 +9687,10 @@ export default function ProjectPage() {
                 style={{ top: contextMenu.y, left: contextMenu.x }}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                <button className="pp-canvasMenuItem" onClick={handleAddProtocolFromContext}>
+                {!readOnly && <button className="pp-canvasMenuItem" onClick={handleAddProtocolFromContext}>
                   <PlusIcon className="pp-canvasMenuIcon" />
                   <span className="text-sm mb-1">Add protocol</span>
-                </button>
+                </button>}
 
 
                 {contextMenuVisibilityPolicyRef.current.pasteWorkflow && (
@@ -9958,6 +9992,7 @@ export default function ProjectPage() {
                       }
                     >
                       <ProtocolForm
+                        readOnly={readOnly}
                         data={
                           f.details
                         }

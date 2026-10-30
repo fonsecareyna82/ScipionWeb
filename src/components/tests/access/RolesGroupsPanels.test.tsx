@@ -94,4 +94,37 @@ describe("Roles and groups panels", () => {
       members: [{ userId: 2, groupRole: "pi" }, { userId: 3, groupRole: "member" }],
     }));
   });
+
+  it("asks before deleting a role, in the web's dialog, and deletes it once confirmed", async () => {
+    accessMocks.deleteRole.mockResolvedValue(null);
+    render(<RolesPanel {...styles} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Delete role?")).toBeInTheDocument();
+    expect(accessMocks.deleteRole).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(accessMocks.deleteRole).toHaveBeenCalledWith(4));
+  });
+
+  it("chooses every permission of an area at once, and counts them", async () => {
+    accessMocks.createRole.mockResolvedValue({ id: 9 });
+    render(<RolesPanel {...styles} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New role" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Admins of the system" } });
+    expect(within(dialog).getByText(/0 of 2 permissions/)).toBeInTheDocument();
+
+    // The catalogue of this test has one System permission and one Projects permission
+    const systemArea = within(dialog).getByText("System").closest("div")!.parentElement!;
+    fireEvent.click(within(systemArea).getByRole("button", { name: "Select all" }));
+    expect(within(dialog).getByText(/1 of 2 permissions/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(accessMocks.createRole).toHaveBeenCalledWith(
+      expect.objectContaining({ permissions: ["plugins.manage"] })));
+  });
 });
