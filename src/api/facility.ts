@@ -89,6 +89,10 @@ export const deleteMicroscopePhoto = (microscopeId: number) =>
 // Samples (their NZ code), the boxes their grids were vitrified into, and the grids in each box
 export type GridStatus = "stored" | "loaded" | "used" | "discarded";
 
+// An image of a sample, box or grid: what it is; its bytes are read with fetchFacilityImageUrl
+export type FacilityImage = { id: number; caption: string; createdAt?: string };
+export type ImageOwnerKind = "sample" | "box" | "grid";
+
 export type Grid = {
   id?: number | null;
   position: number;
@@ -98,6 +102,7 @@ export type Grid = {
   specimen: string;
   status: GridStatus;
   notes: string;
+  images?: FacilityImage[];
 };
 
 export type GridBox = {
@@ -107,6 +112,7 @@ export type GridBox = {
   vitrifiedOn: string | null;
   notes: string;
   grids: Grid[];
+  images?: FacilityImage[];
 };
 
 export type Sample = {
@@ -121,6 +127,7 @@ export type Sample = {
   accessRoute: string;
   notes: string;
   boxes: GridBox[];
+  images?: FacilityImage[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -136,3 +143,32 @@ export const updateSample = (sampleId: number, payload: SamplePayload) =>
     { method: "PUT", body: JSON.stringify(payload) });
 export const deleteSample = (sampleId: number) =>
   request<null>(`/facility/samples/${sampleId}`, "Failed to delete the sample", { method: "DELETE" });
+
+const IMAGE_OWNER_PATHS: Record<ImageOwnerKind, string> = { sample: "samples", box: "boxes", grid: "grids" };
+
+/** Keep an image (PNG, JPEG or WebP) with a sample, box or grid; answers it and the sample's new tree. */
+export const addFacilityImage = (kind: ImageOwnerKind, ownerId: number, file: Blob, caption = "") =>
+  request<{ image: FacilityImage; sample: Sample }>(
+    `/facility/${IMAGE_OWNER_PATHS[kind]}/${ownerId}/images${caption ? `?caption=${encodeURIComponent(caption)}` : ""}`,
+    "Failed to upload the image",
+    { method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+
+/** Remove an image; answers the sample's new tree. */
+export const deleteFacilityImage = (imageId: number) =>
+  request<Sample>(`/facility/images/${imageId}`, "Failed to remove the image", { method: "DELETE" });
+
+// An image never changes: its object URL is kept for the session
+const imageUrls = new Map<number, Promise<string>>();
+
+export function fetchFacilityImageUrl(imageId: number): Promise<string> {
+  let url = imageUrls.get(imageId);
+  if (!url) {
+    url = fetchWithAuth(`${BASE_URL}/facility/images/${imageId}`, { cache: "default" }).then(async (response) => {
+      if (!response.ok) throw await buildApiError(response, "Failed to load the image");
+      return URL.createObjectURL(await response.blob());
+    });
+    url.catch(() => imageUrls.delete(imageId));
+    imageUrls.set(imageId, url);
+  }
+  return url;
+}

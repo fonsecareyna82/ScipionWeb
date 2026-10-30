@@ -6,6 +6,9 @@ const facilityMocks = vi.hoisted(() => ({
   createSample: vi.fn(),
   updateSample: vi.fn(),
   deleteSample: vi.fn(),
+  addFacilityImage: vi.fn(),
+  deleteFacilityImage: vi.fn(),
+  fetchFacilityImageUrl: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("@/api/access", () => ({ listGroupNames: vi.fn().mockResolvedValue([{ id: 3, name: "Shannon lab" }]) }));
@@ -37,6 +40,7 @@ describe("The samples and grids of the facility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     facilityMocks.listSamples.mockResolvedValue([nz251]);
+    facilityMocks.fetchFacilityImageUrl.mockImplementation(async (imageId: number) => `blob:image-${imageId}`);
   });
 
   it("lists each sample with its boxes and the grid in each position", async () => {
@@ -109,5 +113,54 @@ describe("The samples and grids of the facility", () => {
     expect(await screen.findByText("NZ251")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New sample" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("shows the images of a sample and of its boxes, and marks the grids that have some", async () => {
+    facilityMocks.listSamples.mockResolvedValue([{
+      ...nz251,
+      images: [{ id: 7, caption: "Vitrobot sheet" }],
+      boxes: [{ ...nz251.boxes[0], images: [{ id: 8, caption: "Box 1" }],
+                grids: [{ ...nz251.boxes[0].grids[0], images: [{ id: 9, caption: "Atlas" }] }, nz251.boxes[0].grids[1]] }],
+    }]);
+    render(<SamplesPanel {...styles} canEdit />);
+
+    expect(await screen.findByRole("img", { name: "Vitrobot sheet" })).toHaveAttribute("src", "blob:image-7");
+    expect(await screen.findByRole("img", { name: "Box 1" })).toHaveAttribute("src", "blob:image-8");
+    fireEvent.click(screen.getByRole("button", { name: "Image: Vitrobot sheet" }));
+    const viewer = await screen.findByRole("dialog");
+    expect(await within(viewer).findByRole("img", { name: "Vitrobot sheet" })).toHaveAttribute("src", "blob:image-7");
+    // Read only in the list: no removing there
+    expect(screen.queryByRole("button", { name: "Remove image" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the images chosen for a grid at once, and removes one from its bigger view", async () => {
+    const withAtlas = { ...nz251, boxes: [{ ...nz251.boxes[0], grids: [nz251.boxes[0].grids[0],
+      { ...nz251.boxes[0].grids[1], images: [{ id: 30, caption: "" }] }] }] };
+    facilityMocks.addFacilityImage.mockResolvedValue({ image: { id: 30, caption: "" }, sample: withAtlas });
+    facilityMocks.deleteFacilityImage.mockResolvedValue(nz251);
+    render(<SamplesPanel {...styles} canEdit />);
+    await screen.findByText("NZ251");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getAllByRole("button", { name: "Grid images" })[1]);
+    const atlas = new File(["jpeg"], "atlas.jpg", { type: "image/jpeg" });
+    fireEvent.change(within(dialog).getByLabelText("Add grid images"), { target: { files: [atlas] } });
+
+    await waitFor(() => expect(facilityMocks.addFacilityImage).toHaveBeenCalledWith("grid", 101, atlas));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Image" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove image" }));
+    await waitFor(() => expect(facilityMocks.deleteFacilityImage).toHaveBeenCalledWith(30));
+    expect(facilityMocks.updateSample).not.toHaveBeenCalled();
+  });
+
+  it("asks to save a new sample before adding its images", async () => {
+    render(<SamplesPanel {...styles} canEdit />);
+    await screen.findByText("NZ251");
+
+    fireEvent.click(screen.getByRole("button", { name: "New sample" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText("Save the sample first to add its images.")).toBeInTheDocument();
   });
 });
