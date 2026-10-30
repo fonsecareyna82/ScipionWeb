@@ -2294,7 +2294,7 @@ function Coords2dViewer({
         const selected = pointId === selectedPointId;
 
         ctx.strokeStyle = selected ? "#ffff00" : isAutomaticPoint(point) ? automaticColor : pickColor;
-        ctx.lineWidth = selected ? 2.5 : 1.2;
+        ctx.lineWidth = selected ? 3 : 1.8;
         ctx.beginPath();
 
         if (shapes.circle) {
