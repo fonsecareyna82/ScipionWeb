@@ -22,6 +22,7 @@ import {
   ArrowUp,
   ArrowDown,
   Download,
+  Upload,
   Eye,
   EyeOff,
   FolderTree,
@@ -118,6 +119,12 @@ type RemoteFileDialogProps = {
    * its own: streamed to disk, with progress, resumable. Preferred to buildDownloadUrl.
    */
   getDownloadLink?: (relPath: string) => Promise<string>;
+  /**
+   * Upload a file from the user's computer (into the project's Uploads folder); enables the
+   * Upload button and dropping files on the list. It answers where the file went.
+   */
+  uploadFile?: (file: File, opts: { onProgress: (sent: number, total: number) => void; signal: AbortSignal })
+    => Promise<{ absPath: string; name: string }>;
 
   mode?: RemoteFileDialogMode;
   defaultFilename?: string;
@@ -201,6 +208,7 @@ export default function RemoteFileDialog({
   protocolId,
   buildDownloadUrl,
   getDownloadLink,
+  uploadFile,
   onPick,
   mode = "select",
   defaultFilename = "",
@@ -240,6 +248,13 @@ export default function RemoteFileDialog({
   const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
   const [downloading, setDownloading] = useState(false);
   const { can } = usePermissions();
+  const [uploading, setUploading] = useState<{ name: string; sent: number; total: number } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const [dropping, setDropping] = useState(false);
+  // The file to select once the folder it was uploaded to is listed
+  const selectAfterRefreshRef = useRef<string | null>(null);
 
   // List viewport (virtualization).
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -520,6 +535,15 @@ export default function RemoteFileDialog({
       }
       return;
     }
+    const wanted = selectAfterRefreshRef.current;
+    if (wanted) {
+      selectAfterRefreshRef.current = null;
+      const uploaded = visibleItems.find((e) => !e.isDir && e.name === wanted);
+      if (uploaded) {
+        selectEntry(uploaded);
+        return;
+      }
+    }
     const stillThere = selected ? isParentEntry(selected) || visibleItems.some((e) => sameEntry(e, selected)) : false;
     if (!stillThere) selectEntry(first, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -608,6 +632,35 @@ export default function RemoteFileDialog({
       setDownloading(false);
     }
   }, [buildDownloadUrl, getDownloadLink, relPathOf, selected]);
+
+  const uploadOne = useCallback(async (file: File) => {
+    if (!uploadFile || uploading) return;
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    setUploadError(null);
+    setUploading({ name: file.name, sent: 0, total: file.size });
+    try {
+      const done = await uploadFile(file, {
+        signal: controller.signal,
+        onProgress: (sent, total) => setUploading({ name: file.name, sent, total }),
+      });
+      // Show the uploaded file, selected, in its folder
+      const folderAbs = normalizePosixPath(done.absPath).replace(/\/[^/]+$/g, "") || "/";
+      selectAfterRefreshRef.current = done.name;
+      await refresh(rootAbs ? absoluteToRelPath(folderAbs, rootAbs) : "");
+    } catch (e: unknown) {
+      if (!controller.signal.aborted) setUploadError(e instanceof Error ? e.message : "The file could not be uploaded");
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
+      setUploading(null);
+    }
+  }, [refresh, rootAbs, uploadFile, uploading]);
+
+  // An upload stops when the dialog closes
+  useEffect(() => {
+    if (!open) uploadAbortRef.current?.abort();
+  }, [open]);
+  useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
   // -- keyboard ---------------------------------------------------------------
 
@@ -793,6 +846,8 @@ export default function RemoteFileDialog({
   // Downloading needs files.download (the API refuses it otherwise), so the button is only offered with it
   const offersDownload = (!!buildDownloadUrl || !!getDownloadLink) && can("files.download");
   const canDownload = offersDownload && !!selected && !selected.isDir;
+  // Uploading needs files.upload and work access to the project (the API checks both)
+  const offersUpload = !!uploadFile && mode === "select" && can("files.upload");
 
   return (
     <Dialog
@@ -868,6 +923,33 @@ export default function RemoteFileDialog({
               Download
             </button>
           )}
+
+          {offersUpload && (uploading ? (
+            <>
+              <span className={[styles.uploadProgress, offersDownload ? "" : styles.toolbarEnd].join(" ")} role="status">
+                <Loader2 className={styles.iconSpinSm} />
+                Uploading {uploading.name} · {uploading.total ? Math.floor((100 * uploading.sent) / uploading.total) : 100}%
+              </span>
+              <button type="button" onClick={() => uploadAbortRef.current?.abort()} className={styles.ppChipBtn}>
+                Cancel upload
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => uploadInputRef.current?.click()}
+              title="Upload a file from your computer into the project's Uploads folder (or drop it on the list)"
+              className={[styles.ppChipBtn, offersDownload ? "" : styles.toolbarEnd].join(" ")}>
+              <Upload className={styles.iconSm} />
+              Upload
+            </button>
+          ))}
+          {offersUpload && (
+            <input ref={uploadInputRef} type="file" hidden aria-label="File to upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void uploadOne(file);
+              }} />
+          )}
         </div>
 
         <div className={[styles.bodyGrid, browserHeightClass].join(" ")}>
@@ -935,7 +1017,28 @@ export default function RemoteFileDialog({
               </div>
             )}
 
-            <div className={styles.panelBody}>
+            <div
+              className={[styles.panelBody, dropping ? styles.panelBodyDrop : ""].join(" ")}
+              onDragOver={offersUpload ? (e) => {
+                if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+                e.preventDefault();
+                setDropping(true);
+              } : undefined}
+              onDragLeave={offersUpload ? () => setDropping(false) : undefined}
+              onDrop={offersUpload ? (e) => {
+                const file = e.dataTransfer?.files?.[0];
+                if (!file) return;
+                e.preventDefault();
+                setDropping(false);
+                void uploadOne(file);
+              } : undefined}
+            >
+              {uploadError && (
+                <div className={styles.errorBox} role="alert">
+                  <AlertCircle className={styles.iconSm} />
+                  <span>{uploadError}</span>
+                </div>
+              )}
               {error ? (
                 <div className={styles.errorBox}>
                   <AlertCircle className={styles.iconSm} />

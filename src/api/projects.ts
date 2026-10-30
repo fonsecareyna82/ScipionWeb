@@ -2200,6 +2200,81 @@ export async function createProtocolDownloadLink(
   return `${BASE_URL}${raw.url}`;
 }
 
+export type UploadedFile = { name: string; path: string; absPath: string; size: number };
+export type UploadOptions = { onProgress?: (sent: number, total: number) => void; signal?: AbortSignal };
+
+const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+// A chunk that fails (a dropped connection) is sent again, from what the server says it has
+const UPLOAD_CHUNK_ATTEMPTS = 5;
+const UPLOAD_RETRY_DELAY_MS = 2000;
+
+function waitOrAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Upload cancelled", "AbortError"));
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Upload cancelled", "AbortError"));
+    }, { once: true });
+  });
+}
+
+/**
+ * Upload a file from the user's computer into the project's Uploads folder: in
+ * chunks, resuming after a dropped connection; cancelling drops what was sent.
+ */
+export async function uploadProjectFile(projectId: Id, file: File, opts: UploadOptions = {}): Promise<UploadedFile> {
+  const base = `${BASE_URL}/projects/${projectId}/uploads`;
+  const start = await fetchWithAuth(base, {
+    method: "POST", body: JSON.stringify({ name: file.name, size: file.size }), signal: opts.signal,
+  });
+  if (!start.ok) throw await toApiError(start, "The file could not be uploaded");
+  const { uploadId } = (await safeJson<{ uploadId: string }>(start)) ?? ({} as { uploadId: string });
+  if (!uploadId) throw new Error("The server did not open the upload");
+  const url = `${base}/${encodeURIComponent(uploadId)}`;
+
+  try {
+    let offset = 0;
+    opts.onProgress?.(0, file.size);
+    while (offset < file.size) {
+      const end = Math.min(offset + UPLOAD_CHUNK_BYTES, file.size);
+      let attempt = 0;
+      for (;;) {
+        try {
+          const res = await fetchWithAuth(`${url}?offset=${offset}`, {
+            method: "PUT", body: file.slice(offset, end),
+            headers: { "Content-Type": "application/octet-stream" }, signal: opts.signal,
+          });
+          if (res.ok) {
+            offset = end;
+            break;
+          }
+          if (res.status !== 409) throw await toApiError(res, "The file could not be uploaded");
+        } catch (error) {
+          if (opts.signal?.aborted || error instanceof ApiError) throw error;
+          if (++attempt >= UPLOAD_CHUNK_ATTEMPTS) throw error;
+          await waitOrAbort(UPLOAD_RETRY_DELAY_MS, opts.signal);
+        }
+        // Go on from what the server has (a chunk may have arrived before the connection dropped)
+        const status = await fetchWithAuth(url, { signal: opts.signal });
+        if (!status.ok) throw await toApiError(status, "The upload was lost on the server");
+        offset = Number((await safeJson<{ received?: number }>(status))?.received ?? 0);
+        break;
+      }
+      opts.onProgress?.(offset, file.size);
+    }
+    const done = await fetchWithAuth(`${url}/complete`, { method: "POST", signal: opts.signal });
+    if (!done.ok) throw await toApiError(done, "The file could not be uploaded");
+    const raw = await safeJson<UploadedFile>(done);
+    if (!raw?.absPath) throw new Error("The server did not say where the file went");
+    return raw;
+  } catch (error) {
+    // A cancelled or failed upload leaves nothing on the server
+    void fetchWithAuth(url, { method: "DELETE" }).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function fetchProtocolInlinePreviewBlob(
   projectId: Id,
   protocolId: Id,

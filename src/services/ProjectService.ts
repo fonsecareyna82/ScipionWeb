@@ -84,6 +84,7 @@ export type ProtocolViewerActionResponse = {
 // src/services/ProjectService.ts
 
 import { loadWorkflowPayload } from "@/api/projects";
+import type { UploadedFile, UploadOptions } from "@/api/projects";
 
 
 export type AuthenticatedRequestOptions = {
@@ -2420,6 +2421,8 @@ export interface ProjectService<
   ): Promise<{ blob: Blob; meta: any }>;
   /** A short-lived signed link to download one file with the browser's download manager. */
   createProtocolDownloadLink?(projectId: Id, protocolId: Id, path: string, opts?: BrowseOptions): Promise<string>;
+  /** Upload a file from the user's computer into the project's Uploads folder (in chunks, resumable). */
+  uploadProjectFile?(projectId: Id, file: File, opts?: UploadOptions): Promise<UploadedFile>;
   fetchOutputPreview(
     projectId: string,
     protocolId: string,

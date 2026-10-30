@@ -316,6 +316,57 @@ describe("RemoteFileDialog", () => {
     expect(screen.queryByRole("button", { name: /Download/ })).not.toBeInTheDocument();
   });
 
+  it("uploads a file from the computer and shows it selected in its folder", async () => {
+    authMocks.loadCurrentUserOnce.mockResolvedValue({ id: 2, permissions: ["files.upload"] });
+    resolveBrowserPaths.mockResolvedValue({ rootAbs: "/", startPath: "p/Proj/Runs/000003_ProtImportVolumes", projectRootAbs: "/p/Proj" });
+    listRemoteDirectory.mockImplementation(async (rel: string) => (rel === "p/Proj/Uploads"
+      ? [{ name: "a.mrc", path: "p/Proj/Uploads/a.mrc", isDir: false, size: 1 },
+         { name: "mask.mrc", path: "p/Proj/Uploads/mask.mrc", isDir: false, size: 4 }]
+      : [{ name: "logs", path: "logs", isDir: true }]));
+    let finish: (value: { absPath: string; name: string }) => void = () => undefined;
+    const uploadFile = vi.fn((_file: File, opts: { onProgress: (sent: number, total: number) => void }) => {
+      opts.onProgress(2, 4);
+      return new Promise<{ absPath: string; name: string }>((resolve) => { finish = resolve; });
+    });
+    renderDialog({ uploadFile });
+    expect(await screen.findByText("logs")).toBeInTheDocument();
+
+    const file = new File(["mask"], "mask.mrc");
+    fireEvent.change(screen.getByLabelText("File to upload"), { target: { files: [file] } });
+    expect(await screen.findByText(/Uploading mask.mrc · 50%/)).toBeInTheDocument();
+    expect(uploadFile.mock.calls[0][0]).toBe(file);
+
+    await act(async () => finish({ absPath: "/p/Proj/Uploads/mask.mrc", name: "mask.mrc" }));
+    await waitFor(() => expect(listRemoteDirectory).toHaveBeenLastCalledWith("p/Proj/Uploads"));
+    expect(await screen.findByRole("option", { selected: true })).toHaveTextContent("mask.mrc");
+    expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
+  });
+
+  it("uploads a file dropped on the list, and shows why the server refused it", async () => {
+    authMocks.loadCurrentUserOnce.mockResolvedValue({ id: 2, permissions: ["files.upload"] });
+    listRemoteDirectory.mockResolvedValue([{ name: "logs", path: "logs", isDir: true }]);
+    const uploadFile = vi.fn().mockRejectedValue(new Error("Uploads/mask.mrc already exists"));
+    renderDialog({ uploadFile });
+    expect(await screen.findByText("logs")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Upload" });
+
+    const file = new File(["mask"], "mask.mrc");
+    const list = screen.getByText("logs").closest("[class]")!.parentElement!;
+    await act(async () => {
+      fireEvent.drop(list, { dataTransfer: { files: [file], types: ["Files"] } });
+    });
+    expect(uploadFile.mock.calls[0][0]).toBe(file);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Uploads/mask.mrc already exists");
+  });
+
+  it("offers no Upload button without the upload permission", async () => {
+    listRemoteDirectory.mockResolvedValue([{ name: "logs", path: "logs", isDir: true }]);
+    renderDialog({ uploadFile: vi.fn() });
+    expect(await screen.findByText("logs")).toBeInTheDocument();
+    await act(async () => undefined);
+    expect(screen.queryByRole("button", { name: "Upload" })).not.toBeInTheDocument();
+  });
+
   it("downloads big files with a signed link the browser downloads on its own", async () => {
     listRemoteDirectory.mockResolvedValue([{ name: "movie.tif", path: "Runs/m/movie.tif", isDir: false, size: 9e9 }]);
     const getDownloadLink = vi.fn().mockResolvedValue("http://api/projects/7/protocols/12/fs/download-file?token=fd.x");

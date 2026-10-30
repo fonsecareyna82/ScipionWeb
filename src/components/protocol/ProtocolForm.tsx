@@ -4375,6 +4375,8 @@ export default function ProtocolForm({
           getDownloadLink={svc.createProtocolDownloadLink
             ? (p) => svc.createProtocolDownloadLink!(projectId, effectiveProtocolId, p, { scope: "filesystem" })
             : undefined}
+          // A volume, mask or reference from the user's computer goes to the project's Uploads folder
+          uploadFile={svc.uploadProjectFile ? (file, opts) => svc.uploadProjectFile!(projectId, file, opts) : undefined}
           onPick={(relativePath, _entry, _filename, info) => {
             const stateKey = pathDialog.stateKey;
             const value = info ? pathForProtocolParam(info.absPath, info.projectRootAbs) : relativePath;
