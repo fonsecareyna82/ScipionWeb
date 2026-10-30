@@ -205,6 +205,37 @@ export type SessionGrid = {
   sampleCode: string;
 };
 
+// Where a DATA is in its acquisition, as the watcher of the microscope's folders saw it
+export type DatasetWatch = "receiving" | "stalled" | "idle" | "noOffload" | "pending" | "noFolder" | "waiting";
+
+// What the first movie's metadata says (null: not read yet); error when it could not be read
+export type DatasetAcquisition = {
+  metadataFile?: string;
+  error?: string;
+  format?: string;
+  cameraName?: string | null;
+  detectorId?: number | null;
+  detectorName?: string | null;
+  instrument?: string | null;
+  acquiredAt?: string | null;
+  voltageKv?: number | null;
+  magnification?: number | null;
+  nominalPixelSize?: number | null;
+  pixelSize?: number | null;
+  pixelCalibrated?: boolean;
+  frames?: number | null;
+  exposureSeconds?: number | null;
+  // On the sample, e-/Å² (null when the metadata does not tell it)
+  totalDose?: number | null;
+  dosePerFrame?: number | null;
+  // That reached the camera, e-/Å²
+  cameraDose?: number | null;
+  gain?: string | null;
+  gainFile?: string | null;
+  firstMovie?: string;
+  warnings?: string[];
+};
+
 export type SessionDataset = {
   id: number;
   kind: "atlas" | "data";
@@ -217,6 +248,12 @@ export type SessionDataset = {
   grid?: SessionGrid | null;
   // The folder the microscope writes it to, e.g. <session>_DATA_01
   folder: string;
+  watch?: DatasetWatch | null;
+  movieCount?: number;
+  movieBytes?: number;
+  firstMovieAt?: string | null;
+  lastMovieAt?: string | null;
+  acquisition?: DatasetAcquisition | null;
   images?: FacilityImage[];
 };
 

@@ -135,4 +135,55 @@ describe("The sessions of the facility", () => {
     expect(screen.queryByRole("button", { name: "New session" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
+
+  it("shows where each DATA of a session acquiring is, with what its first movie says", async () => {
+    const lastMovieAt = new Date(Date.now() - 3 * 60000).toISOString();
+    const acquiring = {
+      ...session, status: "acquiring",
+      datasets: [session.datasets[0],
+        { ...session.datasets[1], watch: "receiving", movieCount: 412, movieBytes: 3.2 * 1024 ** 3, lastMovieAt,
+          detectorName: "Falcon 4i",
+          acquisition: { cameraName: "BM-Falcon", detectorName: "Falcon 4i", pixelSize: 0.84, pixelCalibrated: true,
+                         nominalPixelSize: 0.8387, magnification: 120000, totalDose: 40.04, frames: 40, warnings: [] } },
+        { id: 42, kind: "data", number: 2, gridId: 9, detectorId: null, notes: "", folder: `${NAME}_DATA_02`,
+          watch: "noFolder", movieCount: 0 }],
+    };
+    facilityMocks.listSessions.mockResolvedValue([acquiring]);
+    render(<SessionsPanel {...styles} canEdit />);
+
+    expect(await screen.findByText("412 movies · 3.2 GB · 0.84 Å (calibrated) · 120,000× · 40 e⁻/Å² · 40 frames · last 3 min ago"))
+      .toBeInTheDocument();
+    expect(screen.getByText("Receiving")).toBeInTheDocument();
+    expect(screen.getByText("Folder not made yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
+  });
+
+  it("says the dose at the camera when the metadata does not give the one on the sample", async () => {
+    facilityMocks.listSessions.mockResolvedValue([{
+      ...session, status: "acquiring",
+      datasets: [{ ...session.datasets[1], watch: "stalled", movieCount: 1, movieBytes: 0,
+                   acquisition: { pixelSize: 1.5678, pixelCalibrated: false, totalDose: null, cameraDose: 30.84,
+                                  warnings: ["No DoseOnSample or DoseRate"] } }],
+    }]);
+    render(<SessionsPanel {...styles} canEdit />);
+
+    expect(await screen.findByText("1 movie · 1.568 Å · 30.8 e⁻/Å² at the camera")).toBeInTheDocument();
+    expect(screen.getByText("No new movies")).toBeInTheDocument();
+  });
+
+  it("follows the sessions acquiring without being asked", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      facilityMocks.listSessions.mockResolvedValue([{ ...session, status: "acquiring" }]);
+      render(<SessionsPanel {...styles} canEdit />);
+      await screen.findByText(NAME);
+      expect(facilityMocks.listSessions).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30000);
+
+      expect(facilityMocks.listSessions).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

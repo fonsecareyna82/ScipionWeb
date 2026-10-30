@@ -19,7 +19,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { CalendarClock, Copy, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Copy, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -36,6 +36,7 @@ import {
     listSessions,
     sessionPayloadOf,
     updateSession,
+    type DatasetWatch,
     type FacilityImage,
     type FacilitySession,
     type Microscope,
@@ -90,6 +91,67 @@ const FILTER_LABELS: Record<SessionFilter, string> = {
 
 const DATA_NUMBERS = Array.from({ length: 12 }, (_, index) => index + 1);
 const SEARCH_DELAY_MS = 300;
+// While a session acquires, the list follows its folders: the watcher looks at them every 30 s
+const ACQUIRING_REFRESH_MS = 30000;
+
+const WATCH_LABELS: Record<DatasetWatch, string> = {
+    receiving: "Receiving",
+    stalled: "No new movies",
+    idle: "",
+    noOffload: "No offload folder",
+    pending: "Looking…",
+    noFolder: "Folder not made yet",
+    waiting: "Waiting for movies",
+};
+
+const WATCH_COLORS: Record<DatasetWatch, string> = {
+    receiving: "#16a34a",
+    stalled: "#d97706",
+    idle: "#64748b",
+    noOffload: "#dc2626",
+    pending: "#64748b",
+    noFolder: "#64748b",
+    waiting: "#2563eb",
+};
+
+function formatBytes(bytes: number): string {
+    if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
+    if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+function since(value: string | null | undefined): string {
+    if (!value) return "";
+    const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
+    if (!Number.isFinite(minutes)) return "";
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+function round(value: number | null | undefined, digits: number): string {
+    return value == null ? "" : String(Number(value.toFixed(digits)));
+}
+
+/** What a DATA's movies and its first movie's metadata say, in one line. */
+export function describeAcquisition(dataset: SessionDataset): string {
+    const acquisition = dataset.acquisition;
+    const parts: string[] = [];
+    if (dataset.movieCount) {
+        parts.push(`${dataset.movieCount} movie${dataset.movieCount === 1 ? "" : "s"}`);
+        if (dataset.movieBytes) parts.push(formatBytes(dataset.movieBytes));
+    }
+    if (acquisition && !acquisition.error) {
+        if (acquisition.pixelSize != null) parts.push(`${round(acquisition.pixelSize, 3)} Å${acquisition.pixelCalibrated ? " (calibrated)" : ""}`);
+        if (acquisition.magnification != null) parts.push(`${acquisition.magnification.toLocaleString("en-US")}×`);
+        if (acquisition.totalDose != null) parts.push(`${round(acquisition.totalDose, 1)} e⁻/Å²`);
+        else if (acquisition.cameraDose != null) parts.push(`${round(acquisition.cameraDose, 1)} e⁻/Å² at the camera`);
+        if (acquisition.frames != null) parts.push(`${acquisition.frames} frames`);
+    }
+    if (dataset.lastMovieAt) parts.push(`last ${since(dataset.lastMovieAt)}`);
+    return parts.join(" · ");
+}
 
 function personName(person: Person | null | undefined, fallback = ""): string {
     if (!person) return fallback;
@@ -182,10 +244,47 @@ function SessionFolders({ session, colors }: { session: FacilitySession; colors:
                             {dataset.kind === "atlas" ? "the grids' atlas" : describeDatasetGrid(dataset) || "no grid yet"}
                             {dataset.detectorName ? ` · ${dataset.detectorName}` : ""}
                         </Typography>
+                        <DatasetProgress dataset={dataset} colors={colors} />
                     </Stack>
                 ))}
             </Stack>
         </Box>
+    );
+}
+
+/** Where a DATA's acquisition is: its state, and what its movies say. */
+function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; colors: PanelStyles["colors"] }) {
+    const watch = dataset.watch;
+    if (!watch || (watch === "idle" && !dataset.movieCount)) return null;
+    const acquisition = dataset.acquisition;
+    const notes = [
+        acquisition?.error ? `The metadata of ${acquisition.metadataFile} could not be read: ${acquisition.error}` : "",
+        acquisition?.cameraName ? `Camera ${acquisition.cameraName}${acquisition.detectorName ? "" : " (no detector of the microscope has this name in the metadata)"}` : "",
+        acquisition?.nominalPixelSize != null && acquisition.pixelCalibrated ? `EPU's nominal pixel ${round(acquisition.nominalPixelSize, 4)} Å` : "",
+        acquisition?.dosePerFrame != null ? `${round(acquisition.dosePerFrame, 3)} e⁻/Å² per frame` : "",
+        acquisition?.voltageKv != null ? `${acquisition.voltageKv} kV` : "",
+        acquisition?.gainFile ? `Gain ${acquisition.gainFile}` : "",
+        ...(acquisition?.warnings ?? []),
+    ].filter(Boolean);
+    const line = describeAcquisition(dataset);
+    const label = WATCH_LABELS[watch];
+    return (
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, ml: "auto !important", flexShrink: 1 }}>
+            {line && (
+                <Typography noWrap sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, minWidth: 0 }}>{line}</Typography>
+            )}
+            {label && (
+                <Tooltip arrow title={notes.length ? <Box sx={{ whiteSpace: "pre-line" }}>{notes.join("\n")}</Box> : ""}>
+                    <Box sx={{ px: 0.8, py: 0.1, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", gap: 0.4,
+                               border: `1px solid ${WATCH_COLORS[watch]}`, color: WATCH_COLORS[watch] }}>
+                        {(watch === "stalled" || watch === "noOffload" || acquisition?.error || (acquisition?.warnings?.length ?? 0) > 0) && (
+                            <AlertTriangle size={12} />
+                        )}
+                        <Typography sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 700, whiteSpace: "nowrap" }}>{label}</Typography>
+                    </Box>
+                </Tooltip>
+            )}
+        </Stack>
     );
 }
 
@@ -223,6 +322,16 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
     useEffect(() => {
         void load();
     }, [load]);
+
+    // A session acquiring: its folders change, so the list follows them (quietly, without the spinner)
+    const acquiring = sessions.some((session) => session.status === "acquiring");
+    useEffect(() => {
+        if (!acquiring || editing !== null) return;
+        const timer = window.setInterval(() => {
+            listSessions(filter, appliedSearch).then(setSessions).catch(() => undefined);
+        }, ACQUIRING_REFRESH_MS);
+        return () => window.clearInterval(timer);
+    }, [acquiring, editing, filter, appliedSearch]);
 
     const setStatus = useCallback(async (session: FacilitySession, status: SessionStatus) => {
         setBusy(true);
