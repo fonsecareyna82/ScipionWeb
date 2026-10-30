@@ -34,6 +34,12 @@ class LoadingImage {
 }
 vi.stubGlobal("Image", LoadingImage);
 
+// The box size is shown in its number field, next to the slider
+async function expectBoxSize(value: number) {
+  const field = await screen.findByRole("spinbutton", { name: "Box size in pixels" });
+  await waitFor(() => expect(field).toHaveValue(value));
+}
+
 function fakeImage() {
   return Promise.resolve({ url: "blob:micrograph", revoke: () => undefined, originalWidth: 400, originalHeight: 300 });
 }
@@ -102,7 +108,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     const source = pickingSource();
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" title="Particle picking" source={source} />);
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
     expect(screen.getByText(/Particle picking/)).toBeInTheDocument();
     expect(outputService.listCoords2dMicrographs).not.toHaveBeenCalled();
@@ -113,10 +119,10 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     const source = pickingSource();
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={source} />);
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     expect(source.saveBoxSize).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole("slider"), { key: "ArrowRight" });
-    expect(await screen.findByText("(100)")).toBeInTheDocument();
+    await expectBoxSize(100);
     await waitFor(() => expect(source.saveBoxSize).toHaveBeenCalledWith(100), { timeout: 3000 });
   });
 
@@ -145,7 +151,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     const { container } = render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={source} />);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     await waitForMicrographShown(1);
     fireEvent.click(screen.getByRole("button", { name: "Particle picker" }));
     const canvas = container.querySelector("canvas")!;
@@ -172,7 +178,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
   it("has no threshold when the micrograph has only manual particles", async () => {
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={pickingSource({ getThreshold: () => 0 })} />);
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     expect(screen.queryByRole("slider", { name: "Automatic particles threshold" })).not.toBeInTheDocument();
   });
 
@@ -212,7 +218,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     });
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={source} />);
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     expect(screen.getAllByRole("slider")[0]).not.toBeDisabled();
     fireEvent.click(await screen.findByRole("button", { name: "Train" }));
     expect(await screen.findByText("Fixed by the trained picker")).toBeInTheDocument();
@@ -222,7 +228,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
   it("offers no supervised buttons for coordinates outputs", async () => {
     render(<Coords2dViewer projectId={7} protocolId={116} protocolLabel="Xmipp picking"
       outputName="picking" source={pickingSource()} />);
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     expect(screen.queryByRole("button", { name: "Train" })).not.toBeInTheDocument();
   });
 });
@@ -324,7 +330,7 @@ describe("Xmipp picker tools in the coordinates viewer", () => {
     });
     const { container } = renderPicker(source);
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("4"));
-    expect(await screen.findByText("(99)")).toBeInTheDocument();
+    await expectBoxSize(99);
     await waitForMicrographShown(2);
     const canvas = container.querySelector("canvas")!;
     // A click selects a particle; Delete removes it.
