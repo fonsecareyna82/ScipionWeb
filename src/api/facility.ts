@@ -206,7 +206,7 @@ export type SessionGrid = {
 };
 
 // Where a DATA is in its acquisition, as the watcher of the microscope's folders saw it
-export type DatasetWatch = "receiving" | "stalled" | "idle" | "noOffload" | "pending" | "noFolder" | "waiting";
+export type DatasetWatch = "receiving" | "stalled" | "acquired" | "idle" | "noOffload" | "pending" | "noFolder" | "waiting";
 
 // What the first movie's metadata says (null: not read yet); error when it could not be read
 export type DatasetAcquisition = {

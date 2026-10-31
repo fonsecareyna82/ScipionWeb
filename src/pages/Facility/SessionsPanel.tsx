@@ -101,6 +101,7 @@ const ACQUIRING_REFRESH_MS = 30000;
 const WATCH_LABELS: Record<DatasetWatch, string> = {
     receiving: "Receiving",
     stalled: "No new movies",
+    acquired: "Acquired",
     idle: "",
     noOffload: "No offload folder",
     pending: "Looking…",
@@ -111,6 +112,7 @@ const WATCH_LABELS: Record<DatasetWatch, string> = {
 const WATCH_COLORS: Record<DatasetWatch, string> = {
     receiving: "#16a34a",
     stalled: "#d97706",
+    acquired: "#64748b",
     idle: "#64748b",
     noOffload: "#dc2626",
     pending: "#64748b",
@@ -239,7 +241,8 @@ function SessionFolders({ session, colors, onProcess }: {
             </Stack>
             <Stack spacing={0.25}>
                 {session.datasets.map((dataset) => (
-                    <Stack key={dataset.id} direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                    <Box key={dataset.id} sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
                         <Tooltip arrow title="Copy this folder's name">
                             <IconButton size="small" aria-label={`Copy ${dataset.folder}`}
                                         onClick={() => copyFolders(dataset.folder, dataset.folder)}>
@@ -253,9 +256,13 @@ function SessionFolders({ session, colors, onProcess }: {
                             {dataset.kind === "atlas" ? "the grids' atlas" : describeDatasetGrid(dataset) || "no grid yet"}
                             {dataset.detectorName ? ` · ${dataset.detectorName}` : ""}
                         </Typography>
+                    </Stack>
+                    {/* Under its folder, what came in and how its processing goes: a line of its own, so it is not cut */}
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, pl: 4.5, flexWrap: "wrap", rowGap: 0.5 }}>
                         <DatasetProgress dataset={dataset} colors={colors} />
                         <DatasetProcessing session={session} dataset={dataset} colors={colors} onProcess={onProcess} />
                     </Stack>
+                    </Box>
                 ))}
             </Stack>
         </Box>
@@ -279,9 +286,9 @@ function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; colors:
     const line = describeAcquisition(dataset);
     const label = WATCH_LABELS[watch];
     return (
-        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, ml: "auto !important", flexShrink: 1 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, flexWrap: "wrap", rowGap: 0.5 }}>
             {line && (
-                <Typography noWrap sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, minWidth: 0 }}>{line}</Typography>
+                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, minWidth: 0 }}>{line}</Typography>
             )}
             {label && (
                 <Tooltip arrow title={notes.length ? <Box sx={{ whiteSpace: "pre-line" }}>{notes.join("\n")}</Box> : ""}>
