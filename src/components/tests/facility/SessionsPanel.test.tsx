@@ -11,6 +11,7 @@ const facilityMocks = vi.hoisted(() => ({
   addSessionImage: vi.fn(),
   deleteFacilityImage: vi.fn(),
   fetchFacilityImageUrl: vi.fn(),
+  processSessionDataset: vi.fn(),
 }));
 vi.mock("@/api/facility", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/facility")>();
@@ -20,10 +21,19 @@ vi.mock("@/api/access", () => ({ listGroupNames: vi.fn().mockResolvedValue([{ id
 vi.mock("@/api/auth", () => ({ loadCurrentUserOnce: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/api/projects", () => ({
   listUsers: vi.fn().mockResolvedValue([{ id: 7, email: "gaoxin@example.org", firstName: "Gaoxin", lastName: "Lu" }]),
+  fetchWorkflows: vi.fn().mockResolvedValue([
+    { id: "WH-Workflow 2D relion", name: "Workflow 2D relion", source: "WH", canLoad: true },
+    { id: "WH-Workflow 2D cryosparc", name: "Workflow 2D cryosparc", source: "WH", canLoad: false,
+      disabledReason: "Missing required plugins: cryosparc2" },
+  ]),
 }));
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
-import SessionsPanel from "@/pages/Facility/SessionsPanel";
+import { MemoryRouter } from "react-router";
+import SessionsPanelBare from "@/pages/Facility/SessionsPanel";
+
+// The DATA link to their projects: the panel lives in the app's router
+const SessionsPanel = (props: any) => <MemoryRouter><SessionsPanelBare {...props} /></MemoryRouter>;
 
 const styles = {
   fieldSx: {}, cardSx: {}, cardHeaderSx: {}, selectSx: {}, menuPaperSx: {},
@@ -115,6 +125,7 @@ describe("The sessions of the facility", () => {
     const payload = facilityMocks.createSession.mock.calls[0][0];
     expect(payload).toMatchObject({ name: "", microscopeId: 1, technique: "spa", status: "planned", bookingRef: "B-1300" });
     expect(payload.datasets).toEqual([{ id: null, kind: "data", number: 1, gridId: 9, detectorId: null, notes: "" }]);
+    expect(payload).toMatchObject({ templateId: "", autoProcess: true });
   });
 
   it("keeps the name of a session that acquires: the microscope writes its folders", async () => {
@@ -185,5 +196,45 @@ describe("The sessions of the facility", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("chooses the template each DATA is processed with, among the loadable workflows", async () => {
+    facilityMocks.updateSession.mockResolvedValue(session);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.mouseDown(within(dialog).getByLabelText("Processing template"));
+    expect(await screen.findByRole("option", { name: /Workflow 2D cryosparc/ })).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("option", { name: /Workflow 2D relion/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(facilityMocks.updateSession).toHaveBeenCalled());
+    expect(facilityMocks.updateSession.mock.calls[0][1]).toMatchObject({ templateId: "WH-Workflow 2D relion", autoProcess: true });
+  });
+
+  it("links each DATA to its project and monitor, and asks again for one that failed", async () => {
+    facilityMocks.processSessionDataset.mockResolvedValue(session);
+    facilityMocks.listSessions.mockResolvedValue([{
+      ...session, status: "acquiring", templateId: "WH-Workflow 2D relion", autoProcess: true,
+      datasets: [
+        { ...session.datasets[1], watch: "receiving", movieCount: 3, projectId: 31, acquisition: { pixelSize: 1.14 },
+          processing: { state: "launched", projectName: `${NAME}_DATA_01` } },
+        { id: 42, kind: "data", number: 2, gridId: 9, detectorId: null, notes: "", folder: `${NAME}_DATA_02`,
+          watch: "receiving", movieCount: 2, projectId: null, acquisition: { pixelSize: 1.14 },
+          processing: { state: "error", message: "The template has no Import Movies to read the DATA" } },
+      ],
+    }]);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    expect(screen.getByText("Processing")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: `Open the project of ${NAME}_DATA_01` })).toHaveAttribute("href", "/project/load/31");
+    expect(screen.getByRole("link", { name: `Monitor of ${NAME}_DATA_01` })).toHaveAttribute("href", "/project/31/monitor");
+    expect(screen.getByText("Processing failed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(facilityMocks.processSessionDataset).toHaveBeenCalledWith(42));
   });
 });

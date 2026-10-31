@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router";
 import {
     Alert,
     Autocomplete,
@@ -7,8 +8,10 @@ import {
     Card,
     CardContent,
     CardHeader,
+    Checkbox,
     CircularProgress,
     FormControl,
+    FormControlLabel,
     IconButton,
     InputAdornment,
     InputLabel,
@@ -19,13 +22,13 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { AlertTriangle, CalendarClock, Copy, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { listGroupNames } from "@/api/access";
 import { loadCurrentUserOnce } from "@/api/auth";
-import { listUsers } from "@/api/projects";
+import { fetchWorkflows, listUsers } from "@/api/projects";
 import {
     addSessionImage,
     createSession,
@@ -34,6 +37,7 @@ import {
     listMicroscopes,
     listSamples,
     listSessions,
+    processSessionDataset,
     sessionPayloadOf,
     updateSession,
     type DatasetWatch,
@@ -215,7 +219,12 @@ function gridOptionsOf(samples: Sample[]): GridOption[] {
 }
 
 /** The folders of a session, each with a copy button: what the operator types into EPU. */
-function SessionFolders({ session, colors }: { session: FacilitySession; colors: PanelStyles["colors"] }) {
+function SessionFolders({ session, colors, onProcess }: {
+    session: FacilitySession;
+    colors: PanelStyles["colors"];
+    // Ask for a DATA's project (again); absent for those who only watch
+    onProcess?: (dataset: SessionDataset) => void;
+}) {
     return (
         <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 1.5, px: 1.25, py: 0.75 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
@@ -245,6 +254,7 @@ function SessionFolders({ session, colors }: { session: FacilitySession; colors:
                             {dataset.detectorName ? ` · ${dataset.detectorName}` : ""}
                         </Typography>
                         <DatasetProgress dataset={dataset} colors={colors} />
+                        <DatasetProcessing session={session} dataset={dataset} colors={colors} onProcess={onProcess} />
                     </Stack>
                 ))}
             </Stack>
@@ -283,6 +293,63 @@ function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; colors:
                         <Typography sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 700, whiteSpace: "nowrap" }}>{label}</Typography>
                     </Box>
                 </Tooltip>
+            )}
+        </Stack>
+    );
+}
+
+const PROCESSING_LABELS = { queued: "Queued", running: "Making its project…", launched: "Processing", error: "Processing failed" };
+const PROCESSING_COLORS = { queued: "#64748b", running: "#2563eb", launched: "#16a34a", error: "#dc2626" };
+
+/** A DATA's project: how its making went, links to it and its monitor, and asking for it (again). */
+function DatasetProcessing({ session, dataset, colors, onProcess }: {
+    session: FacilitySession;
+    dataset: SessionDataset;
+    colors: PanelStyles["colors"];
+    onProcess?: (dataset: SessionDataset) => void;
+}) {
+    if (dataset.kind !== "data") return null;
+    const processing = dataset.processing;
+    const canAsk = !!onProcess && !dataset.projectId && session.status === "acquiring" && !!session.templateId
+        && !!dataset.acquisition && !dataset.acquisition.error && processing?.state !== "queued" && processing?.state !== "running";
+    // Without a template, or before its first movie, a DATA has nothing to process
+    if (!processing && !dataset.projectId && !canAsk) return null;
+    const tooltip = [processing?.message, processing?.note, processing?.templateId && `Template ${processing.templateId}`]
+        .filter(Boolean).join("\n");
+    return (
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+            {processing && (
+                <Tooltip arrow title={tooltip ? <Box sx={{ whiteSpace: "pre-line" }}>{tooltip}</Box> : ""}>
+                    <Box sx={{ px: 0.8, py: 0.1, borderRadius: 10, display: "flex", alignItems: "center", gap: 0.4,
+                               border: `1px solid ${PROCESSING_COLORS[processing.state]}`, color: PROCESSING_COLORS[processing.state] }}>
+                        {processing.state === "error" && <AlertTriangle size={12} />}
+                        <Typography sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            {PROCESSING_LABELS[processing.state]}
+                        </Typography>
+                    </Box>
+                </Tooltip>
+            )}
+            {dataset.projectId != null && (
+                <>
+                    <Tooltip arrow title="Open its project">
+                        <IconButton size="small" component={RouterLink} to={`/project/load/${dataset.projectId}`}
+                                    aria-label={`Open the project of ${dataset.folder}`}>
+                            <FolderOpen size={15} />
+                        </IconButton>
+                    </Tooltip>
+                    <Tooltip arrow title="Its streaming monitor">
+                        <IconButton size="small" component={RouterLink} to={`/project/${dataset.projectId}/monitor`}
+                                    aria-label={`Monitor of ${dataset.folder}`}>
+                            <Activity size={15} />
+                        </IconButton>
+                    </Tooltip>
+                </>
+            )}
+            {canAsk && (
+                <Button size="small" variant="text" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note, color: colors.text }}
+                        onClick={() => onProcess?.(dataset)}>
+                    {processing?.state === "error" ? "Try again" : "Process now"}
+                </Button>
             )}
         </Stack>
     );
@@ -343,6 +410,16 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
             toast.error(String(e?.message || "Failed to save the session"));
         } finally {
             setBusy(false);
+        }
+    }, [load]);
+
+    const process = useCallback(async (dataset: SessionDataset) => {
+        try {
+            await processSessionDataset(dataset.id);
+            toast.success(`${dataset.folder}: its project is made at the watcher's next look.`);
+            await load();
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to ask for the project"));
         }
     }, [load]);
 
@@ -427,7 +504,9 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
                                         <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
                                             {[session.microscopeName, TECHNIQUE_LABELS[session.technique], formatDate(session.scheduledOn),
                                               session.userName || session.userEmail, session.groupName && `group ${session.groupName}`,
-                                              session.bookingRef && `booking ${session.bookingRef}`].filter(Boolean).join(" · ")}
+                                              session.bookingRef && `booking ${session.bookingRef}`,
+                                              session.templateId ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}` : "no processing template"]
+                                                .filter(Boolean).join(" · ")}
                                         </Typography>
                                         {(session.images?.length ?? 0) > 0 && (
                                             <Box sx={{ pt: 0.5 }}><ImageStrip images={session.images ?? []} size={56} colors={colors} /></Box>
@@ -459,7 +538,10 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
                                         </Stack>
                                     )}
                                 </Stack>
-                                <Box sx={{ mt: 1.25 }}><SessionFolders session={session} colors={colors} /></Box>
+                                <Box sx={{ mt: 1.25 }}>
+                                    <SessionFolders session={session} colors={colors}
+                                                    onProcess={canEdit ? (dataset) => void process(dataset) : undefined} />
+                                </Box>
                             </Box>
                         ))}
                     </Stack>
@@ -542,6 +624,10 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     const [groupId, setGroupId] = useState<number | "">(session?.groupId ?? "");
     const [bookingRef, setBookingRef] = useState(session?.bookingRef ?? "");
     const [notes, setNotes] = useState(session?.notes ?? "");
+    const [templateId, setTemplateId] = useState(session?.templateId ?? "");
+    const [autoProcess, setAutoProcess] = useState(session?.autoProcess ?? true);
+    const [templates, setTemplates] = useState<{ id: string; name: string; source?: string; canLoad?: boolean; disabledReason?: string }[]>([]);
+    const [templatesLoading, setTemplatesLoading] = useState(true);
     const [rows, setRows] = useState<DataRow[]>(() => dataRowsOf(session));
     // The session as the server last answered: its images change at once, not on Save
     const [current, setCurrent] = useState<FacilitySession | null>(session);
@@ -576,6 +662,21 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             cancelled = true;
         };
     }, [session]);
+
+    // The templates of the Workflows page (local and WorkflowHub): listing them asks WorkflowHub, so apart
+    useEffect(() => {
+        let cancelled = false;
+        fetchWorkflows()
+            .then((list: any[]) => !cancelled && setTemplates(list.map((item) => ({
+                id: String(item.id), name: String(item.name ?? item.id), source: item.source, canLoad: item.canLoad,
+                disabledReason: item.disabledReason,
+            }))))
+            .catch(() => undefined)
+            .finally(() => !cancelled && setTemplatesLoading(false));
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const microscope = microscopes.find((candidate) => candidate.id === microscopeId);
     const nameFixed = !!session && session.status !== "planned";
@@ -628,6 +729,8 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             bookingRef: bookingRef.trim(),
             scheduledOn: scheduledOn || null,
             notes: notes.trim(),
+            templateId,
+            autoProcess,
             datasets: [
                 ...(atlas ? [{ id: atlas.id, kind: "atlas" as const, notes: atlas.notes }] : []),
                 ...rows.map((row) => ({ id: row.id, kind: "data" as const, number: row.number, gridId: row.gridId,
@@ -736,6 +839,39 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                : "Left empty, it is YYYY_MM_DD_Name-Surname_id (the day, the user and the session's number). It makes the folder names and stays once the acquisition starts."}
                            inputProps={{ style: { fontFamily: "monospace" } }}
                            onChange={(e) => setName(e.target.value)} />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                    <FormControl size="small" fullWidth>
+                        <InputLabel id="session-template-label">Processing template</InputLabel>
+                        <Select labelId="session-template-label" label="Processing template" sx={selectSx} value={templateId}
+                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                renderValue={(value) => (String(value) === "" ? "None"
+                                    : templates.find((item) => item.id === value)?.name ?? String(value))}
+                                onChange={(e) => setTemplateId(String(e.target.value))}>
+                            <MenuItem value="">None: no project is made</MenuItem>
+                            {templatesLoading && <MenuItem disabled value="__loading">Loading the workflows…</MenuItem>}
+                            {templateId && !templatesLoading && !templates.some((item) => item.id === templateId) && (
+                                <MenuItem value={templateId}>{templateId}</MenuItem>
+                            )}
+                            {templates.map((item) => (
+                                <MenuItem key={item.id} value={item.id} disabled={item.canLoad === false}>
+                                    {item.name}{item.source ? ` (${item.source === "WH" ? "WorkflowHub" : item.source})` : ""}
+                                    {item.canLoad === false && item.disabledReason ? ` · ${item.disabledReason}` : ""}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                    <FormControlLabel
+                        sx={{ flexShrink: 0, mr: 0 }}
+                        control={<Checkbox checked={autoProcess} disabled={!templateId}
+                                           onChange={(e) => setAutoProcess(e.target.checked)} />}
+                        label="Launch it by itself"
+                    />
+                </Stack>
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75, mt: "-4px !important" }}>
+                    When a DATA's first movie has been read, a project is made for it from the template (its Import Movies reading
+                    the DATA folder with the calibrated pixel, voltage, Cs, dose and gain), shared with the group, and launched in
+                    streaming. Without "by itself", each DATA waits for "Process now".
+                </Typography>
                 <TextField sx={fieldSx} size="small" label="Staff notes" value={notes} multiline minRows={2}
                            onChange={(e) => setNotes(e.target.value)} />
 

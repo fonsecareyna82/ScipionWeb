@@ -236,6 +236,16 @@ export type DatasetAcquisition = {
   warnings?: string[];
 };
 
+// How a DATA's project goes: queued (asked for), running (being made), launched, or error (message says why)
+export type DatasetProcessing = {
+  state: "queued" | "running" | "launched" | "error";
+  at?: string;
+  message?: string;
+  note?: string;
+  projectName?: string;
+  templateId?: string;
+};
+
 export type SessionDataset = {
   id: number;
   kind: "atlas" | "data";
@@ -254,6 +264,8 @@ export type SessionDataset = {
   firstMovieAt?: string | null;
   lastMovieAt?: string | null;
   acquisition?: DatasetAcquisition | null;
+  projectId?: number | null;
+  processing?: DatasetProcessing | null;
   images?: FacilityImage[];
 };
 
@@ -274,6 +286,9 @@ export type FacilitySession = {
   startedAt?: string | null;
   finishedAt?: string | null;
   notes: string;
+  // The workflow template (an id of the Workflows list) each DATA's project is made from, and whether by itself
+  templateId: string;
+  autoProcess: boolean;
   datasets: SessionDataset[];
   images?: FacilityImage[];
   createdAt?: string;
@@ -290,7 +305,7 @@ export type SessionDatasetPayload = {
 };
 
 export type SessionPayload = Pick<FacilitySession, "microscopeId" | "technique" | "status" | "groupId" | "userId"
-  | "bookingRef" | "scheduledOn" | "notes"> & {
+  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess"> & {
   // Empty: the facility's name, YYYY_MM_DD_<Name-Surname>_<id>
   name: string;
   datasets: SessionDatasetPayload[];
@@ -327,9 +342,16 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
     bookingRef: session.bookingRef,
     scheduledOn: session.scheduledOn ? session.scheduledOn.slice(0, 10) : null,
     notes: session.notes,
+    templateId: session.templateId ?? "",
+    autoProcess: session.autoProcess ?? true,
     datasets: session.datasets.map((dataset) => ({
       id: dataset.id, kind: dataset.kind, number: dataset.number, gridId: dataset.gridId,
       detectorId: dataset.detectorId, notes: dataset.notes,
     })),
   };
 }
+
+/** Make a DATA's project now (again, after a failure); answers the session. */
+export const processSessionDataset = (datasetId: number) =>
+  request<FacilitySession>(`/facility/datasets/${datasetId}/process`, "Failed to ask for the DATA's project",
+    { method: "POST" });
