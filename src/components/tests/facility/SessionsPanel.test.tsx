@@ -125,7 +125,7 @@ describe("The sessions of the facility", () => {
     const payload = facilityMocks.createSession.mock.calls[0][0];
     expect(payload).toMatchObject({ name: "", microscopeId: 1, technique: "spa", status: "planned", bookingRef: "B-1300" });
     expect(payload.datasets).toEqual([{ id: null, kind: "data", number: 1, gridId: 9, detectorId: null, notes: "" }]);
-    expect(payload).toMatchObject({ templateId: "", autoProcess: true });
+    expect(payload).toMatchObject({ templateId: "", autoProcess: true, oneProject: false });
   });
 
   it("keeps the name of a session that acquires: the microscope writes its folders", async () => {
@@ -208,10 +208,12 @@ describe("The sessions of the facility", () => {
     fireEvent.mouseDown(within(dialog).getByLabelText("Processing template"));
     expect(await screen.findByRole("option", { name: /Workflow 2D cryosparc/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(screen.getByRole("option", { name: /Workflow 2D relion/ }));
+    fireEvent.click(within(dialog).getByLabelText("All grids in one project"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.updateSession).toHaveBeenCalled());
-    expect(facilityMocks.updateSession.mock.calls[0][1]).toMatchObject({ templateId: "WH-Workflow 2D relion", autoProcess: true });
+    expect(facilityMocks.updateSession.mock.calls[0][1]).toMatchObject({ templateId: "WH-Workflow 2D relion", autoProcess: true,
+                                                                          oneProject: true });
   });
 
   it("links each DATA to its project and monitor, and asks again for one that failed", async () => {

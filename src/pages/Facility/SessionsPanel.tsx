@@ -512,7 +512,9 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
                                             {[session.microscopeName, TECHNIQUE_LABELS[session.technique], formatDate(session.scheduledOn),
                                               session.userName || session.userEmail, session.groupName && `group ${session.groupName}`,
                                               session.bookingRef && `booking ${session.bookingRef}`,
-                                              session.templateId ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}` : "no processing template"]
+                                              session.templateId
+                                                  ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}${session.oneProject ? ", one project" : ""}`
+                                                  : "no processing template"]
                                                 .filter(Boolean).join(" · ")}
                                         </Typography>
                                         {(session.images?.length ?? 0) > 0 && (
@@ -633,6 +635,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     const [notes, setNotes] = useState(session?.notes ?? "");
     const [templateId, setTemplateId] = useState(session?.templateId ?? "");
     const [autoProcess, setAutoProcess] = useState(session?.autoProcess ?? true);
+    const [oneProject, setOneProject] = useState(session?.oneProject ?? false);
     const [templates, setTemplates] = useState<{ id: string; name: string; source?: string; canLoad?: boolean; disabledReason?: string }[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
     const [rows, setRows] = useState<DataRow[]>(() => dataRowsOf(session));
@@ -738,6 +741,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             notes: notes.trim(),
             templateId,
             autoProcess,
+            oneProject,
             datasets: [
                 ...(atlas ? [{ id: atlas.id, kind: "atlas" as const, notes: atlas.notes }] : []),
                 ...rows.map((row) => ({ id: row.id, kind: "data" as const, number: row.number, gridId: row.gridId,
@@ -873,11 +877,19 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                            onChange={(e) => setAutoProcess(e.target.checked)} />}
                         label="Launch it by itself"
                     />
+                    <FormControlLabel
+                        sx={{ flexShrink: 0, mr: 0 }}
+                        control={<Checkbox checked={oneProject} disabled={!templateId}
+                                           onChange={(e) => setOneProject(e.target.checked)} />}
+                        label="All grids in one project"
+                    />
                 </Stack>
                 <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75, mt: "-4px !important" }}>
                     When a DATA's first movie has been read, a project is made for it from the template (its Import Movies reading
                     the DATA folder with the calibrated pixel, voltage, Cs, dose and gain), shared with the group, and launched in
-                    streaming. Without "by itself", each DATA waits for "Process now".
+                    streaming. Without "by itself", each DATA waits for "Process now". "All grids in one project" puts every
+                    DATA in the session's project, each in its own branch (the same sample at another concentration or
+                    sampling); otherwise each DATA has its project (different samples, tilted and not).
                 </Typography>
                 <TextField sx={fieldSx} size="small" label="Staff notes" value={notes} multiline minRows={2}
                            onChange={(e) => setNotes(e.target.value)} />

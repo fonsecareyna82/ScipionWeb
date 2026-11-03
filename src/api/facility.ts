@@ -289,6 +289,8 @@ export type FacilitySession = {
   // The workflow template (an id of the Workflows list) each DATA's project is made from, and whether by itself
   templateId: string;
   autoProcess: boolean;
+  // Every DATA in the session's project (each its own branch) instead of a project per DATA
+  oneProject: boolean;
   datasets: SessionDataset[];
   images?: FacilityImage[];
   createdAt?: string;
@@ -305,7 +307,7 @@ export type SessionDatasetPayload = {
 };
 
 export type SessionPayload = Pick<FacilitySession, "microscopeId" | "technique" | "status" | "groupId" | "userId"
-  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess"> & {
+  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess" | "oneProject"> & {
   // Empty: the facility's name, YYYY_MM_DD_<Name-Surname>_<id>
   name: string;
   datasets: SessionDatasetPayload[];
@@ -344,6 +346,7 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
     notes: session.notes,
     templateId: session.templateId ?? "",
     autoProcess: session.autoProcess ?? true,
+    oneProject: session.oneProject ?? false,
     datasets: session.datasets.map((dataset) => ({
       id: dataset.id, kind: dataset.kind, number: dataset.number, gridId: dataset.gridId,
       detectorId: dataset.detectorId, notes: dataset.notes,
