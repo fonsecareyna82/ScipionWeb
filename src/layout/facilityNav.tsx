@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CalendarClock, FlaskConical, Microscope } from "lucide-react";
+import { CalendarClock, FlaskConical, Microscope, SlidersHorizontal } from "lucide-react";
 
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
@@ -11,6 +11,7 @@ export const FACILITY_TABS = [
   { key: "sessions", label: "Sessions", icon: CalendarClock, permissions: FACILITY_STAFF },
   { key: "samples", label: "Samples & grids", icon: FlaskConical, permissions: FACILITY_STAFF },
   { key: "microscopes", label: "Microscopes", icon: Microscope, permissions: ["facility.manage"] },
+  { key: "configuration", label: "Configuration", icon: SlidersHorizontal, permissions: ["facility.manage"] },
 ] as const;
 
 export type FacilityTabKey = (typeof FACILITY_TABS)[number]["key"];

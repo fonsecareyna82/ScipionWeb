@@ -39,6 +39,12 @@ export type Microscope = {
   offloadPath: string;
   sessionsEnabled: boolean;
   notes: string;
+  // How its sessions name their folders: its short code ({microscope}), its DATA and ATLAS folders' patterns
+  // ({session}, {n}, {microscope}; no ATLAS pattern: no atlas) and how many grids its autoloader takes
+  code: string;
+  dataFolderPattern: string;
+  atlasFolderPattern: string;
+  gridSlots: number;
   detectors: Detector[];
   // When its photo was last changed; null without a photo
   photoUpdatedAt?: string | null;
@@ -358,3 +364,31 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
 export const processSessionDataset = (datasetId: number) =>
   request<FacilitySession>(`/facility/datasets/${datasetId}/process`, "Failed to ask for the DATA's project",
     { method: "POST" });
+
+// The facility's own conventions: how it names its sessions (the microscopes name their folders)
+export type FacilitySettings = { sessionNamePattern: string };
+export type ConventionExamples = { session: string; atlas: string | null; data: string[] };
+export type FacilityPreset = {
+  id: string;
+  label: string;
+  settings: Partial<FacilitySettings>;
+  microscope: { dataFolderPattern: string; atlasFolderPattern: string; gridSlots: number };
+};
+export type FacilitySettingsAnswer = {
+  settings: FacilitySettings;
+  defaults: FacilitySettings;
+  examples: ConventionExamples;
+  presets: FacilityPreset[];
+};
+
+export const getFacilitySettings = () =>
+  request<FacilitySettingsAnswer>("/facility/settings", "Failed to load the facility's settings");
+export const saveFacilitySettings = (settings: Partial<FacilitySettings>) =>
+  request<FacilitySettingsAnswer>("/facility/settings", "Failed to save the facility's settings",
+    { method: "PUT", body: JSON.stringify(settings) });
+
+/** What patterns make for an example session; rejects with the reason when a pattern is wrong. */
+export const previewConventions = (patterns: {
+  sessionNamePattern?: string; dataFolderPattern?: string; atlasFolderPattern?: string; microscopeCode?: string;
+}) => request<ConventionExamples>("/facility/settings/preview", "The pattern makes no name",
+  { method: "POST", body: JSON.stringify(patterns) });

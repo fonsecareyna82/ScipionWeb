@@ -9,6 +9,7 @@ import { useFacilityStyles } from "./facilityStyles";
 import MicroscopesPanel from "./MicroscopesPanel";
 import SamplesPanel from "./SamplesPanel";
 import SessionsPanel from "./SessionsPanel";
+import ConfigurationPanel from "./ConfigurationPanel";
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
 const wrapperMaxWidth = 1120;
@@ -37,6 +38,8 @@ export default function FacilityPage() {
         return <SamplesPanel {...styles} canEdit={keepsSessions} />;
       case "microscopes":
         return <MicroscopesPanel {...styles} />;
+      case "configuration":
+        return <ConfigurationPanel {...styles} />;
     }
   };
 

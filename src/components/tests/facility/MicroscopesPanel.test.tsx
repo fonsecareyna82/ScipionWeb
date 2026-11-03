@@ -9,6 +9,7 @@ const facilityMocks = vi.hoisted(() => ({
   fetchMicroscopePhotoUrl: vi.fn(),
   uploadMicroscopePhoto: vi.fn(),
   deleteMicroscopePhoto: vi.fn(),
+  previewConventions: vi.fn().mockResolvedValue({ session: "S", atlas: "S_ATLAS", data: ["S_DATA_01", "S_DATA_02"] }),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));

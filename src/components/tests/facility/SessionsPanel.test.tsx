@@ -115,7 +115,7 @@ describe("The sessions of the facility", () => {
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(within(dialog).getByText("Talos Arctica")).toBeInTheDocument());
-    const data = within(dialog).getByRole("group", { name: "DATA_01" });
+    const data = within(dialog).getByRole("group", { name: "Position 1" });
     fireEvent.change(within(data).getByLabelText("Grid"), { target: { value: "SiO" } });
     fireEvent.click(await screen.findByRole("option", { name: /position 1 · grid #9/ }));
     fireEvent.change(within(dialog).getByLabelText("EMhub booking"), { target: { value: "B-1300" } });

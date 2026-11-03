@@ -93,7 +93,10 @@ const FILTER_LABELS: Record<SessionFilter, string> = {
     archived: "Archived",
 };
 
-const DATA_NUMBERS = Array.from({ length: 12 }, (_, index) => index + 1);
+// A microscope's autoloader positions: a session's DATA are 1 to its gridSlots
+function positionsOf(slots: number | undefined): number[] {
+    return Array.from({ length: Math.max(1, slots ?? 12) }, (_, index) => index + 1);
+}
 const SEARCH_DELAY_MS = 300;
 // While a session acquires, the list follows its folders: the watcher looks at them every 30 s
 const ACQUIRING_REFRESH_MS = 30000;
@@ -689,6 +692,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     }, []);
 
     const microscope = microscopes.find((candidate) => candidate.id === microscopeId);
+    const positions = positionsOf(microscope?.gridSlots);
     const nameFixed = !!session && session.status !== "planned";
     const gridLabel = useMemo(() => new Map(gridOptions.map((option) => [option.id, option])), [gridOptions]);
     const userName = useMemo(() => new Map(people.map((person) => [person.id, personName(person)])), [people]);
@@ -698,7 +702,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
         setRows((list) => list.map((row) => (row.key === key ? { ...row, ...change } : row)));
     const addRow = () => setRows((list) => {
         const used = new Set(list.map((row) => row.number));
-        const free = DATA_NUMBERS.find((number) => !used.has(number));
+        const free = positions.find((number) => !used.has(number));
         return free ? [...list, { key: nextKey(), id: null, number: free, gridId: null, detectorId: null, notes: "" }] : list;
     });
 
@@ -847,7 +851,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                            placeholder="Given by the facility's convention"
                            helperText={nameFixed
                                ? "The microscope writes its folders under this name: it stays."
-                               : "Left empty, it is YYYY_MM_DD_Name-Surname_id (the day, the user and the session's number). It makes the folder names and stays once the acquisition starts."}
+                               : "Left empty, the facility's pattern names it (Configuration tab: the day, the user, the microscope, the session's number…). It makes the folder names and stays once the acquisition starts."}
                            inputProps={{ style: { fontFamily: "monospace" } }}
                            onChange={(e) => setName(e.target.value)} />
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
@@ -895,29 +899,31 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                            onChange={(e) => setNotes(e.target.value)} />
 
                 <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Grids (DATA folders)</Typography>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>
+                        Grids (a DATA folder each, by their position in the autoloader)
+                    </Typography>
                     <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
-                            disabled={rows.length >= DATA_NUMBERS.length} onClick={addRow}>
-                        Add DATA
+                            disabled={rows.length >= positions.length} onClick={addRow}>
+                        Add grid
                     </Button>
                 </Stack>
                 {rows.length === 0 && (
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>Only the ATLAS: no DATA yet.</Typography>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>No grid yet.</Typography>
                 )}
                 {rows.map((row) => {
                     const saved = row.id != null ? datasetById.get(row.id) : undefined;
                     return (
-                        <Box key={row.key} role="group" aria-label={`DATA_${String(row.number).padStart(2, "0")}`}
+                        <Box key={row.key} role="group" aria-label={`Position ${row.number}`}
                              sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.25 }}>
                             <Stack spacing={1}>
                                 <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "center" }}>
                                     <FormControl size="small" sx={{ minWidth: 118 }}>
-                                        <InputLabel id={`data-number-${row.key}`}>Folder</InputLabel>
-                                        <Select labelId={`data-number-${row.key}`} label="Folder" sx={selectSx} value={row.number}
+                                        <InputLabel id={`data-number-${row.key}`}>Position</InputLabel>
+                                        <Select labelId={`data-number-${row.key}`} label="Position" sx={selectSx} value={row.number}
                                                 MenuProps={{ PaperProps: { sx: menuPaperSx } }}
                                                 onChange={(e) => setRow(row.key, { number: Number(e.target.value) })}>
-                                            {DATA_NUMBERS.map((number) => (
-                                                <MenuItem key={number} value={number}>DATA_{String(number).padStart(2, "0")}</MenuItem>
+                                            {[...new Set([...positions, row.number])].map((number) => (
+                                                <MenuItem key={number} value={number} disabled={number > positions.length}>{number}</MenuItem>
                                             ))}
                                         </Select>
                                     </FormControl>
@@ -947,11 +953,17 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                             ))}
                                         </Select>
                                     </FormControl>
-                                    <IconButton size="small" aria-label={`Remove DATA_${String(row.number).padStart(2, "0")}`}
+                                    <IconButton size="small" aria-label={`Remove position ${row.number}`}
                                                 onClick={() => setRows((list) => list.filter((other) => other.key !== row.key))}>
                                         <X size={16} />
                                     </IconButton>
                                 </Stack>
+                                {saved?.folder && (
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                        Folder{" "}
+                                        <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{saved.folder}</Box>
+                                    </Typography>
+                                )}
                                 <TextField sx={fieldSx} size="small" label="Notes" value={row.notes}
                                            onChange={(e) => setRow(row.key, { notes: e.target.value })} />
                                 {saved && (
@@ -963,7 +975,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                         </Box>
                     );
                 })}
-                {numbersRepeat && <Alert severity="warning">Two grids share a DATA folder.</Alert>}
+                {numbersRepeat && <Alert severity="warning">Two grids share a position.</Alert>}
 
                 <Stack spacing={0.75}>
                     <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Images</Typography>

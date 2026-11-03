@@ -21,6 +21,7 @@ import {
 import { ImagePlus, Microscope as MicroscopeIcon, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { FACILITY_TEXT } from "./facilityStyles";
+import { useConventionsPreview } from "./useConventionsPreview";
 import toast from "react-hot-toast";
 
 import {
@@ -366,6 +367,11 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
     const [voltageKv, setVoltageKv] = useState(microscope?.voltageKv != null ? String(microscope.voltageKv) : "");
     const [csMm, setCsMm] = useState(microscope?.csMm != null ? String(microscope.csMm) : "");
     const [offloadPath, setOffloadPath] = useState(microscope?.offloadPath ?? "");
+    const [code, setCode] = useState(microscope?.code ?? "");
+    const [gridSlots, setGridSlots] = useState(String(microscope?.gridSlots ?? 12));
+    const [dataFolderPattern, setDataFolderPattern] = useState(microscope?.dataFolderPattern ?? "{session}_DATA_{n:02d}");
+    const [atlasFolderPattern, setAtlasFolderPattern] = useState(microscope?.atlasFolderPattern ?? "{session}_ATLAS");
+    const folders = useConventionsPreview({ dataFolderPattern, atlasFolderPattern, microscopeCode: code || name });
     const [sessionsEnabled, setSessionsEnabled] = useState(microscope?.sessionsEnabled ?? false);
     const [notes, setNotes] = useState(microscope?.notes ?? "");
     const [saving, setSaving] = useState(false);
@@ -401,6 +407,10 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
             csMm: optionalNumber(csMm),
             offloadPath: offloadPath.trim(),
             sessionsEnabled,
+            code: code.trim(),
+            gridSlots: Number(gridSlots) || 12,
+            dataFolderPattern: dataFolderPattern.trim(),
+            atlasFolderPattern: atlasFolderPattern.trim(),
             notes: notes.trim(),
             // A new detector left untouched is dropped
             detectors: detectors.filter((draft) => !isEmptyDraft(draft)).map(detectorPayloadOf),
@@ -505,6 +515,38 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
                     control={<Switch checked={sessionsEnabled} onChange={(e) => setSessionsEnabled(e.target.checked)} />}
                     label="Acquisition sessions on this microscope"
                 />
+                <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, mb: 1 }}>Session folders</Typography>
+                    <Stack spacing={1.25}>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <TextField sx={fieldSx} size="small" fullWidth label="Code in names" value={code}
+                                       placeholder="KRIOS" helperText="{microscope} in session and folder names; empty: its name"
+                                       onChange={(e) => setCode(e.target.value)} />
+                            <TextField sx={fieldSx} size="small" fullWidth label="Grids in the autoloader" value={gridSlots}
+                                       inputProps={{ inputMode: "numeric" }} helperText="A session's DATA are positions 1 to this"
+                                       onChange={(e) => setGridSlots(e.target.value)} />
+                        </Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <TextField sx={fieldSx} size="small" fullWidth label="DATA folder" value={dataFolderPattern}
+                                       inputProps={{ style: { fontFamily: "monospace" } }}
+                                       helperText="{session}, {n} (the grid's position, e.g. {n:02d}), {microscope}"
+                                       onChange={(e) => setDataFolderPattern(e.target.value)} />
+                            <TextField sx={fieldSx} size="small" fullWidth label="ATLAS folder" value={atlasFolderPattern}
+                                       inputProps={{ style: { fontFamily: "monospace" } }} helperText="Empty: no atlas folder"
+                                       onChange={(e) => setAtlasFolderPattern(e.target.value)} />
+                        </Stack>
+                        {folders.error
+                            ? <Alert severity="warning">{folders.error}</Alert>
+                            : folders.examples && (
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                    For a session named {folders.examples.session}:{" "}
+                                    <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>
+                                        {[folders.examples.atlas, ...folders.examples.data].filter(Boolean).join(", ")}…
+                                    </Box>
+                                </Typography>
+                            )}
+                    </Stack>
+                </Box>
 
                 <Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
