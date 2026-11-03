@@ -5,6 +5,7 @@ import { Outlet, useLocation } from "react-router";
 import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
+import FacilityAlertsBanner from "@/components/facility/FacilityAlertsBanner";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -49,6 +50,8 @@ const LayoutContent: React.FC = () => {
 
       <div className={contentClassName}>
         <AppHeader />
+        {/* The facility's open alerts, for its staff, over every page (nothing without a facility) */}
+        <FacilityAlertsBanner />
 
         <main className={mainClassName}>
           <Outlet />

@@ -5,6 +5,9 @@ const facilityMocks = vi.hoisted(() => ({
   getFacilitySettings: vi.fn(),
   saveFacilitySettings: vi.fn(),
   previewConventions: vi.fn(),
+  getFacilityMailSettings: vi.fn(),
+  saveFacilityMailSettings: vi.fn(),
+  sendFacilityTestMail: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
@@ -26,10 +29,14 @@ const answer = {
               microscope: { dataFolderPattern: "{session}_DATA_{n:02d}", atlasFolderPattern: "{session}_ATLAS", gridSlots: 12 } }],
 };
 
+const mail = { host: "smtp.cnb.csic.es", port: 587, security: "starttls", user: "facility", sender: "facility@cnb.csic.es",
+               recipients: "", passwordSet: true, enabled: true };
+
 describe("The facility's conventions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     facilityMocks.getFacilitySettings.mockResolvedValue(answer);
+    facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
     facilityMocks.previewConventions.mockImplementation(async ({ sessionNamePattern }: any) => {
       if (sessionNamePattern.includes("{owner}")) throw new Error("{owner} is not a piece of this pattern");
       return { session: sessionNamePattern === CNB ? "2026_11_03_Gaoxin-Lu_000123" : "20261103_KRIOS_0123", atlas: null, data: [] };
@@ -57,5 +64,24 @@ describe("The facility's conventions", () => {
 
     expect(await screen.findByText("{owner} is not a piece of this pattern")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("keeps the mail password unless it is typed or removed, and sends a test", async () => {
+    facilityMocks.saveFacilityMailSettings.mockResolvedValue(mail);
+    facilityMocks.sendFacilityTestMail.mockResolvedValue({ sentTo: ["me@cnb.csic.es"] });
+    render(<ConfigurationPanel {...styles} />);
+
+    expect(await screen.findByDisplayValue("smtp.cnb.csic.es")).toBeInTheDocument();
+    expect(screen.getByText("Set: leave it empty to keep it")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Recipients"), { target: { value: "ops@cnb.csic.es" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save mail settings" }));
+    await waitFor(() => expect(facilityMocks.saveFacilityMailSettings).toHaveBeenCalled());
+    const saved = facilityMocks.saveFacilityMailSettings.mock.calls[0][0];
+    expect(saved).toMatchObject({ host: "smtp.cnb.csic.es", port: 587, recipients: "ops@cnb.csic.es" });
+    expect("password" in saved).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Send a test to"), { target: { value: "me@cnb.csic.es" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send test mail" }));
+    await waitFor(() => expect(facilityMocks.sendFacilityTestMail).toHaveBeenCalledWith("me@cnb.csic.es"));
   });
 });

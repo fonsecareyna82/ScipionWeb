@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, Stack, TextField, Typography } from "@mui/material";
-import { RotateCcw, Save, Wand2 } from "lucide-react";
+import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, MenuItem, Stack, TextField, Typography } from "@mui/material";
+import { Mail, RotateCcw, Save, Send, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
-import { getFacilitySettings, saveFacilitySettings, type FacilitySettingsAnswer } from "@/api/facility";
+import {
+    getFacilityMailSettings,
+    getFacilitySettings,
+    saveFacilityMailSettings,
+    saveFacilitySettings,
+    sendFacilityTestMail,
+    type FacilityMailSettings,
+    type FacilitySettingsAnswer,
+    type MailSecurity,
+} from "@/api/facility";
 import { FACILITY_TEXT } from "./facilityStyles";
 import { useConventionsPreview } from "./useConventionsPreview";
 
@@ -131,6 +140,141 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
                     </Stack>
                 </CardContent>
             </Card>
+            <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
+                              actionButtonSx={actionSx} saveButtonSx={saveSx} />
         </Stack>
+    );
+}
+
+const SECURITY_LABELS: Record<MailSecurity, string> = {
+    starttls: "STARTTLS (usually port 587)",
+    ssl: "SSL/TLS (usually port 465)",
+    none: "None (usually port 25)",
+};
+
+/** The mail server that tells the operators of the alerts: off until a server is set. */
+function MailSettingsCard({ fieldSx, cardSx, cardHeaderSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
+    const [settings, setSettings] = useState<FacilityMailSettings | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [draft, setDraft] = useState({ host: "", port: "587", security: "starttls" as MailSecurity, user: "",
+                                         sender: "", recipients: "" });
+    // Empty: the password there is stays; removePassword takes it away
+    const [password, setPassword] = useState("");
+    const [removePassword, setRemovePassword] = useState(false);
+    const [testTo, setTestTo] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    const adopt = (loaded: FacilityMailSettings) => {
+        setSettings(loaded);
+        setDraft({ host: loaded.host, port: String(loaded.port || 587), security: loaded.security, user: loaded.user,
+                   sender: loaded.sender, recipients: loaded.recipients });
+        setPassword("");
+        setRemovePassword(false);
+    };
+
+    useEffect(() => {
+        getFacilityMailSettings().then(adopt).catch((e: any) => setError(String(e?.message || "Failed to load the mail settings")));
+    }, []);
+
+    const set = (change: Partial<typeof draft>) => setDraft((current) => ({ ...current, ...change }));
+
+    const save = async () => {
+        setBusy(true);
+        try {
+            adopt(await saveFacilityMailSettings({
+                host: draft.host.trim(), port: Number(draft.port) || 0, security: draft.security, user: draft.user.trim(),
+                sender: draft.sender.trim(), recipients: draft.recipients.trim(),
+                ...(removePassword ? { password: "" } : password ? { password } : {}),
+            }));
+            toast.success("Mail settings saved.");
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to save the mail settings"));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const test = async () => {
+        setBusy(true);
+        try {
+            const { sentTo } = await sendFacilityTestMail(testTo.trim());
+            toast.success(`Test mail sent to ${sentTo.join(", ")}.`);
+        } catch (e: any) {
+            toast.error(String(e?.message || "The test mail did not go"));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (error) return <Alert severity="error">{error}</Alert>;
+    if (!settings) return null;
+
+    return (
+        <Card variant="outlined" sx={cardSx}>
+            <CardHeader
+                title="Alert mail"
+                subheader="When a DATA stops receiving movies, or its processing or a protocol of its project fails, the operators get a mail at once (one for the alerts of each moment), besides the red banner of the web."
+                sx={cardHeaderSx}
+            />
+            <CardContent sx={{ pt: 2 }}>
+                <Stack spacing={1.5}>
+                    {!settings.enabled && (
+                        <Alert severity="info">No mail server yet: the alerts are only shown in the web.</Alert>
+                    )}
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Mail server" value={draft.host}
+                                   placeholder="smtp.example.org" onChange={(e) => set({ host: e.target.value })} />
+                        <TextField sx={{ ...fieldSx, flex: 1 }} size="small" label="Port" value={draft.port}
+                                   inputProps={{ inputMode: "numeric" }} onChange={(e) => set({ port: e.target.value })} />
+                        <TextField sx={{ ...fieldSx, flex: 2 }} size="small" select label="Connection" value={draft.security}
+                                   onChange={(e) => set({ security: e.target.value as MailSecurity })}>
+                            {(Object.keys(SECURITY_LABELS) as MailSecurity[]).map((value) => (
+                                <MenuItem key={value} value={value}>{SECURITY_LABELS[value]}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="User" value={draft.user}
+                                   helperText="Empty: the server takes mail without signing in"
+                                   onChange={(e) => set({ user: e.target.value })} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Password" type="password" value={password}
+                                   autoComplete="new-password" disabled={removePassword}
+                                   helperText={settings.passwordSet ? "Set: leave it empty to keep it" : "None set"}
+                                   onChange={(e) => setPassword(e.target.value)} />
+                    </Stack>
+                    {settings.passwordSet && (
+                        <Box>
+                            <Button size="small" variant="text" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note }}
+                                    onClick={() => setRemovePassword((value) => !value)}>
+                                {removePassword ? "Keep the password" : "Remove the password"}
+                            </Button>
+                        </Box>
+                    )}
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Sender" value={draft.sender}
+                                   placeholder="facility@example.org" onChange={(e) => set({ sender: e.target.value })} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Recipients" value={draft.recipients}
+                                   placeholder="ops1@example.org, ops2@example.org"
+                                   helperText="Empty: every user who runs sessions (facility.sessions)"
+                                   onChange={(e) => set({ recipients: e.target.value })} />
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                        <TextField sx={{ ...fieldSx, flex: 1 }} size="small" label="Send a test to" value={testTo}
+                                   placeholder="Empty: the recipients" onChange={(e) => setTestTo(e.target.value)} />
+                        <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Send size={14} />}
+                                disabled={busy || !settings.enabled} onClick={() => void test()}>
+                            Send test mail
+                        </Button>
+                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Mail size={14} />}
+                                disabled={busy} onClick={() => void save()}>
+                            {busy ? "Saving…" : "Save mail settings"}
+                        </Button>
+                    </Stack>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                        The test uses the saved settings: save them first. The password is kept encrypted and never shown.
+                    </Typography>
+                </Stack>
+            </CardContent>
+        </Card>
     );
 }

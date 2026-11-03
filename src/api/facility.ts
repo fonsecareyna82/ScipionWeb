@@ -392,3 +392,58 @@ export const previewConventions = (patterns: {
   sessionNamePattern?: string; dataFolderPattern?: string; atlasFolderPattern?: string; microscopeCode?: string;
 }) => request<ConventionExamples>("/facility/settings/preview", "The pattern makes no name",
   { method: "POST", body: JSON.stringify(patterns) });
+
+// Alerts: what went wrong in the sessions (a DATA without new movies, a failed processing or protocol)
+export type FacilityAlertKind = "stalled" | "processingFailed" | "protocolFailed";
+export type FacilityAlert = {
+  id: number;
+  kind: FacilityAlertKind;
+  sessionId: number;
+  sessionName: string;
+  datasetId: number;
+  folder: string;
+  projectId: number | null;
+  protocolId: string;
+  microscopeName: string;
+  message: string;
+  openedAt: string;
+  resolvedAt: string | null;
+  // Who said they are on it, and when
+  acknowledgedAt: string | null;
+  acknowledgedBy: number | null;
+  acknowledgedByName?: string | null;
+  acknowledgedByEmail?: string | null;
+  emailedAt: string | null;
+  emailError: string | null;
+};
+
+export const listFacilityAlerts = (all = false) =>
+  request<FacilityAlert[]>(`/facility/alerts${all ? "?all=true" : ""}`, "Failed to load the facility's alerts");
+export const acknowledgeFacilityAlert = (alertId: number) =>
+  request<FacilityAlert>(`/facility/alerts/${alertId}/acknowledge`, "Failed to take the alert", { method: "POST" });
+
+// The mail server that tells the operators of the alerts; the password is never answered, only whether it is set
+export type MailSecurity = "starttls" | "ssl" | "none";
+export type FacilityMailSettings = {
+  host: string;
+  port: number;
+  security: MailSecurity;
+  user: string;
+  sender: string;
+  recipients: string;
+  passwordSet: boolean;
+  enabled: boolean;
+};
+export type FacilityMailPayload = Omit<FacilityMailSettings, "passwordSet" | "enabled"> & {
+  // Left out (undefined): the password there is stays; "": it is removed
+  password?: string;
+};
+
+export const getFacilityMailSettings = () =>
+  request<FacilityMailSettings>("/facility/settings/mail", "Failed to load the mail settings");
+export const saveFacilityMailSettings = (payload: FacilityMailPayload) =>
+  request<FacilityMailSettings>("/facility/settings/mail", "Failed to save the mail settings",
+    { method: "PUT", body: JSON.stringify(payload) });
+export const sendFacilityTestMail = (to = "") =>
+  request<{ sentTo: string[] }>("/facility/settings/mail/test", "The test mail did not go",
+    { method: "POST", body: JSON.stringify({ to }) });
