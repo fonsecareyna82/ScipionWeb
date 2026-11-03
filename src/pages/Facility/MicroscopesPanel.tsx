@@ -59,8 +59,8 @@ const STATUS_LABELS: Record<MicroscopeStatus, string> = {
 
 const GAIN_FLIP_LABELS: Record<GainFlip, string> = {
     none: "No flip",
-    horizontal: "Flip horizontally",
-    vertical: "Flip vertically",
+    horizontal: "Flip left to right",
+    vertical: "Flip upside down",
 };
 
 const GAIN_ROTATIONS = [0, 90, 180, 270] as const;
@@ -631,10 +631,14 @@ function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, actionB
                         <Select labelId={`detector-${draft.key}-gain-rotation-label`} label="Gain rotation" sx={selectSx}
                                 MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainRotation}
                                 onChange={(e) => onChange({ gainRotation: Number(e.target.value) })}>
-                            {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value}°</MenuItem>)}
+                            {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value ? `${value}° counter-clockwise` : "None"}</MenuItem>)}
                         </Select>
                     </FormControl>
                 </Stack>
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: "4px !important" }}>
+                    How the gain reference lies against the movies: the movie alignment of each DATA's processing
+                    rotates it counter-clockwise, then flips it (as MotionCor2's -RotGain and -FlipGain).
+                </Typography>
 
                 <Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
