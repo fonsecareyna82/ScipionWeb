@@ -499,3 +499,48 @@ export type MyFacility = {
 };
 
 export const getMyFacility = () => request<MyFacility>("/facility/my-sessions", "Failed to load your sessions");
+
+// The room's screen: each microscope's state and session, opened with its link's token (no signed-in user)
+export type RoomState = "acquiring" | "preparing" | "idle" | "maintenance" | "outOfService";
+export type RoomSession = {
+  name: string;
+  technique: SessionTechnique;
+  status: SessionStatus;
+  scheduledOn: string | null;
+  startedAt: string | null;
+  technician: string | null;
+  user: string | null;
+  pi: string | null;
+  group: string | null;
+  datasets: { number: number; folder: string; watch: DatasetWatch | null; movieCount: number;
+              minutesSinceLastMovie: number | null; processing: DatasetProcessing["state"] | null; sample: string | null }[];
+  alerts: { kind: FacilityAlertKind; folder: string; taken: boolean }[];
+};
+export type RoomView = {
+  now: string;
+  microscopes: { id: number; name: string; code: string; state: RoomState; photoVersion: string | null;
+                 session: RoomSession | null }[];
+  upcoming: { day: string; microscope: string; name: string; technique: SessionTechnique; user: string | null; pi: string | null }[];
+};
+
+/** The screen's view; rejects with status 404 for a link that is not (or no longer) valid. */
+export async function getRoomView(token: string): Promise<RoomView> {
+  const response = await fetch(`${BASE_URL}/facility/room?token=${encodeURIComponent(token)}`);
+  if (!response.ok) {
+    const error: Error & { status?: number } = new Error(response.status === 404 ? "This link is not valid" : "The screen could not load");
+    error.status = response.status;
+    throw error;
+  }
+  return (await response.json()) as RoomView;
+}
+
+export const roomMicroscopePhotoUrl = (microscopeId: number, token: string, version: string) =>
+  `${BASE_URL}/facility/room/microscopes/${microscopeId}/photo?token=${encodeURIComponent(token)}&v=${encodeURIComponent(version)}`;
+
+export type RoomScreenLink = { enabled: boolean; token: string | null; createdAt?: string | null };
+export const getRoomScreenLink = () =>
+  request<RoomScreenLink>("/facility/settings/room-screen", "Failed to load the room screen's link");
+export const makeRoomScreenLink = () =>
+  request<RoomScreenLink>("/facility/settings/room-screen", "Failed to make a new link", { method: "POST" });
+export const turnOffRoomScreen = () =>
+  request<RoomScreenLink>("/facility/settings/room-screen", "Failed to turn the room screen off", { method: "DELETE" });

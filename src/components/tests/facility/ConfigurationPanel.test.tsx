@@ -8,6 +8,9 @@ const facilityMocks = vi.hoisted(() => ({
   getFacilityMailSettings: vi.fn(),
   saveFacilityMailSettings: vi.fn(),
   sendFacilityTestMail: vi.fn(),
+  getRoomScreenLink: vi.fn(),
+  makeRoomScreenLink: vi.fn(),
+  turnOffRoomScreen: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
@@ -38,6 +41,7 @@ describe("The facility's conventions", () => {
     localStorage.clear();
     facilityMocks.getFacilitySettings.mockResolvedValue(answer);
     facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
+    facilityMocks.getRoomScreenLink.mockResolvedValue({ enabled: false, token: null, createdAt: null });
     facilityMocks.previewConventions.mockImplementation(async ({ sessionNamePattern }: any) => {
       if (sessionNamePattern.includes("{owner}")) throw new Error("{owner} is not a piece of this pattern");
       return { session: sessionNamePattern === CNB ? "2026_11_03_Gaoxin-Lu_000123" : "20261103_KRIOS_0123", atlas: null, data: [] };
@@ -106,7 +110,7 @@ describe("The facility's conventions", () => {
     render(<ConfigurationPanel {...styles} />);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
 
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alert mail"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alert mail", "Room screen"]);
     expect(screen.getByRole("tab", { name: "Naming", selected: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
     fireEvent.change(screen.getByLabelText("Raw data kept (days)"), { target: { value: "45" } });
@@ -116,4 +120,30 @@ describe("The facility's conventions", () => {
     expect(screen.getByLabelText("Raw data kept (days)")).toHaveValue("45");
     expect(localStorage.getItem("scipionweb.facility.configurationSection")).toBe("users");
   });
+});
+
+describe("The room screen's link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    facilityMocks.getFacilitySettings.mockResolvedValue(answer);
+    facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
+    facilityMocks.previewConventions.mockResolvedValue({ session: "20261103_KRIOS_0123", atlas: null, data: [] });
+  });
+
+  it("is made, shown with its token, and turned off", async () => {
+    facilityMocks.getRoomScreenLink.mockResolvedValue({ enabled: false, token: null, createdAt: null });
+    facilityMocks.makeRoomScreenLink.mockResolvedValue({ enabled: true, token: "abc123", createdAt: "2026-11-03T10:00:00Z" });
+    facilityMocks.turnOffRoomScreen.mockResolvedValue({ enabled: false, token: null, createdAt: null });
+    render(<ConfigurationPanel {...styles} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Room screen/ }, { timeout: 4000 }));
+    fireEvent.click(await screen.findByRole("button", { name: /Make its link/ }));
+    expect(await screen.findByText(`${window.location.origin}/room?token=abc123`)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open the screen/ })).toHaveAttribute("href", `${window.location.origin}/room?token=abc123`);
+
+    fireEvent.click(screen.getByRole("button", { name: /Turn off/ }));
+    expect(await screen.findByText(/The room screen is off/)).toBeInTheDocument();
+    expect(facilityMocks.turnOffRoomScreen).toHaveBeenCalled();
+  }, 15000);
 });

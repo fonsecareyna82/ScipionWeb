@@ -36,6 +36,7 @@ const ProjectMonitor = lazy(() => import("./pages/Dashboard/projects/ProjectMoni
 const Plugins = lazy(() => import("./pages/Dashboard/plugins/Plugins"));
 const PluginPage = lazy(() => import("./pages/Dashboard/plugins/PluginPage"));
 const WorkflowsPage = lazy(() => import("./pages/Dashboard/workflows/WorkflowsPage"));
+const RoomScreen = lazy(() => import("./pages/Facility/RoomScreen"));
 const SettingsPage = lazy(() => import("./pages/Settings/settingspage"));
 const FacilityPage = lazy(() => import("./pages/Facility/FacilityPage"));
 const VerifyEmailForm = lazy(() => import("./components/auth/VerifyEmailForm"));
@@ -66,6 +67,8 @@ export default function App({ service }: AppProps) {
                 <Route path="/" element={<SignIn />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/signup" element={<SignUp />} />
+                {/* The microscopes' room screen: its link carries its own token, no signed-in user */}
+                <Route path="/room" element={<RoomScreen />} />
 
                 {/* Protected routes inside layout */}
                 <Route

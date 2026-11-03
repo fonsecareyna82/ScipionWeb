@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, MenuItem, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
-import { Mail, RotateCcw, Save, Scale, Send, Tag, UsersRound, Wand2 } from "lucide-react";
+import { Copy, ExternalLink, Mail, MonitorPlay, Power, RefreshCw, RotateCcw, Save, Scale, Send, Tag, UsersRound, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import {
     getFacilityMailSettings,
     getFacilitySettings,
+    getRoomScreenLink,
+    makeRoomScreenLink,
+    turnOffRoomScreen,
     saveFacilityMailSettings,
     saveFacilitySettings,
     sendFacilityTestMail,
     type FacilityMailSettings,
+    type RoomScreenLink,
     type FacilitySettingsAnswer,
     type MailSecurity,
 } from "@/api/facility";
@@ -33,6 +37,7 @@ const SECTIONS = [
     { key: "policies", label: "Policies", icon: Scale },
     { key: "users", label: "For the users", icon: UsersRound },
     { key: "mail", label: "Alert mail", icon: Mail },
+    { key: "room", label: "Room screen", icon: MonitorPlay },
 ] as const;
 type SectionKey = (typeof SECTIONS)[number]["key"];
 const SECTION_STORAGE_KEY = "scipionweb.facility.configurationSection";
@@ -194,6 +199,10 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabs
             <Box sx={shown("mail")} role="tabpanel" aria-label="Alert mail">
                 <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
                                   actionButtonSx={actionSx} saveButtonSx={saveSx} />
+            </Box>
+            <Box sx={shown("room")} role="tabpanel" aria-label="Room screen">
+                <RoomScreenCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
+                                actionButtonSx={actionSx} saveButtonSx={saveSx} />
             </Box>
         </Stack>
     );
@@ -480,6 +489,90 @@ function MailSettingsCard({ fieldSx, cardSx, cardHeaderSx, colors, actionButtonS
                     <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
                         The test uses the saved settings: save them first. The password is kept encrypted and never shown.
                     </Typography>
+                </Stack>
+            </CardContent>
+        </Card>
+    );
+}
+
+
+/** The link of the microscopes' room screen: whoever has it sees the screen, so a new one stops the old one. */
+function RoomScreenCard({ cardSx, cardHeaderSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
+    const [link, setLink] = useState<RoomScreenLink | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        getRoomScreenLink().then(setLink).catch((e: any) => setError(String(e?.message || "Failed to load the link")));
+    }, []);
+
+    const url = link?.token ? `${window.location.origin}/room?token=${encodeURIComponent(link.token)}` : "";
+    const act = async (action: () => Promise<RoomScreenLink>, done: string) => {
+        setBusy(true);
+        try {
+            setLink(await action());
+            toast.success(done);
+        } catch (e: any) {
+            toast.error(String(e?.message || "That did not work"));
+        } finally {
+            setBusy(false);
+        }
+    };
+    const copy = () => {
+        navigator.clipboard?.writeText(url).then(() => toast.success("Link copied."), () => toast.error("The browser did not let it copy."));
+    };
+
+    if (error) return <Alert severity="error">{error}</Alert>;
+    if (!link) return null;
+    return (
+        <Card variant="outlined" sx={cardSx}>
+            <CardHeader
+                title="Room screen"
+                subheader="A screen beside the microscopes, readable from across the room: each microscope's state and session, its grids' progress, the alerts, and the sessions of the next days. It shows names and states only, and needs no one signed in: open its link on the room's screen."
+                sx={cardHeaderSx}
+            />
+            <CardContent sx={{ pt: 2 }}>
+                <Stack spacing={1.5}>
+                    {link.enabled ? (
+                        <>
+                            <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 1.5, px: 1.5, py: 1, fontFamily: "monospace",
+                                       fontSize: FACILITY_TEXT.itemLine, wordBreak: "break-all", color: colors.text }}>
+                                {url}
+                            </Box>
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Copy size={14} />} onClick={copy}>
+                                    Copy the link
+                                </Button>
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ExternalLink size={14} />}
+                                        component="a" href={url} target="_blank" rel="noreferrer">
+                                    Open the screen
+                                </Button>
+                                <Box sx={{ flex: 1 }} />
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<RefreshCw size={14} />}
+                                        disabled={busy} onClick={() => void act(makeRoomScreenLink, "New link made: the old one no longer works.")}>
+                                    New link
+                                </Button>
+                                <Button size="small" variant="outlined" sx={{ ...actionButtonSx, color: "error.main" }}
+                                        startIcon={<Power size={14} />} disabled={busy}
+                                        onClick={() => void act(turnOffRoomScreen, "The room screen is off.")}>
+                                    Turn off
+                                </Button>
+                            </Stack>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                Whoever has this link sees the screen: give it only to the room's screen. If it goes further, make a new one.
+                            </Typography>
+                        </>
+                    ) : (
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted, flex: 1 }}>
+                                The room screen is off: no link opens it.
+                            </Typography>
+                            <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<MonitorPlay size={14} />}
+                                    disabled={busy} onClick={() => void act(makeRoomScreenLink, "The room screen is on: open its link there.")}>
+                                Make its link
+                            </Button>
+                        </Stack>
+                    )}
                 </Stack>
             </CardContent>
         </Card>
