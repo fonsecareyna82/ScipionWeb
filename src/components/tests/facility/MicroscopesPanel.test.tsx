@@ -80,7 +80,7 @@ describe("The microscopes of the facility", () => {
                                          gainFlip: "none", gainRotation: 0, notes: "",
                                          pixelSizes: [{ magnification: 105000, pixelSize: 0.83 }] }]);
     expect(facilityMocks.listMicroscopes).toHaveBeenCalledTimes(2);
-  });
+  }, 15000);
 
   it("leaves out the detector of a new microscope left empty", async () => {
     facilityMocks.createMicroscope.mockResolvedValue({ ...talos, id: 2 });

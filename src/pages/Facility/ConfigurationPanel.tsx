@@ -140,11 +140,106 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
                     </Stack>
                 </CardContent>
             </Card>
+            <PoliciesCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
+                          cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
             <UsersSettingsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
                                cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
             <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
                               actionButtonSx={actionSx} saveButtonSx={saveSx} />
         </Stack>
+    );
+}
+
+/** How the facility works, where facilities differ: the CNB's way by default. */
+function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, saveButtonSx }: PanelStyles & {
+    answer: FacilitySettingsAnswer;
+    onSaved: (answer: FacilitySettingsAnswer) => void;
+}) {
+    const current = answer.settings;
+    const [owner, setOwner] = useState(current.projectOwner ?? "staff");
+    const [share, setShare] = useState(current.projectShareLevel ?? "view");
+    const [tolerance, setTolerance] = useState(String(current.calibrationTolerancePercent ?? 10));
+    const [stall, setStall] = useState(String(current.stallMinutes ?? 20));
+    const [watch, setWatch] = useState(String(current.watchSeconds ?? 30));
+    const [minDefocus, setMinDefocus] = useState(String(current.ctfMinDefocus ?? 5000));
+    const [maxDefocus, setMaxDefocus] = useState(String(current.ctfMaxDefocus ?? 40000));
+    const [resolution, setResolution] = useState(String(current.ctfMaxResolution ?? 8));
+    const [saving, setSaving] = useState(false);
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            onSaved(await saveFacilitySettings({
+                projectOwner: owner, projectShareLevel: share, calibrationTolerancePercent: Number(tolerance),
+                stallMinutes: Number(stall), watchSeconds: Number(watch), ctfMinDefocus: Number(minDefocus),
+                ctfMaxDefocus: Number(maxDefocus), ctfMaxResolution: Number(resolution),
+            }));
+            toast.success("Policies saved: they apply from the watcher's next look.");
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to save the policies"));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Card variant="outlined" sx={cardSx}>
+            <CardHeader
+                title="Policies"
+                subheader="How the facility works where facilities differ. The defaults are the CNB's: the staff own the processing, and its users only look."
+                sx={cardHeaderSx}
+            />
+            <CardContent sx={{ pt: 2 }}>
+                <Stack spacing={1.5}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth select label="Owner of a DATA's project" value={owner}
+                                   helperText={owner === "staff" ? "The staff who made the session; its user and group see it"
+                                       : "The session's user; the staff who made it manage it"}
+                                   onChange={(e) => setOwner(e.target.value as typeof owner)}>
+                            <MenuItem value="staff">The facility's staff</MenuItem>
+                            <MenuItem value="user">The session's user</MenuItem>
+                        </TextField>
+                        <TextField sx={fieldSx} size="small" fullWidth select label="The user and group may" value={share}
+                                   helperText="On the project, when they do not own it"
+                                   onChange={(e) => setShare(e.target.value as typeof share)}>
+                            <MenuItem value="view">Look at it (read only)</MenuItem>
+                            <MenuItem value="work">Work in it</MenuItem>
+                        </TextField>
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Calibration tolerance (%)" value={tolerance}
+                                   inputProps={{ inputMode: "decimal" }}
+                                   helperText="A detector's calibrated pixel further than this from EPU's is not used"
+                                   onChange={(e) => setTolerance(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Stalled after (minutes)" value={stall}
+                                   inputProps={{ inputMode: "numeric" }}
+                                   helperText="A DATA acquiring without a new movie for this long raises an alert"
+                                   onChange={(e) => setStall(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Look at the folders every (s)" value={watch}
+                                   inputProps={{ inputMode: "numeric" }} helperText="Slower network mounts may want more"
+                                   onChange={(e) => setWatch(e.target.value)} />
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={minDefocus}
+                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setMinDefocus(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: maximum defocus (Å)" value={maxDefocus}
+                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setMaxDefocus(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: resolution better than (Å)" value={resolution}
+                                   inputProps={{ inputMode: "decimal" }} helperText="The limits a new session starts with"
+                                   onChange={(e) => setResolution(e.target.value)} />
+                    </Stack>
+                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
+                                disabled={saving} onClick={() => void save()}>
+                            {saving ? "Saving…" : "Save the policies"}
+                        </Button>
+                    </Box>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                        The owner and the sharing apply to the projects made from now on; the others at once.
+                    </Typography>
+                </Stack>
+            </CardContent>
+        </Card>
     );
 }
 

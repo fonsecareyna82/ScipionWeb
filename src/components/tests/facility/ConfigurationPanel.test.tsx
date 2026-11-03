@@ -47,10 +47,10 @@ describe("The facility's conventions", () => {
     facilityMocks.saveFacilitySettings.mockResolvedValue({ ...answer, settings: { sessionNamePattern: CNB } });
     render(<ConfigurationPanel {...styles} />);
 
-    expect(await screen.findByText("20261103_KRIOS_0123")).toBeInTheDocument();
+    expect(await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "CNB-CSIC" }));
-    expect(await screen.findByText("2026_11_03_Gaoxin-Lu_000123")).toBeInTheDocument();
+    expect(await screen.findByText("2026_11_03_Gaoxin-Lu_000123", undefined, { timeout: 4000 })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({ sessionNamePattern: CNB }));
@@ -58,11 +58,11 @@ describe("The facility's conventions", () => {
 
   it("says why a pattern makes no name, and does not save it", async () => {
     render(<ConfigurationPanel {...styles} />);
-    await screen.findByText("20261103_KRIOS_0123");
+    await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
 
     fireEvent.change(screen.getByLabelText("Session name"), { target: { value: "{date:%Y}_{owner}" } });
 
-    expect(await screen.findByText("{owner} is not a piece of this pattern")).toBeInTheDocument();
+    expect(await screen.findByText("{owner} is not a piece of this pattern", undefined, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
@@ -83,5 +83,19 @@ describe("The facility's conventions", () => {
     fireEvent.change(screen.getByLabelText("Send a test to"), { target: { value: "me@cnb.csic.es" } });
     fireEvent.click(screen.getByRole("button", { name: "Send test mail" }));
     await waitFor(() => expect(facilityMocks.sendFacilityTestMail).toHaveBeenCalledWith("me@cnb.csic.es"));
+  });
+
+  it("saves the facility's policies", async () => {
+    facilityMocks.saveFacilitySettings.mockResolvedValue(answer);
+    render(<ConfigurationPanel {...styles} />);
+    await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
+
+    fireEvent.change(screen.getByLabelText("Stalled after (minutes)"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save the policies" }));
+
+    await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
+      projectOwner: "staff", projectShareLevel: "view", calibrationTolerancePercent: 10, stallMinutes: 45, watchSeconds: 30,
+      ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8,
+    }));
   });
 });

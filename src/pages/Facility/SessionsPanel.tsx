@@ -34,6 +34,7 @@ import {
     createSession,
     deleteFacilityImage,
     deleteSession,
+    getFacilitySettings,
     listMicroscopes,
     listSamples,
     listSessions,
@@ -640,6 +641,11 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     const [templateId, setTemplateId] = useState(session?.templateId ?? "");
     const [autoProcess, setAutoProcess] = useState(session?.autoProcess ?? true);
     const [oneProject, setOneProject] = useState(session?.oneProject ?? false);
+    // Text, so a half-typed number stays as typed; empty keeps the template's limit
+    const numberText = (value: number | null | undefined) => (value == null ? "" : String(value));
+    const [ctfMinDefocus, setCtfMinDefocus] = useState(numberText(session?.ctfMinDefocus));
+    const [ctfMaxDefocus, setCtfMaxDefocus] = useState(numberText(session?.ctfMaxDefocus));
+    const [ctfMaxResolution, setCtfMaxResolution] = useState(numberText(session?.ctfMaxResolution));
     const [templates, setTemplates] = useState<{ id: string; name: string; source?: string; canLoad?: boolean; disabledReason?: string }[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
     const [rows, setRows] = useState<DataRow[]>(() => dataRowsOf(session));
@@ -675,6 +681,24 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
         return () => {
             cancelled = true;
         };
+    }, [session]);
+
+    // A new session starts with the facility's CTF limits
+    useEffect(() => {
+        if (session) return;
+        let cancelled = false;
+        getFacilitySettings()
+            .then(({ settings }) => {
+                if (cancelled) return;
+                setCtfMinDefocus(numberText(settings.ctfMinDefocus));
+                setCtfMaxDefocus(numberText(settings.ctfMaxDefocus));
+                setCtfMaxResolution(numberText(settings.ctfMaxResolution));
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
     // The templates of the Workflows page (local and WorkflowHub): listing them asks WorkflowHub, so apart
@@ -748,6 +772,9 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             templateId,
             autoProcess,
             oneProject,
+            ctfMinDefocus: ctfMinDefocus.trim() ? Number(ctfMinDefocus) : null,
+            ctfMaxDefocus: ctfMaxDefocus.trim() ? Number(ctfMaxDefocus) : null,
+            ctfMaxResolution: ctfMaxResolution.trim() ? Number(ctfMaxResolution) : null,
             datasets: [
                 ...(atlas ? [{ id: atlas.id, kind: "atlas" as const, notes: atlas.notes }] : []),
                 ...rows.map((row) => ({ id: row.id, kind: "data" as const, number: row.number, gridId: row.gridId,
@@ -896,6 +923,21 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                     streaming. Without "by itself", each DATA waits for "Process now". "All grids in one project" puts every
                     DATA in the session's project, each in its own branch (the same sample at another concentration or
                     sampling); otherwise each DATA has its project (different samples, tilted and not).
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={ctfMinDefocus}
+                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
+                               onChange={(e) => setCtfMinDefocus(e.target.value)} />
+                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: maximum defocus (Å)" value={ctfMaxDefocus}
+                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
+                               onChange={(e) => setCtfMaxDefocus(e.target.value)} />
+                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: resolution better than (Å)" value={ctfMaxResolution}
+                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
+                               onChange={(e) => setCtfMaxResolution(e.target.value)} />
+                </Stack>
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75, mt: "-4px !important" }}>
+                    The CTF consensus of each DATA's project keeps the micrographs within these limits. Left empty, the
+                    template's are used; a new session starts with the facility's (Configuration → Policies).
                 </Typography>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                     <TextField sx={fieldSx} size="small" fullWidth label="Staff notes" value={notes} multiline minRows={2}

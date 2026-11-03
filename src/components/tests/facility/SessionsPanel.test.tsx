@@ -12,6 +12,7 @@ const facilityMocks = vi.hoisted(() => ({
   deleteFacilityImage: vi.fn(),
   fetchFacilityImageUrl: vi.fn(),
   processSessionDataset: vi.fn(),
+  getFacilitySettings: vi.fn(),
 }));
 vi.mock("@/api/facility", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/facility")>();
@@ -66,6 +67,8 @@ describe("The sessions of the facility", () => {
     facilityMocks.listSessions.mockResolvedValue([session]);
     facilityMocks.listMicroscopes.mockResolvedValue([talos, krios]);
     facilityMocks.listSamples.mockResolvedValue([nz251]);
+    facilityMocks.getFacilitySettings.mockResolvedValue({
+      settings: { ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8 } });
   });
 
   it("lists each session with the folders for the microscope and the grid of each DATA", async () => {
@@ -125,7 +128,8 @@ describe("The sessions of the facility", () => {
     const payload = facilityMocks.createSession.mock.calls[0][0];
     expect(payload).toMatchObject({ name: "", microscopeId: 1, technique: "spa", status: "planned", bookingRef: "B-1300" });
     expect(payload.datasets).toEqual([{ id: null, kind: "data", number: 1, gridId: 9, detectorId: null, notes: "" }]);
-    expect(payload).toMatchObject({ templateId: "", autoProcess: true, oneProject: false });
+    expect(payload).toMatchObject({ templateId: "", autoProcess: true, oneProject: false,
+                                    ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8 });
   });
 
   it("keeps the name of a session that acquires: the microscope writes its folders", async () => {

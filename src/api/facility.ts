@@ -299,6 +299,10 @@ export type FacilitySession = {
   autoProcess: boolean;
   // Every DATA in the session's project (each its own branch) instead of a project per DATA
   oneProject: boolean;
+  // Its CTF limits (Å) for its DATA's CTF consensus; null keeps the template's
+  ctfMinDefocus?: number | null;
+  ctfMaxDefocus?: number | null;
+  ctfMaxResolution?: number | null;
   datasets: SessionDataset[];
   images?: FacilityImage[];
   createdAt?: string;
@@ -315,7 +319,8 @@ export type SessionDatasetPayload = {
 };
 
 export type SessionPayload = Pick<FacilitySession, "microscopeId" | "technique" | "status" | "groupId" | "userId"
-  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess" | "oneProject" | "userNotes"> & {
+  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess" | "oneProject" | "userNotes"
+  | "ctfMinDefocus" | "ctfMaxDefocus" | "ctfMaxResolution"> & {
   // Empty: the facility's name, YYYY_MM_DD_<Name-Surname>_<id>
   name: string;
   datasets: SessionDatasetPayload[];
@@ -356,6 +361,9 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
     templateId: session.templateId ?? "",
     autoProcess: session.autoProcess ?? true,
     oneProject: session.oneProject ?? false,
+    ctfMinDefocus: session.ctfMinDefocus ?? null,
+    ctfMaxDefocus: session.ctfMaxDefocus ?? null,
+    ctfMaxResolution: session.ctfMaxResolution ?? null,
     datasets: session.datasets.map((dataset) => ({
       id: dataset.id, kind: dataset.kind, number: dataset.number, gridId: dataset.gridId,
       detectorId: dataset.detectorId, notes: dataset.notes,
@@ -375,6 +383,17 @@ export type FacilitySettings = {
   rawRetentionDays: number;
   processedRetentionDays: number;
   downloadInstructions: string;
+  // Policies (the CNB's by default): who owns a DATA's project and how its user and group see it, the tolerance of
+  // a detector's calibration against EPU's pixel (%), the minutes a DATA may go without movies, the watcher's seconds
+  projectOwner: "staff" | "user";
+  projectShareLevel: "view" | "work";
+  calibrationTolerancePercent: number;
+  stallMinutes: number;
+  watchSeconds: number;
+  // The CTF limits a new session starts with (Å)
+  ctfMinDefocus: number;
+  ctfMaxDefocus: number;
+  ctfMaxResolution: number;
 };
 export type ConventionExamples = { session: string; atlas: string | null; data: string[] };
 export type FacilityPreset = {

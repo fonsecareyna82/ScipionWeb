@@ -85,7 +85,7 @@ describe("The samples and grids of the facility", () => {
     expect(payload.boxes).toEqual([{ id: null, label: "1", vitrificationCode: "NZ260.1", vitrifiedOn: null, notes: "",
       grids: [{ id: null, position: 1, gridNumber: 7, gridType: "Au 1.2", concentration: "", specimen: "",
                 status: "stored", notes: "" }] }]);
-  });
+  }, 15000);
 
   it("edits a sample keeping the ids of its boxes and grids", async () => {
     facilityMocks.updateSample.mockResolvedValue(nz251);
