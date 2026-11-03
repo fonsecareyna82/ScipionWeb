@@ -35,6 +35,7 @@ const mail = { host: "smtp.cnb.csic.es", port: 587, security: "starttls", user: 
 describe("The facility's conventions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     facilityMocks.getFacilitySettings.mockResolvedValue(answer);
     facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
     facilityMocks.previewConventions.mockImplementation(async ({ sessionNamePattern }: any) => {
@@ -71,6 +72,7 @@ describe("The facility's conventions", () => {
     facilityMocks.sendFacilityTestMail.mockResolvedValue({ sentTo: ["me@cnb.csic.es"] });
     render(<ConfigurationPanel {...styles} />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: "Alert mail" }));
     expect(await screen.findByDisplayValue("smtp.cnb.csic.es")).toBeInTheDocument();
     expect(screen.getByText("Set: leave it empty to keep it")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Recipients"), { target: { value: "ops@cnb.csic.es" } });
@@ -89,6 +91,7 @@ describe("The facility's conventions", () => {
     facilityMocks.saveFacilitySettings.mockResolvedValue(answer);
     render(<ConfigurationPanel {...styles} />);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
+    fireEvent.click(screen.getByRole("tab", { name: "Policies" }));
 
     fireEvent.change(screen.getByLabelText("Stalled after (minutes)"), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "Save the policies" }));
@@ -97,5 +100,20 @@ describe("The facility's conventions", () => {
       projectOwner: "staff", projectShareLevel: "view", calibrationTolerancePercent: 10, stallMinutes: 45, watchSeconds: 30,
       ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8,
     }));
+  });
+
+  it("shows a section per tab, keeps what is typed in one while another is open, and remembers the last", async () => {
+    render(<ConfigurationPanel {...styles} />);
+    await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
+
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alert mail"]);
+    expect(screen.getByRole("tab", { name: "Naming", selected: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
+    fireEvent.change(screen.getByLabelText("Raw data kept (days)"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Naming" }));
+    expect(screen.queryByLabelText("Raw data kept (days)")).not.toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
+    expect(screen.getByLabelText("Raw data kept (days)")).toHaveValue("45");
+    expect(localStorage.getItem("scipionweb.facility.configurationSection")).toBe("users");
   });
 });

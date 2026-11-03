@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, MenuItem, Stack, TextField, Typography } from "@mui/material";
-import { Mail, RotateCcw, Save, Send, Wand2 } from "lucide-react";
+import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, MenuItem, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
+import { Mail, RotateCcw, Save, Scale, Send, Tag, UsersRound, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -21,10 +21,31 @@ type PanelStyles = {
     fieldSx: any;
     cardSx: any;
     cardHeaderSx: any;
+    tabsSx?: any;
     actionButtonSx?: any;
     saveButtonSx?: any;
     colors: { border: string; text: string; muted: string; surface: string; hover: string };
 };
+
+// The sections of the configuration, a tab each
+const SECTIONS = [
+    { key: "naming", label: "Naming", icon: Tag },
+    { key: "policies", label: "Policies", icon: Scale },
+    { key: "users", label: "For the users", icon: UsersRound },
+    { key: "mail", label: "Alert mail", icon: Mail },
+] as const;
+type SectionKey = (typeof SECTIONS)[number]["key"];
+const SECTION_STORAGE_KEY = "scipionweb.facility.configurationSection";
+
+function storedSection(): SectionKey {
+    try {
+        const stored = localStorage.getItem(SECTION_STORAGE_KEY);
+        if (SECTIONS.some((section) => section.key === stored)) return stored as SectionKey;
+    } catch {
+        // Unavailable storage starts on the first section
+    }
+    return "naming";
+}
 
 // The pieces of a session's name, as the API takes them (facility_conventions)
 const NAME_PIECES: [string, string][] = [
@@ -39,7 +60,8 @@ const NAME_PIECES: [string, string][] = [
 ];
 
 /** The facility's own conventions: how it names its sessions (each microscope names its folders). */
-export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
+export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabsSx, colors, actionButtonSx,
+                                            saveButtonSx }: PanelStyles) {
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
     const [answer, setAnswer] = useState<FacilitySettingsAnswer | null>(null);
@@ -47,6 +69,16 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
     const [pattern, setPattern] = useState("");
     const [saving, setSaving] = useState(false);
     const preview = useConventionsPreview({ sessionNamePattern: pattern });
+    const [section, setSection] = useState<SectionKey>(storedSection);
+
+    const openSection = (key: SectionKey) => {
+        setSection(key);
+        try {
+            localStorage.setItem(SECTION_STORAGE_KEY, key);
+        } catch {
+            // The section is only remembered where the browser lets it
+        }
+    };
 
     const load = useCallback(async () => {
         setError(null);
@@ -81,8 +113,18 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
     if (!answer) return <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>;
     const changed = pattern.trim() !== answer.settings.sessionNamePattern;
 
+    // Every section stays mounted (hidden when another is open), so what is typed in one is not lost by looking at another
+    const shown = (key: SectionKey) => ({ display: section === key ? "block" : "none" });
+
     return (
         <Stack spacing={1.75}>
+            <Tabs value={section} onChange={(_, value) => openSection(value as SectionKey)} variant="scrollable"
+                  scrollButtons="auto" sx={tabsSx} aria-label="Configuration sections">
+                {SECTIONS.map(({ key, label, icon: Icon }) => (
+                    <Tab key={key} value={key} label={label} icon={<Icon size={16} />} iconPosition="start" />
+                ))}
+            </Tabs>
+            <Box sx={shown("naming")} role="tabpanel" aria-label="Naming">
             <Card variant="outlined" sx={cardSx}>
                 <CardHeader
                     title="Facility conventions"
@@ -140,12 +182,19 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
                     </Stack>
                 </CardContent>
             </Card>
-            <PoliciesCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
-                          cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
-            <UsersSettingsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
-                               cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
-            <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
-                              actionButtonSx={actionSx} saveButtonSx={saveSx} />
+            </Box>
+            <Box sx={shown("policies")} role="tabpanel" aria-label="Policies">
+                <PoliciesCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
+                              cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
+            </Box>
+            <Box sx={shown("users")} role="tabpanel" aria-label="For the users">
+                <UsersSettingsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
+                                   cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
+            </Box>
+            <Box sx={shown("mail")} role="tabpanel" aria-label="Alert mail">
+                <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
+                                  actionButtonSx={actionSx} saveButtonSx={saveSx} />
+            </Box>
         </Stack>
     );
 }
