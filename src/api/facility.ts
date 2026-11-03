@@ -292,6 +292,8 @@ export type FacilitySession = {
   startedAt?: string | null;
   finishedAt?: string | null;
   notes: string;
+  // What the technician tells the session's user (and the group's PI); notes are the staff's
+  userNotes?: string;
   // The workflow template (an id of the Workflows list) each DATA's project is made from, and whether by itself
   templateId: string;
   autoProcess: boolean;
@@ -313,7 +315,7 @@ export type SessionDatasetPayload = {
 };
 
 export type SessionPayload = Pick<FacilitySession, "microscopeId" | "technique" | "status" | "groupId" | "userId"
-  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess" | "oneProject"> & {
+  | "bookingRef" | "scheduledOn" | "notes" | "templateId" | "autoProcess" | "oneProject" | "userNotes"> & {
   // Empty: the facility's name, YYYY_MM_DD_<Name-Surname>_<id>
   name: string;
   datasets: SessionDatasetPayload[];
@@ -350,6 +352,7 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
     bookingRef: session.bookingRef,
     scheduledOn: session.scheduledOn ? session.scheduledOn.slice(0, 10) : null,
     notes: session.notes,
+    userNotes: session.userNotes ?? "",
     templateId: session.templateId ?? "",
     autoProcess: session.autoProcess ?? true,
     oneProject: session.oneProject ?? false,
@@ -366,7 +369,13 @@ export const processSessionDataset = (datasetId: number) =>
     { method: "POST" });
 
 // The facility's own conventions: how it names its sessions (the microscopes name their folders)
-export type FacilitySettings = { sessionNamePattern: string };
+export type FacilitySettings = {
+  sessionNamePattern: string;
+  // Days the data are kept once a session finished (0: not said), and how users take them home
+  rawRetentionDays: number;
+  processedRetentionDays: number;
+  downloadInstructions: string;
+};
 export type ConventionExamples = { session: string; atlas: string | null; data: string[] };
 export type FacilityPreset = {
   id: string;
@@ -447,3 +456,27 @@ export const saveFacilityMailSettings = (payload: FacilityMailPayload) =>
 export const sendFacilityTestMail = (to = "") =>
   request<{ sentTo: string[] }>("/facility/settings/mail/test", "The test mail did not go",
     { method: "POST", body: JSON.stringify({ to }) });
+
+// What a user sees of the facility: their sessions and samples (and the group's, for its PI), read only
+export type UserSession = Pick<FacilitySession, "id" | "name" | "microscopeName" | "technique" | "status" | "groupName"
+  | "userName" | "userEmail" | "bookingRef" | "scheduledOn" | "startedAt" | "finishedAt" | "images"> & {
+  userNotes: string;
+  // Seen as the PI of its group, not as its user
+  asPi: boolean;
+  // Until when the facility keeps its data (null: not said, or the session has not finished)
+  rawKeptUntil: string | null;
+  processedKeptUntil: string | null;
+  datasets: (Omit<SessionDataset, "notes" | "detectorId" | "gridId" | "processing"> & {
+    processing: { state: DatasetProcessing["state"] } | null;
+  })[];
+};
+export type MyFacility = {
+  sessions: UserSession[];
+  samples: Pick<Sample, "id" | "code" | "description" | "groupName" | "ownerName" | "ownerEmail" | "boxes" | "images" | "createdAt">[];
+  isPi: boolean;
+  downloadInstructions: string;
+  rawRetentionDays: number;
+  processedRetentionDays: number;
+};
+
+export const getMyFacility = () => request<MyFacility>("/facility/my-sessions", "Failed to load your sessions");

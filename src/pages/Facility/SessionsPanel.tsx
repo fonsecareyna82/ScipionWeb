@@ -273,7 +273,7 @@ function SessionFolders({ session, colors, onProcess }: {
 }
 
 /** Where a DATA's acquisition is: its state, and what its movies say. */
-function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; colors: PanelStyles["colors"] }) {
+export function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; colors: PanelStyles["colors"] }) {
     const watch = dataset.watch;
     if (!watch || (watch === "idle" && !dataset.movieCount)) return null;
     const acquisition = dataset.acquisition;
@@ -636,6 +636,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     const [groupId, setGroupId] = useState<number | "">(session?.groupId ?? "");
     const [bookingRef, setBookingRef] = useState(session?.bookingRef ?? "");
     const [notes, setNotes] = useState(session?.notes ?? "");
+    const [userNotes, setUserNotes] = useState(session?.userNotes ?? "");
     const [templateId, setTemplateId] = useState(session?.templateId ?? "");
     const [autoProcess, setAutoProcess] = useState(session?.autoProcess ?? true);
     const [oneProject, setOneProject] = useState(session?.oneProject ?? false);
@@ -743,6 +744,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             bookingRef: bookingRef.trim(),
             scheduledOn: scheduledOn || null,
             notes: notes.trim(),
+            userNotes: userNotes.trim(),
             templateId,
             autoProcess,
             oneProject,
@@ -895,8 +897,14 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                     DATA in the session's project, each in its own branch (the same sample at another concentration or
                     sampling); otherwise each DATA has its project (different samples, tilted and not).
                 </Typography>
-                <TextField sx={fieldSx} size="small" label="Staff notes" value={notes} multiline minRows={2}
-                           onChange={(e) => setNotes(e.target.value)} />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField sx={fieldSx} size="small" fullWidth label="Staff notes" value={notes} multiline minRows={2}
+                               helperText="Only the facility's staff see them"
+                               onChange={(e) => setNotes(e.target.value)} />
+                    <TextField sx={fieldSx} size="small" fullWidth label="Notes for the user" value={userNotes} multiline minRows={2}
+                               helperText="The session's user and the group's PI see them in My sessions"
+                               onChange={(e) => setUserNotes(e.target.value)} />
+                </Stack>
 
                 <Stack direction="row" alignItems="center" justifyContent="space-between">
                     <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>

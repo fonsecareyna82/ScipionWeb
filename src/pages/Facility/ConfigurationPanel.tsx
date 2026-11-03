@@ -140,9 +140,72 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, colo
                     </Stack>
                 </CardContent>
             </Card>
+            <UsersSettingsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
+                               cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
             <MailSettingsCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
                               actionButtonSx={actionSx} saveButtonSx={saveSx} />
         </Stack>
+    );
+}
+
+/** What the facility tells its users in My sessions: how long it keeps their data, and how to take them home. */
+function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, saveButtonSx }: PanelStyles & {
+    answer: FacilitySettingsAnswer;
+    onSaved: (answer: FacilitySettingsAnswer) => void;
+}) {
+    const [raw, setRaw] = useState(String(answer.settings.rawRetentionDays ?? 0));
+    const [processed, setProcessed] = useState(String(answer.settings.processedRetentionDays ?? 0));
+    const [instructions, setInstructions] = useState(answer.settings.downloadInstructions ?? "");
+    const [saving, setSaving] = useState(false);
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            const saved = await saveFacilitySettings({
+                rawRetentionDays: Number(raw) || 0, processedRetentionDays: Number(processed) || 0,
+                downloadInstructions: instructions.trim(),
+            });
+            onSaved(saved);
+            toast.success("Saved: the users see it in My sessions.");
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to save the settings"));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Card variant="outlined" sx={cardSx}>
+            <CardHeader
+                title="For the users"
+                subheader="What every user sees in My sessions: how long the facility keeps their data once a session finished, and how to take it home."
+                sx={cardHeaderSx}
+            />
+            <CardContent sx={{ pt: 2 }}>
+                <Stack spacing={1.5}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Raw data kept (days)" value={raw}
+                                   inputProps={{ inputMode: "numeric" }} helperText="0: not said"
+                                   onChange={(e) => setRaw(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Processed data kept (days)" value={processed}
+                                   inputProps={{ inputMode: "numeric" }} helperText="0: not said"
+                                   onChange={(e) => setProcessed(e.target.value)} />
+                    </Stack>
+                    <TextField sx={fieldSx} size="small" label="Taking the data home" value={instructions} multiline minRows={4}
+                               placeholder="How to download the data: the iRODS ticket, rsync, a disk…"
+                               onChange={(e) => setInstructions(e.target.value)} />
+                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
+                                disabled={saving} onClick={() => void save()}>
+                            {saving ? "Saving…" : "Save for the users"}
+                        </Button>
+                    </Box>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                        Instruct sessions and other access routes may keep data longer; one length for all, for now.
+                    </Typography>
+                </Stack>
+            </CardContent>
+        </Card>
     );
 }
 

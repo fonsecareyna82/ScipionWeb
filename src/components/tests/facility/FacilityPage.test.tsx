@@ -13,6 +13,7 @@ const facilityMocks = vi.hoisted(() => ({
   updateSample: vi.fn(),
   deleteSample: vi.fn(),
   listSessions: vi.fn(),
+  getMyFacility: vi.fn(),
 }));
 vi.mock("@/api/facility", () => facilityMocks);
 vi.mock("@/components/common/PageMeta", () => ({ default: () => null }));
@@ -42,6 +43,8 @@ describe("The Facility page", () => {
     facilityMocks.listMicroscopes.mockResolvedValue([]);
     facilityMocks.listSamples.mockResolvedValue([]);
     facilityMocks.listSessions.mockResolvedValue([]);
+    facilityMocks.getMyFacility.mockResolvedValue({ sessions: [], samples: [], isPi: false, downloadInstructions: "",
+                                                    rawRetentionDays: 0, processedRetentionDays: 0 });
   });
 
   it("opens the first tab the user may use, with its own address", async () => {
@@ -65,12 +68,14 @@ describe("The Facility page", () => {
     expect(facilityMocks.listMicroscopes).not.toHaveBeenCalled();
   });
 
-  it("has nothing for whom has no facility permission", async () => {
+  it("takes a user with no facility permission to their own sessions, and to nothing of the staff's", async () => {
     facilityMocks.loadFacilityStatusOnce.mockResolvedValue({ enabled: true, permissions: [] });
     renderAt("/facility/samples");
 
-    expect(await screen.findByText(/There is nothing for you here/)).toBeInTheDocument();
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/facility/mine"));
+    expect(await screen.findByText("You have no sessions at the facility yet.")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["My sessions"]);
+    expect(facilityMocks.listSamples).not.toHaveBeenCalled();
   });
 
   it("shows nothing of the facility when the installation runs none", async () => {
