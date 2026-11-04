@@ -10,6 +10,8 @@ export interface Project {
   status: string;
   protocolsCount?: string;
   diskUsage?: string;
+  // The last measure of the API's background measurer (none until the project is measured)
+  diskUsageBytes?: number | null;
   protocols?: Record<string, ProtocolNode>;
   isShared: boolean,
   isOwner: boolean,

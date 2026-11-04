@@ -42,7 +42,7 @@ type PanelStyles = {
 // The permissions grouped as the catalogue names them (projects.create → Projects)
 const AREAS: Record<string, string> = {
     plugins: "System", settings: "System", jobs: "System", users: "System", roles: "System", groups: "System",
-    audit: "System", projects: "Projects", files: "Files", facility: "Facility",
+    audit: "System", storage: "System", projects: "Projects", files: "Files", facility: "Facility",
 };
 
 function permissionAreas(permissions: Permission[]): [string, Permission[]][] {

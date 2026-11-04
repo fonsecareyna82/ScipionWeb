@@ -8,6 +8,7 @@ import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ImportProjectPayload, ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
+import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
@@ -79,6 +80,7 @@ function normalizeProject(raw: any): ProjectCardProject {
     protocolsCount:
       p.protocolsCount ?? p.protocols_count ?? (Array.isArray(p.protocols) ? p.protocols.length : 0),
     diskUsage: p.diskUsage ?? p.disk_usage ?? p.storage ?? undefined,
+    diskUsageBytes: typeof p.diskUsageBytes === "number" ? p.diskUsageBytes : null,
     protocols: p.protocols ?? p.protocolsMap ?? undefined,
     isShared: isSharedFlag,
     isOwner: isOwnerFlag,
@@ -398,8 +400,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const stats = useMemo(() => {
     const total = projects.length;
     const shared = projects.filter((p) => Boolean(p.isShared) && !Boolean(p.isOwner)).length;
-    const owned = projects.filter((p) => Boolean(p.isOwner)).length;
-    return { total, shared, owned };
+    const ownedProjects = projects.filter((p) => p.isOwner);
+    const owned = ownedProjects.length;
+    // What the user's own projects take on the disk, as last measured
+    const ownedBytes = ownedProjects.reduce((sum, p) => sum + (p.diskUsageBytes ?? 0), 0);
+    const ownedNotMeasured = ownedProjects.filter((p) => p.diskUsageBytes == null).length;
+    return { total, shared, owned, ownedBytes, ownedNotMeasured };
   }, [projects]);
 
   const activeProjectTitle = useMemo(() => {
@@ -729,6 +735,17 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
               Browse your projects, open workflows, and manage sharing.
             </p>
+            {stats.owned > 0 && (
+              <p className="mt-0.5 text-sm leading-6 text-gray-700 dark:text-gray-300" data-testid="own-disk-usage">
+                Your projects take{" "}
+                <span className="font-semibold text-gray-950 dark:text-white">{formatBytes(stats.ownedBytes)}</span>
+                {" "}on the disk
+                {stats.ownedNotMeasured > 0
+                  ? ` (${stats.ownedNotMeasured} not measured yet)`
+                  : ""}
+                .
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">

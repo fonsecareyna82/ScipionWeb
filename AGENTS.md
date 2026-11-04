@@ -82,13 +82,21 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
 ## Permissions
 
 - The API decides what a user may do (roles of permissions, groups, project access levels: see ScipionAPI's AGENTS.md). The web only hides what would be refused: `usePermissions().can("plugins.manage")` reads the signed-in user's `permissions` from `/auth/me`, once per session (`loadCurrentUserOnce`, forgotten at login and logout).
-- Settings shows each tab to whoever may use it: Instance, Host and Environment (`settings.manage`), Jobs (`jobs.manage`), Users (`users.manage`), Roles (`roles.manage`), Groups (`groups.manage`), Audit (`audit.view`). Panels with their own actions (Jobs, Users, Roles, Groups, Audit, Tags) get none in the header. The plugin pages hide installing, updating and removing without `plugins.manage`.
+- Settings shows each tab to whoever may use it: Instance, Host and Environment (`settings.manage`), Jobs (`jobs.manage`), Users (`users.manage`), Roles (`roles.manage`), Groups (`groups.manage`), Audit (`audit.view`), Disk usage (`storage.view`). Panels with their own actions (Jobs, Users, Roles, Groups, Audit, Disk usage, Tags) get none in the header. The plugin pages hide installing, updating and removing without `plugins.manage`.
 - Sharing a project picks an access level (view, work, manage) and users or groups (`ShareProjectModal`, `/access/groups/names`).
 - A project the user only views (`project.access === "view"`, from `GET /projects/{id}`) is read only in `ProjectPage`: its menus hide the items that change it (`READ_ONLY_HIDDEN_MENU_ITEMS`, merged into the menu visibility policy; run actions such as Stop streaming follow Stop), the actions they and the shortcuts call refuse with a toast (`refuseWhenReadOnly`), the canvas menu has no Add protocol, protocol forms open with `readOnly` (no Save nor Launch) and the header shows a View only badge.
 - Administrators (`users.manage`) see new sign-ups waiting for activation in the activity bell (`status: "account"`); the event opens `/settings?tab=users`, as Settings opens the tab named in `?tab=` when the user may see it.
 - In the file browser, a user limited to the project and the data folders (`SCIPIONWEB_DATA_ROOTS`) gets each data folder as a shortcut chip (`dataRoots` of `start-path`; none when the data folder is the whole server).
 - Groups choose what their PIs may do in their members' projects (PI access: None, View, Work, Manage). Project cards and rows label how the user reaches a project from the API's `accessVia` (`utils/project-access.ts`): Owner, Shared · level, Group · level (a PI), All projects · level (a role).
 - Settings → Audit (`audit.view`, `AuditPanel`) reads the audit log newest first, by kind and search, with Older events for the next page.
+- Settings → Disk usage (`storage.view`, `DiskUsagePanel`, `api/storage.ts`) shows what the projects take on the disk, as the API's background measurer last measured it:
+  - the free space of the projects' disk;
+  - tables by user, by group and by project, sorted by size;
+  - clicking a user shows their projects;
+  - projects untouched for 90 days are marked as unused;
+  - Measure all again, or measure one project again;
+  - the panel looks again every 15 s while measures are pending.
+- The Projects page sums what the user's own projects take from `diskUsageBytes` in the project list ("Your projects take … on the disk").
 - Settings dialogs and confirmations use `pages/Settings/SettingsDialog.tsx` (the web's dark header, rounded buttons, red gradient for what destroys or interrupts), never `window.confirm`.
 
 ## Facility mode (branch `lims`, in progress)
