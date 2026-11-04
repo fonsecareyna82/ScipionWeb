@@ -149,7 +149,8 @@ const defaultInstanceSettings:
   ...DEFAULT_PROJECT_INSTANCE_SETTINGS,
 };
 
-const wrapperMaxWidth = 1120;
+// Wide enough for every tab in one row (and the wide tables of Users, Audit and Disk usage)
+const wrapperMaxWidth = 1400;
 const fieldFontSize = 14;
 const environmentNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
