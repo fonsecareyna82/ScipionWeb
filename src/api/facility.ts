@@ -272,6 +272,8 @@ export type SessionDataset = {
   acquisition?: DatasetAcquisition | null;
   projectId?: number | null;
   processing?: DatasetProcessing | null;
+  // A tomography DATA's navigation report (tomo5-mapper): the staff also see whether one can be made, and why it failed
+  navigation?: NavigationReportState | null;
   images?: FacilityImage[];
 };
 
@@ -659,4 +661,28 @@ export const answerBooking = (bookingId: number, accept: boolean) =>
 export const cancelBooking = (bookingId: number, reason = "") =>
   request<FacilityBooking>(`/facility/bookings/${bookingId}/cancel`, "Failed to cancel the booking",
     { method: "POST", body: JSON.stringify({ reason }) });
+
+// The navigation report of a tomography DATA (atlas, search maps, tomogram positions, tilt series), by tomo5-mapper
+export type NavigationReportState = {
+  state: "none" | "making" | "done" | "failed";
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  message?: string | null;
+  // Whether this installation has tomo5-mapper (the staff's answers only)
+  available?: boolean;
+  sizeBytes?: number | null;
+};
+
+export const getNavigationReport = (datasetId: number) =>
+  request<NavigationReportState>(`/facility/datasets/${datasetId}/navigation`, "Failed to load the report's state");
+export const makeNavigationReport = (datasetId: number) =>
+  request<NavigationReportState>(`/facility/datasets/${datasetId}/navigation`, "Failed to make the report",
+    { method: "POST" });
+
+/** The report as a page of this origin (an object URL): it is a self-contained HTML. */
+export async function fetchNavigationReportUrl(datasetId: number): Promise<string> {
+  const response = await fetchWithAuth(`${BASE_URL}/facility/datasets/${datasetId}/navigation/report`);
+  if (!response.ok) throw await buildApiError(response, "Failed to open the report");
+  return URL.createObjectURL(new Blob([await response.blob()], { type: "text/html" }));
+}
 

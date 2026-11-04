@@ -54,6 +54,7 @@ import {
 } from "@/api/facility";
 import { FACILITY_TEXT } from "./facilityStyles";
 import ImageStrip from "./ImageStrip";
+import NavigationReport from "./NavigationReport";
 
 type PanelStyles = {
     fieldSx: any;
@@ -265,6 +266,7 @@ function SessionFolders({ session, colors, onProcess }: {
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, pl: 4.5, flexWrap: "wrap", rowGap: 0.5 }}>
                         <DatasetProgress dataset={dataset} colors={colors} />
                         <DatasetProcessing session={session} dataset={dataset} colors={colors} onProcess={onProcess} />
+                        {dataset.navigation && <NavigationReport dataset={dataset} canMake={!!onProcess} />}
                     </Stack>
                     </Box>
                 ))}

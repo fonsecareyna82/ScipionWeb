@@ -7,6 +7,7 @@ import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { getMyFacility, type MyFacility, type SessionDataset, type UserSession } from "@/api/facility";
 import { FACILITY_TEXT } from "./facilityStyles";
 import { DatasetProgress, describeDatasetGrid, SESSION_STATUS_LABELS } from "./SessionsPanel";
+import NavigationReport from "./NavigationReport";
 
 type PanelStyles = {
     cardSx: any;
@@ -106,6 +107,7 @@ function SessionCard({ session, mine, colors }: { session: UserSession; mine: My
                             </Stack>
                             <Box sx={{ pl: 1 }}>
                                 <DatasetProgress dataset={dataset as unknown as SessionDataset} colors={colors} />
+                                {dataset.navigation?.state === "done" && <NavigationReport dataset={dataset} canMake={false} />}
                             </Box>
                         </Box>
                     ))}
