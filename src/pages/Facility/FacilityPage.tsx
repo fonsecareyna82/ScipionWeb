@@ -11,6 +11,7 @@ import SamplesPanel from "./SamplesPanel";
 import SessionsPanel from "./SessionsPanel";
 import ConfigurationPanel from "./ConfigurationPanel";
 import MySessionsPanel from "./MySessionsPanel";
+import CalendarPanel from "./CalendarPanel";
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
 const wrapperMaxWidth = 1120;
@@ -37,6 +38,8 @@ export default function FacilityPage() {
         return <SessionsPanel {...styles} canEdit={keepsSessions} />;
       case "mine":
         return <MySessionsPanel {...styles} />;
+      case "calendar":
+        return <CalendarPanel {...styles} isStaff={keepsSessions} isManager={facilityCan("facility.manage")} />;
       case "samples":
         return <SamplesPanel {...styles} canEdit={keepsSessions} />;
       case "microscopes":

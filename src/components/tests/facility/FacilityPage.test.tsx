@@ -74,7 +74,7 @@ describe("The Facility page", () => {
 
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/facility/mine"));
     expect(await screen.findByText("You have no sessions at the facility yet.")).toBeInTheDocument();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["My sessions"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["My sessions", "Calendar"]);
     expect(facilityMocks.listSamples).not.toHaveBeenCalled();
   });
 

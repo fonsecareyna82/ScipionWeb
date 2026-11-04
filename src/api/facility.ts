@@ -394,6 +394,8 @@ export type FacilitySettings = {
   ctfMinDefocus: number;
   ctfMaxDefocus: number;
   ctfMaxResolution: number;
+  // Where the facility is (Europe/Madrid): a booking's session is on the day it starts there
+  timezone: string;
 };
 export type ConventionExamples = { session: string; atlas: string | null; data: string[] };
 export type FacilityPreset = {
@@ -544,3 +546,117 @@ export const makeRoomScreenLink = () =>
   request<RoomScreenLink>("/facility/settings/room-screen", "Failed to make a new link", { method: "POST" });
 export const turnOffRoomScreen = () =>
   request<RoomScreenLink>("/facility/settings/room-screen", "Failed to turn the room screen off", { method: "DELETE" });
+
+// Bookings: what can be booked (a microscope, a plunger, a confocal…), and the times asked for and given
+export type ResourceUnit = "session" | "hour" | "half_hour" | "service";
+export type FacilityResource = {
+  id: number;
+  name: string;
+  // A microscope's resource: its confirmed bookings get a planned session when it runs sessions
+  microscopeId: number | null;
+  microscopeName: string | null;
+  runsSessions: boolean;
+  color: string;
+  unit: ResourceUnit;
+  // The shortest and longest a user may ask for (the facility books as it needs)
+  minHours: number | null;
+  maxHours: number | null;
+  // When its day starts (the Talos': 09:00 to 08:59 the next day)
+  dayStart: string;
+  requiresAuthorization: boolean;
+  active: boolean;
+  notes: string;
+};
+export type ResourcePayload = Omit<FacilityResource, "id" | "microscopeName" | "runsSessions">;
+
+export type BookingKind = "booking" | "downtime" | "maintenance" | "special";
+export type BookingStatus = "requested" | "confirmed" | "alternative" | "rejected" | "cancelled";
+// A booking as the signed-in user may see it: the facility, all of it; a user, theirs (mine) and, of the others',
+// only the resource, its kind and its time
+export type FacilityBooking = {
+  id: number;
+  resourceId: number;
+  resourceName: string;
+  resourceColor: string;
+  kind: BookingKind;
+  status: BookingStatus;
+  startsAt: string;
+  endsAt: string;
+  title: string;
+  mine: boolean;
+  microscopeId?: number | null;
+  proposedStartsAt?: string | null;
+  proposedEndsAt?: string | null;
+  ownerId?: number | null;
+  ownerName?: string;
+  ownerEmail?: string | null;
+  groupId?: number | null;
+  groupName?: string | null;
+  operatorId?: number | null;
+  operatorName?: string;
+  technique?: "spa" | "tomo" | null;
+  // 0 the facility … 4 external
+  priority?: number | null;
+  justification?: string;
+  notes?: string;
+  requestedByName?: string;
+  decidedByName?: string;
+  decidedAt?: string | null;
+  decisionReason?: string;
+  sessionId?: number | null;
+  sessionName?: string | null;
+  sessionStatus?: string | null;
+  createdAt?: string;
+};
+export type BookingPayload = {
+  resourceId?: number;
+  kind?: BookingKind;
+  startsAt?: string;
+  endsAt?: string;
+  title?: string;
+  ownerId?: number | null;
+  groupId?: number | null;
+  operatorId?: number | null;
+  technique?: "spa" | "tomo" | null;
+  priority?: number | null;
+  justification?: string;
+  notes?: string;
+};
+export type BookingDecision =
+  | { action: "confirm" | "reject"; reason?: string; priority?: number | null }
+  | { action: "propose"; reason?: string; proposedStartsAt: string; proposedEndsAt: string; priority?: number | null };
+export type MyBookings = { bookings: FacilityBooking[]; groups: { id: number; name: string; groupRole: string }[] };
+
+export const listResources = () => request<FacilityResource[]>("/facility/resources", "Failed to load the resources");
+export const createResource = (resource: ResourcePayload) =>
+  request<FacilityResource>("/facility/resources", "Failed to add the resource",
+    { method: "POST", body: JSON.stringify(resource) });
+export const updateResource = (resourceId: number, resource: ResourcePayload) =>
+  request<FacilityResource>(`/facility/resources/${resourceId}`, "Failed to save the resource",
+    { method: "PUT", body: JSON.stringify(resource) });
+export const deleteResource = (resourceId: number) =>
+  request<void>(`/facility/resources/${resourceId}`, "Failed to delete the resource", { method: "DELETE" });
+
+export function listBookings(range: { start: string; end: string; statuses?: BookingStatus[] }) {
+  const query = new URLSearchParams({ start: range.start, end: range.end });
+  (range.statuses ?? []).forEach((value) => query.append("status", value));
+  return request<FacilityBooking[]>(`/facility/bookings?${query}`, "Failed to load the bookings");
+}
+export const listOpenBookingRequests = () =>
+  request<FacilityBooking[]>("/facility/bookings?status=requested&status=alternative", "Failed to load the requests");
+export const getMyBookings = () => request<MyBookings>("/facility/my-bookings", "Failed to load your bookings");
+export const createBooking = (booking: BookingPayload) =>
+  request<FacilityBooking>("/facility/bookings", "Failed to book", { method: "POST", body: JSON.stringify(booking) });
+export const updateBooking = (bookingId: number, booking: BookingPayload) =>
+  request<FacilityBooking>(`/facility/bookings/${bookingId}`, "Failed to change the booking",
+    { method: "PUT", body: JSON.stringify(booking) });
+export const decideBooking = (bookingId: number, decision: BookingDecision) =>
+  request<FacilityBooking>(`/facility/bookings/${bookingId}/decision`, "Failed to answer the request",
+    { method: "POST", body: JSON.stringify(decision) });
+export const answerBooking = (bookingId: number, accept: boolean) =>
+  request<FacilityBooking>(`/facility/bookings/${bookingId}/answer`, "Failed to answer",
+    { method: "POST", body: JSON.stringify({ accept }) });
+export const cancelBooking = (bookingId: number, reason = "") =>
+  request<FacilityBooking>(`/facility/bookings/${bookingId}/cancel`, "Failed to cancel the booking",
+    { method: "POST", body: JSON.stringify({ reason }) });
+

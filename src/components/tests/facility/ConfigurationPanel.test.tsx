@@ -102,7 +102,7 @@ describe("The facility's conventions", () => {
 
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
       projectOwner: "staff", projectShareLevel: "view", calibrationTolerancePercent: 10, stallMinutes: 45, watchSeconds: 30,
-      ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8,
+      ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8, timezone: "Europe/Madrid",
     }));
   });
 

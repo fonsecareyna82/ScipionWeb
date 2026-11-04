@@ -222,6 +222,7 @@ function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, 
     const [minDefocus, setMinDefocus] = useState(String(current.ctfMinDefocus ?? 5000));
     const [maxDefocus, setMaxDefocus] = useState(String(current.ctfMaxDefocus ?? 40000));
     const [resolution, setResolution] = useState(String(current.ctfMaxResolution ?? 8));
+    const [timezone, setTimezone] = useState(current.timezone ?? "Europe/Madrid");
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
@@ -230,7 +231,7 @@ function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, 
             onSaved(await saveFacilitySettings({
                 projectOwner: owner, projectShareLevel: share, calibrationTolerancePercent: Number(tolerance),
                 stallMinutes: Number(stall), watchSeconds: Number(watch), ctfMinDefocus: Number(minDefocus),
-                ctfMaxDefocus: Number(maxDefocus), ctfMaxResolution: Number(resolution),
+                ctfMaxDefocus: Number(maxDefocus), ctfMaxResolution: Number(resolution), timezone: timezone.trim(),
             }));
             toast.success("Policies saved: they apply from the watcher's next look.");
         } catch (e: any) {
@@ -286,6 +287,10 @@ function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, 
                                    inputProps={{ inputMode: "decimal" }} helperText="The limits a new session starts with"
                                    onChange={(e) => setResolution(e.target.value)} />
                     </Stack>
+                    <TextField sx={{ ...fieldSx, maxWidth: { sm: 360 } }} size="small" label="Time zone" value={timezone}
+                               placeholder="Europe/Madrid"
+                               helperText="Where the facility is: a booking's session is on the day it starts there"
+                               onChange={(e) => setTimezone(e.target.value)} />
                     <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
                         <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
                                 disabled={saving} onClick={() => void save()}>

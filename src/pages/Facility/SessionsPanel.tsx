@@ -22,7 +22,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Info, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -609,6 +609,42 @@ type DataRow = { key: number; id: number | null; number: number; gridId: number 
 let rowKey = 0;
 const nextKey = () => ++rowKey;
 
+/** A ⓘ next to a title: the long explanation, out of the way until asked for. */
+function InfoHint({ text }: { text: string }) {
+    return (
+        <Tooltip arrow placement="top" title={<Box sx={{ fontSize: FACILITY_TEXT.note, lineHeight: 1.5, p: 0.5 }}>{text}</Box>}>
+            <Box component="span" tabIndex={0} aria-label={text}
+                 sx={{ display: "inline-flex", verticalAlign: "-2px", ml: 0.75, cursor: "help", opacity: 0.6, "&:hover": { opacity: 1 } }}>
+                <Info size={15} />
+            </Box>
+        </Tooltip>
+    );
+}
+
+/** A part of the session dialog: its title, a line under it and room around its fields. */
+function DialogSection({ title, hint, action, colors, first, children }: {
+    title: string;
+    hint?: string;
+    action?: React.ReactNode;
+    colors: PanelStyles["colors"];
+    first?: boolean;
+    children: React.ReactNode;
+}) {
+    return (
+        <Box component="section" aria-label={title}
+             sx={first ? undefined : { borderTop: `1px solid ${colors.border}`, pt: 3 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 800, letterSpacing: 0.2 }}>
+                    {title}
+                    {hint && <InfoHint text={hint} />}
+                </Typography>
+                {action}
+            </Stack>
+            <Stack spacing={2.25}>{children}</Stack>
+        </Box>
+    );
+}
+
 function dataRowsOf(session: FacilitySession | null): DataRow[] {
     if (!session) return [{ key: nextKey(), id: null, number: 1, gridId: null, detectorId: null, notes: "" }];
     return session.datasets.filter((dataset) => dataset.kind === "data").map((dataset) => ({
@@ -811,8 +847,9 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             onConfirm={() => void save()}
             onClose={onClose}
         >
-            <Stack spacing={1.5} sx={{ pt: 0.5 }}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <Stack spacing={3.5} sx={{ pt: 1 }}>
+                <DialogSection title="Session" colors={colors} first>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <FormControl size="small" fullWidth>
                         <InputLabel id="session-microscope-label">Microscope</InputLabel>
                         <Select labelId="session-microscope-label" label="Microscope" sx={selectSx} value={microscopeId}
@@ -847,7 +884,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                         </Select>
                     </FormControl>
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <FormControl size="small" fullWidth>
                         <InputLabel id="session-user-label">User</InputLabel>
                         <Select labelId="session-user-label" label="User" sx={selectSx} value={userId}
@@ -870,7 +907,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                         </Select>
                     </FormControl>
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <TextField sx={fieldSx} size="small" type="date" label="Day" value={scheduledOn} fullWidth
                                InputLabelProps={{ shrink: true }} onChange={(e) => setScheduledOn(e.target.value)} />
                     <TextField sx={fieldSx} size="small" label="EMhub booking" value={bookingRef} fullWidth
@@ -880,11 +917,18 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                            placeholder="Given by the facility's convention"
                            helperText={nameFixed
                                ? "The microscope writes its folders under this name: it stays."
-                               : "Left empty, the facility's pattern names it (Configuration tab: the day, the user, the microscope, the session's number…). It makes the folder names and stays once the acquisition starts."}
+                               : "Left empty, the facility's pattern names it (Configuration → Naming)."}
                            inputProps={{ style: { fontFamily: "monospace" } }}
                            onChange={(e) => setName(e.target.value)} />
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-                    <FormControl size="small" fullWidth>
+                </DialogSection>
+
+                <DialogSection title="Automatic processing" colors={colors}
+                               hint={"When a DATA's first movie has been read, a project is made for it from the template (its Import Movies "
+                                   + "reading the DATA folder with the calibrated pixel, voltage, Cs, dose and gain), shared with the group, "
+                                   + "and launched in streaming. Without \"by itself\", each DATA waits for \"Process now\". \"All grids in one "
+                                   + "project\" puts every DATA in the session's project, each in its own branch (the same sample at another "
+                                   + "concentration or sampling); otherwise each DATA has its project (different samples, tilted and not)."}>
+                <FormControl size="small" fullWidth>
                         <InputLabel id="session-template-label">Processing template</InputLabel>
                         <Select labelId="session-template-label" label="Processing template" sx={selectSx} value={templateId}
                                 MenuProps={{ PaperProps: { sx: menuPaperSx } }}
@@ -904,6 +948,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                             ))}
                         </Select>
                     </FormControl>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={3} sx={{ mt: "8px !important" }}>
                     <FormControlLabel
                         sx={{ flexShrink: 0, mr: 0 }}
                         control={<Checkbox checked={autoProcess} disabled={!templateId}
@@ -917,14 +962,12 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                         label="All grids in one project"
                     />
                 </Stack>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75, mt: "-4px !important" }}>
-                    When a DATA's first movie has been read, a project is made for it from the template (its Import Movies reading
-                    the DATA folder with the calibrated pixel, voltage, Cs, dose and gain), shared with the group, and launched in
-                    streaming. Without "by itself", each DATA waits for "Process now". "All grids in one project" puts every
-                    DATA in the session's project, each in its own branch (the same sample at another concentration or
-                    sampling); otherwise each DATA has its project (different samples, tilted and not).
+                <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, pt: 1 }}>
+                    CTF limits
+                    <InfoHint text={"The CTF consensus of each DATA's project keeps the micrographs within these limits. Left "
+                        + "empty, the template's are used; a new session starts with the facility's (Configuration → Policies)."} />
                 </Typography>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={ctfMinDefocus}
                                inputProps={{ inputMode: "decimal" }} disabled={!templateId}
                                onChange={(e) => setCtfMinDefocus(e.target.value)} />
@@ -935,11 +978,10 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                inputProps={{ inputMode: "decimal" }} disabled={!templateId}
                                onChange={(e) => setCtfMaxResolution(e.target.value)} />
                 </Stack>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75, mt: "-4px !important" }}>
-                    The CTF consensus of each DATA's project keeps the micrographs within these limits. Left empty, the
-                    template's are used; a new session starts with the facility's (Configuration → Policies).
-                </Typography>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                </DialogSection>
+
+                <DialogSection title="Notes" colors={colors}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <TextField sx={fieldSx} size="small" fullWidth label="Staff notes" value={notes} multiline minRows={2}
                                helperText="Only the facility's staff see them"
                                onChange={(e) => setNotes(e.target.value)} />
@@ -947,16 +989,14 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                helperText="The session's user and the group's PI see them in My sessions"
                                onChange={(e) => setUserNotes(e.target.value)} />
                 </Stack>
+                </DialogSection>
 
-                <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>
-                        Grids (a DATA folder each, by their position in the autoloader)
-                    </Typography>
+                <DialogSection title="Grids" colors={colors} hint="A DATA folder each, by their position in the autoloader."
+                               action={
                     <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
                             disabled={rows.length >= positions.length} onClick={addRow}>
                         Add grid
-                    </Button>
-                </Stack>
+                    </Button>}>
                 {rows.length === 0 && (
                     <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>No grid yet.</Typography>
                 )}
@@ -964,9 +1004,9 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                     const saved = row.id != null ? datasetById.get(row.id) : undefined;
                     return (
                         <Box key={row.key} role="group" aria-label={`Position ${row.number}`}
-                             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.25 }}>
-                            <Stack spacing={1}>
-                                <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "center" }}>
+                             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 2 }}>
+                            <Stack spacing={1.75}>
+                                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
                                     <FormControl size="small" sx={{ minWidth: 118 }}>
                                         <InputLabel id={`data-number-${row.key}`}>Position</InputLabel>
                                         <Select labelId={`data-number-${row.key}`} label="Position" sx={selectSx} value={row.number}
@@ -1026,9 +1066,9 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                     );
                 })}
                 {numbersRepeat && <Alert severity="warning">Two grids share a position.</Alert>}
+                </DialogSection>
 
-                <Stack spacing={0.75}>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Images</Typography>
+                <DialogSection title="Images" colors={colors}>
                     {current
                         ? (
                             <Stack spacing={1}>
@@ -1046,8 +1086,12 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                             </Stack>
                         )
                         : <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>Save the session first to add its images.</Typography>}
-                </Stack>
-                {current && <SessionFolders session={current} colors={colors} />}
+                </DialogSection>
+                {current && (
+                    <Box sx={{ borderTop: `1px solid ${colors.border}`, pt: 3 }}>
+                        <SessionFolders session={current} colors={colors} />
+                    </Box>
+                )}
             </Stack>
         </SettingsDialog>
     );
