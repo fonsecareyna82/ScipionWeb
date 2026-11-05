@@ -61,6 +61,12 @@ function rayModeToId(rayMode: VolumeRayMode) {
 // The key light comes from the upper left of the camera, as on the surfaces.
 const CAMERA_KEY_LIGHT = new THREE.Vector3(-1.2, 1.4, 2.0).normalize();
 
+// A frame that arrives this late after it was asked for is a slow one; after a
+// few in a row the pixel density goes down a step (never below the minimum).
+const SLOW_FRAME_MS = 150;
+const SLOW_FRAMES_BEFORE_DOWNSCALE = 3;
+const MIN_PIXEL_RATIO = 0.5;
+
 const VERT = `
   varying vec3 vPos;
   varying vec3 vCamLocal;
@@ -829,6 +835,15 @@ export default function GpuVolumeView({
       dprApplied: -1,
     };
 
+    // When the GPU cannot keep up (a big volume filling the screen), the frames
+    // come late: the pixel density goes one step down and stays there, so the
+    // picture never switches back and forth during an interaction.
+    const performanceState = {
+      scale: 1,
+      requestedAt: 0,
+      slowFrames: 0,
+    };
+
     const tmpDir = new THREE.Vector3();
     const lightDirLocal = new THREE.Vector3();
     const lightRotation = new THREE.Quaternion();
@@ -855,9 +870,10 @@ export default function GpuVolumeView({
         interactionState.isDragging || wheelActive || controls.autoRotate
       );
 
-      const desiredDpr = interactionActive
-        ? Math.min(baseDpr, 1)
-        : baseDpr;
+      const desiredDpr = Math.max(
+        MIN_PIXEL_RATIO,
+        (interactionActive ? Math.min(baseDpr, 1) : baseDpr) * performanceState.scale,
+      );
 
       const desiredSteps = interactionActive
         ? Math.max(96, Math.round(baseSteps * 0.55))
@@ -1043,6 +1059,16 @@ export default function GpuVolumeView({
         ctrls.minDistance,
         ctrls.maxDistance,
       );
+
+      if (material.uniforms.uIsoMode.value === 0) {
+        // Volume mode draws every ray at full quality: an eased zoom would
+        // draw some fifteen of those frames per wheel tick and freeze the
+        // browser. The camera goes to the new distance at once (one frame).
+        tmpDir.setLength(zoomState.targetDistance);
+        cam.position.copy(ctrls.target).add(tmpDir);
+        cam.updateProjectionMatrix();
+        zoomState.hasTarget = false;
+      }
       requestRender();
     };
 
@@ -1093,7 +1119,27 @@ export default function GpuVolumeView({
     const requestRender = () => {
       if (rafRef.current != null || document.visibilityState === "hidden") return;
 
+      performanceState.requestedAt = performance.now();
       rafRef.current = requestAnimationFrame(renderFrame);
+    };
+
+    // A frame that comes long after it was asked for means the GPU is still
+    // busy with the previous ones.
+    const watchFrameDelay = () => {
+      const delay = performance.now() - performanceState.requestedAt;
+      if (delay < SLOW_FRAME_MS) {
+        performanceState.slowFrames = 0;
+        return;
+      }
+      performanceState.slowFrames += 1;
+      if (
+        performanceState.slowFrames >= SLOW_FRAMES_BEFORE_DOWNSCALE &&
+        baseDpr * performanceState.scale > MIN_PIXEL_RATIO
+      ) {
+        performanceState.scale *= 0.7;
+        performanceState.slowFrames = 0;
+        setRendererQuality(true);
+      }
     };
 
     requestRenderRef.current = requestRender;
@@ -1126,6 +1172,7 @@ export default function GpuVolumeView({
 
       const dt = Math.min(0.05, clock.getDelta());
 
+      watchFrameDelay();
       setRendererQuality(false);
 
       const controlsChanged = controlsNow.update();
@@ -1204,10 +1251,15 @@ export default function GpuVolumeView({
         interactionState.lastWheelAt <
         160;
 
+      // The wheel's short tail only matters to Surface mode, which raises its
+      // quality again once the wheel stops; Volume mode never changes it.
+      const surfaceWheelTail =
+        wheelActive && material.uniforms.uIsoMode.value !== 0;
+
       const keepAnimating =
         controlsNow.autoRotate ||
         interactionState.isDragging ||
-        wheelActive ||
+        surfaceWheelTail ||
         zoomState.hasTarget ||
         Boolean(controlsChanged);
 

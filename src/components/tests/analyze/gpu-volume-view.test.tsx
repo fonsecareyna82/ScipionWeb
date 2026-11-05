@@ -1152,6 +1152,57 @@ describe("GpuVolumeView", () => {
             expect(ratioSpy).not.toHaveBeenCalled();
         });
 
+        it("zooms a Volume with the wheel in a single frame, without easing frames after it", async () => {
+            const frames = installFrameQueue();
+            render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+            await waitFor(() => expect(threeState.lastMaterial).not.toBeNull());
+            while (frames.length) flushFrame(frames);
+
+            const camera = threeState.lastCamera;
+            const before = camera.position.length();
+            fireEvent.wheel(threeState.lastRenderer.domElement, { deltaY: -120, deltaMode: 0 });
+
+            // The camera is already at its new distance, before any frame
+            expect(camera.position.length()).toBeLessThan(before);
+            const after = camera.position.length();
+            expect(frames.length).toBe(1);
+            flushFrame(frames);
+            expect(camera.position.length()).toBeCloseTo(after, 6);
+            // Nothing keeps animating once the wheel's frame is drawn
+            expect(frames.length).toBe(0);
+        });
+
+        it("lowers the pixel density once, and keeps it, when frames keep arriving late", async () => {
+            vi.stubGlobal("devicePixelRatio", 2);
+            const frames = installFrameQueue();
+            let now = 1000;
+            const clockSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+            try {
+                render(<GpuVolumeView {...makeProps({ renderMode: "volume" })} />);
+                await waitFor(() => expect(threeState.lastMaterial).not.toBeNull());
+                while (frames.length) flushFrame(frames);
+                const ratioSpy = vi.spyOn(threeState.lastRenderer, "setPixelRatio");
+
+                // Three wheel ticks whose frames come 400 ms late
+                for (let tick = 0; tick < 3; tick += 1) {
+                    fireEvent.wheel(threeState.lastRenderer.domElement, { deltaY: -60, deltaMode: 0 });
+                    now += 400;
+                    flushFrame(frames);
+                    while (frames.length) flushFrame(frames);
+                }
+                expect(ratioSpy).toHaveBeenCalledTimes(1);
+                expect(ratioSpy.mock.calls[0][0]).toBeCloseTo(1.4, 6);
+
+                // Fast frames afterwards do not raise it again
+                fireEvent.wheel(threeState.lastRenderer.domElement, { deltaY: -60, deltaMode: 0 });
+                now += 5;
+                flushFrame(frames);
+                expect(ratioSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                clockSpy.mockRestore();
+            }
+        });
+
         it("preserves adaptive performance for Surface mode", async () => {
             vi.stubGlobal("devicePixelRatio", 2);
             const frames = installFrameQueue();
