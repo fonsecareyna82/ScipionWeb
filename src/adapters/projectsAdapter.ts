@@ -915,6 +915,9 @@ const defaultService: ProjectService = {
       opts ?? {},
     ),
 
+  resolveMetadataSelectionIds: (projectId, protocolId, outputName, tableName, selection, signal) =>
+    api.resolveMetadataSelectionIds(toId(projectId), toId(protocolId), outputName, tableName, selection, signal),
+
   runMetadataTableAction: async (
     projectId: Id,
     protocolId: Id,

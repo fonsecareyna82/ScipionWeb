@@ -1850,6 +1850,57 @@ describe("MetadataViewer", () => {
         expect(screen.getByText("Create subset from selected rows")).toBeInTheDocument();
     });
 
+    it("creates a subset of a Select all with the ids the API resolves, without reading the table", async () => {
+        serviceMocks.fetchMetadataTableSchema.mockImplementation(
+            async (_p: number, _r: number, _o: string, tableName: string) => {
+                const schema = makeSchema(tableName as "particles" | "classes");
+                return tableName === "particles" ? { ...schema, actions: ["Create subset"] } : schema;
+            },
+        );
+        const resolveIds = vi.fn().mockResolvedValue({ ids: [11, 12], count: 2, totalRows: 2 });
+        (serviceMocks as Record<string, unknown>).resolveMetadataSelectionIds = resolveIds;
+        try {
+            renderViewer();
+            await screen.findByText("0.91");
+            fireEvent.contextMenu(screen.getByText("0.91").closest("tr")!);
+            fireEvent.click(await screen.findByText("All"));
+            fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
+            await screen.findByText("Create subset from selected rows");
+            const windowCallsBefore = serviceMocks.fetchMetadataTableWindow.mock.calls.length;
+
+            fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Accept" }));
+
+            await waitFor(() => expect(serviceMocks.runMetadataTableAction).toHaveBeenCalled());
+            expect(resolveIds).toHaveBeenCalledTimes(1);
+            expect(resolveIds.mock.calls[0][4]).toEqual({ baseMode: "all", ranges: [], sortBy: null, asc: true });
+            expect(serviceMocks.runMetadataTableAction.mock.calls[0][4].ids).toEqual([11, 12]);
+            // No page of the table was read to find the ids
+            expect(serviceMocks.fetchMetadataTableWindow.mock.calls.length).toBe(windowCallsBefore);
+        } finally {
+            delete (serviceMocks as Record<string, unknown>).resolveMetadataSelectionIds;
+        }
+    });
+
+    it("reads the table for the ids when the API cannot resolve them", async () => {
+        const resolveIds = vi.fn().mockResolvedValue(null);
+        (serviceMocks as Record<string, unknown>).resolveMetadataSelectionIds = resolveIds;
+        try {
+            renderViewer();
+            const firstRow = (await screen.findByText("0.91")).closest("tr")!;
+            fireEvent.contextMenu(firstRow);
+            fireEvent.click(await screen.findByText("From here"));
+            fireEvent.contextMenu(firstRow);
+            fireEvent.click(await screen.findByText("Freeze selection (ids)"));
+
+            await waitFor(() => expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledWith(
+                1, 2, "metadataOutput", "particles", expect.objectContaining({ offset: 0, limit: 2 })));
+            expect(resolveIds).toHaveBeenCalledTimes(1);
+            expect(screen.getByText((_, node) => node?.textContent === "Selected: 2")).toBeInTheDocument();
+        } finally {
+            delete (serviceMocks as Record<string, unknown>).resolveMetadataSelectionIds;
+        }
+    });
+
     it("supports range selection with shift-click", async () => {
         renderViewer();
 

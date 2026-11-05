@@ -2814,6 +2814,22 @@ export interface ProjectService<
     payload: MetadataTableActionPayload,
   ): Promise<MetadataTableActionResult>;
 
+  /** The row ids of a selection by index (Select all, ranges), resolved by the API in one request; null when
+   * the API cannot (the viewer then reads the table itself). */
+  resolveMetadataSelectionIds?(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    selection: {
+      baseMode: "none" | "all";
+      ranges: Array<{ start: number; end: number }>;
+      sortBy?: string | null;
+      asc?: boolean;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ ids: number[]; count: number; totalRows: number } | null>;
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Tilt series)

@@ -4657,6 +4657,22 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     [],
   );
 
+  // The ids of the selection by index, from the API in one request; null when it cannot tell them (an older
+  // API): then the table is read here, page by page
+  const fetchIndexSelectionIdsFromServer = useCallback(async (
+    signal?: AbortSignal,
+  ): Promise<Array<string | number> | null> => {
+    const resolve = svcRef.current.resolveMetadataSelectionIds;
+    if (typeof resolve !== "function" || !selectedTable) return null;
+    const result = await resolve.call(svcRef.current, projectId, protocolId, outputName, selectedTable, {
+      baseMode: selectionState.baseMode,
+      ranges: selectionState.ranges,
+      sortBy: sortBy ?? null,
+      asc: sortBy ? sortAsc : true,
+    }, signal);
+    return result ? result.ids : null;
+  }, [svcRef, projectId, protocolId, outputName, selectedTable, selectionState, sortBy, sortAsc]);
+
   const resolveSelectedRowIds = useCallback(async (
     options: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {},
   ): Promise<Array<string | number>> => {
@@ -4675,9 +4691,18 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
       return [];
     }
 
+    onProgress?.(0, selectedCountByIndex);
+    // Asked only when the service can answer, so the page scan of an older API starts at once as before
+    const serverIds = typeof svcRef.current.resolveMetadataSelectionIds === "function"
+      ? await fetchIndexSelectionIdsFromServer(signal)
+      : null;
+    if (serverIds) {
+      onProgress?.(serverIds.length, selectedCountByIndex);
+      return serverIds;
+    }
+
     const rowIds: Array<string | number> = [];
     let done = 0;
-    onProgress?.(done, selectedCountByIndex);
 
     for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
       if (signal?.aborted) {
@@ -4737,6 +4762,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     sortBy,
     sortAsc,
     selectionState,
+    fetchIndexSelectionIdsFromServer,
   ]);
 
   const invokeMetadataAction = useCallback(
@@ -4879,7 +4905,24 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     let done = 0;
 
     try {
-      for (const { offset, limit } of metadataScanWindows(selectionStateToSelectedRanges(selectionState, totalRows), SELECTION_IDS_SCAN_PAGE_SIZE)) {
+      const serverIds = typeof svcRef.current.resolveMetadataSelectionIds === "function"
+        ? await fetchIndexSelectionIdsFromServer(controller.signal)
+        : null;
+      if (controller.signal.aborted) return false;
+      for (const rowId of serverIds ?? []) {
+        const key = rowIdToKey(rowId);
+        if (!nextKeys.has(key)) {
+          nextKeys.add(key);
+          nextMap.set(key, rowId);
+          done += 1;
+        }
+      }
+      if (serverIds) setSelectionProgress({ done, total: selectedCountByIndex });
+
+      const scanWindows = serverIds
+        ? []
+        : metadataScanWindows(selectionStateToSelectedRanges(selectionState, totalRows), SELECTION_IDS_SCAN_PAGE_SIZE);
+      for (const { offset, limit } of scanWindows) {
         if (controller.signal.aborted) return false;
         const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
@@ -4954,6 +4997,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     selectionState,
     clearSelection,
     isMountedRef,
+    fetchIndexSelectionIdsFromServer,
   ]);
 
   const ensureStableSelectionBeforeSort = useCallback(async (): Promise<boolean> => {

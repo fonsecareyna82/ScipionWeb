@@ -3940,6 +3940,47 @@ export async function fetchMetadataTableSchema(
 }
 
 
+/** A selection by row index as the metadata viewer keeps it: the ranges selected, or (all) every row but them. */
+export type MetadataIndexSelection = {
+  baseMode: "none" | "all";
+  ranges: Array<{ start: number; end: number }>;
+  sortBy?: string | null;
+  asc?: boolean;
+};
+
+export type MetadataSelectionIds = { ids: number[]; count: number; totalRows: number };
+
+/** The row ids of a selection by index, resolved by the API in one request (null when it cannot: older API). */
+export async function resolveMetadataSelectionIds(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  selection: MetadataIndexSelection,
+  signal?: AbortSignal,
+): Promise<MetadataSelectionIds | null> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/selection-ids`;
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      baseMode: selection.baseMode,
+      ranges: selection.ranges.map((range) => ({ start: range.start, end: range.end })),
+      sortBy: selection.sortBy || null,
+      asc: selection.asc ?? true,
+    }),
+    signal,
+  });
+  if (res.status === 404 || res.status === 405) return null;
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to resolve the selected rows");
+  }
+  return safeJson<MetadataSelectionIds>(res);
+}
+
 export async function runMetadataTableAction(
   projectId: Id,
   protocolId: Id,

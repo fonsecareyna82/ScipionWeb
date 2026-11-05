@@ -341,6 +341,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");
+  mapFn("resolveMetadataSelectionIds", "resolveMetadataSelectionIds");
 
   mapFn("listOutputTiltSeries", "listOutputTiltSeries");
   mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
