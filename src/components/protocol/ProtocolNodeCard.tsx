@@ -127,6 +127,13 @@ export type ExternalAnalyzeViewerService = {
   resolveAnalyzeViewer?: (ctx: AnalyzeViewerResolveContext) => Promise<AnalyzeViewerResolveDecision>;
 };
 
+/** Why a launched protocol does not start yet: all its user's run slots are in use. */
+export function runSlotWaitText(status?: string, wait?: { inUse: number; limit: number } | null): string {
+  if (String(status ?? "").toLowerCase() !== "launched" || !wait || !(wait.limit > 0)) return "";
+  return `Waiting for a free run slot: ${wait.inUse} of ${wait.limit} of your protocols are running `
+    + "(Max concurrent runs per user). It starts when one of them ends.";
+}
+
 type StatusNodeProps = {
   id?: string;
   data: {
@@ -135,6 +142,8 @@ type StatusNodeProps = {
     comment: string;
     title: string;
     status?: string;
+    // A launched protocol waiting for one of its user's run slots
+    waitingForSlot?: { inUse: number; limit: number } | null;
     id: string;
     color?: string;
     cpuTime?: string;
@@ -2563,8 +2572,10 @@ export default function ProtocolNodeCard({
                       style={{
                         backgroundColor: statusBadgeColors[data.status] || "var(--app-n-400)",
                       }}
+                      title={runSlotWaitText(data.status, data.waitingForSlot) || undefined}
                     >
                       {data.status}
+                      {runSlotWaitText(data.status, data.waitingForSlot) ? " · waiting for a run slot" : ""}
 
                       {showProgressBar && (
                         <span className={styles.progress}>

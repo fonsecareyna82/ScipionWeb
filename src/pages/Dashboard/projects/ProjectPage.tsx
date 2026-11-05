@@ -164,6 +164,7 @@ interface StatusNodeData {
   elapsedSessionId?:
   | string
   | null;
+  waitingForSlot?: { inUse: number; limit: number } | null;
 
   tick?: number;
   numberOfSteps?: number;
@@ -2166,6 +2167,7 @@ export default function ProjectPage() {
             summary.elapsedSessionId == null
               ? null
               : String(summary.elapsedSessionId).trim() || null;
+          const waitingForSlot = summary.waitingForSlot ?? null;
 
           const freshNode: Node<StatusNodeData> = {
             ...node,
@@ -2175,6 +2177,7 @@ export default function ProjectPage() {
               cpuTime,
               elapsedTime,
               elapsedSessionId,
+              waitingForSlot,
               stepsDone,
               numberOfSteps,
               gpuIndicatorEligible,
@@ -2207,6 +2210,7 @@ export default function ProjectPage() {
             summary.elapsedSessionId == null
               ? null
               : String(summary.elapsedSessionId).trim() || null;
+          const waitingForSlot = summary.waitingForSlot ?? null;
 
           const freshRow = {
             ...row,
@@ -2214,6 +2218,7 @@ export default function ProjectPage() {
             cpuTime,
             elapsedTime,
             elapsedSessionId,
+            waitingForSlot,
             stepsDone,
             numberOfSteps,
             gpuIndicatorEligible,

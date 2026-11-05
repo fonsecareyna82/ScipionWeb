@@ -79,6 +79,11 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
 - Colours in `sx`, inline styles and CSS modules use the variables, not hex values: the neutral scale `--app-n-0` (white) … `--app-n-900` keeps the light values and is inverted in dark; `--app-<hue>-50|100|200` are tint backgrounds and `--app-<hue>-700|800|900` their text (red, amber, yellow, green, emerald, blue, indigo, sky). Light text on dark overlays and dark overlay backgrounds stay literal on purpose. Canvas and three.js code cannot read CSS variables: use `APP_TOKENS`/`NEUTRALS` from `theme/tokens.ts`. Scientific images and colour maps keep their own colours.
 - Protocol node cards keep their status hue in dark (a deep tint and a vivid border, `ProtocolNodeCard.module.css`).
 
+## Runs per user
+
+- A launched protocol waiting for one of its user's run slots (Settings → Instance → Max concurrent runs per user; 0 = no limit, the default) gets `waitingForSlot` `{inUse, limit}` from the API, in the graph and in the active-protocols poll (`ProjectPage` merges it into nodes and rows).
+- `ProtocolNodeCard`'s status badge then reads "launched · waiting for a run slot", with `runSlotWaitText` as its tooltip. The Settings field accepts 0–64 and explains that runs launched together count as one, and streaming runs still receiving data never count.
+
 ## Permissions
 
 - The API decides what a user may do (roles of permissions, groups, project access levels: see ScipionAPI's AGENTS.md). The web only hides what would be refused: `usePermissions().can("plugins.manage")` reads the signed-in user's `permissions` from `/auth/me`, once per session (`loadCurrentUserOnce`, forgotten at login and logout).

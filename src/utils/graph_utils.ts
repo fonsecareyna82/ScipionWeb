@@ -1278,6 +1278,7 @@ export function buildGraphElements(
       numberOfSteps: prot.numberOfSteps,
       elapsedTime: prot.elapsedTime,
       elapsedSessionId: prot.elapsedSessionId,
+      waitingForSlot: prot?.waitingForSlot ?? null,
       tick: Number(prot.elapsedTime) || 0,
 
       tags: Array.isArray(prot.tags) ? prot.tags : [],
@@ -1334,6 +1335,7 @@ export function buildGraphElements(
               cpuTime: prot?.cpuTime,
               elapsedTime: prot?.elapsedTime,
               elapsedSessionId: prot?.elapsedSessionId,
+              waitingForSlot: prot?.waitingForSlot ?? null,
               gpuIndicatorEligible: prot?.gpuIndicatorEligible === true,
               stepsDone: prot?.stepsDone,
               numberOfSteps: prot?.numberOfSteps,
@@ -1461,6 +1463,7 @@ export function buildGraphElements(
         cpuTime: prot?.cpuTime,
         elapsedTime: prot?.elapsedTime,
         elapsedSessionId: prot?.elapsedSessionId,
+        waitingForSlot: prot?.waitingForSlot ?? null,
         gpuIndicatorEligible: prot?.gpuIndicatorEligible === true,
         stepsDone: prot?.stepsDone,
         numberOfSteps: prot?.numberOfSteps,

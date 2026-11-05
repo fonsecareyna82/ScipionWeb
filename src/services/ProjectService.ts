@@ -234,9 +234,13 @@ export type ProtocolStep = {
 
 export type ProtocolStepStatus = "new" | "finished";
 
+/** A launched protocol waiting for one of its user's run slots (Settings → Instance). */
+export type RunSlotWait = { inUse: number; limit: number };
+
 export type ProtocolRuntimeSummary = {
   protocolId: string;
   status: string;
+  waitingForSlot?: RunSlotWait | null;
 
   cpuTimeSeconds: number;
   elapsedTimeSeconds: number;

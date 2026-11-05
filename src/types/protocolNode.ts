@@ -13,6 +13,8 @@ export interface ProtocolNode {
   cpuTime: string;
   elapsedTime: string;
   elapsedSessionId?: string | null;
+  // A launched protocol waiting for one of its user's run slots
+  waitingForSlot?: { inUse: number; limit: number } | null;
   gpuIndicatorEligible?: boolean;
   stepsDone: string;
   numberOfSteps: string;

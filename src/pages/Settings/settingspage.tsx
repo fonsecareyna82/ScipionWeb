@@ -385,7 +385,7 @@ function sanitizeInstanceSettings(
       raw?.maxConcurrentRunsPerUser,
       defaultInstanceSettings
         .maxConcurrentRunsPerUser,
-      1,
+      0,
       64,
     ),
   };
@@ -1785,13 +1785,14 @@ export default function SettingsPage() {
                   label="Max concurrent runs per user"
                   type="number"
                   value={instanceDraft.maxConcurrentRunsPerUser}
-                  inputProps={{ min: 1, max: 64, step: 1 }}
+                  inputProps={{ min: 0, max: 64, step: 1 }}
                   onChange={(e) =>
                     setInstanceDraft((prev) =>
-                      prev ? { ...prev, maxConcurrentRunsPerUser: clampNumber(e.target.value, 4, 1, 64) } : prev,
+                      prev ? { ...prev, maxConcurrentRunsPerUser: clampNumber(e.target.value, 0, 0, 64) } : prev,
                     )
                   }
-                  helperText="1–64"
+                  helperText={"0 = no limit (default). Protocols launched together (Run all, Continue all) count "
+                    + "as one; streaming protocols still receiving data never count."}
                   size="small"
                 />
               </Grid>

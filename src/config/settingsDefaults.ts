@@ -37,5 +37,6 @@ export const DEFAULT_PROJECT_USER_SETTINGS:
 export const DEFAULT_PROJECT_INSTANCE_SETTINGS:
   ProjectInstanceSettings = {
   defaultQueueName: "default",
-  maxConcurrentRunsPerUser: 4,
+  // 0: no limit
+  maxConcurrentRunsPerUser: 0,
 };
