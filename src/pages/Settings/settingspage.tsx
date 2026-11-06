@@ -75,7 +75,7 @@ import UserManagementPanel from "@/pages/Settings/UserManagementPanel";
 import RolesPanel from "@/pages/Settings/RolesPanel";
 import GroupsPanel from "@/pages/Settings/GroupsPanel";
 import AuditPanel from "@/pages/Settings/AuditPanel";
-import DiskUsagePanel from "@/pages/Settings/DiskUsagePanel";
+import UsagePanel from "@/pages/Settings/UsagePanel";
 import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -2503,7 +2503,7 @@ export default function SettingsPage() {
               {can("roles.manage") && <Tab value="roles" label="Roles" icon={<ShieldCheck size={16} />} iconPosition="start" />}
               {can("groups.manage") && <Tab value="groups" label="Groups" icon={<UsersRound size={16} />} iconPosition="start" />}
               {can("audit.view") && <Tab value="audit" label="Audit" icon={<ScrollText size={16} />} iconPosition="start" />}
-              {can("storage.view") && <Tab value="disk" label="Disk usage" icon={<HardDrive size={16} />} iconPosition="start" />}
+              {can("storage.view") && <Tab value="disk" label="Usage" icon={<HardDrive size={16} />} iconPosition="start" />}
               <Tab value="tags" label="Tags" icon={<Tag size={16} />} iconPosition="start" />
               {can("settings.manage") && <Tab value="environment" label="Environment" icon={<Braces size={16} />} iconPosition="start" />}
             </Tabs>
@@ -2557,8 +2557,8 @@ export default function SettingsPage() {
                               )
                               : tab === "disk"
                                 ? (
-                                  <DiskUsagePanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
-                                                  colors={colors} actionButtonSx={actionButtonSx} />
+                                  <UsagePanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
+                                              colors={colors} actionButtonSx={actionButtonSx} />
                                 )
                               : tab === "tags"
                                 ? renderTagsContent()

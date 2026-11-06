@@ -9,6 +9,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { ImportProjectPayload, ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
+import { formatHours, getOwnComputeUsage, type OwnCompute } from "@/api/usage";
 import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
@@ -397,6 +398,16 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     );
   }, [projects, normalizedTerm]);
 
+  // What the user ran this month (null while unknown, or with an API that does not keep it)
+  const [ownCompute, setOwnCompute] = useState<OwnCompute | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getOwnComputeUsage()
+      .then((usage) => { if (!cancelled) setOwnCompute(usage); })
+      .catch(() => { /* only a hint: the list works without it */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const stats = useMemo(() => {
     const total = projects.length;
     const shared = projects.filter((p) => Boolean(p.isShared) && !Boolean(p.isOwner)).length;
@@ -744,6 +755,17 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                   ? ` (${stats.ownedNotMeasured} not measured yet)`
                   : ""}
                 .
+              </p>
+            )}
+            {ownCompute && ownCompute.runs > 0 && (
+              <p className="mt-0.5 text-sm leading-6 text-gray-700 dark:text-gray-300" data-testid="own-compute-usage">
+                This month you ran{" "}
+                <span className="font-semibold text-gray-950 dark:text-white">
+                  {ownCompute.runs} {ownCompute.runs === 1 ? "protocol" : "protocols"}
+                </span>
+                {": "}
+                <span className="font-semibold text-gray-950 dark:text-white">{formatHours(ownCompute.gpuHours)}</span>
+                {" "}of GPU and {formatHours(ownCompute.hours)} of running time.
               </p>
             )}
           </div>
