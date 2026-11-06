@@ -202,7 +202,7 @@ export default function SamplesPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, 
             <Card variant="outlined" sx={cardSx}>
                 <CardHeader
                     title="Samples and grids"
-                    subheader="Each sample by its NZ code, the boxes its grids were vitrified into, and every grid in its box position; a session's DATA will point to the grid it was acquired on."
+                    subheader="Each sample by its code (the one your facility uses, in any format), the boxes its grids were vitrified into, and every grid in its box position; a session's DATA will point to the grid it was acquired on."
                     sx={cardHeaderSx}
                     action={
                         <Stack direction="row" spacing={1}>
@@ -494,7 +494,8 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
         >
             <Stack spacing={1.5} sx={{ pt: 0.5 }}>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={{ ...fieldSx, minWidth: 160 }} size="small" label="Code" value={code} placeholder="NZ251"
+                    <TextField sx={{ ...fieldSx, minWidth: 160 }} size="small" label="Code" value={code} placeholder="e.g. NZ251, S-0042"
+                               helperText="Your facility's own code, any format; unique" FormHelperTextProps={{ sx: { fontSize: 13.5 } }}
                                onChange={(e) => setCode(e.target.value)} />
                     <TextField sx={fieldSx} size="small" fullWidth label="Description" value={description}
                                onChange={(e) => setDescription(e.target.value)} />
@@ -550,7 +551,7 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
                                 <TextField sx={{ ...fieldSx, minWidth: 130 }} size="small" label="Box" value={box.label}
                                            placeholder="2 green" onChange={(e) => setBox(box.key, { label: e.target.value })} />
                                 <TextField sx={fieldSx} size="small" label="Vitrification" value={box.vitrificationCode}
-                                           placeholder="NZ251.2" onChange={(e) => setBox(box.key, { vitrificationCode: e.target.value })} />
+                                           placeholder="e.g. NZ251.2" onChange={(e) => setBox(box.key, { vitrificationCode: e.target.value })} />
                                 <TextField sx={fieldSx} size="small" type="date" label="Vitrified on" value={box.vitrifiedOn}
                                            InputLabelProps={{ shrink: true }}
                                            onChange={(e) => setBox(box.key, { vitrifiedOn: e.target.value })} />

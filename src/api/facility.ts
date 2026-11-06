@@ -107,7 +107,7 @@ export const uploadMicroscopePhoto = (microscopeId: number, file: Blob) =>
 export const deleteMicroscopePhoto = (microscopeId: number) =>
   request<Microscope>(`/facility/microscopes/${microscopeId}/photo`, "Failed to remove the photo", { method: "DELETE" });
 
-// Samples (their NZ code), the boxes their grids were vitrified into, and the grids in each box
+// Samples (by the facility's own code, any format), the boxes their grids were vitrified into, and the grids in each box
 export type GridStatus = "stored" | "loaded" | "used" | "discarded";
 
 // An image of a sample, box or grid: what it is; its bytes are read with fetchFacilityImageUrl
