@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router";
-import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, IconButton, Stack, Tooltip, Typography } from "@mui/material";
-import { Activity, FolderOpen, RefreshCw } from "lucide-react";
+import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, Stack, Typography } from "@mui/material";
+import { RefreshCw } from "lucide-react";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { getMyFacility, type MyFacility, type SessionDataset, type UserSession } from "@/api/facility";
 import { FACILITY_TEXT } from "./facilityStyles";
-import { DatasetProgress, describeDatasetGrid, SESSION_STATUS_LABELS } from "./SessionsPanel";
+import { DatasetProgress, DatasetProjectLinks, describeDatasetGrid, SESSION_STATUS_LABELS } from "./SessionsPanel";
 import NavigationReport from "./NavigationReport";
 
 type PanelStyles = {
@@ -89,20 +88,9 @@ function SessionCard({ session, mine, colors }: { session: UserSession; mine: My
                                     {dataset.detectorName ? ` · ${dataset.detectorName}` : ""}
                                 </Typography>
                                 {dataset.projectId != null && (
-                                    <Stack direction="row" spacing={0.25} sx={{ ml: "auto !important", flexShrink: 0 }}>
-                                        <Tooltip arrow title="Open its project (read only)">
-                                            <IconButton size="small" component={RouterLink} to={`/project/load/${dataset.projectId}`}
-                                                        aria-label={`Open the project of ${dataset.folder}`}>
-                                                <FolderOpen size={15} />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip arrow title="Its streaming monitor">
-                                            <IconButton size="small" component={RouterLink} to={`/project/${dataset.projectId}/monitor`}
-                                                        aria-label={`Monitor of ${dataset.folder}`}>
-                                                <Activity size={15} />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </Stack>
+                                    <Box sx={{ ml: "auto !important", flexShrink: 0 }}>
+                                        <DatasetProjectLinks dataset={dataset} colors={colors} readOnly />
+                                    </Box>
                                 )}
                             </Stack>
                             <Box sx={{ pl: 1 }}>

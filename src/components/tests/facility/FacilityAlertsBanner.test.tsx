@@ -42,6 +42,9 @@ describe("The facility's alerts banner", () => {
 
     await waitFor(() => expect(facilityMocks.acknowledgeFacilityAlert).toHaveBeenCalledWith(5));
     expect(await screen.findByText("1 facility alert being handled")).toBeInTheDocument();
+    // Taken, it folds into one line: unfolded on demand
+    expect(screen.queryByText(stalled.message)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show every alert" }));
     expect(screen.getByText(/Javier Collado is on it/)).toBeInTheDocument();
   });
 

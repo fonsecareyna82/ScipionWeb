@@ -311,8 +311,39 @@ export function DatasetProgress({ dataset, colors }: { dataset: SessionDataset; 
     );
 }
 
-const PROCESSING_LABELS = { queued: "Queued", running: "Making its project…", launched: "Processing", error: "Processing failed" };
-const PROCESSING_COLORS = { queued: "#64748b", running: "#2563eb", launched: "#16a34a", error: "#dc2626" };
+const PROCESSING_LABELS = { queued: "Queued", running: "Making its project…", launched: "Processing", error: "Processing failed",
+    gone: "Project deleted" };
+const PROCESSING_COLORS = { queued: "#64748b", running: "#2563eb", launched: "#16a34a", error: "#dc2626", gone: "#64748b" };
+
+// What can be clicked on a DATA has a border: without one it reads as a label
+const DATASET_BUTTON_SX = { textTransform: "none", fontSize: FACILITY_TEXT.note, borderRadius: 2, py: 0.1, px: 1,
+    minWidth: 0, lineHeight: 1.6, whiteSpace: "nowrap" } as const;
+
+/** Open a DATA's project, or its streaming monitor. */
+export function DatasetProjectLinks({ dataset, colors, readOnly = false }: {
+    dataset: { projectId?: number | null; folder: string };
+    colors: { text: string; border: string };
+    readOnly?: boolean;
+}) {
+    if (dataset.projectId == null) return null;
+    const sx = { ...DATASET_BUTTON_SX, color: colors.text, borderColor: colors.border };
+    return (
+        <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
+            <Tooltip arrow title={readOnly ? "Open its project (read only)" : "Open its project"}>
+                <Button size="small" variant="outlined" sx={sx} component={RouterLink} to={`/project/load/${dataset.projectId}`}
+                        startIcon={<FolderOpen size={14} />} aria-label={`Open the project of ${dataset.folder}`}>
+                    Project
+                </Button>
+            </Tooltip>
+            <Tooltip arrow title="Its streaming monitor">
+                <Button size="small" variant="outlined" sx={sx} component={RouterLink} to={`/project/${dataset.projectId}/monitor`}
+                        startIcon={<Activity size={14} />} aria-label={`Monitor of ${dataset.folder}`}>
+                    Monitor
+                </Button>
+            </Tooltip>
+        </Stack>
+    );
+}
 
 /** A DATA's project: how its making went, links to it and its monitor, and asking for it (again). */
 function DatasetProcessing({ session, dataset, colors, onProcess }: {
@@ -322,7 +353,10 @@ function DatasetProcessing({ session, dataset, colors, onProcess }: {
     onProcess?: (dataset: SessionDataset) => void;
 }) {
     if (dataset.kind !== "data") return null;
-    const processing = dataset.processing;
+    // Launched, but its project was deleted since: it is not processing any more
+    const processing = dataset.processing?.state === "launched" && dataset.projectId == null
+        ? { ...dataset.processing, state: "gone" as const, message: "Its project was deleted: process it again to make a new one." }
+        : dataset.processing;
     const canAsk = !!onProcess && !dataset.projectId && session.status === "acquiring" && !!session.templateId
         && !!dataset.acquisition && !dataset.acquisition.error && processing?.state !== "queued" && processing?.state !== "running";
     // Without a template, or before its first movie, a DATA has nothing to process
@@ -342,24 +376,9 @@ function DatasetProcessing({ session, dataset, colors, onProcess }: {
                     </Box>
                 </Tooltip>
             )}
-            {dataset.projectId != null && (
-                <>
-                    <Tooltip arrow title="Open its project">
-                        <IconButton size="small" component={RouterLink} to={`/project/load/${dataset.projectId}`}
-                                    aria-label={`Open the project of ${dataset.folder}`}>
-                            <FolderOpen size={15} />
-                        </IconButton>
-                    </Tooltip>
-                    <Tooltip arrow title="Its streaming monitor">
-                        <IconButton size="small" component={RouterLink} to={`/project/${dataset.projectId}/monitor`}
-                                    aria-label={`Monitor of ${dataset.folder}`}>
-                            <Activity size={15} />
-                        </IconButton>
-                    </Tooltip>
-                </>
-            )}
+            {dataset.projectId != null && <DatasetProjectLinks dataset={dataset} colors={colors} />}
             {canAsk && (
-                <Button size="small" variant="text" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note, color: colors.text }}
+                <Button size="small" variant="outlined" sx={{ ...DATASET_BUTTON_SX, color: colors.text, borderColor: colors.border }}
                         onClick={() => onProcess?.(dataset)}>
                     {processing?.state === "error" ? "Try again" : "Process now"}
                 </Button>
@@ -810,9 +829,9 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
             templateId,
             autoProcess,
             oneProject,
-            ctfMinDefocus: ctfMinDefocus.trim() ? Number(ctfMinDefocus) : null,
-            ctfMaxDefocus: ctfMaxDefocus.trim() ? Number(ctfMaxDefocus) : null,
-            ctfMaxResolution: ctfMaxResolution.trim() ? Number(ctfMaxResolution) : null,
+            ctfMinDefocus: technique === "spa" && ctfMinDefocus.trim() ? Number(ctfMinDefocus) : null,
+            ctfMaxDefocus: technique === "spa" && ctfMaxDefocus.trim() ? Number(ctfMaxDefocus) : null,
+            ctfMaxResolution: technique === "spa" && ctfMaxResolution.trim() ? Number(ctfMaxResolution) : null,
             datasets: [
                 ...(atlas ? [{ id: atlas.id, kind: "atlas" as const, notes: atlas.notes }] : []),
                 ...rows.map((row) => ({ id: row.id, kind: "data" as const, number: row.number, gridId: row.gridId,
@@ -964,6 +983,8 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                         label="All grids in one project"
                     />
                 </Stack>
+                {/* The CTF consensus is SPA's: a tomography template has none to apply them to */}
+                {technique === "spa" && (<>
                 <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, pt: 1 }}>
                     CTF limits
                     <InfoHint text={"The CTF consensus of each DATA's project keeps the micrographs within these limits. Left "
@@ -980,6 +1001,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                inputProps={{ inputMode: "decimal" }} disabled={!templateId}
                                onChange={(e) => setCtfMaxResolution(e.target.value)} />
                 </Stack>
+                </>)}
                 </DialogSection>
 
                 <DialogSection title="Notes" colors={colors}>
@@ -1056,7 +1078,7 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
                                         <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{saved.folder}</Box>
                                     </Typography>
                                 )}
-                                <TextField sx={fieldSx} size="small" label="Notes" value={row.notes}
+                                <TextField sx={fieldSx} size="small" label="Notes (staff only)" value={row.notes}
                                            onChange={(e) => setRow(row.key, { notes: e.target.value })} />
                                 {saved && (
                                     <ImageStrip images={saved.images ?? []} size={44} colors={colors}

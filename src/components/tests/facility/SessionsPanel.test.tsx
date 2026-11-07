@@ -243,4 +243,21 @@ describe("The sessions of the facility", () => {
 
     await waitFor(() => expect(facilityMocks.processSessionDataset).toHaveBeenCalledWith(42));
   });
+
+  it("says a DATA whose project was deleted is no longer processing, and makes a new one", async () => {
+    facilityMocks.processSessionDataset.mockResolvedValue(session);
+    facilityMocks.listSessions.mockResolvedValue([{
+      ...session, status: "acquiring", templateId: "WH-Workflow 2D relion", autoProcess: true,
+      datasets: [{ ...session.datasets[1], watch: "receiving", movieCount: 3, projectId: null, acquisition: { pixelSize: 1.14 },
+                   processing: { state: "launched", projectName: `${NAME}_DATA_01` } }],
+    }]);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    expect(screen.getByText("Project deleted")).toBeInTheDocument();
+    expect(screen.queryByText("Processing")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Process now" }));
+
+    await waitFor(() => expect(facilityMocks.processSessionDataset).toHaveBeenCalledWith(session.datasets[1].id));
+  });
 });

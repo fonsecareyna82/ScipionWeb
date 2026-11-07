@@ -25,7 +25,8 @@ function takenBy(alert: FacilityAlert): string {
 
 /**
  * The facility's open alerts, over every page, for its staff: red and hard to miss while nobody has said they
- * are on them, amber once someone has. They go away when their cause is over (the watcher resolves them).
+ * are on them; once someone has, a thin amber line, unfolded on demand. They go away when their cause is over
+ * (the watcher resolves them).
  */
 export default function FacilityAlertsBanner() {
   const { loaded, facilityCan } = useFacilityStatus();
@@ -49,7 +50,9 @@ export default function FacilityAlertsBanner() {
   const untaken = alerts.filter((alert) => !alert.acknowledgedAt);
   const taken = alerts.filter((alert) => alert.acknowledgedAt);
   const urgent = untaken.length > 0;
-  const shown = expanded ? alerts : (urgent ? untaken : taken).slice(0, SHOWN);
+  // Alerts someone is on stay folded: what is left is to wait for their cause to end
+  const shown = expanded ? alerts : (urgent ? untaken.slice(0, SHOWN) : []);
+  const canUnfold = urgent ? alerts.length > SHOWN || taken.length > 0 : true;
 
   const take = async (alert: FacilityAlert) => {
     try {
@@ -63,12 +66,12 @@ export default function FacilityAlertsBanner() {
 
   return (
     <div role="alert" data-testid="facility-alerts"
-         className={`mx-2 mt-2 rounded-xl border-2 px-4 py-3 shadow-sm ${urgent
-           ? "border-red-700 bg-red-600 text-white"
-           : "border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100"}`}>
+         className={`mx-2 mt-2 rounded-xl ${urgent
+           ? "border-2 border-red-700 bg-red-600 px-4 py-3 text-white shadow-sm"
+           : "border border-amber-400 bg-amber-50 px-4 py-1.5 text-amber-900 dark:bg-amber-950 dark:text-amber-100"}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <AlertTriangle className={urgent ? "h-6 w-6" : "h-5 w-5"} />
-        <span className={urgent ? "text-[17px] font-bold" : "text-[15px] font-semibold"}>
+        <AlertTriangle className={urgent ? "h-6 w-6" : "h-4 w-4"} />
+        <span className={urgent ? "text-[17px] font-bold" : "text-[14px] font-semibold"}>
           {urgent
             ? `${untaken.length} facility alert${untaken.length === 1 ? "" : "s"} nobody is on yet`
             : `${taken.length} facility alert${taken.length === 1 ? "" : "s"} being handled`}
@@ -76,10 +79,10 @@ export default function FacilityAlertsBanner() {
         </span>
         <div className="ml-auto flex items-center gap-2">
           <Link to="/facility/sessions"
-                className={`rounded-lg px-3 py-1 text-[14px] font-semibold ${urgent ? "bg-white text-red-700 hover:bg-red-50" : "bg-amber-600 text-white hover:bg-amber-700"}`}>
+                className={`rounded-lg font-semibold ${urgent ? "bg-white px-3 py-1 text-[14px] text-red-700 hover:bg-red-50" : "border border-amber-500 px-2.5 py-0.5 text-[13.5px] hover:bg-amber-100 dark:hover:bg-amber-900"}`}>
             Open the sessions
           </Link>
-          {alerts.length > SHOWN || (urgent && taken.length > 0) ? (
+          {canUnfold ? (
             <button type="button" onClick={() => setExpanded((value) => !value)}
                     aria-label={expanded ? "Show fewer alerts" : "Show every alert"}
                     className="rounded-lg p-1 hover:bg-black/10">
@@ -88,7 +91,7 @@ export default function FacilityAlertsBanner() {
           ) : null}
         </div>
       </div>
-      <ul className="mt-2 space-y-1">
+      {shown.length > 0 && <ul className="mt-2 space-y-1">
         {shown.map((alert) => (
           <li key={alert.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[15px]">
             <span className="min-w-0 flex-1">{alert.message}</span>
@@ -104,7 +107,7 @@ export default function FacilityAlertsBanner() {
             ) : null}
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   );
 }

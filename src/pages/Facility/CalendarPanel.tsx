@@ -302,10 +302,17 @@ export default function CalendarPanel(props: PanelStyles & { isStaff: boolean; i
                 </Card>
             )}
 
-            {myOpen.length > 0 && (
+            {/* A user always sees where their requests go, even before the first one; the staff only when they have some */}
+            {mine !== null && (myOpen.length > 0 || !isStaff) && (
                 <Card variant="outlined" sx={cardSx}>
                     <CardHeader title="My bookings" sx={cardHeaderSx} />
                     <CardContent sx={{ pt: 2 }}>
+                        {myOpen.length === 0 && (
+                            <Typography data-testid="my-bookings-empty" sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                                No bookings to come. Ask for time below: your requests wait here until the facility
+                                confirms them or offers another time.
+                            </Typography>
+                        )}
                         <Stack spacing={1.25}>
                             {myOpen.map((booking) => (
                                 <Stack key={booking.id} direction={{ xs: "column", sm: "row" }} spacing={1.5}
@@ -485,7 +492,9 @@ function BookingDialog({ booking, initial, resources, isStaff, myGroups, fieldSx
     const choices = resources.filter((candidate) => candidate.active || candidate.id === resourceId);
     const duration = start && end ? hoursBetween(fromLocalInput(start), fromLocalInput(end)) : 0;
     const isBooking = kind === "booking";
-    const valid = resourceId !== "" && start !== "" && end !== "" && duration > 0;
+    // A user asks for a time to come; the dates are typed in the browser's own order, so say which were read
+    const past = !isStaff && start !== "" && new Date(fromLocalInput(start)).getTime() <= Date.now();
+    const valid = resourceId !== "" && start !== "" && end !== "" && duration > 0 && !past;
 
     const save = async () => {
         if (!valid) return;
@@ -577,6 +586,14 @@ function BookingDialog({ booking, initial, resources, isStaff, myGroups, fieldSx
                         {start && end ? (duration > 0 ? describeHours(duration) : "Ends before it starts") : ""}
                     </Typography>
                 </Stack>
+                {start && end && duration > 0 && (
+                    <Typography data-testid="booking-when" sx={{ fontSize: FACILITY_TEXT.note, mt: "-8px !important",
+                                                                 color: past ? "error.main" : colors.muted }}>
+                        {past ? "It starts in the past: " : "Read as "}
+                        {formatWhen(fromLocalInput(start), fromLocalInput(end))}
+                        {past ? ". Ask for a time still to come." : ""}
+                    </Typography>
+                )}
                 {resource && limitsOf(resource) && (
                     <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: "-8px !important" }}>
                         {limitsOf(resource)}{isStaff ? " The facility may book outside them." : ""}

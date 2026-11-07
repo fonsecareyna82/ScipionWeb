@@ -97,16 +97,29 @@ describe("The facility's calendar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Ask for time" }, { timeout: 4000 }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Krios G5 is booked for 1 day to 3 days; its day starts at 09:00.")).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2026-12-01T09:00" } });
-    fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "2026-12-03T09:00" } });
+    fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2030-12-01T09:00" } });
+    fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "2030-12-03T09:00" } });
     expect(within(dialog).getByText("2 days")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("booking-when")).toHaveTextContent("Read as Sun, 1 Dec 09:00 → Tue, 3 Dec 09:00");
     fireEvent.change(within(dialog).getByLabelText("What it is for"), { target: { value: "Nsp9 grids" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Ask" }));
 
     await waitFor(() => expect(facilityMocks.createBooking).toHaveBeenCalledWith({
-      resourceId: 1, startsAt: new Date("2026-12-01T09:00").toISOString(), endsAt: new Date("2026-12-03T09:00").toISOString(),
+      resourceId: 1, startsAt: new Date("2030-12-01T09:00").toISOString(), endsAt: new Date("2030-12-03T09:00").toISOString(),
       justification: "Nsp9 grids", groupId: 3, technique: "spa",
     }));
+  }, 15000);
+
+  it("shows a user where their requests go before the first, and says a start already gone", async () => {
+    render(<CalendarPanel {...styles} isStaff={false} isManager={false} />);
+    expect(await screen.findByTestId("my-bookings-empty", undefined, { timeout: 4000 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask for time" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2020-07-11T09:00" } });
+    fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "2020-07-12T09:00" } });
+    expect(within(dialog).getByTestId("booking-when")).toHaveTextContent("It starts in the past: Sat, 11 Jul 09:00");
+    expect(within(dialog).getByRole("button", { name: "Ask" })).toBeDisabled();
   }, 15000);
 
   it("shows the others' bookings without whose", async () => {
