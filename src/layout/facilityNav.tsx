@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CalendarClock, CalendarDays, FlaskConical, Microscope, SlidersHorizontal, UserRound } from "lucide-react";
+import { Archive, CalendarClock, CalendarDays, FlaskConical, Microscope, SlidersHorizontal, UserRound } from "lucide-react";
 
 import { useFacilityStatus } from "@/hooks/useFacilityStatus";
 
@@ -13,6 +13,7 @@ export const FACILITY_TABS = [
   { key: "mine", label: "My sessions", icon: UserRound, permissions: [] },
   { key: "calendar", label: "Calendar", icon: CalendarDays, permissions: [] },
   { key: "samples", label: "Samples & grids", icon: FlaskConical, permissions: FACILITY_STAFF },
+  { key: "retention", label: "Data retention", icon: Archive, permissions: FACILITY_STAFF },
   { key: "microscopes", label: "Microscopes", icon: Microscope, permissions: ["facility.manage"] },
   { key: "configuration", label: "Configuration", icon: SlidersHorizontal, permissions: ["facility.manage"] },
 ] as const;

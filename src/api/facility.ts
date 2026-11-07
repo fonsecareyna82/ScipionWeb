@@ -212,7 +212,9 @@ export type SessionGrid = {
 };
 
 // Where a DATA is in its acquisition, as the watcher of the microscope's folders saw it
-export type DatasetWatch = "receiving" | "stalled" | "acquired" | "idle" | "noOffload" | "pending" | "noFolder" | "waiting";
+// (the ATLAS: atlasFound once the microscope wrote files in it)
+export type DatasetWatch = "receiving" | "stalled" | "acquired" | "idle" | "noOffload" | "pending" | "noFolder" | "waiting"
+  | "atlasFound";
 
 // What the first movie's metadata says (null: not read yet); error when it could not be read
 export type DatasetAcquisition = {
@@ -274,6 +276,8 @@ export type SessionDataset = {
   processing?: DatasetProcessing | null;
   // A tomography DATA's navigation report (tomo5-mapper): the staff also see whether one can be made, and why it failed
   navigation?: NavigationReportState | null;
+  // The ATLAS: what the watcher found in its folder (null: not looked at, or not there)
+  atlas?: { files: number; bytes: number; newestAt: string | null } | null;
   images?: FacilityImage[];
 };
 
@@ -373,6 +377,11 @@ export function sessionPayloadOf(session: FacilitySession): SessionPayload {
   };
 }
 
+/** Read again what a DATA's first movie says (after fixing a detector); answers the session. */
+export const rereadDatasetAcquisition = (datasetId: number) =>
+  request<FacilitySession>(`/facility/datasets/${datasetId}/read-acquisition`,
+    "Failed to read the DATA's first movie again", { method: "POST" });
+
 /** Make a DATA's project now (again, after a failure); answers the session. */
 export const processSessionDataset = (datasetId: number) =>
   request<FacilitySession>(`/facility/datasets/${datasetId}/process`, "Failed to ask for the DATA's project",
@@ -384,6 +393,8 @@ export type FacilitySettings = {
   // Days the data are kept once a session finished (0: not said), and how users take them home
   rawRetentionDays: number;
   processedRetentionDays: number;
+  // The days before those dates when the session's user (and the group's PI) are mailed a notice
+  retentionNoticeDays: number[];
   downloadInstructions: string;
   // Policies (the CNB's by default): who owns a DATA's project and how its user and group see it, the tolerance of
   // a detector's calibration against EPU's pixel (%), the minutes a DATA may go without movies, the watcher's seconds
@@ -489,6 +500,7 @@ export type UserSession = Pick<FacilitySession, "id" | "name" | "microscopeName"
   // Until when the facility keeps its data (null: not said, or the session has not finished)
   rawKeptUntil: string | null;
   processedKeptUntil: string | null;
+  retention?: Record<RetentionKind, Pick<RetentionState, "state" | "until" | "daysLeft" | "deletedAt">>;
   datasets: (Omit<SessionDataset, "notes" | "detectorId" | "gridId" | "processing"> & {
     processing: { state: DatasetProcessing["state"] } | null;
   })[];
@@ -503,6 +515,71 @@ export type MyFacility = {
 };
 
 export const getMyFacility = () => request<MyFacility>("/facility/my-sessions", "Failed to load your sessions");
+
+// How long a finished session's data are kept: its raw movies (the facility deletes them, by hand) and its projects
+export type RetentionKind = "raw" | "processed";
+// deleted (recorded), none (no projects), open (not finished), kept (no date, or far from it), due (its date is
+// near), expired (past it: to delete)
+export type RetentionStateName = "deleted" | "none" | "open" | "kept" | "due" | "expired";
+export type RetentionState = {
+  state: RetentionStateName;
+  until: string | null;
+  daysLeft: number | null;
+  // The session's own date, not the facility's days
+  own: boolean;
+  deletedAt: string | null;
+  deletedBy: string | null;
+  // The notices its user was mailed before this date (days before it)
+  noticesSent: number[];
+};
+export type RetentionSession = {
+  id: number;
+  name: string;
+  status: SessionStatus;
+  microscopeId: number;
+  microscopeName: string;
+  technique: SessionTechnique;
+  groupName: string | null;
+  userName: string | null;
+  userEmail: string | null;
+  finishedAt: string;
+  finishedOn: string;
+  movieCount: number;
+  movieBytes: number;
+  projects: { id: number; name: string; ownerId: number; bytes: number | null }[];
+  raw: RetentionState;
+  processed: RetentionState;
+};
+export type RetentionList = {
+  sessions: RetentionSession[];
+  today: string;
+  rawRetentionDays: number;
+  processedRetentionDays: number;
+  retentionNoticeDays: number[];
+};
+export type DeletedProjects = {
+  session: RetentionSession;
+  deleted: { id: number; name: string }[];
+  failed: { id: number; name: string; detail: string }[];
+};
+
+export const listRetention = () => request<RetentionList>("/facility/retention", "Failed to load the data retention");
+/** Give a session its own dates (null: the facility's days); a kind left out keeps its date. */
+export const saveSessionRetention = (sessionId: number,
+  dates: Partial<{ rawKeepUntil: string | null; processedKeepUntil: string | null }>) =>
+  request<RetentionSession>(`/facility/sessions/${sessionId}/retention`, "Failed to save the dates",
+    { method: "PUT", body: JSON.stringify(dates) });
+/** Record that the raw data were deleted where the facility keeps them (ScipionWeb deletes none). */
+export const markRawDeleted = (sessionId: number) =>
+  request<RetentionSession>(`/facility/sessions/${sessionId}/retention/raw-deleted`,
+    "Failed to record the raw data as deleted", { method: "POST" });
+export const unmarkRawDeleted = (sessionId: number) =>
+  request<RetentionSession>(`/facility/sessions/${sessionId}/retention/raw-deleted`, "Failed to undo the record",
+    { method: "DELETE" });
+/** Delete the projects of the session's DATA; answers those that could not go. */
+export const deleteSessionProjects = (sessionId: number) =>
+  request<DeletedProjects>(`/facility/sessions/${sessionId}/retention/delete-projects`,
+    "Failed to delete the session's projects", { method: "POST" });
 
 // The room's screen: each microscope's state and session, opened with its link's token (no signed-in user)
 export type RoomState = "acquiring" | "preparing" | "idle" | "maintenance" | "outOfService";

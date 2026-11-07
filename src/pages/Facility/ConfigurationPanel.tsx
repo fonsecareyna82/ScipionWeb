@@ -314,15 +314,24 @@ function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, col
     const [raw, setRaw] = useState(String(answer.settings.rawRetentionDays ?? 0));
     const [processed, setProcessed] = useState(String(answer.settings.processedRetentionDays ?? 0));
     const [instructions, setInstructions] = useState(answer.settings.downloadInstructions ?? "");
+    const [notices, setNotices] = useState((answer.settings.retentionNoticeDays ?? []).join(", "));
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
+        // "30, 7, 1": the API checks each day and how many there are
+        const noticeDays = notices.split(/[\s,;]+/).filter(Boolean).map(Number);
+        if (noticeDays.some((day) => !Number.isInteger(day))) {
+            toast.error("The notice days are whole numbers separated by commas, e.g. 30, 7, 1");
+            return;
+        }
         setSaving(true);
         try {
             const saved = await saveFacilitySettings({
                 rawRetentionDays: Number(raw) || 0, processedRetentionDays: Number(processed) || 0,
                 downloadInstructions: instructions.trim(),
+                retentionNoticeDays: noticeDays,
             });
+            setNotices((saved.settings.retentionNoticeDays ?? []).join(", "));
             onSaved(saved);
             toast.success("Saved: the users see it in My sessions.");
         } catch (e: any) {
@@ -336,7 +345,7 @@ function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, col
         <Card variant="outlined" sx={cardSx}>
             <CardHeader
                 title="For the users"
-                subheader="What every user sees in My sessions: how long the facility keeps their data once a session finished, and how to take it home."
+                subheader="What every user sees in My sessions: how long the facility keeps their data once a session finished, when they are told before it goes, and how to take it home."
                 sx={cardHeaderSx}
             />
             <CardContent sx={{ pt: 2 }}>
@@ -349,6 +358,10 @@ function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, col
                                    inputProps={{ inputMode: "numeric" }} helperText="0: not said"
                                    onChange={(e) => setProcessed(e.target.value)} />
                     </Stack>
+                    <TextField sx={fieldSx} size="small" fullWidth label="Notices before the data go (days)" value={notices}
+                               placeholder="30, 7, 1"
+                               helperText="The session's user and the group's PI get a mail this many days before each date (with the facility's mail on). Empty: no notices."
+                               onChange={(e) => setNotices(e.target.value)} />
                     <TextField sx={fieldSx} size="small" label="Taking the data home" value={instructions} multiline minRows={4}
                                placeholder="How to download the data: the iRODS ticket, rsync, a disk…"
                                onChange={(e) => setInstructions(e.target.value)} />
@@ -359,7 +372,7 @@ function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, col
                         </Button>
                     </Box>
                     <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                        Instruct sessions and other access routes may keep data longer; one length for all, for now.
+                        A session can keep its data longer: give it its own dates in Data retention. Nothing is deleted by itself.
                     </Typography>
                 </Stack>
             </CardContent>

@@ -3,7 +3,7 @@ import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, St
 import { RefreshCw } from "lucide-react";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
-import { getMyFacility, type MyFacility, type SessionDataset, type UserSession } from "@/api/facility";
+import { getMyFacility, type MyFacility, type RetentionKind, type SessionDataset, type UserSession } from "@/api/facility";
 import { FACILITY_TEXT } from "./facilityStyles";
 import { DatasetProgress, DatasetProjectLinks, describeDatasetGrid, SESSION_STATUS_LABELS } from "./SessionsPanel";
 import NavigationReport from "./NavigationReport";
@@ -25,27 +25,52 @@ function formatDate(value: string | null | undefined): string {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function daysLeft(value: string): string {
-    const days = Math.ceil((new Date(value).getTime() - Date.now()) / 86400000);
-    if (!Number.isFinite(days)) return "";
-    return days > 0 ? `${days} day${days === 1 ? "" : "s"} left` : "past";
+const KIND_WORDS: Record<RetentionKind, string> = { raw: "Raw data", processed: "Processed data" };
+const RETENTION_COLORS = { due: "#b45309", expired: "#dc2626" } as const;
+
+function left(days: number | null): string {
+    if (days == null) return "";
+    if (days <= 0) return days === 0 ? " (last day)" : "";
+    return ` (${days} day${days === 1 ? "" : "s"} left)`;
+}
+
+/** One kind of a session's data: until when it is kept, or that it was deleted. */
+function retentionLine(kind: RetentionKind, state: NonNullable<UserSession["retention"]>[RetentionKind]): string | null {
+    const what = KIND_WORDS[kind];
+    if (state.state === "deleted") return `${what} deleted${state.deletedAt ? ` on ${formatDate(state.deletedAt)}` : ""}.`;
+    if (state.state === "expired") return `${what} were kept until ${formatDate(state.until)}: they may be deleted any day now.`;
+    if ((state.state === "kept" || state.state === "due") && state.until) return `${what} kept until ${formatDate(state.until)}${left(state.daysLeft)}.`;
+    return null;
 }
 
 /** How long the facility keeps a session's data: until a date once it finished, else how long after it does. */
 function Retention({ session, mine, colors }: { session: UserSession; mine: MyFacility; colors: PanelStyles["colors"] }) {
-    const parts: string[] = [];
-    if (session.rawKeptUntil) parts.push(`raw data kept until ${formatDate(session.rawKeptUntil)} (${daysLeft(session.rawKeptUntil)})`);
-    if (session.processedKeptUntil) parts.push(`processed data until ${formatDate(session.processedKeptUntil)} (${daysLeft(session.processedKeptUntil)})`);
-    if (!parts.length && session.status !== "finished" && session.status !== "archived") {
+    const lines = (["raw", "processed"] as RetentionKind[]).flatMap((kind) => {
+        const state = session.retention?.[kind];
+        const line = state ? retentionLine(kind, state) : null;
+        return line ? [{ kind, line, color: RETENTION_COLORS[state!.state as keyof typeof RETENTION_COLORS] }] : [];
+    });
+    if (!lines.length && session.status !== "finished" && session.status !== "archived") {
+        const parts: string[] = [];
         if (mine.rawRetentionDays) parts.push(`raw data kept ${mine.rawRetentionDays} days after the session finishes`);
         if (mine.processedRetentionDays) parts.push(`processed data ${mine.processedRetentionDays} days`);
+        if (!parts.length) return null;
+        const first = parts.join(", ");
+        return (
+            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                {first.charAt(0).toUpperCase() + first.slice(1)}.
+            </Typography>
+        );
     }
-    if (!parts.length) return null;
-    const first = parts.join(", ");
     return (
-        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-            {first.charAt(0).toUpperCase() + first.slice(1)}.
-        </Typography>
+        <>
+            {lines.map(({ kind, line, color }) => (
+                <Typography key={kind} data-testid={`retention-${kind}`}
+                            sx={{ fontSize: FACILITY_TEXT.itemLine, color: color ?? colors.muted, fontWeight: color ? 700 : 400 }}>
+                    {line}
+                </Typography>
+            ))}
+        </>
     );
 }
 

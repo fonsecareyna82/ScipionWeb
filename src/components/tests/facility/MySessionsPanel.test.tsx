@@ -10,12 +10,14 @@ import MySessionsPanel from "@/pages/Facility/MySessionsPanel";
 
 const styles = { cardSx: {}, cardHeaderSx: {}, colors: { border: "#ddd", text: "#111", muted: "#666", surface: "#fff", hover: "#fafafa" } };
 const NAME = "2026_11_03_Gaoxin-Lu_000012";
-const inTenDays = new Date(Date.now() + 10 * 86400000 - 3600000).toISOString();
+const inTenDays = "2026-11-17";
 const session = {
   id: 12, name: NAME, microscopeName: "Titan Krios G5", technique: "tomo", status: "finished", groupName: "Shannon lab",
   userName: "Gaoxin Lu", userEmail: "gaoxin@example.org", bookingRef: "B-1203", scheduledOn: "2026-11-03",
   startedAt: null, finishedAt: "2026-11-03T20:00:00+00:00", images: [], asPi: false,
   userNotes: "Thin ice on grid 6; the other grids are fine.", rawKeptUntil: inTenDays, processedKeptUntil: null,
+  retention: { raw: { state: "due", until: inTenDays, daysLeft: 10, deletedAt: null },
+               processed: { state: "none", until: null, daysLeft: null, deletedAt: null } },
   datasets: [{ id: 41, kind: "data", number: 1, folder: `${NAME}_DATA_01`, watch: "acquired", movieCount: 412,
                movieBytes: 3.2 * 1024 ** 3, projectId: 31, processing: { state: "launched" },
                grid: { gridNumber: 6, position: 2, gridType: "CuRh 1.2", specimen: "nsp9+T2C3", status: "used",
@@ -38,7 +40,8 @@ describe("A user's own sessions", () => {
 
     expect(await screen.findByText(NAME)).toBeInTheDocument();
     expect(screen.getByText("Thin ice on grid 6; the other grids are fine.")).toBeInTheDocument();
-    expect(screen.getByText(/Raw data kept until .* \(10 days left\)\./)).toBeInTheDocument();
+    expect(screen.getByText("Raw data kept until 17 Nov 2026 (10 days left).")).toBeInTheDocument();
+    expect(screen.queryByTestId("retention-processed")).not.toBeInTheDocument();
     expect(screen.getByText("NZ251 · box 2 green · position 2 · grid #6 · nsp9+T2C3")).toBeInTheDocument();
     expect(screen.getByText(/412 movies · 3.2 GB/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: `Open the project of ${NAME}_DATA_01` })).toHaveAttribute("href", "/project/load/31");
@@ -47,6 +50,17 @@ describe("A user's own sessions", () => {
     // The user is not told their own name, nor shown anything to change
     expect(screen.queryByText(/Gaoxin Lu ·/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Edit|Start|Finish|Delete/ })).not.toBeInTheDocument();
+  });
+
+  it("tells them when their data are past their date or were deleted", async () => {
+    const retention = { raw: { state: "deleted", until: "2026-11-01", daysLeft: null, deletedAt: "2026-11-05T09:00:00+00:00" },
+                        processed: { state: "expired", until: "2026-11-03", daysLeft: -4, deletedAt: null } };
+    facilityMocks.getMyFacility.mockResolvedValue({ ...mine, sessions: [{ ...session, retention }] });
+    renderPanel();
+
+    expect(await screen.findByText("Raw data deleted on 5 Nov 2026.")).toBeInTheDocument();
+    expect(screen.getByTestId("retention-processed")).toHaveTextContent(
+      "Processed data were kept until 3 Nov 2026: they may be deleted any day now.");
   });
 
   it("tells a PI whose session of the group it is", async () => {

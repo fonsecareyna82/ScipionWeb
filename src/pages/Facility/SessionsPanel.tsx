@@ -22,7 +22,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
-import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Info, Play, Plus, RefreshCw, Search, Square, Trash2, X } from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Info, Play, Plus, RefreshCw, RotateCw, Search, Square, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -39,6 +39,7 @@ import {
     listSamples,
     listSessions,
     processSessionDataset,
+    rereadDatasetAcquisition,
     sessionPayloadOf,
     updateSession,
     type DatasetWatch,
@@ -112,6 +113,7 @@ const WATCH_LABELS: Record<DatasetWatch, string> = {
     pending: "Looking…",
     noFolder: "Folder not made yet",
     waiting: "Waiting for movies",
+    atlasFound: "Atlas there",
 };
 
 const WATCH_COLORS: Record<DatasetWatch, string> = {
@@ -123,6 +125,7 @@ const WATCH_COLORS: Record<DatasetWatch, string> = {
     pending: "#64748b",
     noFolder: "#64748b",
     waiting: "#2563eb",
+    atlasFound: "#16a34a",
 };
 
 function formatBytes(bytes: number): string {
@@ -149,6 +152,15 @@ function round(value: number | null | undefined, digits: number): string {
 export function describeAcquisition(dataset: SessionDataset): string {
     const acquisition = dataset.acquisition;
     const parts: string[] = [];
+    if (dataset.kind === "atlas") {
+        // Its files, not movies
+        const atlas = dataset.atlas;
+        if (!atlas?.files) return "";
+        parts.push(`${atlas.files} file${atlas.files === 1 ? "" : "s"}`);
+        if (atlas.bytes) parts.push(formatBytes(atlas.bytes));
+        if (atlas.newestAt) parts.push(`last change ${since(atlas.newestAt)}`);
+        return parts.join(" · ");
+    }
     if (dataset.movieCount) {
         parts.push(`${dataset.movieCount} movie${dataset.movieCount === 1 ? "" : "s"}`);
         if (dataset.movieBytes) parts.push(formatBytes(dataset.movieBytes));
@@ -226,11 +238,13 @@ function gridOptionsOf(samples: Sample[]): GridOption[] {
 }
 
 /** The folders of a session, each with a copy button: what the operator types into EPU. */
-function SessionFolders({ session, colors, onProcess }: {
+function SessionFolders({ session, colors, onProcess, onReread }: {
     session: FacilitySession;
     colors: PanelStyles["colors"];
     // Ask for a DATA's project (again); absent for those who only watch
     onProcess?: (dataset: SessionDataset) => void;
+    // Read a DATA's first movie again (after fixing a detector); absent for those who only watch
+    onReread?: (dataset: SessionDataset) => void;
 }) {
     return (
         <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 1.5, px: 1.25, py: 0.75 }}>
@@ -265,6 +279,16 @@ function SessionFolders({ session, colors, onProcess }: {
                     {/* Under its folder, what came in and how its processing goes: a line of its own, so it is not cut */}
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, pl: 4.5, flexWrap: "wrap", rowGap: 0.5 }}>
                         <DatasetProgress dataset={dataset} colors={colors} />
+                        {onReread && dataset.kind === "data" && dataset.acquisition && (
+                            <Tooltip arrow title="Read its first movie's metadata again: after fixing a detector's name in the metadata or its calibration. A project already made keeps what it was made with.">
+                                <Button size="small" variant="outlined" startIcon={<RotateCw size={13} />}
+                                        sx={{ ...DATASET_BUTTON_SX, color: colors.text, borderColor: colors.border }}
+                                        aria-label={`Read the first movie of ${dataset.folder} again`}
+                                        onClick={() => onReread(dataset)}>
+                                    Read again
+                                </Button>
+                            </Tooltip>
+                        )}
                         <DatasetProcessing session={session} dataset={dataset} colors={colors} onProcess={onProcess} />
                         {dataset.navigation && <NavigationReport dataset={dataset} canMake={!!onProcess} />}
                     </Stack>
@@ -455,6 +479,16 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
         }
     }, [load]);
 
+    const reread = useCallback(async (dataset: SessionDataset) => {
+        try {
+            await rereadDatasetAcquisition(dataset.id);
+            toast.success(`${dataset.folder}: its first movie was read again.`);
+            await load();
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to read the first movie again"));
+        }
+    }, [load]);
+
     const remove = useCallback(async (session: FacilitySession) => {
         setBusy(true);
         try {
@@ -574,7 +608,8 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
                                 </Stack>
                                 <Box sx={{ mt: 1.25 }}>
                                     <SessionFolders session={session} colors={colors}
-                                                    onProcess={canEdit ? (dataset) => void process(dataset) : undefined} />
+                                                    onProcess={canEdit ? (dataset) => void process(dataset) : undefined}
+                                                    onReread={canEdit ? (dataset) => void reread(dataset) : undefined} />
                                 </Box>
                             </Box>
                         ))}

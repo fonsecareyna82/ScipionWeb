@@ -106,6 +106,32 @@ describe("The facility's conventions", () => {
     }));
   });
 
+  it("saves how long the data are kept and the days before them when the users are told", async () => {
+    facilityMocks.getFacilitySettings.mockResolvedValue({ ...answer,
+      settings: { ...answer.settings, rawRetentionDays: 90, processedRetentionDays: 30, retentionNoticeDays: [30, 7, 1],
+                  downloadInstructions: "" } });
+    facilityMocks.saveFacilitySettings.mockResolvedValue({ ...answer,
+      settings: { ...answer.settings, retentionNoticeDays: [14, 2] } });
+    const toast = (await import("react-hot-toast")).default;
+    render(<ConfigurationPanel {...styles} />);
+    await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
+    fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
+    const notices = screen.getByLabelText("Notices before the data go (days)");
+    expect(notices).toHaveValue("30, 7, 1");
+
+    fireEvent.change(notices, { target: { value: "a week" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for the users" }));
+    expect(toast.error).toHaveBeenCalledWith("The notice days are whole numbers separated by commas, e.g. 30, 7, 1");
+    expect(facilityMocks.saveFacilitySettings).not.toHaveBeenCalled();
+
+    fireEvent.change(notices, { target: { value: "2, 14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for the users" }));
+    await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
+      rawRetentionDays: 90, processedRetentionDays: 30, downloadInstructions: "", retentionNoticeDays: [2, 14] }));
+    // As the API keeps them: the furthest first
+    await waitFor(() => expect(notices).toHaveValue("14, 2"));
+  });
+
   it("shows a section per tab, keeps what is typed in one while another is open, and remembers the last", async () => {
     render(<ConfigurationPanel {...styles} />);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });

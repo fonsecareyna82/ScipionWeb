@@ -12,6 +12,7 @@ const facilityMocks = vi.hoisted(() => ({
   deleteFacilityImage: vi.fn(),
   fetchFacilityImageUrl: vi.fn(),
   processSessionDataset: vi.fn(),
+  rereadDatasetAcquisition: vi.fn(),
   getFacilitySettings: vi.fn(),
 }));
 vi.mock("@/api/facility", async (importOriginal) => {
@@ -259,5 +260,32 @@ describe("The sessions of the facility", () => {
     fireEvent.click(screen.getByRole("button", { name: "Process now" }));
 
     await waitFor(() => expect(facilityMocks.processSessionDataset).toHaveBeenCalledWith(session.datasets[1].id));
+  });
+
+  it("says what the ATLAS folder holds, and reads a DATA's first movie again", async () => {
+    facilityMocks.rereadDatasetAcquisition.mockResolvedValue(session);
+    facilityMocks.listSessions.mockResolvedValue([{
+      ...session, status: "acquiring",
+      datasets: [{ ...session.datasets[0], watch: "atlasFound", atlas: { files: 214, bytes: 2.5 * 1024 ** 3, newestAt: null } },
+                 { ...session.datasets[1], watch: "receiving", movieCount: 3, acquisition: { pixelSize: 1.14 } }],
+    }]);
+    render(<SessionsPanel {...styles} canEdit />);
+
+    expect(await screen.findByText("214 files · 2.5 GB")).toBeInTheDocument();
+    expect(screen.getByText("Atlas there")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `Read the first movie of ${NAME}_DATA_01 again` }));
+
+    await waitFor(() => expect(facilityMocks.rereadDatasetAcquisition).toHaveBeenCalledWith(41));
+  });
+
+  it("does not offer reading the first movie again to who only watches", async () => {
+    facilityMocks.listSessions.mockResolvedValue([{
+      ...session, status: "acquiring",
+      datasets: [{ ...session.datasets[1], watch: "receiving", movieCount: 3, acquisition: { pixelSize: 1.14 } }],
+    }]);
+    render(<SessionsPanel {...styles} canEdit={false} />);
+
+    await screen.findByText(NAME);
+    expect(screen.queryByRole("button", { name: /Read the first movie/ })).not.toBeInTheDocument();
   });
 });
