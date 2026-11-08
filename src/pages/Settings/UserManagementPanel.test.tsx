@@ -1,15 +1,19 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import UserManagementPanel from "./UserManagementPanel";
 import {
+    deleteAdminUser,
     listAdminUsers,
+    previewUserDeletion,
     updateAdminUser,
 } from "@/api/users";
 
 vi.mock("@/api/users", () => ({
     listAdminUsers: vi.fn(),
     updateAdminUser: vi.fn(),
+    previewUserDeletion: vi.fn(),
+    deleteAdminUser: vi.fn(),
 }));
 
 vi.mock("@/api/access", () => ({
@@ -173,5 +177,52 @@ describe("UserManagementPanel", () => {
 
         await screen.findByText("admin@example.com");
         expect(screen.queryByText(/not active/)).not.toBeInTheDocument();
+    });
+
+    it("deletes an account with its projects once its address is typed, never one's own", async () => {
+        vi.mocked(previewUserDeletion).mockResolvedValue({
+            user: { id: 2, email: "user@example.com", firstName: "Normal", lastName: "User" },
+            projects: [{ id: 31, name: "Workflow_2D", bytes: 200 * 1024 ** 3, shares: 1, running: 0 },
+                       { id: 32, name: "Tomo", bytes: null, shares: 0, running: 0 }],
+            facility: { sessions: 2, bookings: 0, samples: 1 }, blockers: [], deleting: false,
+        });
+        vi.mocked(deleteAdminUser).mockResolvedValue({
+            user: { id: 2, email: "user@example.com" }, deleted: [{ id: 31, name: "Workflow_2D" }, { id: 32, name: "Tomo" }],
+            failed: [], deletingInBackground: true,
+        });
+        renderPanel();
+        await screen.findByText("user@example.com");
+
+        expect(screen.queryByRole("button", { name: "Delete admin@example.com" })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Delete user@example.com" }));
+
+        const dialog = await screen.findByRole("dialog");
+        expect(await within(dialog).findByText("2 projects will be deleted:")).toBeInTheDocument();
+        expect(within(dialog).getByText("Workflow_2D · 200.0 GB · shared with 1")).toBeInTheDocument();
+        expect(within(dialog).getByText("One of them is shared: the others lose it too.")).toBeInTheDocument();
+        expect(within(dialog).getByText("2 facility sessions, 1 sample stay in the facility, without their user.")).toBeInTheDocument();
+        const confirm = within(dialog).getByRole("button", { name: "Delete the account" });
+        expect(confirm).toBeDisabled();
+        fireEvent.change(within(dialog).getByLabelText("Type the account's address to confirm"), { target: { value: "USER@example.com" } });
+        fireEvent.click(confirm);
+
+        await waitFor(() => expect(deleteAdminUser).toHaveBeenCalledWith(2, "USER@example.com"));
+        await waitFor(() => expect(screen.queryByText("user@example.com")).not.toBeInTheDocument());
+    });
+
+    it("says why an account cannot be deleted now", async () => {
+        vi.mocked(previewUserDeletion).mockResolvedValue({
+            user: { id: 2, email: "user@example.com" },
+            projects: [{ id: 31, name: "Workflow_2D", bytes: null, shares: 0, running: 1 }],
+            facility: { sessions: 0, bookings: 0, samples: 0 },
+            blockers: ["Protocols are running in Workflow_2D: stop them first."], deleting: false,
+        });
+        renderPanel();
+        await screen.findByText("user@example.com");
+        fireEvent.click(screen.getByRole("button", { name: "Delete user@example.com" }));
+
+        const dialog = await screen.findByRole("dialog");
+        expect(await within(dialog).findByText("Protocols are running in Workflow_2D: stop them first.")).toBeInTheDocument();
+        expect(within(dialog).getByLabelText("Type the account's address to confirm")).toBeDisabled();
     });
 });

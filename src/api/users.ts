@@ -71,3 +71,33 @@ export async function updateAdminUser(
 
   return readPayload(response);
 }
+// Deleting an account: what goes with it (its projects) and what stops it
+export type UserDeletionPreview = {
+  user: { id: number; email: string; firstName?: string | null; lastName?: string | null };
+  projects: { id: number; name: string; bytes: number | null; shares: number; running: number }[];
+  // What stays in the facility without the account
+  facility: { sessions: number; bookings: number; samples: number };
+  // Why it cannot go now (none: it can)
+  blockers: string[];
+  deleting: boolean;
+};
+export type UserDeletionResult = {
+  user: UserDeletionPreview["user"];
+  deleted: { id: number; name: string }[];
+  failed: { id: number; name: string; detail: string }[];
+  deletingInBackground: boolean;
+};
+
+export async function previewUserDeletion(userId: number): Promise<UserDeletionPreview> {
+  const response = await fetchWithAuth(`${BASE_URL}/users/admin/${userId}/deletion`, { method: "GET" });
+  if (!response.ok) throw await buildApiError(response, "Failed to read what deleting the account takes");
+  return readPayload(response);
+}
+
+/** Delete the account and every project it owns; confirmEmail is its address, typed to confirm. */
+export async function deleteAdminUser(userId: number, confirmEmail: string): Promise<UserDeletionResult> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/users/admin/${userId}?confirmEmail=${encodeURIComponent(confirmEmail)}`, { method: "DELETE" });
+  if (!response.ok) throw await buildApiError(response, "Failed to delete the account");
+  return readPayload(response);
+}

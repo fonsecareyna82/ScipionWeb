@@ -139,3 +139,7 @@ Settings has a "Notifications" tab for every user (`pages/Settings/Notifications
 ## The menu shows only what the user may open
 
 `layout/AppSidebar` filters `navItems` by their `permissions` (any of them; none = everyone) with `usePermissions`, waiting for them before showing a guarded entry: Workflows needs `projects.create`, Plugins `plugins.manage` or `projects.create`; Home, Projects, User profile and Settings are for everyone. Facility goes after Workflows, or after Projects when Workflows is not shown. The API refuses what the menu hides anyway.
+
+## Deleting an account
+
+Settings → Users has a delete button per account (not one's own): `DeleteUserDialog` reads `previewUserDeletion` and lists the projects that go with it (size, shared with how many, running), warns when some are shared, says what stays in the facility, shows the blockers, and enables "Delete the account" only once the account's address is typed (`deleteAdminUser`). Projects that could not go are told in a toast; deleting again retries.

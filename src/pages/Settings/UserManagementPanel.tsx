@@ -9,6 +9,7 @@ import {
     Chip,
     CircularProgress,
     FormControl,
+    IconButton,
     InputAdornment,
     MenuItem,
     Paper,
@@ -22,19 +23,23 @@ import {
     TableHead,
     TableRow,
     TextField,
+    Tooltip,
     Typography,
 } from "@mui/material";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
     listAdminUsers,
     updateAdminUser,
+    deleteAdminUser,
+    previewUserDeletion,
+    type UserDeletionPreview,
     type AdminUser,
     type AdminUserPatch,
 } from "@/api/users";
 import { listGroupNames, listRoles, type Role } from "@/api/access";
-import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 
 type UserManagementPanelProps = {
     currentUserId: number | null;
@@ -70,6 +75,7 @@ export default function UserManagementPanel({
     const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
     const [roles, setRoles] = useState<Role[]>([]);
     const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
+    const [deleting, setDeleting] = useState<AdminUser | null>(null);
 
     const loadUsers = useCallback(async () => {
         setLoading(true);
@@ -209,7 +215,7 @@ export default function UserManagementPanel({
                             <MuiTable size="small">
                                 <TableHead>
                                     <TableRow>
-                                        {["User", "Email", "Institution", "Roles", "Groups", "Active", "Verified"].map((label) => (
+                                        {["User", "Email", "Institution", "Roles", "Groups", "Active", "Verified", ""].map((label) => (
                                             <TableCell
                                                 key={label}
                                                 sx={{
@@ -309,6 +315,17 @@ export default function UserManagementPanel({
                                                         color={user.isVerified ? "success" : "default"}
                                                     />
                                                 </TableCell>
+
+                                                <TableCell sx={{ borderColor: colors.border }}>
+                                                    {!isCurrentUser && (
+                                                        <Tooltip arrow title="Delete the account, with its projects">
+                                                            <IconButton size="small" aria-label={`Delete ${user.email}`}
+                                                                        disabled={updating} onClick={() => setDeleting(user)}>
+                                                                <Trash2 size={16} color="#dc2626" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    )}
+                                                </TableCell>
                                             </TableRow>
                                         );
                                     })}
@@ -322,7 +339,126 @@ export default function UserManagementPanel({
                     </Stack>
                 </CardContent>
             </Card>
+
+            {deleting && (
+                <DeleteUserDialog user={deleting} fieldSx={fieldSx} actionButtonSx={actionButtonSx} colors={colors}
+                                  onClose={() => setDeleting(null)}
+                                  onDeleted={(userId) => {
+                                      setUsers((prev) => prev.filter((item) => item.id !== userId));
+                                      setDeleting(null);
+                                  }} />
+            )}
         </Stack>
+    );
+}
+
+function formatBytes(bytes: number | null | undefined): string {
+    if (!bytes) return "";
+    if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
+    if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+}
+
+/** Deleting an account: what goes with it is listed first, and its address is typed to confirm. */
+function DeleteUserDialog({ user, fieldSx, actionButtonSx, colors, onClose, onDeleted }: {
+    user: AdminUser;
+    fieldSx: any;
+    actionButtonSx?: any;
+    colors: UserManagementPanelProps["colors"];
+    onClose: () => void;
+    onDeleted: (userId: number) => void;
+}) {
+    const [preview, setPreview] = useState<UserDeletionPreview | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [typed, setTyped] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        previewUserDeletion(user.id).then(setPreview)
+            .catch((e: any) => setError(String(e?.message || "Failed to read what deleting the account takes")));
+    }, [user.id]);
+
+    const blocked = !preview || preview.blockers.length > 0;
+    const confirmed = typed.trim().toLowerCase() === user.email.toLowerCase();
+    const sharedCount = preview?.projects.filter((project) => project.shares > 0).length ?? 0;
+    const facility = preview?.facility;
+    const facilityParts = facility ? [
+        facility.sessions ? `${facility.sessions} facility session${facility.sessions === 1 ? "" : "s"}` : "",
+        facility.bookings ? `${facility.bookings} booking${facility.bookings === 1 ? "" : "s"}` : "",
+        facility.samples ? `${facility.samples} sample${facility.samples === 1 ? "" : "s"}` : "",
+    ].filter(Boolean) : [];
+
+    const remove = async () => {
+        setBusy(true);
+        try {
+            const result = await deleteAdminUser(user.id, typed.trim());
+            if (result.failed.length) {
+                toast.error(`The account is disabled, but ${result.failed.length} project${result.failed.length === 1 ? "" : "s"} could not be deleted: `
+                    + result.failed.map((project) => `${project.name} (${project.detail})`).join("; ")
+                    + ". Delete the account again to retry.", { duration: 10000 });
+            } else {
+                toast.success(`${user.email} is being deleted${result.deleted.length ? `, with ${result.deleted.length} project${result.deleted.length === 1 ? "" : "s"}` : ""}.`);
+            }
+            onDeleted(user.id);
+        } catch (e: any) {
+            toast.error(String(e?.message || "Failed to delete the account"));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <SettingsDialog
+            title="Delete this account?"
+            description="Its projects go with it, and it cannot be undone."
+            icon={<Trash2 size={20} color="#fca5a5" />}
+            confirmLabel="Delete the account"
+            busyLabel="Deleting…"
+            busy={busy}
+            destructive
+            confirmDisabled={blocked || !confirmed}
+            maxWidth="sm"
+            actionButtonSx={actionButtonSx ?? ROUNDED_BUTTON_SX}
+            onConfirm={() => void remove()}
+            onClose={onClose}
+        >
+            <Stack spacing={1.25}>
+                <Typography sx={{ fontSize: 14 }}>
+                    <strong>{`${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email}</strong> · {user.email}
+                </Typography>
+                {error && <Alert severity="error">{error}</Alert>}
+                {!preview && !error && <Typography sx={{ fontSize: 14, color: colors.muted }}>Looking at what it owns…</Typography>}
+                {preview && preview.blockers.map((blocker) => <Alert key={blocker} severity="warning">{blocker}</Alert>)}
+                {preview && (
+                    <Box data-testid="deleted-projects">
+                        <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
+                            {preview.projects.length
+                                ? `${preview.projects.length} project${preview.projects.length === 1 ? "" : "s"} will be deleted:`
+                                : "It owns no project."}
+                        </Typography>
+                        {preview.projects.map((project) => (
+                            <Typography key={project.id} sx={{ fontSize: 13.5, fontFamily: "monospace", color: colors.text }}>
+                                {project.name}
+                                {[formatBytes(project.bytes), project.shares ? `shared with ${project.shares}` : "",
+                                  project.running ? `${project.running} running` : ""].filter(Boolean).map((part) => ` · ${part}`).join("")}
+                            </Typography>
+                        ))}
+                        {sharedCount > 0 && (
+                            <Typography sx={{ fontSize: 13.5, color: "#b45309", mt: 0.5 }}>
+                                {sharedCount === 1 ? "One of them is" : `${sharedCount} of them are`} shared: the others lose {sharedCount === 1 ? "it" : "them"} too.
+                            </Typography>
+                        )}
+                        {facilityParts.length > 0 && (
+                            <Typography sx={{ fontSize: 13.5, color: colors.muted, mt: 0.5 }}>
+                                {facilityParts.join(", ")} stay in the facility, without their user.
+                            </Typography>
+                        )}
+                    </Box>
+                )}
+                <TextField sx={fieldSx} size="small" fullWidth label="Type the account's address to confirm" value={typed}
+                           disabled={blocked} placeholder={user.email} onChange={(e) => setTyped(e.target.value)} />
+            </Stack>
+        </SettingsDialog>
     );
 }
 
