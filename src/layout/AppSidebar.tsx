@@ -20,6 +20,7 @@ import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { FolderKanban, LucideSettings2 } from "lucide-react";
 import { useFacilityNavItem } from "./facilityNav";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
@@ -32,13 +33,16 @@ type NavItem = {
   path?: string;
   separator?: boolean;
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  // Shown only to who holds one of these (none: to everyone)
+  permissions?: string[];
 };
 
 const navItems: NavItem[] = [
   { icon: <GridIcon />, name: "Home", path: "/home" },
   { icon: <FolderKanban />, name: "Projects", path: "/projects" },
-  { icon: <TreeIcon />, name: "Workflows", path: "/workflows" },
-  { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
+  // Workflows make projects; plugins are installed by who manages them, and seen by who makes projects
+  { icon: <TreeIcon />, name: "Workflows", path: "/workflows", permissions: ["projects.create"] },
+  { icon: <PlugInIcon />, name: "Plugins", path: "/plugins", permissions: ["plugins.manage", "projects.create"] },
   { separator: true },
   { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},  
   { icon: <LucideSettings2/>, name: "Settings", path: "/settings",}
@@ -113,9 +117,16 @@ const AppSidebar: React.FC = () => {
 
   // Facility, after Workflows: only when this installation runs a facility and the user has a tab there
   const facilityItem = useFacilityNavItem();
+  // Only what the user may open: an entry with permissions waits for them (no flash of entries then gone)
+  const { loaded: permissionsLoaded, can } = usePermissions();
+  const allowedItems = navItems.filter((item) => !item.permissions
+    || (permissionsLoaded && item.permissions.some((permission) => can(permission))));
+  // Facility goes after Workflows, or after Projects for who does not see Workflows
+  const after = allowedItems.findIndex((item) => item.path === "/workflows");
+  const facilityAt = (after >= 0 ? after : allowedItems.findIndex((item) => item.path === "/projects")) + 1;
   const mainItems: NavItem[] = facilityItem
-    ? [...navItems.slice(0, 3), facilityItem, ...navItems.slice(3)]
-    : navItems;
+    ? [...allowedItems.slice(0, facilityAt), facilityItem, ...allowedItems.slice(facilityAt)]
+    : allowedItems;
 
   const [openSubmenu, setOpenSubmenu] = useState<{ type: "main" | "others"; index: number } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});

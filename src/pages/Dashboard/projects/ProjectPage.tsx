@@ -5919,14 +5919,19 @@ export default function ProjectPage() {
   useEffect(() => {
     if (!nodesLoadedOnce || !firstLoadRef.current) return;
 
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-
     let cancelled = false;
 
     (async () => {
+      // The nodes may come before the graph is initialised: wait for it (handleOnInit centres only when it
+      // already has the nodes)
+      let inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      for (let tries = 0; !inst && tries < 60 && !cancelled; tries += 1) {
+        await new Promise<void>((r) => window.setTimeout(r, 50));
+        inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      }
+      if (!inst) return;
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-      if (cancelled) return;
+      if (cancelled || !firstLoadRef.current) return;
 
       if (viewModeRef.current === "grid") {
         inst.setViewport({ x: 0, y: 0, zoom: gridZoomRef.current });
@@ -8229,8 +8234,10 @@ export default function ProjectPage() {
           const expected = nodesRef.current?.length ?? 0;
           if (expected > 0) {
             (async () => {
-              const ok = await waitForNodesReady(expected, 2000);
-              if (ok && firstLoadRef.current && viewModeRef.current === "hierarchical") {
+              // Centred on the nodes' positions also when they are not measured in time: without a viewport saved
+              // in this browser (another user, a private window) the graph would stay out of sight
+              await waitForNodesReady(expected, 2000);
+              if (firstLoadRef.current && viewModeRef.current === "hierarchical") {
                 centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
                 firstLoadRef.current = false;
               }
