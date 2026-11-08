@@ -3,7 +3,7 @@ import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { useNavigate } from "react-router";
 import { UserIcon } from "@/icons";
-import { getUserProfile } from "@/api/auth";
+import { getUserProfile, logout } from "@/api/auth";
 import { useTheme as useAppTheme } from "@/context/ThemeContext";
 
 export default function UserDropdown() {
@@ -32,7 +32,8 @@ export default function UserDropdown() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken");
+    // Both tokens and the cached user: a refresh token left behind would sign the user in again
+    logout();
     navigate("/");
   };
 

@@ -65,9 +65,23 @@ async function request<T>(path: string, fallback: string, init?: RequestInit): P
 export const getFacilityStatus = () => request<FacilityStatus>("/facility/status", "Failed to read the facility mode");
 
 let statusPromise: Promise<FacilityStatus> | null = null;
+// Whose answer it is: the permissions are the signed-in user's, so another sign-in (another user in the same tab)
+// asks again
+let statusToken: string | null = null;
 
-/** The facility status, read once per session (it only changes with the installation's settings). */
+function currentToken(): string | null {
+  try {
+    return localStorage.getItem("accessToken");
+  } catch {
+    return null;
+  }
+}
+
+/** The facility status, read once per signed-in user (it changes with the user and the installation's settings). */
 export function loadFacilityStatusOnce(): Promise<FacilityStatus> {
+  const token = currentToken();
+  if (statusPromise && statusToken !== token) statusPromise = null;
+  statusToken = token;
   if (!statusPromise) {
     statusPromise = getFacilityStatus().catch(() => {
       statusPromise = null;
