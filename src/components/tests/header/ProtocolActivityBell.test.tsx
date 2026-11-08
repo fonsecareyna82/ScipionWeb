@@ -6,6 +6,8 @@ const service = { fetchProtocolActivity: vi.fn() };
 vi.mock("@/ProjectServiceContext", () => ({ useProjectService: () => service }));
 const toastMocks = vi.hoisted(() => ({ custom: vi.fn(), dismiss: vi.fn(), error: vi.fn() }));
 vi.mock("react-hot-toast", () => ({ default: toastMocks }));
+const notificationMocks = vi.hoisted(() => ({ markNotificationsRead: vi.fn() }));
+vi.mock("@/api/notifications", () => notificationMocks);
 
 import ProtocolActivityBell, { eventLink, protocolLink } from "@/components/header/ProtocolActivityBell";
 
@@ -130,6 +132,26 @@ describe("ProtocolActivityBell", () => {
     fireEvent.click(screen.getByText("Ana Pi (ana@example.com) signed up and waits for activation"));
 
     expect(screen.getByTestId("where")).toHaveTextContent("/settings?tab=users");
+  });
+
+  it("tells of a notice, reads it when the bell opens, and opens the page it is about", async () => {
+    notificationMocks.markNotificationsRead.mockResolvedValue({ unread: 0 });
+    const notice = {
+      projectId: 0, projectName: "Your booking of Titan Krios G5, 10 Nov 09:00 to 11 Nov 08:59, is confirmed.",
+      protocolId: "notice-41", protocolClassName: "", label: "Booking of Titan Krios G5: is confirmed", status: "notice",
+      kind: "facility.booking", link: "/facility/calendar", notificationId: 41, endedAt: "2026-10-19T12:03:00+00:00",
+    };
+    service.fetchProtocolActivity.mockResolvedValue({ now: "T1", live: 0, events: [notice] });
+    renderBell();
+
+    await waitFor(() => expect(toastMocks.custom).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: /Protocol activity, 1 new/ }));
+    await waitFor(() => expect(notificationMocks.markNotificationsRead).toHaveBeenCalledWith());
+    fireEvent.click(screen.getByText("Booking of Titan Krios G5: is confirmed"));
+
+    expect(screen.getByTestId("where")).toHaveTextContent("/facility/calendar");
+    expect(notificationMocks.markNotificationsRead).toHaveBeenCalledWith([41]);
+    expect(eventLink({ projectId: 0, protocolId: "notice-2", status: "notice" })).toBe("/settings?tab=notifications");
   });
 
   it("links protocols safely", () => {

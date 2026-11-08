@@ -409,6 +409,8 @@ export type FacilitySettings = {
   ctfMaxResolution: number;
   // Where the facility is (Europe/Madrid): a booking's session is on the day it starts there
   timezone: string;
+  // Who is mailed the alerts (addresses separated by commas); empty: the users who run sessions
+  alertRecipients?: string;
 };
 export type ConventionExamples = { session: string; atlas: string | null; data: string[] };
 export type FacilityPreset = {
@@ -466,31 +468,6 @@ export const acknowledgeFacilityAlert = (alertId: number) =>
   request<FacilityAlert>(`/facility/alerts/${alertId}/acknowledge`, "Failed to take the alert", { method: "POST" });
 
 // The mail server that tells the operators of the alerts; the password is never answered, only whether it is set
-export type MailSecurity = "starttls" | "ssl" | "none";
-export type FacilityMailSettings = {
-  host: string;
-  port: number;
-  security: MailSecurity;
-  user: string;
-  sender: string;
-  recipients: string;
-  passwordSet: boolean;
-  enabled: boolean;
-};
-export type FacilityMailPayload = Omit<FacilityMailSettings, "passwordSet" | "enabled"> & {
-  // Left out (undefined): the password there is stays; "": it is removed
-  password?: string;
-};
-
-export const getFacilityMailSettings = () =>
-  request<FacilityMailSettings>("/facility/settings/mail", "Failed to load the mail settings");
-export const saveFacilityMailSettings = (payload: FacilityMailPayload) =>
-  request<FacilityMailSettings>("/facility/settings/mail", "Failed to save the mail settings",
-    { method: "PUT", body: JSON.stringify(payload) });
-export const sendFacilityTestMail = (to = "") =>
-  request<{ sentTo: string[] }>("/facility/settings/mail/test", "The test mail did not go",
-    { method: "POST", body: JSON.stringify({ to }) });
-
 // What a user sees of the facility: their sessions and samples (and the group's, for its PI), read only
 export type UserSession = Pick<FacilitySession, "id" | "name" | "microscopeName" | "technique" | "status" | "groupName"
   | "userName" | "userEmail" | "bookingRef" | "scheduledOn" | "startedAt" | "finishedAt" | "images"> & {

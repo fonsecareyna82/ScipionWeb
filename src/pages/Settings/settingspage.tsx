@@ -42,7 +42,7 @@ import { useTheme } from "@mui/material/styles";
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";
 import {
-  Braces, Cpu, HardDrive, LayoutGrid, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck, Table,
+  BellRing, Braces, Cpu, HardDrive, LayoutGrid, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck, Table,
   Tag, UserCog, UserRound, UsersRound,
 } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
@@ -76,6 +76,7 @@ import RolesPanel from "@/pages/Settings/RolesPanel";
 import GroupsPanel from "@/pages/Settings/GroupsPanel";
 import AuditPanel from "@/pages/Settings/AuditPanel";
 import UsagePanel from "@/pages/Settings/UsagePanel";
+import NotificationsPanel from "@/pages/Settings/NotificationsPanel";
 import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -91,6 +92,7 @@ type TabKey =
   | "audit"
   | "disk"
   | "tags"
+  | "notifications"
   | "environment";
 
 type InstanceSettings = {
@@ -535,7 +537,7 @@ export default function SettingsPage() {
   const requestedTab = searchParams.get("tab");
   useEffect(() => {
     const allowed: Partial<Record<TabKey, boolean>> = {
-      user: true, tags: true, instance: can("settings.manage"), host: can("settings.manage"),
+      user: true, tags: true, notifications: true, instance: can("settings.manage"), host: can("settings.manage"),
       environment: can("settings.manage"), jobs: can("jobs.manage"), users: can("users.manage"),
       roles: can("roles.manage"), groups: can("groups.manage"), audit: can("audit.view"),
       disk: can("storage.view"),
@@ -1244,7 +1246,7 @@ export default function SettingsPage() {
   const headerRight = useMemo(() => {
     // The panels with their own actions (Save, Reload…) have none up here
     if (tab === "tags" || tab === "jobs" || tab === "users" || tab === "roles" || tab === "groups"
-        || tab === "audit" || tab === "disk") return null;
+        || tab === "audit" || tab === "disk" || tab === "notifications") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
@@ -2504,6 +2506,7 @@ export default function SettingsPage() {
               {can("groups.manage") && <Tab value="groups" label="Groups" icon={<UsersRound size={16} />} iconPosition="start" />}
               {can("audit.view") && <Tab value="audit" label="Audit" icon={<ScrollText size={16} />} iconPosition="start" />}
               {can("storage.view") && <Tab value="disk" label="Usage" icon={<HardDrive size={16} />} iconPosition="start" />}
+              <Tab value="notifications" label="Notifications" icon={<BellRing size={16} />} iconPosition="start" />
               <Tab value="tags" label="Tags" icon={<Tag size={16} />} iconPosition="start" />
               {can("settings.manage") && <Tab value="environment" label="Environment" icon={<Braces size={16} />} iconPosition="start" />}
             </Tabs>
@@ -2560,12 +2563,14 @@ export default function SettingsPage() {
                                   <UsagePanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
                                               colors={colors} actionButtonSx={actionButtonSx} />
                                 )
+                              : tab === "notifications"
+                                ? <NotificationsPanel canManage={can("settings.manage")} />
                               : tab === "tags"
                                 ? renderTagsContent()
                                 : renderEnvironmentContent()}
 
               {tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
-                && tab !== "disk" ? (
+                && tab !== "disk" && tab !== "notifications" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />
 

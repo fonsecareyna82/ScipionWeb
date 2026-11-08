@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { AlertTriangle, Bell, BellOff, BellRing, CheckCircle2, Clock, Hand, UserPlus, X, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, BellRing, CheckCircle2, Clock, Hand, Info, UserPlus, X, XCircle } from "lucide-react";
 
 import { useProjectService } from "@/ProjectServiceContext";
+import { markNotificationsRead } from "@/api/notifications";
 import { eventKey, useProtocolActivity } from "@/hooks/useProtocolActivity";
 import type { ProtocolRunEvent } from "@/services/ProjectService";
 
@@ -23,6 +24,7 @@ const STATUS_TEXT: Record<string, string> = {
 function statusIcon(status: string, className: string) {
   if (status === "alert") return <AlertTriangle className={`${className} text-amber-600 dark:text-amber-400`} />;
   if (status === "account") return <UserPlus className={`${className} text-sky-600 dark:text-sky-400`} />;
+  if (status === "notice") return <Info className={`${className} text-sky-600 dark:text-sky-400`} />;
   if (status === "finished") return <CheckCircle2 className={`${className} text-green-600 dark:text-green-400`} />;
   if (status === "interactive") return <Hand className={`${className} text-amber-600 dark:text-amber-400`} />;
   return <XCircle className={`${className} text-red-600 dark:text-red-400`} />;
@@ -34,14 +36,15 @@ export function protocolLink(event: Pick<ProtocolRunEvent, "projectId" | "protoc
 }
 
 /** An alert opens its project with the streaming monitor; a new account, the users of the settings. */
-export function eventLink(event: Pick<ProtocolRunEvent, "projectId" | "protocolId" | "status">): string {
+export function eventLink(event: Pick<ProtocolRunEvent, "projectId" | "protocolId" | "status" | "link">): string {
+  if (event.status === "notice") return event.link || "/settings?tab=notifications";
   if (event.status === "alert") return `/project/load/${encodeURIComponent(String(event.projectId))}?monitor=1`;
   if (event.status === "account") return "/settings?tab=users";
   return protocolLink(event);
 }
 
 function describe(event: ProtocolRunEvent): string {
-  if (event.status === "alert" || event.status === "account") return event.label;
+  if (event.status === "alert" || event.status === "account" || event.status === "notice") return event.label;
   return `${event.label || event.protocolClassName} ${STATUS_TEXT[event.status] ?? event.status}`;
 }
 
@@ -80,6 +83,7 @@ export default function ProtocolActivityBell() {
 
   const openEvent = useCallback((event: ProtocolRunEvent) => {
     setOpen(false);
+    if (event.notificationId != null) void markNotificationsRead([event.notificationId]).catch(() => undefined);
     navigate(eventLink(event));
   }, [navigate]);
 
@@ -114,6 +118,8 @@ export default function ProtocolActivityBell() {
   useEffect(() => {
     if (!open) return;
     markSeen();
+    // Seen in the bell: the user's notifications are read (they are not told again on another device)
+    if (events.some((event) => event.status === "notice")) void markNotificationsRead().catch(() => undefined);
     // In the capture phase: the graph (d3-zoom) stops the propagation of its pointer events.
     const close = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
@@ -130,7 +136,7 @@ export default function ProtocolActivityBell() {
       window.removeEventListener("blur", closeOnBlur);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [open, markSeen]);
+  }, [open, markSeen, events]);
 
   const toggleNotify = () => {
     const next = !notify;
@@ -190,7 +196,7 @@ export default function ProtocolActivityBell() {
           <ul className="max-h-[360px] overflow-y-auto">
             {events.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                Runs that finish or fail, and streaming monitor alerts, show here.
+                Runs that finish or fail, streaming monitor alerts and your notices show here.
               </li>
             ) : events.map((event) => (
               <li key={eventKey(event)}>

@@ -1542,6 +1542,10 @@ export type ProtocolRunEvent = {
   endedAt: string;
   /** For an alert, the threshold the micrographs go past. */
   threshold?: string;
+  /** "notice": one of the user's notifications (its projectId is 0): the page it is about, its kind and id. */
+  link?: string;
+  kind?: string;
+  notificationId?: number;
 };
 
 export type ProtocolActivity = {

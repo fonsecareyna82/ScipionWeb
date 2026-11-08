@@ -1,13 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const facilityMocks = vi.hoisted(() => ({
   getFacilitySettings: vi.fn(),
   saveFacilitySettings: vi.fn(),
   previewConventions: vi.fn(),
-  getFacilityMailSettings: vi.fn(),
-  saveFacilityMailSettings: vi.fn(),
-  sendFacilityTestMail: vi.fn(),
   getRoomScreenLink: vi.fn(),
   makeRoomScreenLink: vi.fn(),
   turnOffRoomScreen: vi.fn(),
@@ -32,15 +30,11 @@ const answer = {
               microscope: { dataFolderPattern: "{session}_DATA_{n:02d}", atlasFolderPattern: "{session}_ATLAS", gridSlots: 12 } }],
 };
 
-const mail = { host: "smtp.cnb.csic.es", port: 587, security: "starttls", user: "facility", sender: "facility@cnb.csic.es",
-               recipients: "", passwordSet: true, enabled: true };
-
 describe("The facility's conventions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     facilityMocks.getFacilitySettings.mockResolvedValue(answer);
-    facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
     facilityMocks.getRoomScreenLink.mockResolvedValue({ enabled: false, token: null, createdAt: null });
     facilityMocks.previewConventions.mockImplementation(async ({ sessionNamePattern }: any) => {
       if (sessionNamePattern.includes("{owner}")) throw new Error("{owner} is not a piece of this pattern");
@@ -50,7 +44,7 @@ describe("The facility's conventions", () => {
 
   it("shows what the session name pattern makes, and saves a preset", async () => {
     facilityMocks.saveFacilitySettings.mockResolvedValue({ ...answer, settings: { sessionNamePattern: CNB } });
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
 
     expect(await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -62,7 +56,7 @@ describe("The facility's conventions", () => {
   });
 
   it("says why a pattern makes no name, and does not save it", async () => {
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
 
     fireEvent.change(screen.getByLabelText("Session name"), { target: { value: "{date:%Y}_{owner}" } });
@@ -71,29 +65,24 @@ describe("The facility's conventions", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
-  it("keeps the mail password unless it is typed or removed, and sends a test", async () => {
-    facilityMocks.saveFacilityMailSettings.mockResolvedValue(mail);
-    facilityMocks.sendFacilityTestMail.mockResolvedValue({ sentTo: ["me@cnb.csic.es"] });
-    render(<ConfigurationPanel {...styles} />);
+  it("saves who is mailed the alerts, and points to the mail server in Settings", async () => {
+    facilityMocks.saveFacilitySettings.mockResolvedValue({ ...answer,
+      settings: { ...answer.settings, alertRecipients: "ops1@cnb.csic.es, ops2@cnb.csic.es" } });
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Alert mail" }));
-    expect(await screen.findByDisplayValue("smtp.cnb.csic.es")).toBeInTheDocument();
-    expect(screen.getByText("Set: leave it empty to keep it")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Recipients"), { target: { value: "ops@cnb.csic.es" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save mail settings" }));
-    await waitFor(() => expect(facilityMocks.saveFacilityMailSettings).toHaveBeenCalled());
-    const saved = facilityMocks.saveFacilityMailSettings.mock.calls[0][0];
-    expect(saved).toMatchObject({ host: "smtp.cnb.csic.es", port: 587, recipients: "ops@cnb.csic.es" });
-    expect("password" in saved).toBe(false);
+    fireEvent.click(await screen.findByRole("tab", { name: "Alerts" }));
+    fireEvent.change(screen.getByLabelText("Mail the alerts to"), { target: { value: " ops1@cnb.csic.es; ops2@cnb.csic.es " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save the recipients" }));
 
-    fireEvent.change(screen.getByLabelText("Send a test to"), { target: { value: "me@cnb.csic.es" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send test mail" }));
-    await waitFor(() => expect(facilityMocks.sendFacilityTestMail).toHaveBeenCalledWith("me@cnb.csic.es"));
+    await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
+      alertRecipients: "ops1@cnb.csic.es; ops2@cnb.csic.es" }));
+    expect(await screen.findByDisplayValue("ops1@cnb.csic.es, ops2@cnb.csic.es")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings, Notifications" })).toHaveAttribute("href", "/settings?tab=notifications");
   });
 
   it("saves the facility's policies", async () => {
     facilityMocks.saveFacilitySettings.mockResolvedValue(answer);
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
     fireEvent.click(screen.getByRole("tab", { name: "Policies" }));
 
@@ -113,7 +102,7 @@ describe("The facility's conventions", () => {
     facilityMocks.saveFacilitySettings.mockResolvedValue({ ...answer,
       settings: { ...answer.settings, retentionNoticeDays: [14, 2] } });
     const toast = (await import("react-hot-toast")).default;
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
     const notices = screen.getByLabelText("Notices before the data go (days)");
@@ -133,10 +122,10 @@ describe("The facility's conventions", () => {
   });
 
   it("shows a section per tab, keeps what is typed in one while another is open, and remembers the last", async () => {
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
 
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alert mail", "Room screen"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alerts", "Room screen"]);
     expect(screen.getByRole("tab", { name: "Naming", selected: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
     fireEvent.change(screen.getByLabelText("Raw data kept (days)"), { target: { value: "45" } });
@@ -153,7 +142,6 @@ describe("The room screen's link", () => {
     vi.clearAllMocks();
     localStorage.clear();
     facilityMocks.getFacilitySettings.mockResolvedValue(answer);
-    facilityMocks.getFacilityMailSettings.mockResolvedValue(mail);
     facilityMocks.previewConventions.mockResolvedValue({ session: "20261103_KRIOS_0123", atlas: null, data: [] });
   });
 
@@ -161,7 +149,7 @@ describe("The room screen's link", () => {
     facilityMocks.getRoomScreenLink.mockResolvedValue({ enabled: false, token: null, createdAt: null });
     facilityMocks.makeRoomScreenLink.mockResolvedValue({ enabled: true, token: "abc123", createdAt: "2026-11-03T10:00:00Z" });
     facilityMocks.turnOffRoomScreen.mockResolvedValue({ enabled: false, token: null, createdAt: null });
-    render(<ConfigurationPanel {...styles} />);
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole("tab", { name: /Room screen/ }, { timeout: 4000 }));
     fireEvent.click(await screen.findByRole("button", { name: /Make its link/ }));
