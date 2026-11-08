@@ -1946,7 +1946,9 @@ export default function ProjectPage() {
   useEffect(() => {
     // forceNodeRerenderAfterPolicyChange
     if (policyRevision === 0) return;
-    setNodes((prev) => prev.map((n) => ({ ...n })));
+    // Nothing to redraw without nodes: a new empty array would only start another render (and, while the
+    // first load is a pending transition, keep starving it)
+    setNodes((prev) => (prev.length ? prev.map((n) => ({ ...n })) : prev));
   }, [policyRevision, setNodes]);
 
   useEffect(() => {
@@ -5211,6 +5213,10 @@ export default function ProjectPage() {
       }
       return relation;
     };
+    // Only when a card's mark changes: this effect runs on every change of the nodes, and an update that changes
+    // nothing would still render again (endlessly, while the first load is a pending transition: an empty
+    // canvas, and a menu whose navigation never commits)
+    if (!nodes.some((node) => (node.data as any)?.gridRelation !== relationOf(String(node.id)))) return;
     setNodes((current) => {
       let changed = false;
       const next = current.map((node) => {
