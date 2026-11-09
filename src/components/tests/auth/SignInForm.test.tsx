@@ -74,7 +74,7 @@ describe("SignInForm", () => {
     expect(screen.getByPlaceholderText("info@gmail.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Enter your password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/reset-password");
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/forgot-password");
     expect(screen.getByRole("link", { name: "Sign Up" })).toHaveAttribute("href", "/signup");
   });
 

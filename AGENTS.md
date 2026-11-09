@@ -143,3 +143,7 @@ Settings has a "Notifications" tab for every user (`pages/Settings/Notifications
 ## Deleting an account
 
 Settings → Users has a delete button per account (not one's own): `DeleteUserDialog` reads `previewUserDeletion` and lists the projects that go with it (size, shared with how many, running), warns when some are shared, says what stays in the facility, shows the blockers, and enables "Delete the account" only once the account's address is typed (`deleteAdminUser`). Projects that could not go are told in a toast; deleting again retries.
+
+## A forgotten password
+
+Sign in's "Forgot password?" opens `/forgot-password` (`pages/AuthPages/ForgotPassword.tsx`: the address, then the API's same answer whatever it is), and the mailed link opens `/reset-password?token=…` (`ResetPassword.tsx`: the new password twice; a used or expired link offers a new one). Both are public routes in `App.tsx`; `api/auth.forgotPassword`/`resetPassword` call the API without a session.

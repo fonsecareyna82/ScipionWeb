@@ -295,3 +295,28 @@ export async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}):
   }
   return res;
 }
+
+async function postPublic(path: string, body: unknown, fallback: string): Promise<{ message: string }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = Array.isArray(data?.detail)
+      ? data.detail.map((item: any) => String(item?.msg || "").replace(/^Value error, /, "")).join(" ")
+      : data?.detail;
+    throw new Error(detail || fallback);
+  }
+  return data;
+}
+
+/** Ask for a link to choose a new password; answers the same whether the address has an account. */
+export const forgotPassword = (email: string) =>
+  postPublic("/auth/forgot-password", { email }, "The request did not go: try again");
+
+/** Choose a new password with the token of the mailed link. */
+export const resetPassword = (token: string, password: string) =>
+  postPublic("/auth/reset-password", { token, password }, "The new password could not be set");
