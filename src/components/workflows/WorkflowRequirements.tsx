@@ -5,7 +5,8 @@ import toast from "react-hot-toast";
 import { installPluginsBatch } from "@/api/plugins";
 import { usePermissions } from "@/hooks/usePermissions";
 
-export type MissingPlugin = { name: string; pipName: string };
+// A missing plugin by its module, and the package that installs it (null: nothing says which)
+export type MissingPlugin = { name: string; pipName: string | null };
 
 /**
  * What a workflow needs before it loads, and what to know about it: the plugins it misses (with a button that
@@ -21,13 +22,16 @@ export default function WorkflowRequirements({ missingPlugins, unknownProtocolCl
   const { can } = usePermissions();
   const [busy, setBusy] = useState(false);
   const missing = missingPlugins ?? [];
+  const installable = missing.filter((plugin) => plugin.pipName);
+  const unknownPackages = missing.filter((plugin) => !plugin.pipName);
   const unknown = unknownProtocolClasses ?? [];
 
   const install = async () => {
     setBusy(true);
     try {
-      await installPluginsBatch({ plugins: missing.map((plugin) => plugin.pipName) });
-      toast.success(`Installing ${missing.map((plugin) => plugin.pipName).join(", ")}: follow it in Plugins. The workflow can be loaded once it is done.`,
+      const pipNames = installable.map((plugin) => plugin.pipName as string);
+      await installPluginsBatch({ plugins: pipNames });
+      toast.success(`Installing ${pipNames.join(", ")}: follow it in Plugins. The workflow can be loaded once it is done.`,
         { duration: 8000 });
       onInstalling?.();
     } catch (e: any) {
@@ -44,8 +48,13 @@ export default function WorkflowRequirements({ missingPlugins, unknownProtocolCl
         <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-[14px] leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           It cannot be loaded until these plugins are installed:{" "}
           <span className="font-semibold">{missing.map((plugin) => plugin.name).join(", ")}</span>.
+          {unknownPackages.length > 0 && (
+            <div className="mt-1 text-[13.5px]">
+              No package is known to install {unknownPackages.map((plugin) => plugin.name).join(", ")}: look for it in Plugins.
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {can("plugins.manage") ? (
+            {installable.length === 0 ? null : can("plugins.manage") ? (
               <button type="button" disabled={busy} onClick={() => void install()}
                       className="rounded-lg bg-amber-600 px-3 py-1 text-[13.5px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
                 {busy ? "Starting…" : "Install missing plugins"}

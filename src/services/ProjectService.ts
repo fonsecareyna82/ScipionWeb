@@ -2157,7 +2157,7 @@ export type WorkflowFileInspection = {
   requiredPluginNames: string[];
   missingPluginNames: string[];
   // Each missing plugin with the package that installs it
-  missingPlugins?: { name: string; pipName: string }[];
+  missingPlugins?: { name: string; pipName: string | null }[];
   // It says which plugins it needs; if not, a warning to migrate it and the protocols this installation does not know
   declaresPlugins?: boolean;
   designWarning?: string;

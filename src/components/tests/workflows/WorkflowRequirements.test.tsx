@@ -59,3 +59,22 @@ describe("What a workflow needs before it loads", () => {
     expect(screen.queryByTestId("workflow-requirements")).not.toBeInTheDocument();
   });
 });
+
+describe("A missing plugin whose package nothing says", () => {
+  it("is not installed blindly: the user is sent to Plugins", async () => {
+    permissionMocks.permissions = ["plugins.manage"];
+    pluginMocks.installPluginsBatch.mockResolvedValue({ taskId: "t2", status: "queued" });
+    renderIt({ missingPlugins: [{ name: "relion", pipName: "scipion-em-relion" }, { name: "oddone", pipName: null }] });
+
+    expect(screen.getByText("No package is known to install oddone: look for it in Plugins.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Install missing plugins" }));
+    await waitFor(() => expect(pluginMocks.installPluginsBatch).toHaveBeenCalledWith({ plugins: ["scipion-em-relion"] }));
+  });
+
+  it("offers no install button when no package is known", () => {
+    permissionMocks.permissions = ["plugins.manage"];
+    renderIt({ missingPlugins: [{ name: "oddone", pipName: null }] });
+
+    expect(screen.queryByRole("button", { name: "Install missing plugins" })).not.toBeInTheDocument();
+  });
+});

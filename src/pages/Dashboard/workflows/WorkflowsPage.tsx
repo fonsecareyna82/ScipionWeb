@@ -625,8 +625,8 @@ export default function WorkflowsPage() {
             requiredPluginNames,
             missingPluginNames,
             missingPlugins: Array.isArray(wf.missingPlugins)
-              ? wf.missingPlugins.filter((plugin: any) => plugin?.name && plugin?.pipName)
-                .map((plugin: any) => ({ name: String(plugin.name), pipName: String(plugin.pipName) }))
+              ? wf.missingPlugins.filter((plugin: any) => plugin?.name)
+                .map((plugin: any) => ({ name: String(plugin.name), pipName: plugin.pipName ? String(plugin.pipName) : null }))
               : undefined,
             designWarning: wf.designWarning ? String(wf.designWarning) : "",
             unknownProtocolClasses: normalizeStringArray(wf.unknownProtocolClasses),
