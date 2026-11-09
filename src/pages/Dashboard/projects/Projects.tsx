@@ -9,7 +9,6 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { ImportProjectPayload, ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
-import { formatHours, getOwnComputeUsage, type OwnCompute } from "@/api/usage";
 import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
@@ -399,16 +398,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     );
   }, [projects, normalizedTerm]);
 
-  // What the user ran this month (null while unknown, or with an API that does not keep it)
-  const [ownCompute, setOwnCompute] = useState<OwnCompute | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    getOwnComputeUsage()
-      .then((usage) => { if (!cancelled) setOwnCompute(usage); })
-      .catch(() => { /* only a hint: the list works without it */ });
-    return () => { cancelled = true; };
-  }, []);
-
   // The disk quotas the user's projects count against (none set: nothing shown)
   const [myQuotas, setMyQuotas] = useState<StorageQuota[]>([]);
   useEffect(() => {
@@ -754,21 +743,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 {stats.total}
               </span>
             </div>
-            <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              Browse your projects, open workflows, and manage sharing.
-            </p>
-            {stats.owned > 0 && (
-              <p className="mt-0.5 text-sm leading-6 text-gray-700 dark:text-gray-300" data-testid="own-disk-usage">
-                Your projects take{" "}
-                <span className="font-semibold text-gray-950 dark:text-white">{formatBytes(stats.ownedBytes)}</span>
-                {" "}on the disk
-                {stats.ownedNotMeasured > 0
-                  ? ` (${stats.ownedNotMeasured} not measured yet)`
-                  : ""}
-                .
-              </p>
-            )}
-            {myQuotas.map((quota) => (
+            {/* Only a warning: a quota near its limit, or full */}
+            {myQuotas.filter((quota) => quota.full || (quota.percent ?? 0) >= 80).map((quota) => (
               <p key={`${quota.kind}-${quota.targetId}`} data-testid="own-disk-quota"
                  className={classNames("mt-0.5 text-sm leading-6",
                    quota.full ? "font-semibold text-red-700 dark:text-red-300"
@@ -779,17 +755,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 {quota.full ? ". It is full: nothing new can be launched in its projects until space is freed." : "."}
               </p>
             ))}
-            {ownCompute && ownCompute.runs > 0 && (
-              <p className="mt-0.5 text-sm leading-6 text-gray-700 dark:text-gray-300" data-testid="own-compute-usage">
-                This month you ran{" "}
-                <span className="font-semibold text-gray-950 dark:text-white">
-                  {ownCompute.runs} {ownCompute.runs === 1 ? "protocol" : "protocols"}
-                </span>
-                {": "}
-                <span className="font-semibold text-gray-950 dark:text-white">{formatHours(ownCompute.gpuHours)}</span>
-                {" "}of GPU and {formatHours(ownCompute.hours)} of running time.
-              </p>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">

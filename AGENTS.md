@@ -115,7 +115,7 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
   - clicking a user lists their runs;
   - the runs running now;
   - Export CSV of the table shown.
-- The Projects page sums what the user's own projects take from `diskUsageBytes` in the project list ("Your projects take … on the disk"). Below it, from `GET /usage/compute/me`, what they ran this month (hidden with no runs, or with an older API).
+- The Projects page shows no usage lines (the user found them noisy): only a warning for a quota from 80 % (amber) or full (red, "nothing new can be launched").
 - Settings dialogs and confirmations use `pages/Settings/SettingsDialog.tsx` (the web's dark header, rounded buttons, red gradient for what destroys or interrupts), never `window.confirm`.
 
 ## Facility mode (branch `lims`, in progress)
@@ -158,7 +158,7 @@ Sign in's "Forgot password?" (shown only when `api/auth.passwordResetAvailable`:
 
 ## Disk quotas
 
-Settings → Usage → Disk ends with `pages/Settings/StorageQuotasCard`: each quota with a bar (amber from 80 %, red when full) and, for `settings.manage`, its limit in GB to save or remove, and a row to add one for a user (with projects) or a group. The Projects page tells the user their quotas (`myStorageQuotas`): used of limit, amber from 80 %, red and "nothing new can be launched" when full.
+Settings → Usage → Disk ends with `pages/Settings/StorageQuotasCard`: each quota with a bar (amber from 80 %, red when full) and, for `settings.manage`, its limit in GB to save or remove, and a row to add one for a user (with projects) or a group. The Projects page warns the user only of a quota near its limit (from 80 %, amber) or full (red, "nothing new can be launched"); it shows no other usage line (the user found them noisy).
 
 ## Scratch per machine
 
