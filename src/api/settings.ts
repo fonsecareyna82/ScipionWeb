@@ -228,7 +228,30 @@ export type NodeCapabilities = {
   gpuCount: number;
   gpus: InstanceGpuResource[];
   plugins: NodePlugin[];
+  // Its fast local disk for the protocols' temporary files, as that machine sees it (path null: none)
+  scratch?: NodeScratch;
 };
+
+export type NodeScratch = {
+  path: string | null;
+  exists?: boolean | null;
+  writable?: boolean | null;
+  totalBytes?: number | null;
+  freeBytes?: number | null;
+  error?: string | null;
+};
+
+/** Set (or unset, with an empty path) a machine's scratch; its protocol worker must be restarted to use it. */
+export async function saveNodeScratch(hostname: string, path: string): Promise<{ path: string | null; file: string; node: boolean }> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/jobs/nodes/${encodeURIComponent(hostname)}/scratch`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(data?.detail || "Failed to save the scratch"));
+  return data;
+}
 
 export type NodeCapabilitiesList = {
   available: boolean;

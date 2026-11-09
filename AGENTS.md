@@ -159,3 +159,7 @@ Sign in's "Forgot password?" (shown only when `api/auth.passwordResetAvailable`:
 ## Disk quotas
 
 Settings → Usage → Disk ends with `pages/Settings/StorageQuotasCard`: each quota with a bar (amber from 80 %, red when full) and, for `settings.manage`, its limit in GB to save or remove, and a row to add one for a user (with projects) or a group. The Projects page tells the user their quotas (`myStorageQuotas`): used of limit, amber from 80 %, red and "nothing new can be launched" when full.
+
+## Scratch per machine
+
+Settings → Jobs → Node capabilities shows each machine's scratch (`pages/Settings/NodeScratch`): none, its folder with free space, or why it cannot be used (as that machine reports it), and for `settings.manage` a "Change" dialog (`saveNodeScratch`; empty removes it; the machine's protocol worker must be restarted).

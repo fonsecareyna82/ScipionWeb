@@ -1218,6 +1218,8 @@ export type NodeCapabilities = {
   gpuCount: number;
   gpus: InstanceGpuResource[];
   plugins: NodePlugin[];
+  // Its fast local disk for the protocols' temporary files, as that machine sees it (path null: none)
+  scratch?: import("@/api/settings").NodeScratch;
 };
 
 export type NodeCapabilitiesList = {

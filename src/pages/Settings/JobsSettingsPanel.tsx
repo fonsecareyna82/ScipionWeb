@@ -55,6 +55,8 @@ import type {
     NodeCapabilitiesList,
     RecentProtocolJob,
 } from "@/services/ProjectService";
+import NodeScratch from "./NodeScratch";
+import { usePermissions } from "@/hooks/usePermissions";
 
 
 const AUTO_REFRESH_MS = 3000;
@@ -303,6 +305,7 @@ function RuntimeCell({
 
 export default function JobsSettingsPanel() {
     const svc = useProjectService();
+    const { can } = usePermissions();
 
     const [data, setData] =
         useState<JobMonitoringOverview | null>(
@@ -1063,6 +1066,10 @@ export default function JobsSettingsPanel() {
                                                         </Typography>
                                                     )}
                                                 </Box>
+
+                                                <NodeScratch hostname={node.hostname} scratch={node.scratch}
+                                                             canEdit={can("settings.manage")}
+                                                             onSaved={() => void loadNodeCapabilities()} />
 
                                                 <Box>
                                                     <Stack
