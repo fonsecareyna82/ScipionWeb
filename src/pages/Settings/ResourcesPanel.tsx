@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
-    Alert, Box, Button, Chip, CircularProgress, LinearProgress, Paper, Stack, Typography,
+    Alert, Box, Button, Card, CardContent, CardHeader, Chip, CircularProgress, LinearProgress, Paper, Stack, Typography,
 } from "@mui/material";
 import { Cpu, HardDrive, MemoryStick, RefreshCw } from "lucide-react";
 
-import PageMeta from "@/components/common/PageMeta";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { getResources, type GpuUse, type Machine, type MachineGpu, type ResourceRun, type Resources } from "@/api/resources";
 import { formatHours } from "@/api/usage";
 import { useFacilityStyles, FACILITY_TEXT } from "@/pages/Facility/facilityStyles";
 
 const REFRESH_MS = 10_000;
-const wrapperMaxWidth = 1180;
 
 type Colors = ReturnType<typeof useFacilityStyles>["colors"];
 
@@ -173,9 +170,9 @@ function Section({ title, children, colors }: { title: string; children: React.R
     );
 }
 
-/** What the machines have in use right now, what runs and what waits: for everyone, each seeing their own. */
-export default function ResourcesPage() {
-    const { colors, actionButtonSx } = useFacilityStyles();
+/** Settings → Instance: what the machines have in use right now, what runs and what waits. */
+export default function ResourcesPanel() {
+    const { colors, actionButtonSx, cardSx, cardHeaderSx } = useFacilityStyles();
     const [data, setData] = useState<Resources | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -212,22 +209,21 @@ export default function ResourcesPage() {
     const noteSx = { fontSize: FACILITY_TEXT.note, color: colors.muted };
 
     return (
-        <>
-            <PageMeta title="Scipion | Resources" description="What the machines have in use right now" />
-            <PageBreadcrumb pageTitle="Resources" />
-            <div className="rounded-2xl border p-5 lg:p-6"
-                 style={{ maxWidth: wrapperMaxWidth, width: "100%", background: colors.surface,
-                          borderColor: colors.border, color: colors.text }}>
+        <Card variant="outlined" sx={cardSx}>
+            <CardHeader
+                title="Machines now"
+                subheader={`What each machine running protocols has in use, refreshed every 10 s${
+                    updatedAt ? ` (last at ${updatedAt.toLocaleTimeString()})` : ""}.`}
+                sx={cardHeaderSx}
+                action={
+                    <Button size="small" variant="outlined" sx={actionButtonSx} disabled={loading}
+                            startIcon={<RefreshCw size={15} />} onClick={() => void load()}>
+                        Reload
+                    </Button>
+                }
+            />
+            <CardContent sx={{ pt: 2 }}>
                 <Stack spacing={2.5}>
-                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <Typography sx={{ ...noteSx, flex: 1 }}>
-                            {updatedAt ? `Updated at ${updatedAt.toLocaleTimeString()}` : ""}
-                        </Typography>
-                        <Button size="small" variant="outlined" sx={actionButtonSx} disabled={loading}
-                                startIcon={<RefreshCw size={15} />} onClick={() => void load()}>
-                            Reload
-                        </Button>
-                    </Stack>
 
                     {error && <Alert severity="error">{error}</Alert>}
                     {!data && !error && (
@@ -296,7 +292,7 @@ export default function ResourcesPage() {
                         </>
                     )}
                 </Stack>
-            </div>
-        </>
+            </CardContent>
+        </Card>
     );
 }

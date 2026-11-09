@@ -2,15 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import ResourcesPage, { runTitle } from "./ResourcesPage";
+import ResourcesPanel, { runTitle } from "./ResourcesPanel";
 import { getResources, type Resources, type ResourceRun } from "@/api/resources";
 
 vi.mock("@/api/resources", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@/api/resources")>()),
     getResources: vi.fn(),
 }));
-vi.mock("@/components/common/PageMeta", () => ({ default: () => null }));
-vi.mock("@/components/common/PageBreadCrumb", () => ({ default: () => null }));
 
 const GB = 1024 ** 3;
 
@@ -45,10 +43,10 @@ const resources: Resources = {
 };
 
 function renderPage() {
-    return render(<MemoryRouter><ResourcesPage /></MemoryRouter>);
+    return render(<MemoryRouter><ResourcesPanel /></MemoryRouter>);
 }
 
-describe("ResourcesPage", () => {
+describe("ResourcesPanel", () => {
     beforeEach(() => vi.mocked(getResources).mockResolvedValue(resources));
 
     it("shows each GPU with whose run holds it, and the user's own runs and waits", async () => {

@@ -165,6 +165,6 @@ Settings → Usage → Disk ends with `pages/Settings/StorageQuotasCard`: each q
 
 Settings → Jobs → Node capabilities shows each machine's scratch (`pages/Settings/NodeScratch`): none, its folder with free space, or why it cannot be used (as that machine reports it), and for `settings.manage` a "Change" dialog (`saveNodeScratch`; empty removes it; the machine's protocol worker must be restarted). Under it, what the last cleaning did (folders removed, space freed, errors) and, for `jobs.manage`, "Clean now" (`cleanNodeScratch`; the list reloads a few seconds later).
 
-## Resources page
+## Machines now (Settings → Instance)
 
-`pages/Resources/ResourcesPage.tsx` (`/resources`, in the menu for everyone) shows `GET /resources` (`api/resources.ts`), reloading every 10 s while the tab is visible: a card per machine (processors, memory, projects and scratch disks, and a card per GPU with Free / In use / Given, idle and whose run holds it), the runs now and the waiting protocols with why. Without `storage.view` the user sees their own runs and waits, others' runs as "Another user", and "And N runs of other users".
+`pages/Settings/ResourcesPanel.tsx`, the last card of Settings → Instance (the user wanted it there, not in the menu), shows `GET /resources` (`api/resources.ts`), reloading every 10 s while the tab is visible: a card per machine (processors, memory, projects and scratch disks, and a card per GPU with Free / In use / Given, idle and whose run holds it), the runs now and the waiting protocols with why. Without `storage.view` (unusual for who opens Instance) the user would see their own runs and waits, others' runs as "Another user", and "And N runs of other users".

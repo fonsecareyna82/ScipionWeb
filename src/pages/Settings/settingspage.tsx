@@ -61,6 +61,7 @@ import {
   DEFAULT_PROJECT_INSTANCE_SETTINGS,
 } from "@/config/settingsDefaults";
 
+import ResourcesPanel from "./ResourcesPanel";
 import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
 
 import type {
@@ -2045,6 +2046,7 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        <ResourcesPanel />
       </Stack>
     );
   };

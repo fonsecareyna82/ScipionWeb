@@ -39,7 +39,6 @@ const ProjectMonitor = lazy(() => import("./pages/Dashboard/projects/ProjectMoni
 const Plugins = lazy(() => import("./pages/Dashboard/plugins/Plugins"));
 const PluginPage = lazy(() => import("./pages/Dashboard/plugins/PluginPage"));
 const WorkflowsPage = lazy(() => import("./pages/Dashboard/workflows/WorkflowsPage"));
-const ResourcesPage = lazy(() => import("./pages/Resources/ResourcesPage"));
 const RoomScreen = lazy(() => import("./pages/Facility/RoomScreen"));
 const SettingsPage = lazy(() => import("./pages/Settings/settingspage"));
 const FacilityPage = lazy(() => import("./pages/Facility/FacilityPage"));
@@ -98,7 +97,6 @@ export default function App({ service }: AppProps) {
                   <Route path="/project/:projectId/monitor" element={<ProjectMonitor />} />
                   <Route path="/plugins" element={<Plugins />} />
                   <Route path="/workflows" element={<WorkflowsPage />} />
-                  <Route path="/resources" element={<ResourcesPage />} />
                   <Route path="/plugins/:pipName" element={<PluginPage />} />
                   <Route path="/profile" element={<UserProfiles />} />
                   <Route path="/calendar" element={<Calendar />} />
