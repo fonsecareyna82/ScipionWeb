@@ -158,8 +158,7 @@ export default function StorageQuotasCard({ report, canEdit, ...styles }: Styles
                             <MenuItem value="group">A group</MenuItem>
                         </TextField>
                         <TextField select size="small" sx={{ ...fieldSx, flex: 1, minWidth: 200 }} label={kind === "user" ? "User" : "Group"}
-                                   value={targetId} onChange={(e) => setTargetId(e.target.value)}
-                                   helperText={kind === "user" ? "Users with projects" : undefined}>
+                                   value={targetId} onChange={(e) => setTargetId(e.target.value)}>
                             {options.filter((option) => !taken.has(option.id)).map((option) => (
                                 <MenuItem key={option.id} value={String(option.id)}>{option.label}</MenuItem>
                             ))}
@@ -171,6 +170,11 @@ export default function StorageQuotasCard({ report, canEdit, ...styles }: Styles
                             Add quota
                         </Button>
                     </Stack>
+                )}
+                {canEdit && kind === "user" && (
+                    <Typography sx={{ fontSize: 13.5, color: colors.muted, mt: 0.75 }}>
+                        Only users who own projects are listed.
+                    </Typography>
                 )}
             </CardContent>
         </Card>
