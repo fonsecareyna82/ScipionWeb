@@ -13,8 +13,8 @@ function formatBytes(bytes: number | null | undefined): string {
 }
 
 /**
- * A machine's scratch: the fast local disk (an SSD) where its protocols put their temporary files and where Relion
- * copies particles. Shown as that machine sees it; who manages the settings sets or unsets it.
+ * A machine's scratch: the fast local disk (an SSD) where its protocols put their temporary files, and where those that
+ * can copy their input to read it faster. Shown as that machine sees it; who manages the settings sets or unsets it.
  */
 export default function NodeScratch({ hostname, scratch, canEdit, onSaved }: {
   hostname: string;
@@ -70,7 +70,7 @@ export default function NodeScratch({ hostname, scratch, canEdit, onSaved }: {
       {editing && (
         <SettingsDialog
           title={`Scratch of ${hostname}`}
-          description="A folder on a fast disk local to this machine (an SSD). The protocols that run here put their temporary files there, and Relion can copy the particles there to read them faster. Empty: none."
+          description="A folder on a fast disk local to this machine (an SSD). The protocols that run here put their temporary files there, and those that can copy their input data there to read it faster. Empty: none."
           icon={<HardDrive size={20} color="#93c5fd" />}
           confirmLabel="Save"
           busyLabel="Saving…"
