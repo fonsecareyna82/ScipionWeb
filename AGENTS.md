@@ -110,7 +110,8 @@ The root `objects` table of a SetOfClasses2D/3D is requested with `contrastMode=
   - Measure all again, or measure one project again;
   - the panel looks again every 15 s while measures are pending.
 - Its Computing part (`ComputeUsagePanel`, `api/usage.ts`) shows what the runs took in a period (this week, this month, last month, last 30 days, this year, or a custom range):
-  - GPU hours, run hours, runs and failed runs;
+  - GPU hours, GPU use (how busy the GPUs given were, over the GPU hours measured; "—" when none was), run hours, runs and failed runs;
+  - a GPU use column in each table, and "N % busy · memory" under each measured run's GPU hours;
   - tables by user, by group, by protocol and by machine (with GPU hours per GPU), sorted by GPU hours;
   - clicking a user lists their runs;
   - the runs running now;

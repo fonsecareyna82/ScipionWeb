@@ -2,11 +2,15 @@ import { BASE_URL } from "@/config";
 import { fetchWithAuth } from "./auth";
 import { buildApiError, readPayload } from "./users";
 
-// The computing used in a period: hours are wall time inside it, GPU hours those hours times the GPUs given
+// The computing used in a period: hours are wall time inside it, GPU hours those hours times the GPUs given.
+// How busy the GPUs really were is known only for the runs looked at while they went on (gpuMeasuredHours of the
+// GPU hours); an older API leaves these out.
 export type ComputeTotals = {
   runs: number;
   hours: number;
   gpuHours: number;
+  gpuMeasuredHours?: number;
+  gpuUsedHours?: number;
   failed: number;
   running: number;
 };
@@ -36,6 +40,10 @@ export type ComputeRun = {
   status: string | null;
   hours: number;
   gpuHours: number;
+  // Mean busy % of its GPUs, the GPU hours really used and the most GPU memory held; null when not looked at
+  gpuBusy?: number | null;
+  gpuUsedHours?: number | null;
+  gpuMemoryPeakBytes?: number | null;
 };
 
 export type UserCompute = ComputeTotals & { userId: number | null; name: string; email: string | null;
@@ -89,6 +97,12 @@ export async function getOwnComputeUsage(period?: Period): Promise<OwnCompute | 
   if (response.status === 404) return null;
   if (!response.ok) throw await buildApiError(response, "Failed to load your computing");
   return (await readPayload(response)) as OwnCompute;
+}
+
+// How busy the GPUs given were, in %, over the GPU hours looked at; null when none was
+export function gpuUsePercent(totals: Pick<ComputeTotals, "gpuMeasuredHours" | "gpuUsedHours">): number | null {
+  const measured = totals.gpuMeasuredHours ?? 0;
+  return measured > 0 ? Math.round(((totals.gpuUsedHours ?? 0) / measured) * 100) : null;
 }
 
 export function formatHours(hours: number): string {

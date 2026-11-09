@@ -71,6 +71,31 @@ describe("ComputeUsagePanel", () => {
         expect(vi.mocked(getUserRuns).mock.calls[0][0]).toBe(2);
     });
 
+    it("shows how busy the GPUs really were, only where they were measured", async () => {
+        vi.mocked(getComputeUsage).mockResolvedValue({ ...report,
+            total: { ...report.total, gpuMeasuredHours: 40, gpuUsedHours: 10 },
+            users: [{ ...report.users[0], gpuMeasuredHours: 40, gpuUsedHours: 10 }, report.users[1]] });
+        vi.mocked(getUserRuns).mockResolvedValue({ since: report.since, until: report.until, truncated: false,
+            runs: [run(9, { gpuBusy: 24.6, gpuUsedHours: 2.46, gpuMemoryPeakBytes: 6 * 1024 ** 3 }), run(8)] });
+        render(<ComputeUsagePanel fieldSx={{}} cardSx={{}} cardHeaderSx={{}} colors={colors} />);
+
+        const byUser = await screen.findByRole("table", { name: "Computing by user" });
+        const rows = within(byUser).getAllByRole("row");
+        expect(rows[1]).toHaveTextContent("25 %");
+        expect(within(rows[2]).getAllByRole("cell")[2]).toHaveTextContent("—");
+        expect(screen.getByText("busy over 40 h of GPU hours measured")).toBeInTheDocument();
+
+        fireEvent.click(rows[1]);
+        await screen.findByRole("table", { name: "Runs of Marta" });
+        expect(screen.getByTestId("run-gpu-busy-9")).toHaveTextContent("25 % busy · 6");
+        expect(screen.queryByTestId("run-gpu-busy-8")).not.toBeInTheDocument();
+    });
+
+    it("says the GPU use was not measured when no run was looked at", async () => {
+        render(<ComputeUsagePanel fieldSx={{}} cardSx={{}} cardHeaderSx={{}} colors={colors} />);
+        expect(await screen.findByText("Not measured in this period")).toBeInTheDocument();
+    });
+
     it("shows the GPU hours of each GPU of a machine", async () => {
         render(<ComputeUsagePanel fieldSx={{}} cardSx={{}} cardHeaderSx={{}} colors={colors} />);
         await screen.findByRole("table", { name: "Computing by user" });

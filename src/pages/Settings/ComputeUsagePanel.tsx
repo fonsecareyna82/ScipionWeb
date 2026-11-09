@@ -29,11 +29,13 @@ import {
     formatHours,
     getComputeUsage,
     getUserRuns,
+    gpuUsePercent,
     type ComputeReport,
     type ComputeRun,
     type ComputeTotals,
     type UserRuns,
 } from "@/api/usage";
+import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 
 type PanelStyles = {
@@ -212,17 +214,19 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
         if (runsOf && userRuns) {
             download(`runs-${runsOf.name.replace(/\W+/g, "_")}-${day(period.since)}.csv`, [
                 csvLine(["Project", "Protocol", "Label", "Started", "Ended", "Hours", "GPUs", "GPU ids", "GPU hours",
-                    "Machine", "Queue", "Queue job", "Status", "Streaming"]),
+                    "GPU busy %", "GPU memory peak (GB)", "Machine", "Queue", "Queue job", "Status", "Streaming"]),
                 ...userRuns.runs.map((run) => csvLine([run.projectName, run.protocolClassName, run.protocolLabel,
                     run.startedAt, run.endedAt, run.hours.toFixed(3), run.gpus, run.gpuIds.join(" "),
-                    run.gpuHours.toFixed(3), run.host, run.queueName, run.queueJobId, run.status,
+                    run.gpuHours.toFixed(3), run.gpuBusy != null ? Math.round(run.gpuBusy) : "",
+                    run.gpuMemoryPeakBytes != null ? (run.gpuMemoryPeakBytes / 1024 ** 3).toFixed(2) : "", run.host, run.queueName, run.queueJobId, run.status,
                     run.streaming ? "yes" : "no"])),
             ]);
             return;
         }
         download(`compute-${view}-${day(period.since)}-${day(period.until)}.csv`, [
-            csvLine([firstColumn, "GPU hours", "Hours", "Runs", "Failed", detailColumn || "Note"]),
-            ...rows.map((row) => csvLine([row.name, row.gpuHours.toFixed(3), row.hours.toFixed(3), row.runs,
+            csvLine([firstColumn, "GPU hours", "GPU use %", "Hours", "Runs", "Failed", detailColumn || "Note"]),
+            ...rows.map((row) => csvLine([row.name, row.gpuHours.toFixed(3), gpuUsePercent(row) ?? "",
+                row.hours.toFixed(3), row.runs,
                 row.failed, row.detail ?? row.note])),
         ]);
     };
@@ -279,6 +283,12 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                                         {run.gpuIds.length && !run.queueJobId ? ` (${run.gpuIds.join(", ")})` : ""}
                                     </Typography>
                                 )}
+                                {run.gpus > 0 && run.gpuBusy != null && (
+                                    <Typography sx={noteSx} data-testid={`run-gpu-busy-${run.id}`}>
+                                        {Math.round(run.gpuBusy)} % busy
+                                        {run.gpuMemoryPeakBytes ? ` · ${formatBytes(run.gpuMemoryPeakBytes)} memory` : ""}
+                                    </Typography>
+                                )}
                             </TableCell>
                             <TableCell sx={cellSx}>
                                 {run.host ?? "—"}
@@ -306,7 +316,8 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                 <CardHeader
                     title="Computing"
                     subheader={"What each user, group, protocol and machine ran in the period. Hours are the "
-                        + "time the runs ran; GPU hours, those hours times the GPUs each run was given."}
+                        + "time the runs ran; GPU hours, those hours times the GPUs each run was given; GPU use, how busy "
+                        + "those GPUs really were while the runs went on."}
                     sx={cardHeaderSx}
                     action={
                         <Stack direction="row" spacing={1}>
@@ -356,6 +367,10 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                             <Stack spacing={2.25}>
                                 <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                                     {card("GPU hours", formatHours(total.gpuHours))}
+                                    {card("GPU use", gpuUsePercent(total) != null ? `${gpuUsePercent(total)} %` : "—",
+                                        gpuUsePercent(total) != null
+                                            ? `busy over ${formatHours(total.gpuMeasuredHours ?? 0)} of GPU hours measured`
+                                            : "Not measured in this period")}
                                     {card("Run hours", formatHours(total.hours))}
                                     {card("Runs", total.runs.toLocaleString(),
                                         `by ${total.users} ${total.users === 1 ? "user" : "users"}`
@@ -413,6 +428,7 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                                                     <TableRow>
                                                         <TableCell sx={headSx}>{firstColumn}</TableCell>
                                                         <TableCell sx={{ ...headSx, textAlign: "right" }}>GPU hours</TableCell>
+                                                        <TableCell sx={{ ...headSx, textAlign: "right" }}>GPU use</TableCell>
                                                         <TableCell sx={{ ...headSx, textAlign: "right" }}>Share</TableCell>
                                                         <TableCell sx={{ ...headSx, textAlign: "right" }}>Run hours</TableCell>
                                                         <TableCell sx={{ ...headSx, textAlign: "right" }}>Runs</TableCell>
@@ -423,7 +439,7 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                                                 <TableBody>
                                                     {rows.length === 0 && (
                                                         <TableRow>
-                                                            <TableCell sx={cellSx} colSpan={7}>
+                                                            <TableCell sx={cellSx} colSpan={8}>
                                                                 Nothing ran in this period.
                                                             </TableCell>
                                                         </TableRow>
@@ -440,6 +456,9 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                                                                 </TableCell>
                                                                 <TableCell sx={{ ...numberSx, fontWeight: 700 }}>
                                                                     {formatHours(row.gpuHours)}
+                                                                </TableCell>
+                                                                <TableCell sx={numberSx}>
+                                                                    {gpuUsePercent(row) != null ? `${gpuUsePercent(row)} %` : "—"}
                                                                 </TableCell>
                                                                 <TableCell sx={numberSx}>
                                                                     {share(row.gpuHours, total.gpuHours)}
