@@ -17,6 +17,7 @@ import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
 import ImportWorkflowDialog from "@/components/projects/ImportWorkflowDialog";
+import { myStorageQuotas, type StorageQuota } from "@/api/storage";
 //import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
@@ -408,6 +409,16 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     return () => { cancelled = true; };
   }, []);
 
+  // The disk quotas the user's projects count against (none set: nothing shown)
+  const [myQuotas, setMyQuotas] = useState<StorageQuota[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    myStorageQuotas()
+      .then((quotas) => { if (!cancelled) setMyQuotas(quotas); })
+      .catch(() => { /* only a hint: the list works without it */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const stats = useMemo(() => {
     const total = projects.length;
     const shared = projects.filter((p) => Boolean(p.isShared) && !Boolean(p.isOwner)).length;
@@ -757,6 +768,17 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 .
               </p>
             )}
+            {myQuotas.map((quota) => (
+              <p key={`${quota.kind}-${quota.targetId}`} data-testid="own-disk-quota"
+                 className={classNames("mt-0.5 text-sm leading-6",
+                   quota.full ? "font-semibold text-red-700 dark:text-red-300"
+                     : (quota.percent ?? 0) >= 80 ? "text-amber-800 dark:text-amber-300" : "text-gray-700 dark:text-gray-300")}>
+                {quota.kind === "user" ? "Your disk quota" : `The disk quota of ${quota.name ?? "your group"}`}:{" "}
+                {formatBytes(quota.usedBytes)} of {formatBytes(quota.limitBytes)}
+                {quota.percent != null ? ` (${Math.round(quota.percent)} %)` : ""}
+                {quota.full ? ". It is full: nothing new can be launched in its projects until space is freed." : "."}
+              </p>
+            ))}
             {ownCompute && ownCompute.runs > 0 && (
               <p className="mt-0.5 text-sm leading-6 text-gray-700 dark:text-gray-300" data-testid="own-compute-usage">
                 This month you ran{" "}

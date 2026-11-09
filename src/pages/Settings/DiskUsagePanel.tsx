@@ -30,6 +30,8 @@ import { RefreshCw, Ruler, X } from "lucide-react";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { getStorageUsage, measureStorage, type ProjectStorage, type StorageReport } from "@/api/storage";
 import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import StorageQuotasCard from "./StorageQuotasCard";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type PanelStyles = {
     fieldSx: SxProps<Theme>;
@@ -79,6 +81,7 @@ function measureState(project: ProjectStorage): { label: string; color: "default
 
 export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionButtonSx, colors }: PanelStyles) {
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
+    const { can } = usePermissions();
     const [report, setReport] = useState<StorageReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -415,6 +418,8 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
                     ) : null}
                 </CardContent>
             </Card>
+            <StorageQuotasCard report={report} canEdit={can("settings.manage")} fieldSx={fieldSx} cardSx={cardSx}
+                               cardHeaderSx={cardHeaderSx} actionButtonSx={actionSx} colors={colors} />
         </Stack>
     );
 }

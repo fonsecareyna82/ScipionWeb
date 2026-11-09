@@ -65,3 +65,25 @@ export const getStorageUsage = () => request<StorageReport>("/storage/usage", "F
 export const measureStorage = (projectIds?: number[]) =>
   request<{ requested: boolean }>("/storage/measure", "Failed to ask for a new measure",
     { method: "POST", body: JSON.stringify({ projectIds: projectIds ?? null }) });
+
+// A disk quota: how much the projects of a user, or of a group's members, may take
+export type StorageQuota = {
+  id?: number;
+  kind: "user" | "group";
+  targetId: number;
+  name: string | null;
+  email?: string | null;
+  limitBytes: number;
+  usedBytes: number;
+  percent: number | null;
+  // At or over its limit: nothing new may be launched in its projects
+  full: boolean;
+};
+
+export const listStorageQuotas = () => request<StorageQuota[]>("/storage/quotas", "Failed to load the disk quotas");
+/** Set the quota of a user or a group (null: remove it); answers every quota. */
+export const saveStorageQuota = (kind: StorageQuota["kind"], targetId: number, limitBytes: number | null) =>
+  request<StorageQuota[]>("/storage/quotas", "Failed to save the disk quota",
+    { method: "PUT", body: JSON.stringify({ kind, targetId, limitBytes }) });
+/** The quotas the signed-in user's projects count against. */
+export const myStorageQuotas = () => request<StorageQuota[]>("/storage/quotas/me", "Failed to load your disk quota");
