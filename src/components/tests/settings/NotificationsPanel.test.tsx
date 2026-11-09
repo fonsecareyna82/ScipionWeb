@@ -19,7 +19,7 @@ const booking = { kind: "facility.booking", group: "Facility", label: "My bookin
 const retention = { ...booking, kind: "facility.retention", label: "My session's data are about to be deleted",
                     mandatory: true, channels: ["instant", "digest"] };
 const mail = { host: "smtp.cnb.csic.es", port: 587, security: "starttls", user: "scipion", sender: "scipion@cnb.csic.es",
-               passwordSet: true, enabled: true, publicUrl: "https://scipion.cnb.csic.es",
+               passwordSet: true, enabled: true, mailOn: false, sending: false, publicUrl: "https://scipion.cnb.csic.es",
                digest: { hour: 8, timezone: "Europe/Madrid" } };
 
 async function chooseIn(select: HTMLElement, option: string) {
@@ -58,11 +58,11 @@ describe("Settings: notifications", () => {
     expect(screen.queryByText("Mail server")).not.toBeInTheDocument();
   });
 
-  it("says the notices only show in the web while there is no mail server", async () => {
+  it("says the notices only show in the web while ScipionWeb sends no mail", async () => {
     notificationMocks.getMyNotificationPreferences.mockResolvedValue({ kinds: [booking], mailEnabled: false });
     render(<NotificationsPanel canManage={false} />);
 
-    expect(await screen.findByText(/No mail server is set yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/ScipionWeb does not send mail here/)).toBeInTheDocument();
   });
 
   it("sets the mail server for administrators, keeping the password, with the web's address and the digest's hour", async () => {
@@ -77,7 +77,12 @@ describe("Settings: notifications", () => {
     await waitFor(() => expect(notificationMocks.saveMailSettings).toHaveBeenCalled());
     const saved = notificationMocks.saveMailSettings.mock.calls[0][0];
     expect(saved).toMatchObject({ host: "smtp.cnb.csic.es", port: 587, publicUrl: "https://scipion.example.org",
-                                  digest: { hour: 8, timezone: "Europe/Madrid" } });
+                                  digest: { hour: 8, timezone: "Europe/Madrid" }, mailOn: false });
+    // Off by default; turned on by the administrator
+    fireEvent.click(screen.getByLabelText("Send notices by mail"));
+    fireEvent.click(screen.getByRole("button", { name: "Save mail settings" }));
+    await waitFor(() => expect(notificationMocks.saveMailSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mailOn: true })));
     expect("password" in saved).toBe(false);
 
     expect(screen.getByRole("button", { name: "Send test mail" })).toBeDisabled();

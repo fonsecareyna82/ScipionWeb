@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EyeCloseIcon, EyeIcon } from "../../icons";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 import Button from "../ui/button/Button";
-import { login } from "../../api/auth";
+import { login, passwordResetAvailable } from "../../api/auth";
 
 export default function SignInForm() {
   // A notice from the previous page, e.g. an account waiting for its activation after signing up
@@ -17,7 +17,15 @@ export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [error, setError] = useState("");
+  // Offered only when ScipionWeb mails (an administrator turned the mail on)
+  const [canReset, setCanReset] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    void passwordResetAvailable().then((available) => { if (!cancelled) setCanReset(available); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,12 +108,14 @@ export default function SignInForm() {
                     Keep me logged in
                   </span>
                 </div>
-                <Link
-                  to="/forgot-password"
-                  className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
-                >
-                  Forgot password?
-                </Link>
+                {canReset && (
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                  >
+                    Forgot password?
+                  </Link>
+                )}
               </div>
               <div>
                 <Button className="w-full" size="sm" type="submit">

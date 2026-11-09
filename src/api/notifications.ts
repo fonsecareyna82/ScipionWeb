@@ -61,11 +61,15 @@ export type MailSettings = {
   user: string;
   sender: string;
   passwordSet: boolean;
+  // A server is set (the test mail works)
   enabled: boolean;
+  // An administrator turned the mail on (off by default): notices are mailed only when both
+  mailOn: boolean;
+  sending: boolean;
   publicUrl: string;
   digest: { hour: number; timezone: string };
 };
-export type MailSettingsPayload = Omit<MailSettings, "passwordSet" | "enabled"> & {
+export type MailSettingsPayload = Omit<MailSettings, "passwordSet" | "enabled" | "sending"> & {
   // Left out: the password there is stays; "": no password
   password?: string;
 };

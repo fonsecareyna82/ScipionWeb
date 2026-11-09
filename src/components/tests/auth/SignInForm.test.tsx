@@ -3,12 +3,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import SignInForm from "@/components/auth/SignInForm";
-import { login } from "@/api/auth";
+import { login, passwordResetAvailable } from "@/api/auth";
 
 const mockNavigate = vi.fn();
 
 vi.mock("@/api/auth", () => ({
   login: vi.fn(),
+  passwordResetAvailable: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -67,8 +68,17 @@ describe("SignInForm", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the form fields and links", () => {
+  it("offers no password reset while ScipionWeb sends no mail", async () => {
+    vi.mocked(passwordResetAvailable).mockResolvedValueOnce(false);
     renderComponent();
+
+    await waitFor(() => expect(passwordResetAvailable).toHaveBeenCalled());
+    expect(screen.queryByRole("link", { name: "Forgot password?" })).not.toBeInTheDocument();
+  });
+
+  it("renders the form fields and links", async () => {
+    renderComponent();
+    expect(await screen.findByRole("link", { name: "Forgot password?" })).toBeInTheDocument();
 
     expect(screen.getByText("Sign In")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("info@gmail.com")).toBeInTheDocument();

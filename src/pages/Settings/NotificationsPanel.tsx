@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-    Alert, Box, Button, Card, CardContent, CardHeader, MenuItem, Stack, TextField, Typography,
+    Alert, Box, Button, Card, CardContent, CardHeader, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography,
 } from "@mui/material";
 import { Mail, RefreshCw, Send } from "lucide-react";
 import toast from "react-hot-toast";
@@ -111,7 +111,7 @@ function MyNoticesCard({ styles }: { styles: Styles }) {
             <CardContent sx={{ pt: 1 }}>
                 {error && <Alert severity="error">{error}</Alert>}
                 {preferences && !preferences.mailEnabled && (
-                    <Alert severity="info" sx={{ mb: 1 }}>No mail server is set yet: your notices only show in the web's bell.</Alert>
+                    <Alert severity="info" sx={{ mb: 1 }}>ScipionWeb does not send mail here: your notices only show in the web's bell.</Alert>
                 )}
                 {preferences && preferences.kinds.length === 0 && (
                     <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
@@ -138,7 +138,7 @@ function MailServerCard({ styles }: { styles: Styles }) {
     const [settings, setSettings] = useState<MailSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [draft, setDraft] = useState({ host: "", port: "587", security: "starttls" as MailSecurity, user: "", sender: "",
-                                         publicUrl: "", hour: "8", timezone: "Europe/Madrid" });
+                                         publicUrl: "", hour: "8", timezone: "Europe/Madrid", mailOn: false });
     // Empty: the password there is stays; removePassword takes it away
     const [password, setPassword] = useState("");
     const [removePassword, setRemovePassword] = useState(false);
@@ -149,7 +149,7 @@ function MailServerCard({ styles }: { styles: Styles }) {
         setSettings(loaded);
         setDraft({ host: loaded.host, port: String(loaded.port || 587), security: loaded.security, user: loaded.user,
                    sender: loaded.sender, publicUrl: loaded.publicUrl, hour: String(loaded.digest.hour),
-                   timezone: loaded.digest.timezone });
+                   timezone: loaded.digest.timezone, mailOn: loaded.mailOn });
         setPassword("");
         setRemovePassword(false);
     };
@@ -166,7 +166,7 @@ function MailServerCard({ styles }: { styles: Styles }) {
             adopt(await saveMailSettings({
                 host: draft.host.trim(), port: Number(draft.port) || 0, security: draft.security, user: draft.user.trim(),
                 sender: draft.sender.trim(), publicUrl: draft.publicUrl.trim(),
-                digest: { hour: Number(draft.hour), timezone: draft.timezone.trim() },
+                digest: { hour: Number(draft.hour), timezone: draft.timezone.trim() }, mailOn: draft.mailOn,
                 ...(removePassword ? { password: "" } : password ? { password } : {}),
             }));
             toast.success("Mail settings saved.");
@@ -199,7 +199,22 @@ function MailServerCard({ styles }: { styles: Styles }) {
                         sx={cardHeaderSx} />
             <CardContent sx={{ pt: 2 }}>
                 <Stack spacing={1.5}>
-                    {!settings.enabled && <Alert severity="info">No mail server yet: the notices only show in the web.</Alert>}
+                    <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.5, py: 1 }}>
+                        <FormControlLabel
+                            control={<Switch checked={draft.mailOn} onChange={(e) => set({ mailOn: e.target.checked })} />}
+                            label={<Typography sx={{ fontSize: FACILITY_TEXT.itemTitle - 0.5, fontWeight: 700 }}>Send notices by mail</Typography>}
+                        />
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                            Off by default: ScipionWeb sends no mail and every notice only shows in the web's bell, also
+                            the password reset ("Forgot password?" is not offered). On, with a server, notices are mailed
+                            as the defaults below and each user choose. What happens while it is off is not mailed later.
+                        </Typography>
+                        {draft.mailOn && !draft.host.trim() && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: "#b45309", mt: 0.5 }}>
+                                It needs the mail server below.
+                            </Typography>
+                        )}
+                    </Box>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                         <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Mail server" value={draft.host}
                                    placeholder="smtp.example.org" onChange={(e) => set({ host: e.target.value })} />

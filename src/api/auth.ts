@@ -313,6 +313,16 @@ async function postPublic(path: string, body: unknown, fallback: string): Promis
   return data;
 }
 
+/** Whether a forgotten password can be reset by mail (the mail is on and the web's address set). */
+export async function passwordResetAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/password-reset`, { cache: "no-store" });
+    return res.ok ? Boolean((await res.json())?.available) : false;
+  } catch {
+    return false;
+  }
+}
+
 /** Ask for a link to choose a new password; answers the same whether the address has an account. */
 export const forgotPassword = (email: string) =>
   postPublic("/auth/forgot-password", { email }, "The request did not go: try again");
