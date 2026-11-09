@@ -6,6 +6,7 @@ import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 import FacilityAlertsBanner from "@/components/facility/FacilityAlertsBanner";
+import PageErrorBoundary from "@/components/common/PageErrorBoundary";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -44,17 +45,24 @@ const LayoutContent: React.FC = () => {
   return (
     <div className={layoutClassName} style={{ height: "100dvh" }}>
       <div>
-        <AppSidebar />
+        <PageErrorBoundary silent label="The menu">
+          <AppSidebar />
+        </PageErrorBoundary>
         <Backdrop />
       </div>
 
       <div className={contentClassName}>
         <AppHeader />
         {/* The facility's open alerts, for its staff, over every page (nothing without a facility) */}
-        <FacilityAlertsBanner />
+        <PageErrorBoundary silent label="The facility's alerts">
+          <FacilityAlertsBanner />
+        </PageErrorBoundary>
 
         <main className={mainClassName}>
-          <Outlet />
+          {/* An error in a page shows its message there; the menu and the header go on, and another page starts clean */}
+          <PageErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

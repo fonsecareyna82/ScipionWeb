@@ -1,6 +1,6 @@
 // src/App.tsx
 import { Suspense, lazy } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -9,6 +9,7 @@ import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
 import { ProjectService } from "./services/ProjectService";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
+import PageErrorBoundary from "./components/common/PageErrorBoundary";
 
 interface AppProps {
   service?: ProjectService;
@@ -52,6 +53,8 @@ function RouteFallback() {
 }
 
 export default function App({ service }: AppProps) {
+  // An error anywhere outside a page's own guard (the sign-in pages, the room screen) shows a message, not a blank web
+  const location = useLocation();
   return (
     // NOTE: BrowserRouter is provided in src/main.tsx. Do NOT mount another Router here.
     <DragProvider>
@@ -63,6 +66,7 @@ export default function App({ service }: AppProps) {
 
           {/* Content area must be able to shrink: min-h-0 avoids flex children forcing overflow */}
           <div className="flex-1 min-h-0 flex flex-col">
+            <PageErrorBoundary resetKey={location.pathname}>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 {/* Public routes */}
@@ -119,6 +123,7 @@ export default function App({ service }: AppProps) {
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            </PageErrorBoundary>
           </div>
 
           <Toaster

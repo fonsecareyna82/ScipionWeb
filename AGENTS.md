@@ -147,3 +147,7 @@ Settings → Users has a delete button per account (not one's own): `DeleteUserD
 ## A forgotten password
 
 Sign in's "Forgot password?" (shown only when `api/auth.passwordResetAvailable`: the mail is on and the web's address set) opens `/forgot-password` (`pages/AuthPages/ForgotPassword.tsx`: the address, then the API's same answer whatever it is), and the mailed link opens `/reset-password?token=…` (`ResetPassword.tsx`: the new password twice; a used or expired link offers a new one). Both are public routes in `App.tsx`; `api/auth.forgotPassword`/`resetPassword` call the API without a session.
+
+## An error stays in its part
+
+`components/common/PageErrorBoundary` keeps a render error inside a part of the web: around each page's `<Outlet/>` in `layout/AppLayout` (reset when the address changes, so another page starts clean), around the whole `<Routes>` in `App.tsx` (the public pages), and silent (shows nothing) around the menu and the facility alerts banner. The message says what failed, with Try again, Reload the page and Go to Home; a chunk no longer on the server (the web updated while open) asks to reload instead.
