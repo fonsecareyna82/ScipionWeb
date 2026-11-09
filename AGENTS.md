@@ -151,3 +151,7 @@ Sign in's "Forgot password?" (shown only when `api/auth.passwordResetAvailable`:
 ## An error stays in its part
 
 `components/common/PageErrorBoundary` keeps a render error inside a part of the web: around each page's `<Outlet/>` in `layout/AppLayout` (reset when the address changes, so another page starts clean), around the whole `<Routes>` in `App.tsx` (the public pages), and silent (shows nothing) around the menu and the facility alerts banner. The message says what failed, with Try again, Reload the page and Go to Home; a chunk no longer on the server (the web updated while open) asks to reload instead.
+
+## A workflow's requirements
+
+`components/workflows/WorkflowRequirements` shows, in the Workflows page's details and in the import-from-file dialog, the plugins a workflow misses with "Install missing plugins" (`installPluginsBatch` with their pip names, for `plugins.manage`; others are told to ask an administrator; the list reloads after), the protocols this installation does not know when the workflow does not say its plugins, and the warning to migrate such a workflow. Broken workflows never reach the web (the API hides them).

@@ -14,6 +14,7 @@ import "reactflow/dist/style.css";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectWorkflow as BaseProjectWorkflow } from "@/components/projects/workflows-panel";
+import WorkflowRequirements, { type MissingPlugin } from "@/components/workflows/WorkflowRequirements";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
@@ -54,6 +55,12 @@ type ProjectWorkflow = BaseProjectWorkflow & {
   previewGraph?: WorkflowPreviewGraph;
   requiredPluginNames?: string[];
   missingPluginNames?: string[];
+  // Each missing plugin with the package that installs it
+  missingPlugins?: MissingPlugin[];
+  // A workflow that does not say which plugins it needs: a warning to migrate it, and the protocols this
+  // installation does not know (it cannot load then)
+  designWarning?: string;
+  unknownProtocolClasses?: string[];
   canLoad?: boolean;
   disabledReason?: string;
 };
@@ -472,7 +479,7 @@ function parseWorkflowDescription(description?: string) {
   };
 }
 
-function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
+function WorkflowDescriptionCard({ workflow, onInstalling }: { workflow: ProjectWorkflow; onInstalling?: () => void }) {
   const { lead, details, metadataLines, pluginNames } = useMemo(
     () => parseWorkflowDescription(workflow.description),
     [workflow.description],
@@ -503,12 +510,13 @@ function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
             </span>
           ) : null}
 
-          {workflow.missingPluginNames?.length ? (
-            <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-              This workflow cannot be loaded because these plugins are missing:{" "}
-              <span className="font-semibold">{workflow.missingPluginNames.join(", ")}</span>
-            </div>
-          ) : null}
+          <WorkflowRequirements
+            missingPlugins={workflow.missingPlugins?.length ? workflow.missingPlugins
+              : (workflow.missingPluginNames ?? []).map((name) => ({ name, pipName: `scipion-em-${name}` }))}
+            unknownProtocolClasses={workflow.unknownProtocolClasses}
+            designWarning={workflow.designWarning}
+            onInstalling={onInstalling}
+          />
         </div>
       </div>
 
@@ -616,6 +624,12 @@ export default function WorkflowsPage() {
             previewGraph,
             requiredPluginNames,
             missingPluginNames,
+            missingPlugins: Array.isArray(wf.missingPlugins)
+              ? wf.missingPlugins.filter((plugin: any) => plugin?.name && plugin?.pipName)
+                .map((plugin: any) => ({ name: String(plugin.name), pipName: String(plugin.pipName) }))
+              : undefined,
+            designWarning: wf.designWarning ? String(wf.designWarning) : "",
+            unknownProtocolClasses: normalizeStringArray(wf.unknownProtocolClasses),
             canLoad: typeof wf.canLoad === "boolean" ? wf.canLoad : missingPluginNames.length === 0,
             disabledReason: wf.disabledReason ? String(wf.disabledReason) : "",
           };
@@ -880,7 +894,7 @@ export default function WorkflowsPage() {
                   {selectedWorkflow.name}
                 </h3>
 
-                <WorkflowDescriptionCard workflow={selectedWorkflow} />
+                <WorkflowDescriptionCard workflow={selectedWorkflow} onInstalling={() => void loadWorkflows()} />
 
                 <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                   <div className="mb-3 flex items-center justify-between gap-3">

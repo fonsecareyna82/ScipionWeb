@@ -33,6 +33,7 @@ import RemoteFileDialog, {
 import type {
     WorkflowFileInspection,
 } from "@/services/ProjectService";
+import WorkflowRequirements from "@/components/workflows/WorkflowRequirements";
 
 type ImportWorkflowMode = "create" | "select";
 
@@ -601,6 +602,11 @@ export default function ImportWorkflowDialog({
                                                 }
                                             </Typography>
                                         )}
+
+                                    <WorkflowRequirements
+                                        missingPlugins={inspection.missingPlugins}
+                                        designWarning={inspection.designWarning}
+                                    />
                                 </Stack>
                             </Box>
                         )}

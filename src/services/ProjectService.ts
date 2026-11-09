@@ -2156,6 +2156,12 @@ export type WorkflowFileInspection = {
   protocolsCount?: number | null;
   requiredPluginNames: string[];
   missingPluginNames: string[];
+  // Each missing plugin with the package that installs it
+  missingPlugins?: { name: string; pipName: string }[];
+  // It says which plugins it needs; if not, a warning to migrate it and the protocols this installation does not know
+  declaresPlugins?: boolean;
+  designWarning?: string;
+  unknownProtocolClasses?: string[];
   canLoad: boolean;
   disabledReason?: string;
 };
