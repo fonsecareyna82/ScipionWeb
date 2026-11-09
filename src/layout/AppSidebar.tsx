@@ -18,7 +18,7 @@ import { useTheme as useAppTheme } from "../context/ThemeContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { FolderKanban, LucideSettings2 } from "lucide-react";
+import { Cpu, FolderKanban, LucideSettings2 } from "lucide-react";
 import { useFacilityNavItem } from "./facilityNav";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -43,6 +43,8 @@ const navItems: NavItem[] = [
   // Workflows make projects; plugins are installed by who manages them, and seen by who makes projects
   { icon: <TreeIcon />, name: "Workflows", path: "/workflows", permissions: ["projects.create"] },
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins", permissions: ["plugins.manage", "projects.create"] },
+  // What the machines have in use now: everyone sees it (other users' runs without their details)
+  { icon: <Cpu />, name: "Resources", path: "/resources" },
   { separator: true },
   { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},  
   { icon: <LucideSettings2/>, name: "Settings", path: "/settings",}
