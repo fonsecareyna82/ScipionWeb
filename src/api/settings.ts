@@ -239,7 +239,24 @@ export type NodeScratch = {
   totalBytes?: number | null;
   freeBytes?: number | null;
   error?: string | null;
+  // What the last cleaning did (what crashed or deleted protocols left there)
+  lastCleanup?: {
+    at: string;
+    removed: { name: string; reason: string; bytes: number }[];
+    freedBytes: number;
+    kept: number;
+    errors: string[];
+  } | null;
 };
+
+/** Ask a machine to clean its scratch now; the result shows in its report once done. */
+export async function cleanNodeScratch(hostname: string): Promise<{ requested: boolean }> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/jobs/nodes/${encodeURIComponent(hostname)}/scratch/clean`,
+    { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(data?.detail || "The machine could not be asked to clean its scratch"));
+  return data;
+}
 
 /** Set (or unset, with an empty path) a machine's scratch; its protocol worker must be restarted to use it. */
 export async function saveNodeScratch(hostname: string, path: string): Promise<{ path: string | null; file: string; node: boolean }> {

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const settingsMocks = vi.hoisted(() => ({ saveNodeScratch: vi.fn() }));
+const settingsMocks = vi.hoisted(() => ({ saveNodeScratch: vi.fn(), cleanNodeScratch: vi.fn() }));
 vi.mock("@/api/settings", () => settingsMocks);
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 
@@ -40,5 +40,28 @@ describe("A machine's scratch", () => {
 
     await waitFor(() => expect(settingsMocks.saveNodeScratch).toHaveBeenCalledWith("pc01", "/scratch"));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+});
+
+describe("Cleaning a machine's scratch", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows what the last cleaning did", () => {
+    render(<NodeScratch hostname="gpu01" canEdit={false} scratch={{
+      path: "/ssd/scipion", exists: true, writable: true, freeBytes: 400 * GB, totalBytes: 900 * GB,
+      lastCleanup: { at: new Date(Date.now() - 20 * 60000).toISOString(), freedBytes: 120 * GB, kept: 2, errors: [],
+                     removed: [{ name: "P_000013_ProtX", reason: "its protocol is gone", bytes: 120 * GB }] },
+    }} />);
+
+    expect(screen.getByTestId("scratch-last-gpu01")).toHaveTextContent("Cleaned 20 min ago: 1 folder removed, 120 GB freed");
+  });
+
+  it("is asked for now by who manages the jobs", async () => {
+    (settingsMocks as any).cleanNodeScratch = vi.fn().mockResolvedValue({ requested: true });
+    render(<NodeScratch hostname="gpu01" canEdit={false} canClean scratch={{ path: "/ssd/scipion", exists: true }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clean the scratch of gpu01 now" }));
+
+    await waitFor(() => expect((settingsMocks as any).cleanNodeScratch).toHaveBeenCalledWith("gpu01"));
   });
 });

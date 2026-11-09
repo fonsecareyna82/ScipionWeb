@@ -162,4 +162,4 @@ Settings → Usage → Disk ends with `pages/Settings/StorageQuotasCard`: each q
 
 ## Scratch per machine
 
-Settings → Jobs → Node capabilities shows each machine's scratch (`pages/Settings/NodeScratch`): none, its folder with free space, or why it cannot be used (as that machine reports it), and for `settings.manage` a "Change" dialog (`saveNodeScratch`; empty removes it; the machine's protocol worker must be restarted).
+Settings → Jobs → Node capabilities shows each machine's scratch (`pages/Settings/NodeScratch`): none, its folder with free space, or why it cannot be used (as that machine reports it), and for `settings.manage` a "Change" dialog (`saveNodeScratch`; empty removes it; the machine's protocol worker must be restarted). Under it, what the last cleaning did (folders removed, space freed, errors) and, for `jobs.manage`, "Clean now" (`cleanNodeScratch`; the list reloads a few seconds later).

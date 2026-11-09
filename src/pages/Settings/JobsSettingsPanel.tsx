@@ -1069,6 +1069,7 @@ export default function JobsSettingsPanel() {
 
                                                 <NodeScratch hostname={node.hostname} scratch={node.scratch}
                                                              canEdit={can("settings.manage")}
+                                                             canClean={can("jobs.manage")}
                                                              onSaved={() => void loadNodeCapabilities()} />
 
                                                 <Box>

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
-import { HardDrive, Pencil } from "lucide-react";
+import { Brush, HardDrive, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { saveNodeScratch, type NodeScratch as Scratch } from "@/api/settings";
+import { cleanNodeScratch, saveNodeScratch, type NodeScratch as Scratch } from "@/api/settings";
 import SettingsDialog from "./SettingsDialog";
 
 function formatBytes(bytes: number | null | undefined): string {
@@ -16,16 +16,41 @@ function formatBytes(bytes: number | null | undefined): string {
  * A machine's scratch: the fast local disk (an SSD) where its protocols put their temporary files, and where those that
  * can copy their input to read it faster. Shown as that machine sees it; who manages the settings sets or unsets it.
  */
-export default function NodeScratch({ hostname, scratch, canEdit, onSaved }: {
+function ago(value: string): string {
+  const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
+  if (!Number.isFinite(minutes)) return "";
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+export default function NodeScratch({ hostname, scratch, canEdit, canClean = false, onSaved }: {
   hostname: string;
   scratch?: Scratch;
   canEdit: boolean;
+  // Who manages the jobs may ask for a cleaning now
+  canClean?: boolean;
   onSaved?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [path, setPath] = useState(scratch?.path ?? "");
   const [busy, setBusy] = useState(false);
   const current = scratch?.path ?? null;
+  const last = scratch?.lastCleanup ?? null;
+
+  const clean = async () => {
+    setBusy(true);
+    try {
+      await cleanNodeScratch(hostname);
+      toast.success(`${hostname} is cleaning its scratch: the result shows here in a moment.`);
+      window.setTimeout(() => onSaved?.(), 4000);
+    } catch (e: any) {
+      toast.error(String(e?.message || "The machine could not be asked to clean its scratch"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -65,6 +90,24 @@ export default function NodeScratch({ hostname, scratch, canEdit, onSaved }: {
           <Box component="span" sx={{ fontFamily: "monospace" }}>{current}</Box>
           {scratch?.freeBytes != null ? ` · ${formatBytes(scratch.freeBytes)} free of ${formatBytes(scratch.totalBytes)}` : ""}
         </Typography>
+      )}
+      {current && (
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+          <Typography variant="caption" color="text.secondary" data-testid={`scratch-last-${hostname}`}>
+            {last
+              ? `Cleaned ${ago(last.at)}: ${last.removed.length} folder${last.removed.length === 1 ? "" : "s"} removed`
+                + (last.freedBytes ? `, ${formatBytes(last.freedBytes)} freed` : "")
+                + (last.errors.length ? ` · ${last.errors.join("; ")}` : "")
+              : "Cleaned every hour: what crashed or deleted protocols left there."}
+          </Typography>
+          {canClean && (
+            <Button size="small" variant="outlined" startIcon={<Brush size={12} />} disabled={busy}
+                    onClick={() => void clean()} sx={{ textTransform: "none", py: 0 }}
+                    aria-label={`Clean the scratch of ${hostname} now`}>
+              Clean now
+            </Button>
+          )}
+        </Stack>
       )}
 
       {editing && (
