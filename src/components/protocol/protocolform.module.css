@@ -32,6 +32,8 @@
   flex-shrink: 0;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  min-width: 0;
 
   background-color: #333d49;
   color: white;
@@ -41,12 +43,29 @@
   box-sizing: border-box;
 }
 
+/* The id, the name and the status always on one line: a long name is cut ("…", whole in its tooltip), never
+   the id, the status or the buttons beside them */
 .formTitleWrapper {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.formTitleWrapper > * {
+  flex-shrink: 0;
+}
+
+.formTitleWrapper > .formTitleText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: white;
 }
 
 .nodeStatusPill {

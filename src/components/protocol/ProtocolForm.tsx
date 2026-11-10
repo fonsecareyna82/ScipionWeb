@@ -3983,13 +3983,11 @@ export default function ProtocolForm({
               styles.formTitleWrapper
             }
           >
-            <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+            <Box className="inline-flex shrink-0 items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
               {effectiveProtocolId}
             </Box>
 
-            <span className="text-white">
-              {protocolDetails.label}
-            </span>
+            <span className={styles.formTitleText} title={protocolDetails.label}>{protocolDetails.label}</span>
 
             <span
               className={
@@ -4012,6 +4010,8 @@ export default function ProtocolForm({
             sx={{
               ml:
                 "auto",
+
+              flexShrink: 0,
 
               display:
                 "inline-flex",
@@ -5149,13 +5149,11 @@ export default function ProtocolForm({
                   styles.formTitleWrapper
                 }
               >
-                <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+                <Box className="inline-flex shrink-0 items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
                   {effectiveProtocolId}
                 </Box>
 
-                <span className="text-white">
-                  {protocolDetails.label}
-                </span>
+                <span className={styles.formTitleText} title={protocolDetails.label}>{protocolDetails.label}</span>
 
                 <span
                   data-testid="external-protocol-status-pill"
@@ -5232,13 +5230,11 @@ export default function ProtocolForm({
                     styles.formTitleWrapper
                   }
                 >
-                  <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+                  <Box className="inline-flex shrink-0 items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
                     {effectiveProtocolId}
                   </Box>
 
-                  <span className="text-white">
-                    {protocolDetails.label}
-                  </span>
+                  <span className={styles.formTitleText} title={protocolDetails.label}>{protocolDetails.label}</span>
 
                   <span
                     className={
