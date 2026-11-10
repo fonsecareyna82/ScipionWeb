@@ -1698,7 +1698,7 @@ export async function fetchProtocolSummary(projectId: Id, protocolId: Id): Promi
 
 export async function fetchProtocolFailure(projectId: Id, protocolId: Id): Promise<ProtocolFailure> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/protocols/failure/${encodeURIComponent(String(projectId))}/${encodeURIComponent(String(protocolId))}`,
+    `${BASE_URL}/projects/${encodeURIComponent(String(projectId))}/protocols/${encodeURIComponent(String(protocolId))}/failure`,
     { method: "GET", cache: "no-store" },
   );
   if (!response.ok) throw await toApiError(response, "Why the protocol failed could not be read");
