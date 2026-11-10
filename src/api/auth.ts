@@ -50,6 +50,8 @@ export async function login(email: string, password: string) {
   if (data.refreshToken) {
     localStorage.setItem("refreshToken", data.refreshToken);
   }
+  // A password session has no institution to sign out of
+  localStorage.removeItem("signOutUrl");
   forgetCurrentUser();
 
   return data;
@@ -89,6 +91,8 @@ export async function exchangeSignInCode(code: string) {
   if (!res.ok) throw new Error(data.detail || "The sign-in could not be finished");
   localStorage.setItem("accessToken", data.accessToken);
   if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
+  if (data.signOutUrl) localStorage.setItem(SIGN_OUT_URL_KEY, data.signOutUrl);
+  else localStorage.removeItem(SIGN_OUT_URL_KEY);
   forgetCurrentUser();
   return data;
 }
@@ -187,10 +191,21 @@ export async function getCurrentUser() {
 /**
  * Logout - clear tokens
  */
-export function logout() {
+// After signing in with an institution: its address that ends its session in this browser (see logout)
+const SIGN_OUT_URL_KEY = "signOutUrl";
+
+/**
+ * Sign out: forget the tokens and the cached user. Answers the institution's sign-out address when the session
+ * came from one set up to sign out there too: the caller sends the browser there, so the next person at this
+ * browser is asked who they are (else its button would let them in as the one before).
+ */
+export function logout(): string | null {
+  const signOutUrl = localStorage.getItem(SIGN_OUT_URL_KEY);
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
+  localStorage.removeItem(SIGN_OUT_URL_KEY);
   forgetCurrentUser();
+  return signOutUrl;
 }
 
 /**

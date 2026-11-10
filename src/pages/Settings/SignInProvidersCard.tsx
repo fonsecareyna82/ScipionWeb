@@ -16,7 +16,7 @@ type Styles = { cardSx: any; cardHeaderSx: any; fieldSx: any; actionButtonSx?: a
     colors: { border: string; text: string; muted: string } };
 
 const EMPTY: SignInProviderPayload = { key: "", label: "", issuer: "", clientId: "", clientSecret: "",
-    newAccounts: "active", enabled: true };
+    newAccounts: "active", enabled: true, signOutAtProvider: true };
 
 /** The dialog to add or change a provider; a client secret left empty when changing keeps the one there is. */
 function ProviderDialog({ provider, onClose, onSaved }: {
@@ -25,6 +25,7 @@ function ProviderDialog({ provider, onClose, onSaved }: {
     const [form, setForm] = useState<SignInProviderPayload>(provider ? {
         key: provider.key, label: provider.label, issuer: provider.issuer, clientId: provider.clientId,
         clientSecret: "", newAccounts: provider.newAccounts, enabled: provider.enabled,
+        signOutAtProvider: provider.signOutAtProvider,
     } : EMPTY);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,13 @@ function ProviderDialog({ provider, onClose, onSaved }: {
                     <MenuItem value="active">Gets an active account at once</MenuItem>
                     <MenuItem value="pending">Waits for an administrator to activate the account</MenuItem>
                 </TextField>
+                <FormControlLabel control={<Switch checked={form.signOutAtProvider !== false}
+                                                   onChange={(e) => set("signOutAtProvider", e.target.checked)} />}
+                                  label={<Typography sx={{ fontSize: 15 }}>Signing out of ScipionWeb signs out of the institution too</Typography>} />
+                <Typography sx={{ fontSize: 13.5, color: "text.secondary", mt: "-4px !important" }}>
+                    Keep it on where people share computers: otherwise the next person to press the button at the
+                    same browser comes in as the one before.
+                </Typography>
                 <FormControlLabel control={<Switch checked={Boolean(form.enabled)}
                                                    onChange={(e) => set("enabled", e.target.checked)} />}
                                   label={<Typography sx={{ fontSize: 15 }}>Show its button on the sign-in page</Typography>} />
@@ -131,6 +139,9 @@ export default function SignInProvidersCard({ cardSx, cardHeaderSx, actionButton
             setBusy(false);
         }
     };
+
+    // Where the institution sends the browser after signing out: this web's sign-in page
+    const signOutReturn = `${window.location.origin}/signin`;
 
     const copy = (text: string) => {
         void navigator.clipboard?.writeText(text).then(() => toast.success("Copied."), () => undefined);
@@ -187,6 +198,15 @@ export default function SignInProvidersCard({ cardSx, cardHeaderSx, actionButton
                             <Button size="small" sx={{ textTransform: "none", minWidth: 0 }} startIcon={<Copy size={14} />}
                                     onClick={() => copy(provider.callbackUrl)}>Copy</Button>
                         </Stack>
+                        {provider.signOutAtProvider && (
+                            <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography sx={{ fontSize: 13.5, color: colors.muted, wordBreak: "break-all" }}>
+                                    Address to register for after signing out: <code>{signOutReturn}</code>
+                                </Typography>
+                                <Button size="small" sx={{ textTransform: "none", minWidth: 0 }} startIcon={<Copy size={14} />}
+                                        onClick={() => copy(signOutReturn)}>Copy</Button>
+                            </Stack>
+                        )}
                     </Box>
                 ))}
             </CardContent>

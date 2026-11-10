@@ -14,7 +14,8 @@ vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() 
 
 const colors = { border: "#ddd", text: "#111", muted: "#666" };
 const esrf = { id: 3, key: "esrf", label: "ESRF", issuer: "https://login.esrf.fr/realms/users", clientId: "scipionweb",
-    scopes: "openid email profile", newAccounts: "active" as const, enabled: true, hasSecret: true, accounts: 2,
+    scopes: "openid email profile", newAccounts: "active" as const, enabled: true, signOutAtProvider: true,
+    hasSecret: true, accounts: 2,
     callbackUrl: "https://scipion.example.org/api/auth/oidc/esrf/callback" };
 
 function renderCard() {
@@ -34,6 +35,7 @@ describe("SignInProvidersCard", () => {
         expect(row).toHaveTextContent("Sign in with ESRF");
         expect(row).toHaveTextContent("2 accounts");
         expect(row).toHaveTextContent("https://scipion.example.org/api/auth/oidc/esrf/callback");
+        expect(row).toHaveTextContent(`Address to register for after signing out: ${window.location.origin}/signin`);
     });
 
     it("says there is none by default", async () => {

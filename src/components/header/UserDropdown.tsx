@@ -33,8 +33,10 @@ export default function UserDropdown() {
 
   const handleLogout = () => {
     // Both tokens and the cached user: a refresh token left behind would sign the user in again
-    logout();
-    navigate("/");
+    const signOutUrl = logout();
+    // Signed in with an institution: its session in this browser ends too, then back to the sign-in page
+    if (signOutUrl) window.location.assign(signOutUrl);
+    else navigate("/");
   };
 
   const triggerClassName = [

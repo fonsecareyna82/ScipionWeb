@@ -448,6 +448,8 @@ export type SignInProviderSetup = {
   scopes: string;
   newAccounts: "active" | "pending";
   enabled: boolean;
+  // Signing out of ScipionWeb signs out of the institution too (so the next person at a browser is asked)
+  signOutAtProvider: boolean;
   hasSecret: boolean;
   accounts?: number;
   // The address to register at the institution as this client's redirect address
