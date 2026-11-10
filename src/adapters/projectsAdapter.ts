@@ -207,6 +207,8 @@ const defaultService: ProjectService = {
 
   fetchProtocolSummary: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolSummary(toId(projectId), toId(protocolId)),
+  fetchProtocolFailure: (projectId: Id, protocolId: Id) =>
+    api.fetchProtocolFailure(toId(projectId), toId(protocolId)),
   fetchProtocolRunActions: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolRunActions(toId(projectId), toId(protocolId)),
 

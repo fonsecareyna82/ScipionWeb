@@ -5,6 +5,7 @@ import type {
   ProtocolViewerActionValues,
   ProtocolViewerCandidatesResponse,
   ProtocolViewerRuntimePreview,
+  ProtocolFailure,
   ProtocolSummary,
 } from "@/services/ProjectService";
 import { BASE_URL } from "@/config";
@@ -1692,6 +1693,23 @@ export async function fetchProtocolSummary(projectId: Id, protocolId: Id): Promi
     lines: Array.isArray(raw?.lines) ? raw.lines.map((line: unknown) => String(line ?? "")) : [],
     objects: raw?.objects && typeof raw.objects === "object" ? raw.objects : {},
     hasWarnings: Boolean(raw?.hasWarnings),
+  };
+}
+
+export async function fetchProtocolFailure(projectId: Id, protocolId: Id): Promise<ProtocolFailure> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/protocols/failure/${encodeURIComponent(String(projectId))}/${encodeURIComponent(String(protocolId))}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (!response.ok) throw await toApiError(response, "Why the protocol failed could not be read");
+  const raw = await safeJson<any>(response);
+  return {
+    failed: Boolean(raw?.failed),
+    cause: raw?.cause ?? null,
+    error: raw?.error ?? null,
+    command: raw?.command ?? null,
+    traceback: Array.isArray(raw?.traceback) ? raw.traceback : [],
+    hasLogs: Boolean(raw?.hasLogs),
   };
 }
 

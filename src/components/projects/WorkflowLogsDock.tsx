@@ -4,6 +4,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import ProtocolLogsPanel from "@/components/protocol/ProtocolLogsPanel";
 import ProtocolSummaryPanel from "@/components/protocol/ProtocolSummaryPanel";
 import ProtocolAnalyzeAction from "@/components/protocol/ProtocolAnalyzeAction";
+import type { ProtocolLogPlace } from "@/services/ProjectService";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 
 type WorkflowLogsDockProps = {
@@ -32,6 +33,13 @@ export default function WorkflowLogsDock({
   const svc = useProjectService();
   // The selected protocol's summary or its logs, as the desktop's tabs under the graph
   const [view, setView] = useState<"summary" | "logs">("logs");
+  // Why it failed → Show in log: that log, searched for the error
+  const [requestedSearch, setRequestedSearch] = useState<{ channel: string; query: string; nonce: number } | null>(null);
+  const showInLog = (place: ProtocolLogPlace) => {
+    if (!place.channel || !place.text) return;
+    setRequestedSearch({ channel: place.channel, query: place.text.slice(0, 80), nonce: Date.now() });
+    setView("logs");
+  };
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const {
     sortedLogChannels,
@@ -164,6 +172,7 @@ export default function WorkflowLogsDock({
             protocolId={protocolId}
             protocolLabel={protocolLabel}
             protocolStatus={protocolStatus}
+            onShowInLog={showInLog}
           />
         ) : protocolId && projectId != null ? (
           <ProtocolLogsPanel
@@ -178,6 +187,7 @@ export default function WorkflowLogsDock({
             onSearchAll={onSearchAll}
             onNavigateToOffset={onNavigateToOffset}
             onClearLogSearch={onClearLogSearch}
+            requestedSearch={requestedSearch}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

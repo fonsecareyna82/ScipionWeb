@@ -47,6 +47,19 @@ export type ProtocolSummary = {
   hasWarnings: boolean;
 };
 
+/** A place in a protocol's log: a line of text, the log it is in (stdout, stderr) and its line number. */
+export type ProtocolLogPlace = { text: string; line: number | null; channel: string | null };
+
+/** Why a protocol failed, read from its logs: the cause when it is a known error, the error and the command. */
+export type ProtocolFailure = {
+  failed: boolean;
+  cause?: { id: string; category: string; title: string; hint: string } | null;
+  error?: ProtocolLogPlace | null;
+  command?: ProtocolLogPlace | null;
+  traceback?: Array<{ text: string; line: number }>;
+  hasLogs?: boolean;
+};
+
 /** Inert schema returned only by the explicit experimental admin POST. */
 export type ProtocolViewerRuntimePreview = {
   status: "runtime-preview";
@@ -2324,6 +2337,9 @@ export interface ProjectService<
 
   /** The protocol's summary (the desktop Summary tab): its lines and the objects they link to. */
   fetchProtocolSummary?: (projectId: Id, protocolId: Id) => Promise<ProtocolSummary>;
+
+  /** Why a failed protocol failed ({failed: false} for one that did not). */
+  fetchProtocolFailure?: (projectId: Id, protocolId: Id) => Promise<ProtocolFailure>;
 
   /** The actions a running protocol offers (the desktop context menu): STOP STREAMING, APPROVE CHECKPOINT… */
   fetchProtocolRunActions?: (projectId: Id, protocolId: Id) => Promise<string[]>;

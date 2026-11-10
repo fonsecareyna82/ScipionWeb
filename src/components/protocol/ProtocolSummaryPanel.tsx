@@ -3,7 +3,8 @@ import { CircleAlert, FileText, MessageSquare, TriangleAlert } from "lucide-reac
 
 import { useProjectService } from "@/ProjectServiceContext";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import type { ProtocolSummary, ProtocolSummaryObject } from "@/services/ProjectService";
+import type { ProtocolLogPlace, ProtocolSummary, ProtocolSummaryObject } from "@/services/ProjectService";
+import ProtocolFailureBox from "./ProtocolFailureBox";
 
 type ProtocolSummaryPanelProps = {
   projectId: number | string | null | undefined;
@@ -11,6 +12,8 @@ type ProtocolSummaryPanelProps = {
   protocolLabel?: string;
   /** A new status reads the summary again; while the protocol is live it is read every few seconds. */
   protocolStatus?: string | null;
+  /** Go to a place of the protocol's log (from why it failed). */
+  onShowInLog?: (place: ProtocolLogPlace) => void;
 };
 
 // A live protocol's summary grows (items imported, classes made…); a finished one does not change
@@ -114,6 +117,7 @@ export default function ProtocolSummaryPanel({
   protocolId,
   protocolLabel = "",
   protocolStatus,
+  onShowInLog,
 }: ProtocolSummaryPanelProps) {
   const svc = useProjectService();
   const [summary, setSummary] = useState<ProtocolSummary | null>(null);
@@ -229,6 +233,12 @@ export default function ProtocolSummaryPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-label="Protocol summary">
       <div className="min-h-0 flex-1 overflow-auto p-3 text-sm leading-6">
+        {String(protocolStatus ?? "").toLowerCase() === "failed" && (
+          <div className="mx-auto max-w-3xl">
+            <ProtocolFailureBox projectId={projectId!} protocolId={protocolId!} protocolStatus={protocolStatus}
+                                onShowInLog={onShowInLog} />
+          </div>
+        )}
         {!summary ? (
           error ? (
             <p className="text-red-700 dark:text-red-300">{error}</p>

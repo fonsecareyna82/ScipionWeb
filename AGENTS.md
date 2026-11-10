@@ -168,3 +168,7 @@ Settings → Jobs → Node capabilities shows each machine's scratch (`pages/Set
 ## Machines now (Settings → Instance)
 
 `pages/Settings/ResourcesPanel.tsx`, the last card of Settings → Instance (the user wanted it there, not in the menu), shows `GET /resources` (`api/resources.ts`), reloading every 10 s while the tab is visible: a card per machine (processors, memory, projects and scratch disks, and a card per GPU with Free / In use / Given, idle and whose run holds it), the runs now and the waiting protocols with why. Without `storage.view` (unusual for who opens Instance) the user would see their own runs and waits, others' runs as "Another user", and "And N runs of other users".
+
+## Why a protocol failed
+
+A failed protocol's Summary (`ProtocolSummaryPanel`, both in the dock under the canvas and in the protocol form) starts with `components/protocol/ProtocolFailureBox.tsx` (`svc.fetchProtocolFailure` → `GET /protocols/failure/{projectId}/{protocolId}`): the cause and what to try when it is a known error, the error and the command with their line and log, and "Show in log", which opens the Logs tab with `ProtocolLogsPanel`'s `requestedSearch` (that log, searched for the error, jumping to it). The failed status badge on the canvas reads the cause when the pointer first rests on it (its title). The bell and the mail get the cause from the API's notice.

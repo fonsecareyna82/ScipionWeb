@@ -429,6 +429,9 @@ export default function ProtocolForm({
 
 
   const [topTab, setTopTab] = useState(0);
+  // Why it failed → Show in log: the Logs tab, that log searched for the error
+  const [requestedLogSearch, setRequestedLogSearch] =
+    useState<{ channel: string; query: string; nonce: number } | null>(null);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const effectiveProtocolId = String(protocolDetails?.id ?? protocolId ?? "").trim();
@@ -4243,6 +4246,7 @@ export default function ProtocolForm({
                 onSearchAll={onSearchAll}
                 onNavigateToOffset={onNavigateToOffset}
                 onClearLogSearch={onClearLogSearch}
+                requestedSearch={requestedLogSearch}
               />
             )}
 
@@ -4262,6 +4266,11 @@ export default function ProtocolForm({
                 protocolId={effectiveProtocolId}
                 protocolLabel={protocolDisplayName}
                 protocolStatus={protocolStatus}
+                onShowInLog={(place) => {
+                  if (!place.channel || !place.text) return;
+                  setRequestedLogSearch({ channel: place.channel, query: place.text.slice(0, 80), nonce: Date.now() });
+                  setTopTab(2);
+                }}
               />
             )}
 

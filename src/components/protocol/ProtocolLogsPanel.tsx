@@ -22,6 +22,8 @@ type ProtocolLogsPanelProps = {
   onNavigateToOffset?: (offset: number) => Promise<void>;
   onClearLogSearch?: () => Promise<void>;
   onLoadFullLog?: (channel: string) => Promise<Blob>;
+  /** Search this in that log as soon as it is shown (a new nonce searches again). */
+  requestedSearch?: { channel: string; query: string; nonce: number } | null;
 };
 
 function useAncestorDarkMode<T extends HTMLElement>() {
@@ -114,6 +116,7 @@ export default function ProtocolLogsPanel({
   onNavigateToOffset,
   onClearLogSearch,
   onLoadFullLog,
+  requestedSearch,
 }: ProtocolLogsPanelProps) {
   const { rootRef, isDark } = useAncestorDarkMode<HTMLDivElement>();
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,14 +198,14 @@ export default function ProtocolLogsPanel({
     ? (navigationMatchCount ? Math.min(selectedMatch, navigationMatchCount - 1) : 0)
     : currentMatch;
 
-  const performGlobalSearch = async () => {
-    if (!onSearchAll || !onNavigateToOffset || !searchQuery.trim()) return;
-    const key = globalKey;
+  const performGlobalSearch = async (query: string = searchQuery) => {
+    if (!onSearchAll || !onNavigateToOffset || !query.trim()) return;
+    const key = `${activeLogChannelId}\u0000${query}`;
     const generation = ++searchRequestRef.current;
     setSearchBusy(true);
     setSearchFailure(null);
     try {
-      const result = await onSearchAll(activeLogChannelId, searchQuery);
+      const result = await onSearchAll(activeLogChannelId, query);
       if (generation !== searchRequestRef.current) return;
       setServerResults({ key, matches: result.matches, complete: result.complete });
       setSelectedMatch(0);
@@ -215,6 +218,21 @@ export default function ProtocolLogsPanel({
       if (generation === searchRequestRef.current) setSearchBusy(false);
     }
   };
+
+  // A search asked from outside (Show in log): in its log, once that log is listed
+  const handledSearchRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!requestedSearch || handledSearchRef.current === requestedSearch.nonce) return;
+    if (!sortedLogChannels.some((channel) => channel.id === requestedSearch.channel)) return;
+    if (activeLogChannelId !== requestedSearch.channel) {
+      setActiveLogChannelId(requestedSearch.channel);
+      return;
+    }
+    handledSearchRef.current = requestedSearch.nonce;
+    setSearchQuery(requestedSearch.query);
+    void performGlobalSearch(requestedSearch.query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSearch, activeLogChannelId, sortedLogChannels]);
 
   const moveMatch = (direction: number) => {
     if (globalActive) {

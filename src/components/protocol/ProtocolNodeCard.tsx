@@ -750,6 +750,25 @@ export default function ProtocolNodeCard({
     return data.id as Id;
   }, [data.id]);
 
+  // A failed protocol says why on its status badge (read when the pointer first rests on it)
+  const [failureText, setFailureText] = useState<string | null>(null);
+  const failureAskedRef = useRef(false);
+  useEffect(() => {
+    failureAskedRef.current = false;
+    setFailureText(null);
+  }, [data.status, normalizedProjectId, normalizedProtocolId]);
+  const readFailure = useCallback(() => {
+    if (data.status !== "failed" || failureAskedRef.current || normalizedProjectId == null || !normalizedProtocolId
+        || !svc.fetchProtocolFailure) return;
+    failureAskedRef.current = true;
+    svc.fetchProtocolFailure(normalizedProjectId, normalizedProtocolId)
+      .then((failure) => {
+        const why = failure.cause?.title ?? failure.error?.text ?? null;
+        setFailureText(why ? `Failed: ${why}. Its Summary says more.` : null);
+      })
+      .catch(() => { failureAskedRef.current = false; });
+  }, [data.status, normalizedProjectId, normalizedProtocolId, svc]);
+
 
 
   const [nextStepSuggestions, setNextStepSuggestions] = useState<NextProtocolSuggestion[] | null>(null);
@@ -2572,7 +2591,9 @@ export default function ProtocolNodeCard({
                       style={{
                         backgroundColor: statusBadgeColors[data.status] || "var(--app-n-400)",
                       }}
-                      title={runSlotWaitText(data.status, data.waitingForSlot) || undefined}
+                      title={runSlotWaitText(data.status, data.waitingForSlot) || failureText || undefined}
+                      onMouseEnter={readFailure}
+                      data-testid={data.status === "failed" ? "failed-status-badge" : undefined}
                     >
                       {data.status}
                       {runSlotWaitText(data.status, data.waitingForSlot) ? " · waiting for a run slot" : ""}
