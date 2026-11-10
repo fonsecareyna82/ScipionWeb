@@ -5,7 +5,9 @@ import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 import Button from "../ui/button/Button";
-import { login, passwordResetAvailable } from "../../api/auth";
+import {
+  listSignInProviders, login, passwordResetAvailable, signInWithProviderUrl, type SignInProvider,
+} from "../../api/auth";
 
 export default function SignInForm() {
   // A notice from the previous page, e.g. an account waiting for its activation after signing up
@@ -19,11 +21,14 @@ export default function SignInForm() {
   const [error, setError] = useState("");
   // Offered only when ScipionWeb mails (an administrator turned the mail on)
   const [canReset, setCanReset] = useState(false);
+  // Institutions one may sign in with (an administrator sets them up; none by default)
+  const [providers, setProviders] = useState<SignInProvider[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
     void passwordResetAvailable().then((available) => { if (!cancelled) setCanReset(available); });
+    void listSignInProviders().then((list) => { if (!cancelled) setProviders(list); });
     return () => { cancelled = true; };
   }, []);
 
@@ -63,6 +68,25 @@ export default function SignInForm() {
               Enter your email and password to sign in!
             </p>
           </div>
+
+          {providers.length > 0 && (
+            <div className="mb-6 space-y-3" data-testid="sign-in-providers">
+              {providers.map((provider) => (
+                <a
+                  key={provider.key}
+                  href={signInWithProviderUrl(provider.key)}
+                  className="flex w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-3 text-[15px] font-medium text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-white/[0.03] dark:text-white/90 dark:hover:bg-white/[0.06]"
+                >
+                  Sign in with {provider.label}
+                </a>
+              ))}
+              <div className="flex items-center gap-3 pt-1 text-[13.5px] text-gray-500 dark:text-gray-400">
+                <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+                or with your email
+                <span className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             <div className="space-y-6">

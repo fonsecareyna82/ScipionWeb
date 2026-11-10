@@ -18,7 +18,9 @@ const gpuFailure = {
 };
 
 describe("ProtocolFailureBox", () => {
-    beforeEach(() => service.fetchProtocolFailure.mockReset());
+    beforeEach(() => {
+        service.fetchProtocolFailure.mockReset();
+    });
 
     it("says the cause, what to try, the error and the command, and goes to the error in the log", async () => {
         service.fetchProtocolFailure.mockResolvedValue(gpuFailure);

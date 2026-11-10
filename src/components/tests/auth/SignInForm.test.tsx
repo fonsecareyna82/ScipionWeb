@@ -3,13 +3,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import SignInForm from "@/components/auth/SignInForm";
-import { login, passwordResetAvailable } from "@/api/auth";
+import { listSignInProviders, login, passwordResetAvailable } from "@/api/auth";
 
 const mockNavigate = vi.fn();
 
 vi.mock("@/api/auth", () => ({
   login: vi.fn(),
   passwordResetAvailable: vi.fn().mockResolvedValue(true),
+  listSignInProviders: vi.fn().mockResolvedValue([]),
+  signInWithProviderUrl: (key: string) => `/api/auth/oidc/${key}/start?returnTo=x`,
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -211,5 +213,17 @@ describe("SignInForm", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("An administrator has to activate it.");
     expect(screen.getByDisplayValue("new@example.com")).toBeInTheDocument();
+  });
+
+  it("offers a button per institution an administrator set up, and none by default", async () => {
+    vi.mocked(listSignInProviders).mockResolvedValueOnce([{ key: "esrf", label: "ESRF" }]);
+    const { unmount } = render(<MemoryRouter><SignInForm /></MemoryRouter>);
+    const button = await screen.findByRole("link", { name: "Sign in with ESRF" });
+    expect(button).toHaveAttribute("href", "/api/auth/oidc/esrf/start?returnTo=x");
+    unmount();
+
+    render(<MemoryRouter><SignInForm /></MemoryRouter>);
+    await waitFor(() => expect(listSignInProviders).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId("sign-in-providers")).not.toBeInTheDocument();
   });
 });

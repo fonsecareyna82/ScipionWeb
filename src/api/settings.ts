@@ -437,3 +437,46 @@ export async function patchHostSettings(
   const data = await safeJson<any>(response);
   return normalizeHostSettingsPayload(data);
 }
+// Signing in with an institution's account (OpenID Connect: Keycloak and the like) ---------------------------------
+
+export type SignInProviderSetup = {
+  id: number;
+  key: string;
+  label: string;
+  issuer: string;
+  clientId: string;
+  scopes: string;
+  newAccounts: "active" | "pending";
+  enabled: boolean;
+  hasSecret: boolean;
+  accounts?: number;
+  // The address to register at the institution as this client's redirect address
+  callbackUrl: string;
+};
+
+export type SignInProviderPayload = Partial<Omit<SignInProviderSetup, "id" | "hasSecret" | "accounts" | "callbackUrl">>
+  & { clientSecret?: string | null };
+
+async function signInRequest<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/sign-in-providers${path}`, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(data?.detail || fallback));
+  return data as T;
+}
+
+export const listSignInProviderSetups = () =>
+  signInRequest<SignInProviderSetup[]>("", { method: "GET" }, "Failed to load the sign-in providers");
+
+export const saveSignInProvider = (payload: SignInProviderPayload, id?: number) =>
+  signInRequest<SignInProviderSetup>(id == null ? "" : `/${id}`, {
+    method: id == null ? "POST" : "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }, "Failed to save the sign-in provider");
+
+export const removeSignInProvider = (id: number) =>
+  signInRequest<{ removed: number }>(`/${id}`, { method: "DELETE" }, "Failed to remove the sign-in provider");
+
+export const testSignInProvider = (id: number) =>
+  signInRequest<{ ok: boolean; error?: string; issuer?: string; keys?: number }>(
+    `/${id}/test`, { method: "POST" }, "Failed to test the sign-in provider");

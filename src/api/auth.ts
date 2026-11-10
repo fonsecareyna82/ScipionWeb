@@ -55,6 +55,44 @@ export async function login(email: string, password: string) {
   return data;
 }
 
+// Signing in with an institution's account (none until an administrator sets one up) --------------------------
+
+export type SignInProvider = { key: string; label: string };
+
+/** The institutions one may sign in with: the buttons of the sign-in page (none with an older API). */
+export async function listSignInProviders(): Promise<SignInProvider[]> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/providers`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Where a provider's button sends the browser: the institution's sign-in page, then back to /auth/sso. */
+export function signInWithProviderUrl(key: string): string {
+  const back = `${window.location.origin}/auth/sso`;
+  return `${BASE_URL}/auth/oidc/${encodeURIComponent(key)}/start?returnTo=${encodeURIComponent(back)}`;
+}
+
+/** The session for the one-time code the institution's sign-in came back with. */
+export async function exchangeSignInCode(code: string) {
+  const res = await fetch(`${BASE_URL}/auth/oidc/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || "The sign-in could not be finished");
+  localStorage.setItem("accessToken", data.accessToken);
+  if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
+  forgetCurrentUser();
+  return data;
+}
+
 /**
  * User registration
  */

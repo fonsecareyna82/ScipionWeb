@@ -20,6 +20,7 @@ const SignIn = lazy(() => import("./pages/AuthPages/SignIn"));
 const SignUp = lazy(() => import("./pages/AuthPages/SignUp"));
 const ForgotPassword = lazy(() => import("./pages/AuthPages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/AuthPages/ResetPassword"));
+const SignInReturn = lazy(() => import("./pages/AuthPages/SignInReturn"));
 const UserProfiles = lazy(() => import("./pages/UserProfiles"));
 const Videos = lazy(() => import("./pages/UiElements/Videos"));
 const Images = lazy(() => import("./pages/UiElements/Images"));
@@ -76,6 +77,7 @@ export default function App({ service }: AppProps) {
                 {/* A forgotten password: ask for a mailed link, and choose a new one with it */}
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/auth/sso" element={<SignInReturn />} />
                 {/* The microscopes' room screen: its link carries its own token, no signed-in user */}
                 <Route path="/room" element={<RoomScreen />} />
 

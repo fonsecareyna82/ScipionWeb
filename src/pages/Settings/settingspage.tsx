@@ -62,6 +62,7 @@ import {
 } from "@/config/settingsDefaults";
 
 import ResourcesPanel from "./ResourcesPanel";
+import SignInProvidersCard from "./SignInProvidersCard";
 import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
 
 import type {
@@ -2046,6 +2047,8 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        <SignInProvidersCard cardSx={cardSx} cardHeaderSx={cardHeaderSx} fieldSx={fieldSx}
+                             actionButtonSx={actionButtonSx} colors={colors} />
         <ResourcesPanel />
       </Stack>
     );
