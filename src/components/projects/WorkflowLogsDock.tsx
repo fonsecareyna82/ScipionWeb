@@ -5,6 +5,7 @@ import ProtocolLogsPanel from "@/components/protocol/ProtocolLogsPanel";
 import ProtocolSummaryPanel from "@/components/protocol/ProtocolSummaryPanel";
 import ProtocolAnalyzeAction from "@/components/protocol/ProtocolAnalyzeAction";
 import type { ProtocolLogPlace } from "@/services/ProjectService";
+import ProtocolFailureBox from "@/components/protocol/ProtocolFailureBox";
 import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 
 type WorkflowLogsDockProps = {
@@ -175,6 +176,11 @@ export default function WorkflowLogsDock({
             onShowInLog={showInLog}
           />
         ) : protocolId && projectId != null ? (
+          <>
+          {String(protocolStatus ?? "").toLowerCase() === "failed" && (
+            <ProtocolFailureBox compact projectId={projectId} protocolId={protocolId} protocolStatus={protocolStatus}
+                                onShowInLog={showInLog} onDetails={() => setView("summary")} />
+          )}
           <ProtocolLogsPanel
             sortedLogChannels={sortedLogChannels}
             activeLogChannelId={activeLogChannelId}
@@ -189,6 +195,7 @@ export default function WorkflowLogsDock({
             onClearLogSearch={onClearLogSearch}
             requestedSearch={requestedSearch}
           />
+          </>
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             Select a protocol to see its summary and logs.

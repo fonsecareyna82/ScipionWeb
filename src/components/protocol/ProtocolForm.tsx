@@ -48,6 +48,7 @@ import { useProtocolLogs } from "@/hooks/useProtocolLogs";
 import ProtocolLogsPanel from "./ProtocolLogsPanel";
 import ProtocolOutputsPanel from "./ProtocolOutputsPanel";
 import ProtocolSummaryPanel from "./ProtocolSummaryPanel";
+import ProtocolFailureBox from "./ProtocolFailureBox";
 import ProtocolAnalyzeAction from "./ProtocolAnalyzeAction";
 import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
@@ -4234,6 +4235,17 @@ export default function ProtocolForm({
 
             {/* Logs */}
             {topTab === 2 && (
+              <>
+              {protocolStatus === "failed" && projectId != null && effectiveProtocolId && (
+                <ProtocolFailureBox compact projectId={projectId} protocolId={effectiveProtocolId}
+                                    protocolStatus={protocolStatus}
+                                    onShowInLog={(place) => {
+                                      if (!place.channel || !place.text) return;
+                                      setRequestedLogSearch({ channel: place.channel, query: place.text.slice(0, 80),
+                                                              nonce: Date.now() });
+                                    }}
+                                    onDetails={() => setTopTab(SUMMARY_TAB)} />
+              )}
               <ProtocolLogsPanel
                 sortedLogChannels={sortedLogChannels}
                 activeLogChannelId={activeLogChannelId}
@@ -4248,6 +4260,7 @@ export default function ProtocolForm({
                 onClearLogSearch={onClearLogSearch}
                 requestedSearch={requestedLogSearch}
               />
+              </>
             )}
 
             {topTab === 1 && (

@@ -11,13 +11,18 @@ type ProtocolFailureBoxProps = {
   protocolStatus?: string | null;
   /** Go to this place in the protocol's log; without it there is no "Show in log". */
   onShowInLog?: (place: ProtocolLogPlace) => void;
+  /** One line above the logs (with "Details" when onDetails is given), instead of the whole box. */
+  compact?: boolean;
+  onDetails?: () => void;
 };
 
 /**
  * Why a failed protocol failed, at the top of its Summary: the cause and what to try when it is a known error,
  * then the error and the command that failed, as its logs say them.
  */
-export default function ProtocolFailureBox({ projectId, protocolId, protocolStatus, onShowInLog }: ProtocolFailureBoxProps) {
+export default function ProtocolFailureBox({
+  projectId, protocolId, protocolStatus, onShowInLog, compact = false, onDetails,
+}: ProtocolFailureBoxProps) {
   const svc = useProjectService();
   const [failure, setFailure] = useState<ProtocolFailure | null>(null);
 
@@ -33,6 +38,27 @@ export default function ProtocolFailureBox({ projectId, protocolId, protocolStat
 
   if (!failure?.failed) return null;
   const { cause, error, command } = failure;
+
+  if (compact) {
+    const why = cause ? `${cause.title}. ${cause.hint}` : error?.text;
+    if (!why) return null;
+    const buttonClass = "shrink-0 rounded-md border border-red-300 bg-background px-2 py-0.5 text-[13.5px] font-medium "
+      + "text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40";
+    return (
+      <div data-testid="protocol-failure-strip" role="status"
+           className="mb-1 flex shrink-0 items-start gap-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-sm dark:border-red-900/70 dark:bg-red-950/30">
+        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+        <div className="min-w-0 flex-1 text-foreground">
+          <span className="font-semibold text-red-800 dark:text-red-200">Why it failed: </span>
+          <span className={cause ? "" : "font-mono text-[13.5px]"}>{why}</span>
+        </div>
+        {onShowInLog && error?.text && error.channel && (
+          <button type="button" className={buttonClass} onClick={() => onShowInLog(error)}>Show in log</button>
+        )}
+        {onDetails && <button type="button" className={buttonClass} onClick={onDetails}>Details</button>}
+      </div>
+    );
+  }
   const place = (label: string, value: ProtocolLogPlace | null | undefined) => value?.text ? (
     <div className="min-w-0">
       <span className="font-semibold text-foreground">{label}: </span>

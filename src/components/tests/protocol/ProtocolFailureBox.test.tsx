@@ -50,6 +50,21 @@ describe("ProtocolFailureBox", () => {
         expect(screen.queryByTestId("protocol-failure")).not.toBeInTheDocument();
     });
 
+    it("fits in one line above the logs, going to the error or to the whole box", async () => {
+        service.fetchProtocolFailure.mockResolvedValue(gpuFailure);
+        const onShowInLog = vi.fn();
+        const onDetails = vi.fn();
+        render(<ProtocolFailureBox compact projectId={7} protocolId={137} onShowInLog={onShowInLog} onDetails={onDetails} />);
+
+        const strip = await screen.findByTestId("protocol-failure-strip");
+        expect(strip).toHaveTextContent("Why it failed: The GPU ran out of memory. Try a smaller box size.");
+        expect(screen.queryByTestId("protocol-failure")).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Show in log" }));
+        expect(onShowInLog).toHaveBeenCalledWith(gpuFailure.error);
+        fireEvent.click(screen.getByRole("button", { name: "Details" }));
+        expect(onDetails).toHaveBeenCalled();
+    });
+
     it("says so when the logs do not say why", async () => {
         service.fetchProtocolFailure.mockResolvedValue({ failed: true, cause: null, error: null, command: null,
             traceback: [], hasLogs: false });
