@@ -14,9 +14,7 @@ import {
   Alert,
   Box,
   Button,
-  ButtonGroup,
   Checkbox,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -38,6 +36,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -47,11 +47,10 @@ import {
   Circle,
   Contrast,
   Eraser,
-  FileText,
-  Grid3X3,
   Hand,
   ImageMinus,
   LocateFixed,
+  ChevronDown,
   ChevronRight,
   Crosshair,
   Eye,
@@ -64,7 +63,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
-  Table2,
   Trash2,
   Waves,
   Wrench,
@@ -309,10 +307,32 @@ const PARTICLE_GALLERY_SIZE = 74;
 
 const PANEL_BORDER = "1px solid rgba(148,163,184,0.4)";
 const VIEWER_BG = "var(--app-n-50)";
-const HEADER_BG = "var(--app-n-100)";
-const TOOLBAR_BG = "color-mix(in srgb, var(--app-n-50) 95%, transparent)";
-const CANVAS_OUTER_BG = "var(--app-n-200)";
-const CANVAS_BG = "#d1d5db";
+const CANVAS_OUTER_BG = "#1f2329";
+const CANVAS_BG = "#1f2329";
+const LIST_HEADER_BG = "var(--app-n-0)";
+const LIST_HEAD_CELL_SX = {
+  bgcolor: LIST_HEADER_BG,
+  fontWeight: 600,
+  color: "text.secondary",
+  fontSize: "0.78rem",
+  borderBottom: "1px solid var(--app-n-200)",
+};
+const UPDATED_DOT = "#f59e0b";
+// The look shared with the other viewers: grey segmented groups and bordered buttons
+const TOGGLE_GROUP_SX = {
+  bgcolor: "var(--app-n-0)",
+  "& .MuiToggleButton-root": { px: 1, py: 0.5, color: "var(--app-n-700)" },
+  "& .MuiToggleButton-root.Mui-selected": { color: "primary.main", bgcolor: "rgba(59,130,246,0.12)" },
+  "& .MuiToggleButton-root.Mui-selected:hover": { bgcolor: "rgba(59,130,246,0.18)" },
+};
+const ICON_BUTTON_SX = { border: "1px solid", borderColor: "divider", borderRadius: 1.5, bgcolor: "var(--app-n-0)" };
+const MENU_BUTTON_SX = {
+  borderColor: "divider",
+  color: "var(--app-n-800)",
+  bgcolor: "var(--app-n-0)",
+  py: 0.4,
+  "&:hover": { borderColor: "var(--app-n-400)", bgcolor: "var(--app-n-50)" },
+};
 const ROW_SELECTED = "rgba(219,234,254,0.95)";
 const ROW_SELECTED_HOVER = "rgba(191,219,254,0.95)";
 const ROW_SELECTED_TEXT = "var(--app-n-900)";
@@ -796,13 +816,21 @@ const MicrographTableRow = memo(function MicrographTableRow({
         },
       }}
     >
-      <TableCell>{micrograph.index ?? index + 1}</TableCell>
+      <TableCell sx={{ color: "text.secondary" }}>{micrograph.index ?? index + 1}</TableCell>
 
-      <TableCell>{label}</TableCell>
+      <TableCell sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 0 }}
+        title={label}>
+        {label}
+      </TableCell>
 
-      <TableCell align="center">{micrograph.particles ?? 0}</TableCell>
+      <TableCell align="right">{micrograph.particles ?? 0}</TableCell>
 
-      <TableCell align="center">{updated ? "Yes" : "No"}</TableCell>
+      <TableCell align="center" sx={{ px: 0.5 }}>
+        {updated ? (
+          <Box component="span" role="img" aria-label="Changed" title="Changed"
+            sx={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", bgcolor: UPDATED_DOT }} />
+        ) : null}
+      </TableCell>
     </TableRow>
   );
 });
@@ -886,7 +914,6 @@ function Coords2dViewer({
 
   const [filtersAnchorEl, setFiltersAnchorEl] = useState<HTMLElement | null>(null);
   const [toolsAnchorEl, setToolsAnchorEl] = useState<HTMLElement | null>(null);
-  const [windowsAnchorEl, setWindowsAnchorEl] = useState<HTMLElement | null>(null);
 
   const [filters, setFilters] = useState<ImageFilters>({
     enhanceContrast: false,
@@ -2306,12 +2333,12 @@ function Coords2dViewer({
         bottomRight.y - topLeft.y,
       );
       ctx.restore();
-    } else {
-      ctx.fillStyle = "#cbd5e1";
-      ctx.fillRect(0, 0, size.width, size.height);
     }
 
-    if (markersVisible && imageWorldSize) {
+    // The particles of a micrograph appear with its image, not before it (without an image they show alone)
+    const waitingForImage = loadingImage && !image;
+
+    if (markersVisible && imageWorldSize && !waitingForImage) {
       visiblePoints.forEach((point, index) => {
         const pointId = getPointId(point, index);
         const screen = worldToScreen(point.x, point.y);
@@ -2364,6 +2391,7 @@ function Coords2dViewer({
     image,
     imageUrl,
     imageWorldSize,
+    loadingImage,
     pickColor,
     automaticColor,
     selectedPointId,
@@ -2457,6 +2485,8 @@ function Coords2dViewer({
       setError(err instanceof Error ? err.message : "The explored percentage could not be saved");
     }
   }, [dataSource.supervised]);
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const toggleFilter = useCallback((key: keyof ImageFilters) => {
     setFilters((current) => ({
@@ -2957,50 +2987,47 @@ function Coords2dViewer({
     >
       <Box
         sx={{
-          px: 0.5,
-          py: 0.25,
+          px: 1,
+          py: 0.5,
           display: "flex",
           alignItems: "center",
-          gap: 0.25,
+          gap: 0.75,
+          flexWrap: "wrap",
           borderBottom: PANEL_BORDER,
-          bgcolor: "var(--app-n-100)",
+          bgcolor: VIEWER_BG,
         }}
       >
-        <Button
-          size="small"
-          disabled
-          startIcon={<FileText size={14} />}
-          sx={{ minWidth: 42, color: "var(--app-n-900)" }}
-        >
-          File
+        <Button size="small" variant="outlined" color="inherit" sx={MENU_BUTTON_SX}
+          startIcon={<SlidersHorizontal size={15} />} endIcon={<ChevronDown size={14} />}
+          onClick={(event) => setFiltersAnchorEl(event.currentTarget)}>
+          {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
         </Button>
 
-        <Button
-          size="small"
-          startIcon={<SlidersHorizontal size={14} />}
-          onClick={(event) => setFiltersAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 58, color: "var(--app-n-900)" }}
-        >
-          Filters
-        </Button>
-
-        <Button
-          size="small"
-          startIcon={<Wrench size={14} />}
-          onClick={(event) => setToolsAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 50, color: "var(--app-n-900)" }}
-        >
+        <Button size="small" variant="outlined" color="inherit" sx={MENU_BUTTON_SX}
+          startIcon={<Wrench size={15} />} endIcon={<ChevronDown size={14} />}
+          onClick={(event) => setToolsAnchorEl(event.currentTarget)}>
           Tools
         </Button>
 
-        <Button
-          size="small"
-          startIcon={<Grid3X3 size={14} />}
-          onClick={(event) => setWindowsAnchorEl(event.currentTarget)}
-          sx={{ minWidth: 68, color: "var(--app-n-900)" }}
-        >
-          Window
+        <Button size="small" variant="outlined" color="inherit" sx={MENU_BUTTON_SX}
+          startIcon={<ImageMinus size={15} />} onClick={() => setParticlesOpen(true)}>
+          Particles
         </Button>
+
+        <Tooltip
+          title={(
+            <Box component="span" sx={{ display: "block", fontSize: "0.75rem", lineHeight: 1.6 }}>
+              Click: pick, or select a particle · Drag a particle: move it<br />
+              Shift + click: delete a particle · Delete: delete the selected one<br />
+              Arrows: move the selected particle · Space: hide or show the markers<br />
+              E: eraser / picker · R / W: next / previous micrograph
+            </Box>
+          )}
+        >
+          <IconButton size="small" aria-label="Keyboard shortcuts" sx={ICON_BUTTON_SX}>
+            <Keyboard size={16} />
+          </IconButton>
+        </Tooltip>
 
         <Menu
           anchorEl={filtersAnchorEl}
@@ -3059,344 +3086,11 @@ function Coords2dViewer({
           </MenuItem>
         </Menu>
 
-        <Menu
-          anchorEl={windowsAnchorEl}
-          open={Boolean(windowsAnchorEl)}
-          onClose={() => setWindowsAnchorEl(null)}
-        >
-          <MenuItem
-            onClick={() => {
-              setParticlesOpen(true);
-              setWindowsAnchorEl(null);
-            }}
-          >
-            <ListItemIcon>
-              <ImageMinus size={17} />
-            </ListItemIcon>
-            Particles
-          </MenuItem>
-        </Menu>
-      </Box>
-
-      <Box
-        sx={{
-          px: 1,
-          py: 0.75,
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          borderBottom: PANEL_BORDER,
-          bgcolor: HEADER_BG,
-        }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          Box size(px):
-        </Typography>
-
-        <Slider
-          size="small"
-          min={MIN_BOX_SIZE}
-          max={boxSizeSliderMax}
-          step={1}
-          value={boxSize}
-          disabled={!boxSizeEditable}
-          onChange={(_, value) => setBoxSize(Array.isArray(value) ? value[0] : value)}
-          sx={{ width: 260 }}
-        />
-
-        <TextField
-          size="small"
-          type="number"
-          value={boxSizeText ?? String(boxSize)}
-          disabled={!boxSizeEditable}
-          onChange={(event) => setBoxSizeText(event.target.value)}
-          onBlur={applyBoxSizeText}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") applyBoxSizeText();
-            if (event.key === "Escape") setBoxSizeText(null);
-          }}
-          inputProps={{ min: MIN_BOX_SIZE, max: boxSizeLimit, step: 1, "aria-label": "Box size in pixels" }}
-          sx={{ width: 92, "& .MuiInputBase-input": { py: 0.5 } }}
-        />
-
-        {!boxSizeEditable && (
-          <Typography variant="caption" color="text.secondary">
-            Fixed by the trained picker
-          </Typography>
-        )}
-
-        {supportsThreshold && currentPoints.some(isAutomaticPoint) && (
-          <>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              Threshold:
-            </Typography>
-            <Slider
-              size="small"
-              min={0}
-              max={1}
-              step={0.01}
-              value={currentThreshold}
-              onChange={(_, value) => changeThreshold(Array.isArray(value) ? value[0] : value)}
-              aria-label="Automatic particles threshold"
-              sx={{ width: 160, color: automaticColor }}
-            />
-            <Typography variant="body2" sx={{ minWidth: 34 }}>
-              {currentThreshold.toFixed(2)}
-            </Typography>
-          </>
-        )}
-
-        <Chip
-          size="small"
-          label={`Total micrograph: ${micrographs.length}`}
-          sx={{ bgcolor: "#cfe8cf", border: "1px solid #9cc99c" }}
-        />
-
-        <Chip
-          size="small"
-          label={`Total picks: ${totalPicks}`}
-          sx={{ bgcolor: "#c3d7df", border: "1px solid #91b2bf" }}
-        />
-
-        {updatedCount > 0 ? (
-          <Chip size="small" color="warning" label={`Updated: ${updatedCount}`} />
-        ) : null}
-
         <Box sx={{ flex: 1 }} />
 
         <Typography variant="caption" sx={{ color: "text.secondary" }}>
           {protocolLabel} · {title ?? outputName}
         </Typography>
-      </Box>
-
-      <Box
-        sx={{
-          px: 1,
-          py: 0.75,
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          borderBottom: PANEL_BORDER,
-          bgcolor: TOOLBAR_BG,
-        }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          Shape:
-        </Typography>
-
-        <ButtonGroup size="small" variant="outlined">
-          <Tooltip title="Circle">
-            <Button aria-label="Circle marker" aria-pressed={shapes.circle}
-              variant={shapes.circle ? "contained" : "outlined"} onClick={() => toggleShape("circle")}>
-              <Circle size={16} />
-            </Button>
-          </Tooltip>
-
-          <Tooltip title="Box (what gets extracted)">
-            <Button aria-label="Box marker" aria-pressed={shapes.square}
-              variant={shapes.square ? "contained" : "outlined"} onClick={() => toggleShape("square")}>
-              <Square size={16} />
-            </Button>
-          </Tooltip>
-
-          <Tooltip title="Centre cross">
-            <Button aria-label="Centre marker" aria-pressed={shapes.center}
-              variant={shapes.center ? "contained" : "outlined"} onClick={() => toggleShape("center")}>
-              <Plus size={16} />
-            </Button>
-          </Tooltip>
-        </ButtonGroup>
-
-        <Tooltip title={markersVisible ? "Hide the markers (Space)" : "Show the markers (Space)"}>
-          <IconButton size="small" aria-label={markersVisible ? "Hide markers" : "Show markers"}
-            onClick={() => setMarkersVisible((current) => !current)}>
-            {markersVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-          </IconButton>
-        </Tooltip>
-
-        <Divider flexItem orientation="vertical" />
-
-        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          Color:
-        </Typography>
-
-        <Box
-          component="input"
-          type="color"
-          value={pickColor}
-          onChange={(event) => setPickColor((event.target as HTMLInputElement).value)}
-          sx={{
-            width: 34,
-            height: 30,
-            p: 0,
-            border: PANEL_BORDER,
-            bgcolor: "transparent",
-          }}
-        />
-
-        <Divider flexItem orientation="vertical" />
-
-        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          Picker tools:
-        </Typography>
-
-        <ButtonGroup size="small" variant="outlined">
-          <Tooltip title="Particle picker">
-            <Button
-              variant={toolMode === "pick" ? "contained" : "outlined"}
-              onClick={() => setToolMode("pick")}
-            >
-              <Plus size={16} />
-            </Button>
-          </Tooltip>
-
-          <Tooltip title="Eraser (E)">
-            <Button
-              variant={toolMode === "erase" ? "contained" : "outlined"}
-              onClick={() => setToolMode("erase")}
-            >
-              <Eraser size={16} />
-            </Button>
-          </Tooltip>
-
-          {dataSource.templates && (
-            <Tooltip title={centerParticles
-              ? "Center each new particle on the templates: on"
-              : "Center each new particle on the templates: off"}>
-              <Button
-                aria-label="Center"
-                aria-pressed={centerParticles}
-                variant={centerParticles ? "contained" : "outlined"}
-                onClick={() => setCenterParticles((current) => !current)}
-              >
-                <Crosshair size={16} />
-              </Button>
-            </Tooltip>
-          )}
-
-          {dataSource.templates && (
-            <Tooltip title="Templates: the average of the particles you pick">
-              <Button aria-label="Templates" onClick={(event) => openTemplates(event.currentTarget)}>
-                <Layers size={16} />
-              </Button>
-            </Tooltip>
-          )}
-        </ButtonGroup>
-
-        {toolMode === "erase" && (
-          <TextField
-            size="small"
-            type="number"
-            label="Eraser (px)"
-            value={eraserSize}
-            onChange={(event) => setEraserSize(Math.max(0, Math.round(Number(event.target.value) || 0)))}
-            inputProps={{ min: 0, step: 10, "aria-label": "Eraser size" }}
-            sx={{ width: 104, "& input": { py: 0.6, fontSize: "0.8rem" } }}
-          />
-        )}
-
-
-        <Divider flexItem orientation="vertical" />
-
-        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          Navigate:
-        </Typography>
-
-        <ButtonGroup size="small" variant="outlined">
-          <Tooltip title="Fit to display">
-            <Button onClick={fitView}>
-              <LocateFixed size={16} />
-            </Button>
-          </Tooltip>
-
-          <Tooltip title="Click and drag to move">
-            <Button
-              variant={toolMode === "pan" ? "contained" : "outlined"}
-              onClick={() => setToolMode("pan")}
-            >
-              <Hand size={16} />
-            </Button>
-          </Tooltip>
-        </ButtonGroup>
-
-
-        <Tooltip
-          title={(
-            <Box component="span" sx={{ display: "block", fontSize: "0.75rem", lineHeight: 1.6 }}>
-              Click: pick, or select a particle · Drag a particle: move it<br />
-              Shift + click: delete a particle · Delete: delete the selected one<br />
-              Arrows: move the selected particle · Space: hide or show the markers<br />
-              E: eraser / picker · R / W: next / previous micrograph
-            </Box>
-          )}
-        >
-          <IconButton size="small" aria-label="Keyboard shortcuts">
-            <Keyboard size={16} />
-          </IconButton>
-        </Tooltip>
-
-        <Box sx={{ flex: 1 }} />
-
-        {selectedPoint ? (
-          <Typography variant="caption">
-            x={formatNumber(selectedPoint.x)} y={formatNumber(selectedPoint.y)}
-          </Typography>
-        ) : null}
-
-        {dataSource.supervised && (
-          <>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              Supervised:
-            </Typography>
-
-            <ButtonGroup size="small" variant="outlined"
-              disabled={supervisedBusy !== null || creatingOutput || selectedMicId == null}>
-              <Tooltip title="Train the picker with your manual particles and autopick this micrograph" describeChild>
-                <Button
-                  startIcon={supervisedBusy === "train" ? <CircularProgress size={14} /> : <Sparkles size={16} />}
-                  onClick={() => void runSupervised("train")}
-                  sx={{
-                    textTransform: "none", color: "#1f3d1f", bgcolor: "#cfe8cf", borderColor: "#9cc99c",
-                    "&:hover": { bgcolor: "#bddcbd", borderColor: "#86b886" },
-                  }}
-                >
-                  {supervisedBusy === "train" ? "Training..." : "Train"}
-                </Button>
-              </Tooltip>
-
-              <Tooltip title="Learn from your corrections here and autopick the next micrograph" describeChild>
-                <Button
-                  endIcon={supervisedBusy === "next" ? <CircularProgress size={14} /> : <ChevronRight size={16} />}
-                  onClick={() => void runSupervised("next")}
-                  sx={{
-                    textTransform: "none", color: "#1d3a46", bgcolor: "#c3d7df", borderColor: "#91b2bf",
-                    "&:hover": { bgcolor: "#b0cad4", borderColor: "#7fa3b2" },
-                  }}
-                >
-                  {supervisedBusy === "next" ? "Autopicking..." : "Next"}
-                </Button>
-              </Tooltip>
-            </ButtonGroup>
-
-            {dataSource.supervised.setAutopickPercent && autopickPercent !== null && (
-              <Tooltip title="Percentage of each micrograph the automatic picking explores" describeChild>
-                <TextField
-                  size="small"
-                  type="number"
-                  label="Explore (%)"
-                  value={autopickPercent}
-                  onChange={(event) => setAutopickPercent(Number(event.target.value))}
-                  onBlur={() => void applyAutopickPercent(autopickPercent)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void applyAutopickPercent(autopickPercent);
-                  }}
-                  inputProps={{ min: 1, max: 100, "aria-label": "Explore percentage" }}
-                  sx={{ width: 96, "& input": { py: 0.6, fontSize: "0.8rem" } }}
-                />
-              </Tooltip>
-            )}
-          </>
-        )}
       </Box>
 
       <Popover
@@ -3455,42 +3149,50 @@ function Coords2dViewer({
       ) : null}
 
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
+        <Box
+          sx={{
+            width: 380,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            borderRight: "1px solid var(--app-n-100)",
+            bgcolor: "var(--app-n-0)",
+          }}
+        >
+          <Box sx={{ p: 1.5, flexShrink: 0 }}>
+            <Typography variant="subtitle2" sx={{ fontSize: "0.82rem" }}>Micrographs</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.72rem" }}>
+              {`${micrographs.length} item(s) · ${totalPicks.toLocaleString()} particles`}
+              {updatedCount > 0 ? ` · ${updatedCount} changed` : ""}
+            </Typography>
+          </Box>
+          <Divider />
         <TableContainer
-          component={Paper}
-          square
           ref={tableContainerRef}
           onScroll={readTableViewport}
           sx={{
-            width: 520,
-            borderRight: PANEL_BORDER,
+            flex: 1,
             minHeight: 0,
             overflow: "auto",
           }}
         >
-          <Table size="small" stickyHeader>
+          <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 58 }}>
-                  Index
+                <TableCell sx={{ ...LIST_HEAD_CELL_SX, width: 52 }}>
+                  #
                 </TableCell>
 
-                <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700 }}>
-                  File
+                <TableCell sx={LIST_HEAD_CELL_SX}>
+                  Micrograph
                 </TableCell>
 
-                <TableCell
-                  align="center"
-                  sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 100 }}
-                >
+                <TableCell align="right" sx={{ ...LIST_HEAD_CELL_SX, width: 84 }}>
                   Particles
                 </TableCell>
 
-                <TableCell
-                  align="center"
-                  sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 92 }}
-                >
-                  Updated
-                </TableCell>
+                <TableCell align="center" sx={{ ...LIST_HEAD_CELL_SX, width: 30, px: 0.5 }} aria-label="Changed" />
               </TableRow>
             </TableHead>
 
@@ -3520,6 +3222,7 @@ function Coords2dViewer({
             </TableBody>
           </Table>
         </TableContainer>
+        </Box>
 
         <Box
           sx={{
@@ -3532,6 +3235,248 @@ function Coords2dViewer({
           }}
         >
           <Box
+            sx={{
+              px: 1,
+              pt: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1,
+              flexWrap: "wrap",
+              flexShrink: 0,
+            }}
+          >
+            <ToggleButtonGroup size="small" exclusive value={toolMode} aria-label="Tool" sx={TOGGLE_GROUP_SX}
+              onChange={(_, value) => value && setToolMode(value)}>
+              <Tooltip title="Particle picker">
+                <ToggleButton value="pick"><Plus size={16} /></ToggleButton>
+              </Tooltip>
+              <Tooltip title="Eraser (E)">
+                <ToggleButton value="erase"><Eraser size={16} /></ToggleButton>
+              </Tooltip>
+              <Tooltip title="Click and drag to move">
+                <ToggleButton value="pan"><Hand size={16} /></ToggleButton>
+              </Tooltip>
+            </ToggleButtonGroup>
+
+            <Tooltip title="Fit to display">
+              <IconButton size="small" aria-label="Fit to display" onClick={fitView} sx={ICON_BUTTON_SX}>
+                <LocateFixed size={16} />
+              </IconButton>
+            </Tooltip>
+
+            {toolMode === "erase" && (
+              <TextField
+                size="small"
+                type="number"
+                label="Eraser (px)"
+                value={eraserSize}
+                onChange={(event) => setEraserSize(Math.max(0, Math.round(Number(event.target.value) || 0)))}
+                inputProps={{ min: 0, step: 10, "aria-label": "Eraser size" }}
+                sx={{ width: 104, "& input": { py: 0.6, fontSize: "0.8rem" } }}
+              />
+            )}
+
+            {dataSource.templates && (
+              <ToggleButtonGroup size="small" aria-label="Templates" sx={TOGGLE_GROUP_SX}>
+                <Tooltip title={centerParticles
+                  ? "Center each new particle on the templates: on"
+                  : "Center each new particle on the templates: off"}>
+                  <ToggleButton value="center" aria-label="Center" selected={centerParticles}
+                    onChange={() => setCenterParticles((current) => !current)}>
+                    <Crosshair size={16} />
+                  </ToggleButton>
+                </Tooltip>
+                <Tooltip title="Templates: the average of the particles you pick">
+                  <ToggleButton value="templates" aria-label="Templates" selected={false}
+                    onChange={(event) => openTemplates(event.currentTarget as HTMLElement)}>
+                    <Layers size={16} />
+                  </ToggleButton>
+                </Tooltip>
+              </ToggleButtonGroup>
+            )}
+
+            <Divider flexItem orientation="vertical" />
+
+            <ToggleButtonGroup size="small" aria-label="Markers" sx={TOGGLE_GROUP_SX}>
+              <Tooltip title="Circle">
+                <ToggleButton value="circle" aria-label="Circle marker" selected={shapes.circle}
+                  onChange={() => toggleShape("circle")}>
+                  <Circle size={16} />
+                </ToggleButton>
+              </Tooltip>
+              <Tooltip title="Box (what gets extracted)">
+                <ToggleButton value="square" aria-label="Box marker" selected={shapes.square}
+                  onChange={() => toggleShape("square")}>
+                  <Square size={16} />
+                </ToggleButton>
+              </Tooltip>
+              <Tooltip title="Centre cross">
+                <ToggleButton value="center" aria-label="Centre marker" selected={shapes.center}
+                  onChange={() => toggleShape("center")}>
+                  <Plus size={16} />
+                </ToggleButton>
+              </Tooltip>
+            </ToggleButtonGroup>
+
+            <Tooltip title={markersVisible ? "Hide the markers (Space)" : "Show the markers (Space)"}>
+              <IconButton size="small" aria-label={markersVisible ? "Hide markers" : "Show markers"}
+                onClick={() => setMarkersVisible((current) => !current)} sx={ICON_BUTTON_SX}>
+                {markersVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Marker color">
+              <Box
+                component="label"
+                sx={{ ...ICON_BUTTON_SX, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, cursor: "pointer", position: "relative" }}
+              >
+                <Box sx={{ width: 16, height: 16, borderRadius: "50%", bgcolor: pickColor,
+                  boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.25)" }} />
+                <Box
+                  component="input"
+                  type="color"
+                  aria-label="Marker color"
+                  value={pickColor}
+                  onChange={(event) => setPickColor((event.target as HTMLInputElement).value)}
+                  sx={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
+                />
+              </Box>
+            </Tooltip>
+
+          </Box>
+
+          <Box
+            sx={{
+              px: 1,
+              pt: 0.5,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1.25,
+              flexWrap: "wrap",
+              minHeight: 36,
+              flexShrink: 0,
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+              Box size
+            </Typography>
+
+            <Slider
+              size="small"
+              min={MIN_BOX_SIZE}
+              max={boxSizeSliderMax}
+              step={1}
+              value={boxSize}
+              disabled={!boxSizeEditable}
+              onChange={(_, value) => setBoxSize(Array.isArray(value) ? value[0] : value)}
+              sx={{ width: 220 }}
+            />
+
+            <TextField
+              size="small"
+              type="number"
+              value={boxSizeText ?? String(boxSize)}
+              disabled={!boxSizeEditable}
+              onChange={(event) => setBoxSizeText(event.target.value)}
+              onBlur={applyBoxSizeText}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") applyBoxSizeText();
+                if (event.key === "Escape") setBoxSizeText(null);
+              }}
+              inputProps={{ min: MIN_BOX_SIZE, max: boxSizeLimit, step: 1, "aria-label": "Box size in pixels" }}
+              InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary">px</Typography> }}
+              sx={{ width: 96, "& .MuiInputBase-input": { py: 0.5 } }}
+            />
+
+            {!boxSizeEditable && (
+              <Typography variant="caption" color="text.secondary">
+                Fixed by the trained picker
+              </Typography>
+            )}
+
+            {supportsThreshold && currentPoints.some(isAutomaticPoint) && (
+              <>
+                <Divider flexItem orientation="vertical" />
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                  Threshold
+                </Typography>
+                <Slider
+                  size="small"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={currentThreshold}
+                  onChange={(_, value) => changeThreshold(Array.isArray(value) ? value[0] : value)}
+                  aria-label="Automatic particles threshold"
+                  sx={{ width: 160, color: automaticColor }}
+                />
+                <Typography variant="body2" sx={{ minWidth: 34 }}>
+                  {currentThreshold.toFixed(2)}
+                </Typography>
+              </>
+            )}
+
+            {dataSource.supervised && (
+              <>
+                <Divider flexItem orientation="vertical" />
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                  Supervised
+                </Typography>
+
+                <Tooltip title="Train the picker with your manual particles and autopick this micrograph" describeChild>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={supervisedBusy !== null || creatingOutput || selectedMicId == null}
+                      startIcon={supervisedBusy === "train" ? <CircularProgress size={14} /> : <Sparkles size={16} />}
+                      onClick={() => void runSupervised("train")}
+                    >
+                      {supervisedBusy === "train" ? "Training..." : "Train"}
+                    </Button>
+                  </span>
+                </Tooltip>
+
+                <Tooltip title="Learn from your corrections here and autopick the next micrograph" describeChild>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={supervisedBusy !== null || creatingOutput || selectedMicId == null}
+                      endIcon={supervisedBusy === "next" ? <CircularProgress size={14} /> : <ChevronRight size={16} />}
+                      onClick={() => void runSupervised("next")}
+                    >
+                      {supervisedBusy === "next" ? "Autopicking..." : "Next"}
+                    </Button>
+                  </span>
+                </Tooltip>
+
+                {dataSource.supervised.setAutopickPercent && autopickPercent !== null && (
+                  <Tooltip title="Percentage of each micrograph the automatic picking explores" describeChild>
+                    <TextField
+                      size="small"
+                      type="number"
+                      label="Explore (%)"
+                      value={autopickPercent}
+                      onChange={(event) => setAutopickPercent(Number(event.target.value))}
+                      onBlur={() => void applyAutopickPercent(autopickPercent)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void applyAutopickPercent(autopickPercent);
+                      }}
+                      inputProps={{ min: 1, max: 100, "aria-label": "Explore percentage" }}
+                      sx={{ width: 96, "& input": { py: 0.6, fontSize: "0.8rem" } }}
+                    />
+                  </Tooltip>
+                )}
+              </>
+            )}
+
+          </Box>
+
+          <Box
             ref={canvasWrapRef}
             sx={{
               position: "relative",
@@ -3539,10 +3484,36 @@ function Coords2dViewer({
               m: 1,
               minHeight: 0,
               overflow: "hidden",
-              border: PANEL_BORDER,
+              border: "1px solid var(--app-n-200)",
+              borderRadius: 1,
               bgcolor: CANVAS_OUTER_BG,
             }}
           >
+            {selectedMicrograph ? (
+              <Box
+                sx={{
+                  position: "absolute",
+                  left: 8,
+                  top: 8,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 0.75,
+                  bgcolor: "rgba(0,0,0,0.55)",
+                  color: "#fff",
+                  fontSize: "0.78rem",
+                  pointerEvents: "none",
+                }}
+              >
+                <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: pickColor }} />
+                <span>{getMicrographLabel(selectedMicrograph)}</span>
+                <Box component="span" sx={{ opacity: 0.6 }}>·</Box>
+                <span>{`${visiblePoints.length} particles`}</span>
+              </Box>
+            ) : null}
             <canvas
               ref={canvasRef}
               onWheel={handleWheel}
@@ -3569,7 +3540,7 @@ function Coords2dViewer({
               }}
             />
 
-            {loading ? (
+            {loading || (loadingImage && !image) ? (
               <Box
                 sx={{
                   position: "absolute",
@@ -3577,11 +3548,11 @@ function Coords2dViewer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  bgcolor: "rgba(255,255,255,0.25)",
+                  color: "rgba(255,255,255,0.7)",
                   pointerEvents: "none",
                 }}
               >
-                <CircularProgress size={24} />
+                <CircularProgress size={24} color="inherit" />
               </Box>
             ) : null}
 
@@ -3589,12 +3560,13 @@ function Coords2dViewer({
               <Box
                 sx={{
                   position: "absolute",
-                  left: 12,
-                  bottom: 12,
-                  px: 1,
-                  py: 0.5,
-                  bgcolor: "color-mix(in srgb, var(--app-n-0) 86%, transparent)",
-                  border: PANEL_BORDER,
+                  left: 8,
+                  bottom: 8,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 0.75,
+                  bgcolor: "rgba(0,0,0,0.55)",
+                  color: "#fff",
                   pointerEvents: "none",
                 }}
               >
@@ -3606,12 +3578,13 @@ function Coords2dViewer({
               <Box
                 sx={{
                   position: "absolute",
-                  left: 12,
-                  bottom: 12,
-                  px: 1,
-                  py: 0.5,
-                  bgcolor: "color-mix(in srgb, var(--app-n-0) 86%, transparent)",
-                  border: PANEL_BORDER,
+                  left: 8,
+                  bottom: 8,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 0.75,
+                  bgcolor: "rgba(0,0,0,0.55)",
+                  color: "#fff",
                   pointerEvents: "none",
                 }}
               >
@@ -3624,21 +3597,24 @@ function Coords2dViewer({
 
           <Box
             sx={{
-              px: 2,
-              py: 1,
+              px: 1.5,
+              py: 0.75,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              borderTop: PANEL_BORDER,
-              bgcolor: VIEWER_BG,
+              gap: 2,
+              borderTop: "1px solid var(--app-n-100)",
+              bgcolor: "var(--app-n-0)",
             }}
           >
-            <Chip
-              size="small"
-              icon={<Table2 size={14} />}
-              label={`${visiblePoints.length} particles in selected micrograph`}
-              variant="outlined"
-            />
+            <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", minWidth: 0 }}>
+              <MetaItem label="Micrographs" value={String(micrographs.length)} />
+              <MetaItem label="Particles" value={totalPicks.toLocaleString()} />
+              <MetaItem label="Box" value={`${boxSize} px`} />
+              {selectedPoint ? (
+                <MetaItem label="Selected" value={`x=${formatNumber(selectedPoint.x)} y=${formatNumber(selectedPoint.y)}`} />
+              ) : null}
+            </Box>
 
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button
@@ -3654,15 +3630,12 @@ function Coords2dViewer({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={creatingOutput ? <CircularProgress size={14} /> : <Plus size={16} />}
+                disableElevation
+                startIcon={creatingOutput ? <CircularProgress size={14} /> : <Save size={16} />}
                 onClick={requestCreateOutput}
                 disabled={creatingOutput}
-                sx={{
-                  bgcolor: "#b22a2a",
-                  "&:hover": { bgcolor: "#922020" },
-                }}
               >
-                {creatingOutput ? "Creating..." : "Coordinate"}
+                {creatingOutput ? "Creating..." : "Create output"}
               </Button>
             </Box>
           </Box>
@@ -3924,3 +3897,15 @@ function Coords2dViewer({
 }
 
 export default Coords2dViewer;
+
+
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <Box sx={{ display: "flex", gap: 1, whiteSpace: "nowrap" }}>
+      <Typography variant="caption" color="text.secondary">
+        {label}:
+      </Typography>
+      <Typography variant="caption">{value}</Typography>
+    </Box>
+  );
+}

@@ -205,7 +205,7 @@ describe("Xmipp picking session in the coordinates viewer", () => {
     await waitFor(() => expect(next).toHaveBeenCalledWith("4", "5"));
     await waitFor(() => expect(source.fetchCoordinates).toHaveBeenCalledWith("5"));
     // Both micrographs were changed by the picker.
-    await waitFor(() => expect(screen.getAllByRole("cell", { name: "Yes" })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("cell", { name: "Changed" })).toHaveLength(2));
   });
 
   it("fixes the box size once the picker is trained, as the desktop picker", async () => {
