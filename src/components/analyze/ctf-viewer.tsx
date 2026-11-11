@@ -10,6 +10,7 @@ import {
     Box,
     Button,
     CircularProgress,
+    Divider,
     IconButton,
     MenuItem,
     Paper,
@@ -19,6 +20,8 @@ import {
     TableHead,
     TableRow,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
 } from "@mui/material";
@@ -26,6 +29,7 @@ import {
 import {
     ArrowBack,
     OpenInFull,
+    Search as SearchIcon,
     TableView as MetadataIcon,
 } from "@mui/icons-material";
 
@@ -45,6 +49,8 @@ import { scatterTraceType } from "../../utils/plot-trace-type";
 
 // Height of a row of the CTF table: the table draws only the rows on screen (see visibleRows)
 const CTF_ROW_HEIGHT = 34;
+// The image cards look like the slice views of the other viewers
+const IMAGE_BG = "#1f2329";
 const CTF_TABLE_OVERSCAN = 10;
 const CTF_TABLE_INITIAL_HEIGHT = 800;
 // After the images of the row shown: they go first
@@ -163,6 +169,79 @@ function getStatus(row: CtfModelListItem): string {
 }
 
 
+/** A column title on one line: the name, then its unit, smaller and grey. */
+function HeadLabel({ label, unit }: { label: string; unit?: string }) {
+    return (
+        <>
+            {label}
+            {unit ? (
+                <Box component="span" sx={{ ml: 0.4, fontWeight: 400, fontSize: "0.75rem" }}>
+                    {unit}
+                </Box>
+            ) : null}
+        </>
+    );
+}
+
+
+// Names longer than this are cut in the middle rather than at the end
+const MIDDLE_CUT_FROM = 24;
+
+const STATUS_DOT: Record<"ok" | "failed" | "excluded", string> = {
+    ok: "#22c55e",
+    failed: "#ef4444",
+    excluded: "#9ca3af",
+};
+
+/**
+ * A micrograph's name in the table: its status dot, then the name cut in the middle, so the end that tells
+ * micrographs apart (number, time) stays visible.
+ */
+function MicrographName({ name, status, selected }: {
+    name: string;
+    status: "ok" | "failed" | "excluded";
+    selected: boolean;
+}) {
+    const text = String(name ?? "");
+    const tailLength = Math.min(14, Math.floor(text.length / 2));
+    const head = text.slice(0, text.length - tailLength);
+    const tail = text.slice(text.length - tailLength);
+    return (
+        <Box
+            title={text}
+            sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                minWidth: 0,
+                fontSize: "0.875rem",
+                fontWeight: selected ? 600 : 400,
+            }}
+        >
+            <Box
+                component="span"
+                aria-label={status === "ok" ? undefined : status}
+                sx={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, bgcolor: STATUS_DOT[status] }}
+            />
+            {text.length <= MIDDLE_CUT_FROM ? (
+                <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {text}
+                </Box>
+            ) : (
+                <Box component="span" sx={{ display: "flex", minWidth: 0 }}>
+                    <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {head}
+                    </Box>
+                    <Box component="span" sx={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+                        {tail}
+                    </Box>
+                </Box>
+            )}
+        </Box>
+    );
+}
+
+
 function PreviewPanel({
     title,
     subtitle,
@@ -174,141 +253,99 @@ function PreviewPanel({
     onOpen,
 }: PreviewPanelProps) {
     return (
-        <Paper
-            elevation={0}
+        <Box
             sx={{
+                position: "relative",
                 minWidth: 0,
                 minHeight: 0,
                 display: "flex",
-                flexDirection: "column",
-                border: "1px solid",
-                borderColor: "divider",
-                borderRadius: 2,
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid var(--app-n-200)",
+                borderRadius: 1,
                 overflow: "hidden",
-                bgcolor: "background.paper",
+                bgcolor: IMAGE_BG,
             }}
         >
-            <Box
+            <Typography
+                component="div"
+                noWrap
                 sx={{
-                    px: 1.25,
-                    py: 0.75,
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1,
+                    position: "absolute",
+                    left: 8,
+                    top: 8,
+                    right: 52,
+                    zIndex: 1,
+                    width: "fit-content",
+                    maxWidth: "calc(100% - 60px)",
+                    px: 0.75,
+                    py: 0.25,
+                    borderRadius: 0.75,
+                    bgcolor: "rgba(0,0,0,0.55)",
+                    color: "#fff",
+                    fontSize: "0.78rem",
+                    pointerEvents: "none",
                 }}
             >
-                <Typography
-                    variant="caption"
-                    sx={{
-                        fontWeight: 700,
-                        fontSize: "0.9rem",
-                        flexShrink: 0,
-                    }}
-                >
-                    {title}
+                {subtitle ? `${title} · ${subtitle}` : title}
+            </Typography>
+
+            <Tooltip title="Open image · double-click the preview">
+                <span style={{ position: "absolute", right: 8, top: 8, zIndex: 1 }}>
+                    <IconButton
+                        size="small"
+                        aria-label={`Open ${title} image`}
+                        disabled={loading || !!error || !imageUrl}
+                        onClick={onOpen}
+                        sx={{
+                            bgcolor: "rgba(0,0,0,0.55)",
+                            color: "#fff",
+                            "&:hover": { bgcolor: "rgba(0,0,0,0.75)" },
+                            "&.Mui-disabled": { bgcolor: "rgba(0,0,0,0.3)", color: "rgba(255,255,255,0.4)" },
+                        }}
+                    >
+                        <OpenInFull sx={{ fontSize: 16 }} />
+                    </IconButton>
+                </span>
+            </Tooltip>
+
+            {loading ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "rgba(255,255,255,0.8)" }}>
+                    <CircularProgress size={18} color="inherit" />
+                    <Typography variant="body2" sx={{ fontSize: "0.9rem" }}>
+                        Loading…
+                    </Typography>
+                </Box>
+            ) : error ? (
+                <Typography variant="body2" sx={{ fontSize: "0.875rem", color: "#fca5a5", px: 2, textAlign: "center" }}>
+                    {error}
                 </Typography>
-
-                {subtitle ? (
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        noWrap
-                        sx={{
-                            minWidth: 0,
-                            fontSize: "0.85rem",
-                        }}
-                    >
-                        {subtitle}
-                    </Typography>
-                ) : null}
-
-                <Tooltip title="Open image · double-click the preview">
-                    <span>
-                        <IconButton
-                            size="small"
-                            aria-label={`Open ${title} image`}
-                            disabled={loading || !!error || !imageUrl}
-                            onClick={onOpen}
-                        >
-                            <OpenInFull sx={{ fontSize: 16 }} />
-                        </IconButton>
-                    </span>
-                </Tooltip>
-            </Box>
-
-            <Box
-                sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    p: 0.75,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "hidden",
-                    bgcolor: "action.hover",
-                }}
-            >
-                {loading ? (
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1,
-                        }}
-                    >
-                        <CircularProgress size={18} />
-
-                        <Typography
-                            variant="body2"
-                            sx={{ fontSize: "0.9rem" }}
-                        >
-                            Loading…
-                        </Typography>
-                    </Box>
-                ) : error ? (
-                    <Typography
-                        variant="body2"
-                        color="error"
-                        sx={{ fontSize: "0.875rem" }}
-                    >
-                        {error}
-                    </Typography>
-                ) : imageUrl ? (
-                    <Box
-                        component="img"
-                        src={imageUrl}
-                        alt={alt}
-                        title="Double-click to open image"
-                        draggable={false}
-                        onDoubleClick={onOpen}
-                        sx={{
-                            width: "100%",
-                            height: "100%",
-                            maxWidth: "100%",
-                            maxHeight: "100%",
-                            objectFit: "contain",
-                            borderRadius: 1,
-                            cursor: "pointer",
-                        }}
-                    />
-                ) : (
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{
-                            px: 1,
-                            textAlign: "center",
-                            fontSize: "0.875rem",
-                        }}
-                    >
-                        {emptyText}
-                    </Typography>
-                )}
-            </Box>
-        </Paper>
+            ) : imageUrl ? (
+                <Box
+                    component="img"
+                    src={imageUrl}
+                    alt={alt}
+                    title="Double-click to open image"
+                    draggable={false}
+                    onDoubleClick={onOpen}
+                    sx={{
+                        width: "100%",
+                        height: "100%",
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        objectFit: "contain",
+                        cursor: "pointer",
+                    }}
+                />
+            ) : (
+                <Typography
+                    variant="body2"
+                    sx={{ px: 2, textAlign: "center", fontSize: "0.875rem", color: "rgba(255,255,255,0.7)" }}
+                >
+                    {emptyText}
+                </Typography>
+            )}
+        </Box>
     );
 }
 
@@ -1550,14 +1587,14 @@ export default function CtfViewer({
 
 
     const columnWidths = {
-        micrograph: { width: "23%" },
-        defocusU: { width: "12%" },
-        defocusV: { width: "12%" },
-        astigmatism: { width: "13%" },
-        angle: { width: "11%" },
-        resolution: { width: "11%" },
-        fitQuality: { width: "9%" },
-        phaseShift: { width: "9%" },
+        micrograph: { width: "24%" },
+        defocusU: { width: "13%" },
+        defocusV: { width: "13%" },
+        astigmatism: { width: "11%" },
+        angle: { width: "9%" },
+        resolution: { width: "10%" },
+        fitQuality: { width: "10%" },
+        phaseShift: { width: "10%" },
     } as const;
 
 
@@ -1665,68 +1702,31 @@ export default function CtfViewer({
                     display: "flex",
                     flexDirection: "column",
                     borderRight:
-                        "1px solid var(--app-n-200)",
+                        "1px solid var(--app-n-100)",
+                    bgcolor: "var(--app-n-0)",
                 }}
             >
-                <Paper
-                    square
-                    elevation={0}
+                <Box
                     sx={{
-                        p: 0.75,
+                        p: 1.5,
+                        pb: 1,
                         flexShrink: 0,
-                        borderBottom:
-                            "1px solid var(--app-n-200)",
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         gap: 1,
                     }}
                 >
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{
-                            fontSize: "0.875rem",
-                            whiteSpace: "nowrap",
-                        }}
-                    >
-                        Filter
-                    </Typography>
-
-                    <TextField
-                        size="small"
-                        value={filterText}
-                        onChange={(event) =>
-                            setFilterText(
-                                event.target.value,
-                            )
-                        }
-                        placeholder="Filter micrograph or CTF values"
-                        sx={{
-                            maxWidth: 280,
-                            "& .MuiInputBase-input": {
-                                py: 0.5,
-                                fontSize: "0.875rem",
-                            },
-                            "& input::placeholder": {
-                                fontSize: "0.82rem",
-                            },
-                        }}
-                    />
-
-                    <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{
-                            ml: "auto",
-                            fontSize: "0.85rem",
-                            whiteSpace: "nowrap",
-                        }}
-                    >
-                        {rows.length} CTFs
-                        {failedCount
-                            ? ` · ${failedCount} failed`
-                            : ""}
-                    </Typography>
+                    <Box sx={{ minWidth: 0, mr: "auto" }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: "0.82rem" }}>
+                            CTFs
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.72rem" }}>
+                            {`${rows.length} item(s)`}
+                            {failedCount
+                                ? ` · ${failedCount} failed`
+                                : ""}
+                        </Typography>
+                    </Box>
 
                     {!hideMetadataAction ? (
                         <Tooltip title="Show metadata viewer">
@@ -1743,7 +1743,8 @@ export default function CtfViewer({
                                     }
                                     sx={{
                                         textTransform: "none",
-                                        fontSize: "0.875rem",
+                                        fontSize: "0.85rem",
+                                        py: 0.4,
                                     }}
                                 >
                                     Metadata
@@ -1751,7 +1752,38 @@ export default function CtfViewer({
                             </span>
                         </Tooltip>
                     ) : null}
-                </Paper>
+                </Box>
+
+                <Box sx={{ px: 1.5, pb: 1, flexShrink: 0 }}>
+                    <TextField
+                        size="small"
+                        fullWidth
+                        value={filterText}
+                        onChange={(event) =>
+                            setFilterText(
+                                event.target.value,
+                            )
+                        }
+                        placeholder="Filter micrograph or CTF values"
+                        inputProps={{ "aria-label": "Filter CTFs" }}
+                        InputProps={{
+                            startAdornment: (
+                                <SearchIcon sx={{ fontSize: 18, color: "text.secondary", mr: 0.75 }} />
+                            ),
+                        }}
+                        sx={{
+                            "& .MuiInputBase-input": {
+                                py: 0.6,
+                                fontSize: "0.875rem",
+                            },
+                            "& input::placeholder": {
+                                fontSize: "0.85rem",
+                            },
+                        }}
+                    />
+                </Box>
+
+                <Divider />
 
                 <Box
                     ref={tableContainerRef}
@@ -1807,69 +1839,66 @@ export default function CtfViewer({
                                 tableLayout: "fixed",
                                 width: "100%",
                                 "& th": {
-                                    whiteSpace: "normal",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
                                     lineHeight: 1.3,
-                                    fontSize: "0.875rem",
-                                    fontWeight: 700,
+                                    fontSize: "0.82rem",
+                                    fontWeight: 600,
+                                    color: "var(--app-n-800)",
+                                    bgcolor: "var(--app-n-50)",
+                                    borderBottom: "1px solid var(--app-n-200)",
                                     px: 1,
-                                    py: 1,
+                                    py: 0.9,
+                                },
+                                "& th:not(:first-of-type), & td:not(:first-of-type)": {
+                                    textAlign: "right",
                                 },
                                 "& td": {
-                                    fontSize: "0.9rem",
+                                    fontSize: "0.875rem",
                                     fontVariantNumeric: "tabular-nums",
+                                    color: "var(--app-n-800)",
+                                    borderBottom: "1px solid var(--app-n-100)",
                                     px: 1,
                                     py: 0.65,
+                                },
+                                "& td:last-of-type, & th:last-of-type": {
+                                    pr: 1.5,
                                 },
                             }}
                         >
                             <TableHead>
                                 <TableRow>
-                                    <TableCell
-                                        sx={columnWidths.micrograph}
-                                    >
-                                        Micrograph
+                                    <TableCell sx={columnWidths.micrograph} title="Micrograph">
+                                        <HeadLabel label="Micrograph" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.defocusU}
-                                    >
-                                        DefocusU (Å)
+                                    <TableCell sx={columnWidths.defocusU} title="DefocusU (Å)">
+                                        <HeadLabel label="Defocus U" unit="Å" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.defocusV}
-                                    >
-                                        DefocusV (Å)
+                                    <TableCell sx={columnWidths.defocusV} title="DefocusV (Å)">
+                                        <HeadLabel label="Defocus V" unit="Å" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.astigmatism}
-                                    >
-                                        Astigmatism (Å)
+                                    <TableCell sx={columnWidths.astigmatism} title="Astigmatism (Å)">
+                                        <HeadLabel label="Astig." unit="Å" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.angle}
-                                    >
-                                        Angle (°)
+                                    <TableCell sx={columnWidths.angle} title="Angle (°)">
+                                        <HeadLabel label="Angle" unit="°" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.resolution}
-                                    >
-                                        Resolution (Å)
+                                    <TableCell sx={columnWidths.resolution} title="Resolution (Å)">
+                                        <HeadLabel label="Res." unit="Å" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.fitQuality}
-                                    >
-                                        Fit quality
+                                    <TableCell sx={columnWidths.fitQuality} title="Fit quality">
+                                        <HeadLabel label="Fit" />
                                     </TableCell>
 
-                                    <TableCell
-                                        sx={columnWidths.phaseShift}
-                                    >
-                                        Phase shift
+                                    <TableCell sx={columnWidths.phaseShift} title="Phase shift">
+                                        <HeadLabel label="Phase" />
                                     </TableCell>
 
                                 </TableRow>
@@ -1880,7 +1909,8 @@ export default function CtfViewer({
                                     <TableRow aria-hidden style={{ height: visibleRows.first * CTF_ROW_HEIGHT }} />
                                 ) : null}
                                 {filteredRows.slice(visibleRows.first, visibleRows.last).map(
-                                    (row) => {
+                                    (row, offset) => {
+                                        const striped = (visibleRows.first + offset) % 2 === 1;
                                         const selected =
                                             selectedCtfId != null &&
                                             String(
@@ -1912,6 +1942,13 @@ export default function CtfViewer({
                                                 sx={{
                                                     cursor: "pointer",
                                                     height: CTF_ROW_HEIGHT,
+                                                    ...(striped && { backgroundColor: "var(--app-n-50)" }),
+                                                    "&.Mui-selected, &.Mui-selected:hover": {
+                                                        backgroundColor: "rgba(59,130,246,0.12)",
+                                                    },
+                                                    "&.Mui-selected td:first-of-type": {
+                                                        boxShadow: "inset 3px 0 0 var(--mui-palette-primary-main, #1976d2)",
+                                                    },
 
                                                     ...(row.failed && {
                                                         backgroundColor:
@@ -1947,25 +1984,11 @@ export default function CtfViewer({
                                                         columnWidths.micrograph
                                                     }
                                                 >
-                                                    <Typography
-                                                        variant="body2"
-                                                        noWrap
-                                                        title={
-                                                            row.micrographName
-                                                        }
-                                                        sx={{
-                                                            fontSize:
-                                                                "0.9rem",
-                                                            fontWeight:
-                                                                selected
-                                                                    ? 600
-                                                                    : 400,
-                                                        }}
-                                                    >
-                                                        {
-                                                            row.micrographName
-                                                        }
-                                                    </Typography>
+                                                    <MicrographName
+                                                        name={row.micrographName}
+                                                        status={row.failed ? "failed" : row.excluded ? "excluded" : "ok"}
+                                                        selected={selected}
+                                                    />
                                                 </TableCell>
 
                                                 <TableCell
@@ -2070,7 +2093,7 @@ export default function CtfViewer({
                     flexDirection: "column",
                     gap: 1,
                     p: 1,
-                    bgcolor: "background.default",
+                    bgcolor: "var(--app-n-50)",
                 }}
             >
                 <Paper
@@ -2080,17 +2103,16 @@ export default function CtfViewer({
                         minHeight: 0,
                         display: "flex",
                         flexDirection: "column",
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 2,
+                        border: "1px solid var(--app-n-200)",
+                        borderRadius: 1,
                         overflow: "hidden",
                         bgcolor: "background.paper",
                     }}
                 >
                     <Box
                         sx={{
-                            px: 1,
-                            py: 0.5,
+                            px: 1.25,
+                            py: 0.6,
                             borderBottom:
                                 "1px solid var(--app-n-200)",
                             display: "flex",
@@ -2131,11 +2153,21 @@ export default function CtfViewer({
                             </Typography>
                         </Box>
 
-                        <Box
+                        <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={plotMode}
+                            aria-label="Plot"
+                            onChange={(_, mode) => mode && setPlotMode(mode as CtfPlotMode)}
                             sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 0.5,
+                                flexShrink: 0,
+                                "& .MuiToggleButton-root": {
+                                    px: 1.1,
+                                    py: 0.35,
+                                    fontSize: "0.8rem",
+                                    lineHeight: 1.4,
+                                    textTransform: "none",
+                                },
                             }}
                         >
                             {([
@@ -2144,30 +2176,12 @@ export default function CtfViewer({
                                 ["distribution", "Distributions"],
                             ] as Array<[CtfPlotMode, string]>).map(
                                 ([mode, label]) => (
-                                    <Button
-                                        key={mode}
-                                        size="small"
-                                        variant={
-                                            plotMode === mode
-                                                ? "contained"
-                                                : "outlined"
-                                        }
-                                        onClick={() => setPlotMode(mode)}
-                                        sx={{
-                                            minWidth: 0,
-                                            px: 1,
-                                            py: 0.25,
-                                            fontSize: "0.8rem",
-                                            lineHeight: 1.4,
-                                            textTransform: "none",
-                                            boxShadow: "none",
-                                        }}
-                                    >
+                                    <ToggleButton key={mode} value={mode}>
                                         {label}
-                                    </Button>
+                                    </ToggleButton>
                                 ),
                             )}
-                        </Box>
+                        </ToggleButtonGroup>
 
                     </Box>
 
@@ -2179,8 +2193,8 @@ export default function CtfViewer({
                             gridTemplateColumns:
                                 "0.65fr 0.65fr 1.15fr 1.2fr 1.3fr",
                             gap: 1.25,
-                            borderBottom: "1px solid var(--app-n-200)",
-                            bgcolor: "var(--app-n-50)",
+                            borderBottom: "1px solid var(--app-n-100)",
+                            bgcolor: "background.paper",
                             flexShrink: 0,
                         }}
                     >

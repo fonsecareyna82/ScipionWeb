@@ -321,7 +321,7 @@ describe(
 
                 expect(
                     screen.getByText(
-                        "2 CTFs · 1 failed",
+                        "2 item(s) · 1 failed",
                     ),
                 ).toBeInTheDocument();
             },
