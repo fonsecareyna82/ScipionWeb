@@ -2630,7 +2630,7 @@ export default function ProtocolNodeCard({
                           className={styles.gpuBadge}
                           role="status"
                           aria-label="GPU step running"
-                          title="Running step requests GPU; physical GPU utilization is not measured"
+                          title="Running on the GPU"
                         >
                           <svg
                             className={styles.gpuIcon}
