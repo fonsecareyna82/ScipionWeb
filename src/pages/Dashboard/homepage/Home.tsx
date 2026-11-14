@@ -18,6 +18,7 @@ import {
   ArrowRight,
   Search,
   GraduationCap,
+  HardDrive,
   LifeBuoy,
   Folder,
   LucideSettings2,
@@ -34,6 +35,7 @@ type ProjectRow = {
   createdAt?: string;
   updatedAt?: string;
   status?: string;
+  diskUsageBytes?: number;
 };
 
 type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
@@ -69,6 +71,8 @@ function normalizeProjects(raw: any): ProjectRow[] {
               ? p.updated_at
               : undefined,
         status: typeof p?.status === "string" ? p.status : undefined,
+        diskUsageBytes:
+          typeof p?.diskUsageBytes === "number" && Number.isFinite(p.diskUsageBytes) ? p.diskUsageBytes : undefined,
       } as ProjectRow;
     })
     .filter(Boolean) as ProjectRow[];
@@ -167,6 +171,19 @@ function formatDateTime(raw?: string): string {
   }
 }
 
+function formatBytes(bytes: number): string {
+  // formatBytes
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB", "PB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
 function classNames(...xs: Array<string | false | null | undefined>): string {
   // classNames
   return xs.filter(Boolean).join(" ");
@@ -221,6 +238,7 @@ function Surface(props: {
   right?: ReactNode;
   children: ReactNode;
   className?: string;
+  headerClassName?: string;
   bodyClassName?: string;
 }) {
   // Surface
@@ -241,6 +259,7 @@ function Surface(props: {
             "border-gray-200/90 dark:border-gray-700",
             "md:flex-row md:items-start md:justify-between md:gap-6",
             "lg:px-6",
+            props.headerClassName,
           )}
         >
           <div className="min-w-0">
@@ -531,6 +550,12 @@ export default function Home() {
   const lastProjectId =
     projects.find((p) => p.id === lastOpenedProjectId)?.id ?? projects[0]?.id;
 
+  // What the user's projects take on disk, from the last measures (none measured yet: unknown)
+  const measuredProjects = projects.filter((p) => p.diskUsageBytes != null);
+  const storageUsed = measuredProjects.length
+    ? formatBytes(measuredProjects.reduce((sum, p) => sum + (p.diskUsageBytes ?? 0), 0))
+    : "—";
+
   const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion);
   const latestVersion = displayVersion(updateStatus?.latestVersion);
   const showUpdateNotice = Boolean(
@@ -755,6 +780,17 @@ export default function Home() {
                             {projectsLoading ? "Loading…" : String(projects.length)}
                           </span>
                         </div>
+
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="inline-flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
+                            <HardDrive className="h-3.5 w-3.5" />
+                            Storage used
+                          </span>
+                          <span className="font-semibold text-gray-950 dark:text-white"
+                                title="Disk used by your projects, as last measured">
+                            {projectsLoading && projects.length === 0 ? "Loading…" : storageUsed}
+                          </span>
+                        </div>
                       </div>
 
                       {updateError ? (
@@ -813,6 +849,7 @@ export default function Home() {
         <div className="col-span-12">
           <Surface
             className="border-gray-300/90 shadow-[0_8px_30px_rgba(15,23,42,0.04)] dark:shadow-none"
+            headerClassName="bg-gray-50 dark:bg-gray-800/40"
             title="Projects"
             subtitle="Pinned projects stay visible at the top. Recent projects remain the main working list."
             right={
@@ -928,7 +965,7 @@ export default function Home() {
                               )}
                               title="Unpin"
                             >
-                              <PinOff className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+                              <PinOff className="h-4 w-4 text-amber-500 dark:text-amber-300" />
                             </button>
 
                             <button
@@ -993,8 +1030,8 @@ export default function Home() {
                                   className={classNames(
                                     "inline-flex items-center justify-center rounded-[10px] p-2 transition",
                                     isPinned
-                                      ? "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/45"
-                                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-slate-700",
+                                      ? "bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-950/45 dark:text-amber-300 dark:hover:bg-amber-950/60"
+                                      : "bg-amber-50 text-amber-500 hover:bg-amber-100 dark:bg-amber-950/25 dark:text-amber-300 dark:hover:bg-amber-950/45",
                                   )}
                                   title={isPinned ? "Unpin" : "Pin"}
                                 >

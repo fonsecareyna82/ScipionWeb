@@ -113,4 +113,17 @@ describe("Home", () => {
       expect(mockNavigate).toHaveBeenCalledWith("/project/load/2");
     });
   });
+
+  it("shows the storage the projects use", async () => {
+    mockProjectService.fetchList.mockResolvedValue([
+      { id: 1, name: "SPA", diskUsageBytes: 2 * 1024 ** 3 },
+      { id: 2, name: "Tomo", diskUsageBytes: 1024 ** 3 },
+      { id: 3, name: "Not measured yet" },
+    ]);
+
+    render(<MemoryRouter><Home /></MemoryRouter>);
+
+    expect(await screen.findByText("3.0 GB")).toBeInTheDocument();
+    expect(screen.getByText("Storage used")).toBeInTheDocument();
+  });
 });
