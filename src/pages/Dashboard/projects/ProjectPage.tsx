@@ -1,6 +1,7 @@
 import "./ProjectPage.css";
 import { useGraphRevisionWatch } from "@/hooks/useGraphRevisionWatch";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { setHelpFocus } from "@/utils/help_chat_focus";
 import React, {
   useCallback,
   useEffect,
@@ -6571,6 +6572,19 @@ export default function ProjectPage() {
     const data: any = (n as any)?.data ?? {};
     return String(data.runName ?? data.label ?? id);
   };
+
+  // The help chat answers about this project and the protocol selected in it
+  useEffect(() => {
+    const selected = highlightedId && highlightedId !== "PROJECT" ? highlightedId : null;
+    const node: any = selected ? nodesRef.current.find((m) => m.id === selected) : null;
+    setHelpFocus(projectId == null ? null : {
+      projectId,
+      projectName: project?.name ? String(project.name).split("/").pop() || null : null,
+      protocolId: selected,
+      protocolLabel: node ? String(node.data?.runName ?? node.data?.label ?? "") || null : null,
+    });
+  }, [projectId, project?.name, highlightedId]);
+  useEffect(() => () => setHelpFocus(null), []);
 
   const openProtocolStepsDialog = useCallback((id: string) => {
     const protocolId = String(id ?? "").trim();

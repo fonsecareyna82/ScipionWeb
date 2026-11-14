@@ -1,5 +1,6 @@
 // src/layout/AppHeader.tsx
 import ProtocolActivityBell from "@/components/header/ProtocolActivityBell";
+import HelpChat from "@/components/header/HelpChat";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useSidebar } from "../context/SidebarContext";
@@ -126,6 +127,9 @@ const AppHeader: React.FC = () => {
             "lg:flex",
           ].join(" ")}
         >
+          {/* Questions answered with the protocols' help and the user guide */}
+          <HelpChat />
+
           {/* Runs that end in any of the user's projects */}
           <ProtocolActivityBell />
 
