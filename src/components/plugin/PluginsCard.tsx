@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import PluginLogoImage from "@/components/plugin/PluginLogoImage";
 import { motion } from "framer-motion";
 import { Code2 } from "lucide-react";
 
@@ -74,17 +75,16 @@ export default function PluginCard(plugin: PluginCardProps) {
         <CardHeader className="flex items-start gap-4 pb-3 pr-24">
           <div className="shrink-0">
             <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-gray-800/80 dark:bg-white/[0.04]">
-              {plugin.fullLogo ? (
-                <img
-                  src={plugin.fullLogo}
-                  alt={`${plugin.name} icon`}
-                  className="h-10 w-10 object-contain"
-                />
-              ) : (
-                <span className="text-sm font-bold uppercase text-gray-500 dark:text-gray-300">
-                  {(plugin.name ?? plugin.pipName ?? "?").slice(0, 2)}
-                </span>
-              )}
+              <PluginLogoImage
+                src={plugin.fullLogo}
+                alt={`${plugin.name} icon`}
+                className="h-10 w-10 object-contain"
+                fallback={(
+                  <span className="text-sm font-bold uppercase text-gray-500 dark:text-gray-300">
+                    {(plugin.name ?? plugin.pipName ?? "?").slice(0, 2)}
+                  </span>
+                )}
+              />
             </div>
           </div>
 

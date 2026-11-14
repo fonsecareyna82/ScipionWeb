@@ -193,6 +193,16 @@ export async function fetchPlugins(): Promise<Plugin[]> {
   return response.json();
 }
 
+// Where the plugin list comes from: "live" from Scipion's catalog server, or, when it does not answer, the copy
+// saved here, the one shipped with ScipionWeb or the plugins ScipionWeb knows ("local")
+export type PluginCatalogStatus = { source: "live" | "saved" | "shipped" | "local" | null; savedAt: string | null };
+
+export async function fetchPluginCatalogStatus(): Promise<PluginCatalogStatus> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/catalog-status`);
+  if (!response.ok) return { source: null, savedAt: null };
+  return response.json();
+}
+
 export async function fetchPlugin(pipName: string): Promise<Plugin> {
   const response = await fetchWithAuth(`${BASE_URL}/plugins/${pipName}`);
   if (!response.ok) throw new Error("Error fetching plugin details");

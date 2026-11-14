@@ -1,4 +1,5 @@
 import { Code2, ExternalLink, Package, X } from "lucide-react";
+import PluginLogoImage from "@/components/plugin/PluginLogoImage";
 import type { Plugin } from "@/api/plugins";
 
 import {
@@ -33,11 +34,8 @@ export default function PluginQuickDetailsPanel({
       <div className="flex items-start justify-between gap-4 border-b border-gray-200/80 bg-gray-50/80 px-4 py-4 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.04]">
-            {plugin.fullLogo ? (
-              <img src={plugin.fullLogo} alt={`${plugin.name} icon`} className="h-9 w-9 object-contain" />
-            ) : (
-              <Package className="h-5 w-5 text-gray-500 dark:text-gray-300" />
-            )}
+            <PluginLogoImage src={plugin.fullLogo} alt={`${plugin.name} icon`} className="h-9 w-9 object-contain"
+                             fallback={<Package className="h-5 w-5 text-gray-500 dark:text-gray-300" />} />
           </div>
 
           <div className="min-w-0">

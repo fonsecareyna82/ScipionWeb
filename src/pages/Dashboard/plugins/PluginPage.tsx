@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import PluginLogoImage from "@/components/plugin/PluginLogoImage";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, RefreshCw, FileText, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
@@ -1555,21 +1556,18 @@ export default function PluginPage() {
             >
                 <div className="flex flex-col gap-6 xl:flex-row">
                     <div className="flex shrink-0 justify-center xl:block">
-                        {plugin.fullLogo ? (
-                            <img
-                                src={plugin.fullLogo}
-                                alt={`${plugin.name} logo`}
-                                className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-white object-contain p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900"
-                            />
-                        ) : (
-                            <div className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-800" />
-                        )}
+                        <PluginLogoImage
+                            src={plugin.fullLogo}
+                            alt={`${plugin.name} logo`}
+                            className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-white object-contain p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                            fallback={<div className="h-40 w-40 rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-800" />}
+                        />
                     </div>
 
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <StatPill label="Installed" value={plugin.installed ? `v${plugin.pipVersion ?? "-"}` : "No"} />
-                            <StatPill label="Latest" value={`v${plugin.latestRelease}`} />
+                            <StatPill label="Latest" value={plugin.latestRelease ? `v${plugin.latestRelease}` : "unknown"} />
                             <StatPill label="Published" value={publishedDate} />
                             <StatPill label="Mode" value={plugin.devel || plugin.installMode === "devel" ? "Devel" : "Standard"} />
                         </div>

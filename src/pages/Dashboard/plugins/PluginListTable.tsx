@@ -1,4 +1,5 @@
 import { CheckCircle2, Code2, Eye, Loader2, Package, RefreshCw } from "lucide-react";
+import PluginLogoImage from "@/components/plugin/PluginLogoImage";
 import type { Plugin } from "@/api/plugins";
 
 import {
@@ -26,11 +27,8 @@ type PluginListTableProps = {
 function PluginLogo({ plugin }: { plugin: Plugin }) {
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.04]">
-      {plugin.fullLogo ? (
-        <img src={plugin.fullLogo} alt={`${plugin.name} icon`} className="h-8 w-8 object-contain" />
-      ) : (
-        <Package className="h-4 w-4 text-gray-500 dark:text-gray-300" />
-      )}
+      <PluginLogoImage src={plugin.fullLogo} alt={`${plugin.name} icon`} className="h-8 w-8 object-contain"
+                       fallback={<Package className="h-4 w-4 text-gray-500 dark:text-gray-300" />} />
     </div>
   );
 }

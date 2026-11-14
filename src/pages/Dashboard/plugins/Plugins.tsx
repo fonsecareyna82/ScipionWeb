@@ -1,12 +1,13 @@
 // src/pages/Dashboard/plugins/Plugins.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePermissions } from "@/hooks/usePermissions";
-import { FolderPlus, Search, X } from "lucide-react";
+import { CloudOff, FolderPlus, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
-import { installPlugin, type Plugin } from "@/api/plugins";
+import { fetchPluginCatalogStatus, installPlugin, type Plugin, type PluginCatalogStatus } from "@/api/plugins";
+import { useQuery } from "@tanstack/react-query";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
@@ -132,6 +133,33 @@ function TabButton(props: {
   );
 }
 
+function savedDate(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+/** Says when the list is not Scipion's live catalog because its server does not answer. */
+function CatalogNotice({ status }: { status?: PluginCatalogStatus }) {
+  if (!status?.source || status.source === "live") return null;
+  const when = savedDate(status.savedAt);
+  const shown = status.source === "saved"
+    ? `Showing the catalog saved here${when ? ` on ${when}` : ""}.`
+    : status.source === "shipped"
+      ? `Showing the catalog that came with ScipionWeb${when ? ` (${when})` : ""}.`
+      : "Showing the plugins ScipionWeb knows and those installed; logos and the newest plugins may be missing.";
+  return (
+    <div role="status"
+         className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[14px] text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+      <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <div>
+        <span className="font-semibold">Scipion's plugin catalog is not answering.</span> {shown} Plugins
+        still install; it is checked again every few minutes.
+      </div>
+    </div>
+  );
+}
+
 export default function Plugins() {
   const navigate = useNavigate();
   // Installing and updating are for whoever holds plugins.manage; the others only read
@@ -163,8 +191,16 @@ export default function Plugins() {
     isLoading,
     isError,
     refetch,
+    dataUpdatedAt,
   } = usePlugins({
     refetchInterval: activeTasksCount > 0 ? 2000 : false,
+  });
+
+  // Asked again whenever the list is: it says whether the list is Scipion's live catalog or a copy
+  const { data: catalogStatus } = useQuery<PluginCatalogStatus>({
+    queryKey: ["plugins", "catalog-status", dataUpdatedAt],
+    queryFn: fetchPluginCatalogStatus,
+    enabled: dataUpdatedAt > 0,
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>("available");
@@ -414,6 +450,7 @@ export default function Plugins() {
           ) : !loading ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 flex flex-col gap-3">
+                <CatalogNotice status={catalogStatus} />
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
                     <div className="flex flex-wrap gap-1">

@@ -155,6 +155,8 @@ Sign in's "Forgot password?" (shown only when `api/auth.passwordResetAvailable`:
 
 ## A workflow's requirements
 
+The Plugins page asks `GET /plugins/catalog-status` (`fetchPluginCatalogStatus`) each time the list loads. When the list is not Scipion's live catalog because its server does not answer (`saved`, `shipped` or `local`, see the API's AGENTS.md), `CatalogNotice` says so with the copy's date. Every plugin logo goes through `components/plugin/PluginLogoImage`, which shows the initials or icon when the logo does not load. When PyPI gave no versions, "Latest" says "unknown".
+
 `components/workflows/WorkflowRequirements` shows, in the Workflows page's details and in the import-from-file dialog, the plugins a workflow misses with "Install missing plugins" (`installPluginsBatch` with the pip names the API resolved; a plugin with no known package is listed apart, to look for in Plugins, never installed blindly; for `plugins.manage`; others are told to ask an administrator; the list reloads after), the protocols this installation does not know when the workflow does not say its plugins, and the warning to migrate such a workflow. Broken workflows never reach the web (the API hides them).
 
 ## Disk quotas
