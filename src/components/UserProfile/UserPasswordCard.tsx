@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import toast from "react-hot-toast";
+import { KeyRound } from "lucide-react";
 import { changePassword } from "@/api/auth";
 import { useModal } from "../../hooks/useModal";
 import { Modal } from "../ui/modal";
@@ -73,25 +74,24 @@ export default function UserPasswordCard() {
 
   return (
     <>
-      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="ml-6">
-            <h4 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Password
-            </h4>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Change your password to keep your account secure.
-            </p>
-          </div>
-
+      <section className="overflow-hidden rounded-[10px] border border-gray-300/85 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-gray-700 dark:bg-gray-900">
+        <div className="border-b border-gray-200/90 bg-gray-50 px-5 py-4 dark:border-gray-700 dark:bg-gray-800/40 lg:px-6">
+          <h2 className="text-[16px] font-semibold text-gray-900 dark:text-white/90">Password</h2>
+        </div>
+        <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+          <p className="text-[14px] text-gray-500 dark:text-gray-400">
+            Change it now and then to keep your account safe.
+          </p>
           <button
+            type="button"
             onClick={handleOpen}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-[14px] font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.05]"
           >
-            Change Password
+            <KeyRound className="h-4 w-4" />
+            Change password
           </button>
         </div>
-      </div>
+      </section>
 
       <Modal isOpen={isOpen} onClose={handleClose} className="max-w-[600px] m-4">
         <div className="w-full rounded-3xl bg-white p-6 dark:bg-gray-900">
@@ -99,7 +99,7 @@ export default function UserPasswordCard() {
             Change Password
           </h4>
 
-          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-6 text-[14px] text-gray-500 dark:text-gray-400">
             Enter your current password and choose a new one.
           </p>
 
@@ -142,7 +142,7 @@ export default function UserPasswordCard() {
             </div>
 
             {error && (
-              <p className="text-sm text-error-500 dark:text-error-400">
+              <p className="text-[14px] text-error-500 dark:text-error-400">
                 {error}
               </p>
             )}
