@@ -134,6 +134,31 @@ describe("ProjectsCard", () => {
     expect(screen.getByText("12 GB")).toBeInTheDocument();
   });
 
+  it("says how its protocols are doing and can be pinned", () => {
+    const onTogglePin = vi.fn();
+    renderWithProviders(
+      <ProjectCard
+        id={8}
+        label="Beta"
+        value={6}
+        projectOwnerId={1}
+        isOwner={true}
+        statusCounts={{ running: 1, launched: 1, failed: 1, finished: 3 }}
+        onTogglePin={onTogglePin}
+      />,
+      { service: createProjectServiceMock() },
+    );
+
+    const summary = screen.getByTestId("project-status-summary");
+    expect(summary).toHaveTextContent("2running");
+    expect(summary).toHaveTextContent("1failed");
+    expect(summary).toHaveTextContent("3finished");
+    expect(screen.getByRole("img", { name: "2 protocols running" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin Beta" }));
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the signed thumbnails of the best protocols, each image downloaded by its URL", async () => {
     const fetchThumbnailImageObjectUrl = vi.fn(async (url: string) => (url.includes("outputCTF") ? null : `blob:${url}`));
     const service = createProjectServiceMock({

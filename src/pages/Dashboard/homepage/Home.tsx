@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { TreeIcon } from "@/icons";
 import PageMeta from "@/components/common/PageMeta";
+import { readPinnedIds, togglePinnedId, writePinnedIds } from "@/utils/projectPins";
 
 type ProjectRow = {
   id: string;
@@ -40,7 +41,6 @@ type ProjectRow = {
 
 type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
 
-const PIN_STORAGE_KEY = "scipion.home.pins.v1";
 const DISMISSED_UPDATE_STORAGE_KEY = "scipion.home.dismissedUpdateVersion.v1";
 const RELEASE_NOTES_ROUTE = "/release-notes";
 
@@ -78,27 +78,6 @@ function normalizeProjects(raw: any): ProjectRow[] {
     .filter(Boolean) as ProjectRow[];
 }
 
-function readPinnedIds(): string[] {
-  // readPinnedIds
-  try {
-    const raw = localStorage.getItem(PIN_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((x) => String(x)).filter((x) => x.trim().length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function writePinnedIds(ids: string[]): void {
-  // writePinnedIds
-  try {
-    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // ignore
-  }
-}
 
 function readDismissedUpdateVersion(): string | null {
   // readDismissedUpdateVersion
@@ -472,12 +451,7 @@ export default function Home() {
 
   const togglePin = useCallback((projectId: string) => {
     // togglePin
-    setPinnedIds((prev) => {
-      const id = String(projectId);
-      const has = prev.some((x) => String(x) === id);
-      if (has) return prev.filter((x) => String(x) !== id);
-      return [id, ...prev].slice(0, 12);
-    });
+    setPinnedIds((prev) => togglePinnedId(prev, projectId));
   }, []);
 
   const openProject = useCallback(

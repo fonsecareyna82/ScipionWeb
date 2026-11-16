@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
-import { Layers3, X, UserPlus2 } from "lucide-react";
+import { Layers3, Pin, X, UserPlus2 } from "lucide-react";
+import ProjectStatusSummary, { RunningDot } from "./ProjectStatusSummary";
+import { ACTIVE_STATUSES, countIn, formatFullDate, formatRelativeDate } from "@/utils/project-list";
 
 import {
   CalendarIcon,
@@ -53,6 +55,11 @@ interface ProjectCardProps {
   thumbnailRebuildUrl?: string | null;
   thumbnailItemsUrl?: string | null;
   thumbnailVersion?: string | number;
+
+  // How many protocols are in each status
+  statusCounts?: Record<string, number> | null;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 type ContextMenuState = {
@@ -175,21 +182,6 @@ function normalizeBooleanFlag(value: boolean | string | number | undefined | nul
     return v === "true" || v === "1" || v === "owner" || v === "yes";
   }
   return false;
-}
-
-function formatDateShort(raw?: string): string {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return "—";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
 }
 
 function getStatusToneClasses(raw?: string): string {
@@ -322,6 +314,9 @@ export default function ProjectCard(props: ProjectCardProps) {
     thumbnailRebuildUrl,
     thumbnailItemsUrl,
     thumbnailVersion,
+    statusCounts,
+    isPinned = false,
+    onTogglePin,
   } = props;
 
   const navigate = useNavigate();
@@ -367,6 +362,7 @@ export default function ProjectCard(props: ProjectCardProps) {
   );
 
   const protocolCount = Number(value ?? 0);
+  const runningCount = countIn(statusCounts, ACTIVE_STATUSES);
   const protocolsText = `${Number.isFinite(protocolCount) ? protocolCount : 0} ${protocolCount === 1 ? "protocol" : "protocols"}`;
 
   const statusLabel = useMemo(() => {
@@ -1098,6 +1094,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[13px] font-semibold tabular-nums leading-5 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/30">
                 {projectIdLabel}
               </span>
+              {runningCount > 0 ? <RunningDot count={runningCount} /> : null}
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 <span className="hidden items-center rounded-md border border-gray-300/80 bg-white px-2 py-0.5 text-[13px] font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 sm:inline-flex">
@@ -1117,6 +1114,28 @@ export default function ProjectCard(props: ProjectCardProps) {
                   >
                     {statusLabel}
                   </span>
+                ) : null}
+                {onTogglePin ? (
+                  <button
+                    type="button"
+                    aria-label={isPinned ? `Unpin ${label}` : `Pin ${label}`}
+                    aria-pressed={isPinned}
+                    title={isPinned ? "Unpin" : "Pin to the top"}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onTogglePin();
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    className={classNames(
+                      "flex h-8 w-8 items-center justify-center rounded-[10px] transition",
+                      isPinned
+                        ? "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300"
+                        : "text-gray-400 hover:bg-amber-50 hover:text-amber-500 dark:text-gray-500 dark:hover:bg-amber-500/10",
+                    )}
+                  >
+                    <Pin className={classNames("h-4 w-4", isPinned ? "fill-current" : "")} />
+                  </button>
                 ) : null}
                 <ProjectAction
                   icon={null}
@@ -1280,15 +1299,22 @@ export default function ProjectCard(props: ProjectCardProps) {
             <div className="mt-auto px-4 pb-3 pt-3 md:px-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-gray-500 dark:text-gray-400">
-                  <span className="inline-flex items-center gap-1.5" title="Protocols">
-                    <Layers3 className="h-4 w-4" />
-                    <span className="font-medium tabular-nums text-gray-800 dark:text-gray-200">{protocolsText}</span>
-                  </span>
+                  {statusCounts && protocolCount > 0 ? (
+                    <ProjectStatusSummary counts={statusCounts} />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5" title="Protocols">
+                      <Layers3 className="h-4 w-4" />
+                      <span className="font-medium tabular-nums text-gray-800 dark:text-gray-200">{protocolsText}</span>
+                    </span>
+                  )}
                   {updatedAt || createdAt ? (
-                    <span className="inline-flex items-center gap-1.5" title={updatedAt ? "Updated" : "Created"}>
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      title={`${updatedAt ? "Updated" : "Created"} ${formatFullDate(updatedAt || createdAt)}`}
+                    >
                       <CalendarIcon className="h-4 w-4" />
                       <span className="font-medium text-gray-800 dark:text-gray-200">
-                        {formatDateShort(updatedAt || createdAt)}
+                        {formatRelativeDate(updatedAt || createdAt)}
                       </span>
                     </span>
                   ) : null}

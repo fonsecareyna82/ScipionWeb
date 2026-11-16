@@ -3,11 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { CalendarDays, Database, FolderOpen, Hash, Layers3 } from "lucide-react";
+import { CalendarDays, Database, FolderOpen, Layers3 } from "lucide-react";
 
 import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
 import { projectAccessLabel } from "@/utils/project-access";
+import { Pin } from "lucide-react";
+import ProjectStatusSummary, { RunningDot } from "./ProjectStatusSummary";
+import { ACTIVE_STATUSES, countIn, formatFullDate, formatRelativeDate } from "@/utils/project-list";
 
 interface ProjectListRowProps {
   id: string | number;
@@ -27,6 +30,9 @@ interface ProjectListRowProps {
   isOwner?: boolean | string | number | null;
   permission?: string | null;
   accessVia?: string | null;
+  statusCounts?: Record<string, number> | null;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -45,21 +51,6 @@ function normalizeBooleanFlag(value: boolean | string | number | undefined | nul
   return false;
 }
 
-function formatDateShort(raw?: string | Date | null): string {
-  if (!raw) return "—";
-  const d = raw instanceof Date ? raw : new Date(raw);
-  if (Number.isNaN(d.getTime())) return "—";
-
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
-}
 
 function getStatusToneClasses(raw?: string | null): string {
   const value = String(raw ?? "").trim().toLowerCase();
@@ -161,7 +152,11 @@ export default function ProjectListRow(props: ProjectListRowProps) {
     isOwner,
     permission,
     accessVia,
+    statusCounts,
+    isPinned = false,
+    onTogglePin,
   } = props;
+  const runningCount = countIn(statusCounts, ACTIVE_STATUSES);
 
   const navigate = useNavigate();
   const svc = useProjectService();
@@ -257,7 +252,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           crispText,
           "group grid cursor-pointer grid-cols-1 gap-3 rounded-[10px] border bg-white px-4 py-3.5 outline-none transition-[border-color,box-shadow] duration-200",
           "shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-gray-900",
-          "xl:grid-cols-[minmax(260px,1fr)_160px_200px_160px_minmax(180px,240px)_auto] xl:items-center",
+          "xl:grid-cols-[minmax(240px,1fr)_minmax(200px,280px)_150px_130px_minmax(160px,220px)_auto] xl:items-center",
           isSelected
             ? "border-brand-400 ring-2 ring-brand-500/15 dark:border-brand-600"
             : "border-gray-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-gray-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-gray-700 dark:hover:border-gray-500",
@@ -286,6 +281,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
                 <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[13px] font-semibold tabular-nums leading-5 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/30">
                   {projectIdLabel}
                 </span>
+                {runningCount > 0 ? <RunningDot count={runningCount} /> : null}
               </div>
 
               <p className="line-clamp-1 text-[13.5px] leading-6 text-gray-600 dark:text-gray-300">
@@ -301,7 +297,11 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Protocols
             </div>
-            <div className="font-semibold text-slate-950 dark:text-white">{protocolsCount ?? "0"}</div>
+            {statusCounts && Number(protocolsCount ?? 0) > 0 ? (
+              <ProjectStatusSummary counts={statusCounts} className="text-[13.5px] text-gray-500 dark:text-gray-400" />
+            ) : (
+              <div className="font-semibold text-slate-950 dark:text-white">{protocolsCount ?? "0"}</div>
+            )}
           </div>
         </div>
 
@@ -311,7 +311,9 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Updated
             </div>
-            <div className="font-medium text-slate-950 dark:text-white">{formatDateShort(updatedAt ?? createdAt)}</div>
+            <div className="font-medium text-slate-950 dark:text-white" title={formatFullDate(updatedAt ?? createdAt)}>
+              {formatRelativeDate(updatedAt ?? createdAt) || "—"}
+            </div>
           </div>
         </div>
 
@@ -351,6 +353,29 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           >
             Open
           </button>
+
+          {onTogglePin ? (
+            <button
+              type="button"
+              aria-label={isPinned ? `Unpin ${name}` : `Pin ${name}`}
+              aria-pressed={isPinned}
+              title={isPinned ? "Unpin" : "Pin to the top"}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onTogglePin();
+              }}
+              onDoubleClick={(event) => event.stopPropagation()}
+              className={classNames(
+                "flex h-8 w-8 items-center justify-center rounded-[10px] transition",
+                isPinned
+                  ? "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300"
+                  : "text-gray-400 hover:bg-amber-50 hover:text-amber-500 dark:text-gray-500 dark:hover:bg-amber-500/10",
+              )}
+            >
+              <Pin className={classNames("h-4 w-4", isPinned ? "fill-current" : "")} />
+            </button>
+          ) : null}
 
           <ProjectAction
             onOpen={handleOpen}

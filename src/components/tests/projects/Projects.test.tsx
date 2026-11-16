@@ -25,7 +25,11 @@ vi.mock("@/components/projects/ProjectsCard", () => ({
     onShare,
     id,
     projectOwnerId,
+    isPinned,
+    onTogglePin,
   }: {
+    isPinned?: boolean;
+    onTogglePin?: () => void;
     label: string;
     description?: string;
     isSelected?: boolean;
@@ -56,6 +60,9 @@ vi.mock("@/components/projects/ProjectsCard", () => ({
         Share {label}
       </button>
       <div>owner:{String(projectOwnerId)}</div>
+      <button type="button" onClick={onTogglePin}>
+        {isPinned ? "Unpin" : "Pin"} {label}
+      </button>
     </div>
   ),
 }));
@@ -195,6 +202,7 @@ describe("Projects page", () => {
     vi.clearAllMocks();
     resetFactories();
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
 
@@ -246,7 +254,7 @@ describe("Projects page", () => {
     renderWithProviders(<Projects />, { service });
 
     await waitFor(() => {
-      expect(screen.getByText("No projects found.")).toBeInTheDocument();
+      expect(screen.getByText("No projects yet")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: /New project/i })).toBeInTheDocument();
@@ -273,7 +281,7 @@ describe("Projects page", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "No projects found.",
+          "No projects yet",
         ),
       ).toBeInTheDocument();
     });
@@ -491,6 +499,71 @@ describe("Projects page", () => {
 
     await waitFor(() => {
       expect(window.localStorage.getItem("scipion.home.lastOpenedProjectId.v1")).toBe("7");
+    });
+  });
+
+  describe("order, filters and pins", () => {
+    const hour = 3_600_000;
+    const now = Date.now();
+    const listed = () => [
+      makeRawProject({ id: "1", name: "Bravo", isOwner: true, isShared: false, diskUsageBytes: 10,
+        createdAt: new Date(now - 90 * hour).toISOString(), updatedAt: new Date(now - 2 * hour).toISOString(),
+        statusCounts: { finished: 4 } }),
+      makeRawProject({ id: "2", name: "alpha", isOwner: true, isShared: false, diskUsageBytes: 500,
+        createdAt: new Date(now - 10 * hour).toISOString(), updatedAt: new Date(now - 30 * hour).toISOString(),
+        statusCounts: { running: 1, finished: 2 } }),
+      makeRawProject({ id: "3", name: "Charlie", isOwner: false, isShared: true, diskUsageBytes: 50,
+        createdAt: new Date(now - 50 * hour).toISOString(), updatedAt: new Date(now - 1 * hour).toISOString(),
+        statusCounts: { failed: 1 } }),
+    ];
+    const order = () => screen.getAllByTestId(/^project-card-/).map((el) => el.getAttribute("data-testid"));
+
+    it("orders by last activity, and by name or size when asked", async () => {
+      renderWithProviders(<Projects />, { service: createProjectServiceMock({ fetchList: vi.fn().mockResolvedValue(listed()) }) });
+      await screen.findByText("Bravo");
+      expect(order()).toEqual(["project-card-3", "project-card-1", "project-card-2"]);
+
+      fireEvent.change(screen.getByLabelText("Sort projects by"), { target: { value: "name" } });
+      expect(order()).toEqual(["project-card-2", "project-card-1", "project-card-3"]);
+
+      fireEvent.change(screen.getByLabelText("Sort projects by"), { target: { value: "size" } });
+      expect(order()).toEqual(["project-card-2", "project-card-3", "project-card-1"]);
+      // The choice is remembered for the next visit
+      expect(window.localStorage.getItem("scipion.projects.sort.v1")).toBe("size");
+    });
+
+    it("filters mine and shared, with their counts", async () => {
+      renderWithProviders(<Projects />, { service: createProjectServiceMock({ fetchList: vi.fn().mockResolvedValue(listed()) }) });
+      await screen.findByText("Bravo");
+      const filters = screen.getByRole("group", { name: "Show projects" });
+
+      expect(within(filters).getByRole("button", { name: /Mine\s*2/ })).toBeInTheDocument();
+      fireEvent.click(within(filters).getByRole("button", { name: /Shared with me/ }));
+      expect(order()).toEqual(["project-card-3"]);
+      fireEvent.click(within(filters).getByRole("button", { name: /Mine/ }));
+      expect(order()).toEqual(["project-card-1", "project-card-2"]);
+      expect(window.localStorage.getItem("scipion.projects.filter.v1")).toBe("mine");
+    });
+
+    it("puts the pinned projects first, with the dashboard's pins", async () => {
+      window.localStorage.setItem("scipion.home.pins.v1", JSON.stringify(["2"]));
+      renderWithProviders(<Projects />, { service: createProjectServiceMock({ fetchList: vi.fn().mockResolvedValue(listed()) }) });
+      await screen.findByText("Bravo");
+      expect(order()).toEqual(["project-card-2", "project-card-3", "project-card-1"]);
+
+      fireEvent.click(screen.getByRole("button", { name: "Pin Bravo" }));
+      expect(order()).toEqual(["project-card-1", "project-card-2", "project-card-3"]);
+      expect(JSON.parse(window.localStorage.getItem("scipion.home.pins.v1") ?? "[]")).toEqual(["1", "2"]);
+    });
+
+    it("offers to clear the search and filters when nothing matches", async () => {
+      renderWithProviders(<Projects />, { service: createProjectServiceMock({ fetchList: vi.fn().mockResolvedValue(listed()) }) });
+      await screen.findByText("Bravo");
+      fireEvent.change(screen.getByLabelText("Search projects"), { target: { value: "zzz" } });
+      expect(screen.getByText("No projects found.")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Clear search and filters" }));
+      expect(order()).toHaveLength(3);
     });
   });
 });

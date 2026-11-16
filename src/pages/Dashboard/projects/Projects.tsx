@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
+import { Fragment, useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageMeta from "@/components/common/PageMeta";
 import ProjectCard from "@/components/projects/ProjectsCard";
@@ -9,7 +9,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { ImportProjectPayload, ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
-import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
+import { ArrowUpDown, CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
@@ -17,10 +17,23 @@ import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
 import ImportWorkflowDialog from "@/components/projects/ImportWorkflowDialog";
 import { myStorageQuotas, type StorageQuota } from "@/api/storage";
+import { readPinnedIds, togglePinnedId, writePinnedIds, PIN_STORAGE_KEY } from "@/utils/projectPins";
+import {
+  PROJECT_FILTERS,
+  PROJECT_SORTS,
+  matchesFilter,
+  sortProjects,
+  type ProjectFilter,
+  type ProjectSort,
+} from "@/utils/project-list";
 //import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
 const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
+const PROJECTS_SORT_STORAGE_KEY = "scipion.projects.sort.v1";
+const PROJECTS_FILTER_STORAGE_KEY = "scipion.projects.filter.v1";
+// Projects drawn at first, and added each time the end of the list comes into view
+const PROJECTS_PAGE_SIZE = 24;
 const LAST_OPENED_PROJECT_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -32,6 +45,7 @@ const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 type ProjectsViewMode = "cards" | "list";
 
 type ProjectCardProject = Project & {
+  statusCounts?: Record<string, number> | null;
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
   thumbnailItemsUrl?: string | null;
@@ -82,6 +96,7 @@ function normalizeProject(raw: any): ProjectCardProject {
       p.protocolsCount ?? p.protocols_count ?? (Array.isArray(p.protocols) ? p.protocols.length : 0),
     diskUsage: p.diskUsage ?? p.disk_usage ?? p.storage ?? undefined,
     diskUsageBytes: typeof p.diskUsageBytes === "number" ? p.diskUsageBytes : null,
+    statusCounts: p.statusCounts && typeof p.statusCounts === "object" ? p.statusCounts : null,
     protocols: p.protocols ?? p.protocolsMap ?? undefined,
     isShared: isSharedFlag,
     isOwner: isOwnerFlag,
@@ -111,6 +126,23 @@ function getProjectWorkspaceId(projectName: string | number): string {
 
 function getProjectWorkspacePath(projectName: string | number): string {
   return `/project/load/${encodeURIComponent(String(projectName))}`;
+}
+
+function readStoredChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const value = window.localStorage.getItem(key) as T | null;
+    return value && allowed.includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeChoice(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // only a convenience
+  }
 }
 
 function readStoredProjectsViewMode(): ProjectsViewMode {
@@ -204,6 +236,13 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const [projects, setProjects] = useState<ProjectCardProject[]>([]);
   const [search, setSearch] = useState<string>("");
+  const [sort, setSort] = useState<ProjectSort>(() =>
+    readStoredChoice(PROJECTS_SORT_STORAGE_KEY, PROJECT_SORTS.map((x) => x.value), "activity"));
+  const [filter, setFilter] = useState<ProjectFilter>(() =>
+    readStoredChoice(PROJECTS_FILTER_STORAGE_KEY, PROJECT_FILTERS.map((x) => x.value), "all"));
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedIds());
+  const [shownCount, setShownCount] = useState(PROJECTS_PAGE_SIZE);
+  const moreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -379,24 +418,64 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     }
   }, [viewMode]);
 
+  useEffect(() => storeChoice(PROJECTS_SORT_STORAGE_KEY, sort), [sort]);
+  useEffect(() => storeChoice(PROJECTS_FILTER_STORAGE_KEY, filter), [filter]);
+
+  // The pins are shared with the dashboard (also when it changes them in another tab)
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === PIN_STORAGE_KEY) setPinnedIds(readPinnedIds());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const togglePin = useCallback((projectId: string | number) => {
+    setPinnedIds((prev) => {
+      const next = togglePinnedId(prev, projectId);
+      writePinnedIds(next);
+      return next;
+    });
+  }, []);
+
   const normalizedTerm = search.trim().toLowerCase();
 
-  const filteredProjects = useMemo(() => {
-    const filtered = normalizedTerm
-      ? projects.filter((p) => {
-        const name = String(p.name ?? "").toLowerCase();
-        const id = String(p.id ?? "").toLowerCase();
-        const desc = String(p.description ?? "").toLowerCase();
-        return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
-      })
-      : projects;
-
-    return [...filtered].sort(
-      (a, b) =>
-        (b.updatedAt ?? b.createdAt).getTime() -
-        (a.updatedAt ?? a.createdAt).getTime(),
-    );
+  const searchedProjects = useMemo(() => {
+    if (!normalizedTerm) return projects;
+    return projects.filter((p) => {
+      const name = String(p.name ?? "").toLowerCase();
+      const id = String(p.id ?? "").toLowerCase();
+      const desc = String(p.description ?? "").toLowerCase();
+      return name.includes(normalizedTerm) || id.includes(normalizedTerm) || desc.includes(normalizedTerm);
+    });
   }, [projects, normalizedTerm]);
+
+  const filterCounts = useMemo(
+    () => Object.fromEntries(PROJECT_FILTERS.map(({ value }) =>
+      [value, searchedProjects.filter((p) => matchesFilter(p, value)).length])) as Record<ProjectFilter, number>,
+    [searchedProjects],
+  );
+
+  const filteredProjects = useMemo(
+    () => sortProjects(searchedProjects.filter((p) => matchesFilter(p, filter)), sort, pinnedIds),
+    [searchedProjects, filter, sort, pinnedIds],
+  );
+
+  // A new search, filter or order starts again from the top
+  useEffect(() => setShownCount(PROJECTS_PAGE_SIZE), [normalizedTerm, filter, sort]);
+
+  const shownProjects = useMemo(() => filteredProjects.slice(0, shownCount), [filteredProjects, shownCount]);
+  const hasMoreProjects = shownCount < filteredProjects.length;
+
+  useEffect(() => {
+    const sentinel = moreSentinelRef.current;
+    if (!sentinel || !hasMoreProjects || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setShownCount((count) => count + PROJECTS_PAGE_SIZE);
+    }, { rootMargin: "600px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreProjects, shownProjects.length, viewMode]);
 
   // The disk quotas the user's projects count against (none set: nothing shown)
   const [myQuotas, setMyQuotas] = useState<StorageQuota[]>([]);
@@ -646,7 +725,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2 lg:grid-cols-3"
       aria-label="Projects cards"
     >
-      {filteredProjects.map((project) => (
+      {shownProjects.map((project) => (
         <div key={getProjectCardKey(project)} className="h-full">
           <ProjectCard
             id={project.id}
@@ -676,6 +755,9 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
             thumbnailItemsUrl={project.thumbnailItemsUrl ?? null}
             thumbnailVersion={project.thumbnailVersion ?? 0}
+            statusCounts={project.statusCounts ?? null}
+            isPinned={pinnedIds.includes(String(project.id))}
+            onTogglePin={() => togglePin(project.id)}
           />
         </div>
       ))}
@@ -685,7 +767,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const renderProjectList = () => (
     <div className="space-y-3" aria-label="Projects list">
 
-      {filteredProjects.map((project) => (
+      {shownProjects.map((project) => (
         <ProjectListRow
           key={String(project.id)}
           id={project.id}
@@ -705,10 +787,67 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           isOwner={project.isOwner}
           permission={project.permission?.toString()}
           accessVia={project.accessVia ?? null}
+          statusCounts={project.statusCounts ?? null}
+          isPinned={pinnedIds.includes(String(project.id))}
+          onTogglePin={() => togglePin(project.id)}
         />
       ))}
     </div>
   );
+
+  const renderEmptyState = () => {
+    const nothingAtAll = projects.length === 0;
+    const narrowed = Boolean(normalizedTerm) || filter !== "all";
+    return (
+      <div className="flex flex-col items-center rounded-[10px] border border-dashed border-gray-300 bg-white/60 px-6 py-14 text-center dark:border-gray-700 dark:bg-gray-900/40">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+          {nothingAtAll ? <PlusCircle className="h-6 w-6" /> : <Search className="h-6 w-6" />}
+        </div>
+        <h2 className="mt-4 text-[16px] font-semibold text-gray-900 dark:text-white">
+          {nothingAtAll ? "No projects yet" : "No projects found."}
+        </h2>
+        <p className="mt-1 max-w-sm text-[14px] text-gray-500 dark:text-gray-400">
+          {nothingAtAll
+            ? "Create a project to start processing your data, or import one you already have."
+            : "Nothing matches what you are looking for."}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {nothingAtAll ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-[14px] font-semibold text-white shadow-sm hover:bg-brand-600"
+              >
+                <PlusCircle className="h-4 w-4" />
+                Create your first project
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowImportProject(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 text-[14px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              >
+                <Download className="h-4 w-4" />
+                Import a project
+              </button>
+            </>
+          ) : narrowed ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setFilter("all");
+              }}
+              className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 text-[14px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <X className="h-4 w-4" />
+              Clear search and filters
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   const menuItemClass = classNames(
     "flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[14px] transition",
@@ -819,26 +958,82 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 px-5 pt-4 pb-4 lg:px-6">
-          <div className="relative min-w-0 flex-1 sm:max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search projects…"
-              aria-label="Search projects"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={classNames(
-                crispText,
-                "h-10 w-full rounded-[10px] border pl-9 pr-3 text-[14.5px] outline-none transition",
-                "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400",
-                "focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10",
-                "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
-                "dark:focus:border-brand-800",
-              )}
-            />
+        <div className="shrink-0 space-y-3 px-5 pt-4 pb-4 lg:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-1 sm:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search projects…"
+                aria-label="Search projects"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={classNames(
+                  crispText,
+                  "h-10 w-full rounded-[10px] border pl-9 pr-3 text-[14.5px] outline-none transition",
+                  "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400",
+                  "focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10",
+                  "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
+                  "dark:focus:border-brand-800",
+                )}
+              />
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <label className="relative inline-flex items-center">
+                <span className="sr-only">Sort projects by</span>
+                <ArrowUpDown className="pointer-events-none absolute left-3 h-4 w-4 text-gray-500 dark:text-gray-400" />
+                <select
+                  aria-label="Sort projects by"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as ProjectSort)}
+                  className={classNames(
+                    "h-10 appearance-none rounded-[10px] border pl-9 pr-9 text-[14px] font-medium outline-none transition",
+                    "border-gray-300 bg-white text-gray-700 hover:bg-gray-50",
+                    "focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10",
+                    "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800",
+                  )}
+                >
+                  {PROJECT_SORTS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-3 h-4 w-4 text-gray-500" />
+              </label>
+              {renderViewModeToggle()}
+            </div>
           </div>
-          <div className="ml-auto">{renderViewModeToggle()}</div>
+
+          <div role="group" aria-label="Show projects" className="flex flex-wrap items-center gap-1.5">
+            {PROJECT_FILTERS.map((option) => {
+              const selected = filter === option.value;
+              const count = filterCounts[option.value] ?? 0;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setFilter(option.value)}
+                  className={classNames(
+                    "inline-flex h-8 items-center gap-1.5 rounded-[10px] border px-3 text-[13.5px] font-medium transition",
+                    selected
+                      ? "border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-500",
+                  )}
+                >
+                  {option.label}
+                  <span
+                    className={classNames(
+                      "tabular-nums",
+                      selected ? "text-white/70 dark:text-gray-900/60" : "text-gray-400 dark:text-gray-500",
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div
@@ -856,14 +1051,23 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             </div>
           )}
 
-          {!loading && !loadError && filteredProjects.length === 0 && (
-            <div className="rounded-[10px] border border-dashed border-gray-300 px-6 py-12 text-center text-[15px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              No projects found.
-            </div>
-          )}
+          {!loading && !loadError && filteredProjects.length === 0 && renderEmptyState()}
 
           {!loading && !loadError && filteredProjects.length > 0 && (
-            viewMode === "list" ? renderProjectList() : renderProjectGrid()
+            <>
+              {viewMode === "list" ? renderProjectList() : renderProjectGrid()}
+              {hasMoreProjects ? (
+                <div ref={moreSentinelRef} className="flex justify-center py-6">
+                  <button
+                    type="button"
+                    onClick={() => setShownCount((count) => count + PROJECTS_PAGE_SIZE)}
+                    className="rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-[14px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                  >
+                    Show more ({filteredProjects.length - shownCount} left)
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
