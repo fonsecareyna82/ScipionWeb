@@ -118,7 +118,7 @@ const statusBadgeColors: Record<string, string> = {
   finished: "#28A745",
   failed: "#DC3545",
   aborted: "#DC3545",
-  interactive: "#FFC107",
+  interactive: "#B45309",
   scheduled: "#918516",
   new: "#1E90FF",
 };

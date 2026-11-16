@@ -113,11 +113,14 @@
 .nodeIdBadge {
   background-color: #555252;
   color: #fbfcfb;
-  padding: 2px 25px;
+  /* Like the status: a tight line and a little less room above than below centre the number in the oval */
+  padding: 0.1em 25px 0.18em;
+  line-height: 1;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
 }
 
 .glowBadge {
