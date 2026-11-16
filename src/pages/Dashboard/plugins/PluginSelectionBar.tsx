@@ -35,15 +35,15 @@ export default function PluginSelectionBar({
   return (
     <div
       className={classNames(
-        "flex flex-col gap-3 rounded-2xl border border-[#333d49]/20 bg-[#333d49]/5 p-4 dark:border-slate-700 dark:bg-white/[0.03] lg:flex-row lg:items-center lg:justify-between",
+        "flex flex-col gap-3 rounded-[10px] border border-gray-300 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900 lg:flex-row lg:items-center lg:justify-between",
         className,
       )}
     >
       <div className="min-w-0">
-        <div className="text-sm text-gray-900 dark:text-white">
+        <div className="text-[14.5px] font-semibold text-gray-900 dark:text-white">
           {selectedCount} selected
         </div>
-        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+        <div className="mt-0.5 text-[13.5px] text-gray-500 dark:text-gray-400">
           {hasSelection
             ? `${actionableCount} can be processed in this batch.`
             : "Select available plugins or updates from the list below."}
@@ -51,7 +51,7 @@ export default function PluginSelectionBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex items-center gap-2 rounded-xl border border-gray-300/80 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+        <label className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-3 text-[14px] text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
           <input
             type="checkbox"
             checked={optionChecked}
@@ -66,9 +66,9 @@ export default function PluginSelectionBar({
           onClick={onPrimaryAction}
           disabled={!canRun}
           className={classNames(
-            "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm  shadow-sm transition",
-            "border-[#333d49] bg-[#333d49] text-white hover:border-[#2b3440] hover:bg-[#2b3440] hover:shadow-md",
-            "disabled:cursor-not-allowed disabled:opacity-60",
+            "inline-flex h-10 items-center gap-2 rounded-[10px] px-4 text-[14px] font-semibold shadow-sm transition",
+            "bg-brand-500 text-white hover:bg-brand-600",
+            "disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-400",
           )}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
@@ -79,7 +79,7 @@ export default function PluginSelectionBar({
           type="button"
           onClick={onClearSelection}
           disabled={busy || !hasSelection}
-          className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm  text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+          className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-4 text-[14px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
         >
           <X className="h-4 w-4" />
           Clear

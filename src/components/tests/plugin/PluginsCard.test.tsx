@@ -68,7 +68,7 @@ describe("PluginsCard", () => {
         expect(screen.getByText("Scipion Plugin")).toBeInTheDocument();
         expect(screen.getByText("scipion-plugin")).toBeInTheDocument();
         expect(screen.getByText("Latest v3.0.0")).toBeInTheDocument();
-        expect(screen.getByText("View details")).toBeInTheDocument();
+        expect(screen.queryByText("View details")).not.toBeInTheDocument();
     });
 
     it("navigates to the plugin detail page on card click", () => {
@@ -114,7 +114,7 @@ describe("PluginsCard", () => {
         });
 
         expect(screen.getByText("Installed v2.4.1")).toBeInTheDocument();
-        expect(screen.getByText("View details")).toBeInTheDocument();
+        expect(screen.queryByText("View details")).not.toBeInTheDocument();
     });
 
     it("shows update badges when the plugin has an update available", () => {

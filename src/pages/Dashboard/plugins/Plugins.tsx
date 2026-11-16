@@ -1,13 +1,12 @@
 // src/pages/Dashboard/plugins/Plugins.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePermissions } from "@/hooks/usePermissions";
-import { CloudOff, FolderPlus, Search, X } from "lucide-react";
+import { FolderPlus, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
-import { fetchPluginCatalogStatus, installPlugin, type Plugin, type PluginCatalogStatus } from "@/api/plugins";
-import { useQuery } from "@tanstack/react-query";
+import { installPlugin, type Plugin } from "@/api/plugins";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
@@ -28,56 +27,6 @@ import {
   type TabKey,
 } from "./plugin_helpers";
 
-function CardShell(props: {
-  title: string;
-  subtitle?: string;
-  right?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={classNames(
-        "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
-        "border-gray-200/70 bg-white/80",
-        "dark:border-gray-800/80 dark:bg-white/[0.03]",
-        "lg:p-6",
-      )}
-    >
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="mb-4 shrink-0 flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
-              {props.title}
-            </h3>
-            {props.subtitle ? (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {props.subtitle}
-              </p>
-            ) : null}
-          </div>
-          {props.right ? <div className="shrink-0">{props.right}</div> : null}
-        </div>
-        {props.children}
-      </div>
-    </div>
-  );
-}
-
-function StatPill(props: { label: string; value: ReactNode }) {
-  return (
-    <div
-      className={classNames(
-        "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold",
-        "border-gray-200/70 bg-white/70 text-gray-700",
-        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
-      )}
-    >
-      <span className="text-gray-600 dark:text-gray-300">{props.label}</span>
-      <span>{props.value}</span>
-    </div>
-  );
-}
-
 function SecondaryButton(props: {
   children: ReactNode;
   onClick?: () => void;
@@ -92,9 +41,9 @@ function SecondaryButton(props: {
       disabled={props.disabled}
       title={props.title}
       className={classNames(
-        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm  transition",
-        "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+        "inline-flex h-10 items-center justify-center gap-2 rounded-[10px] border px-4 text-[14px] font-medium transition",
+        "border-gray-300 bg-white text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-900",
+        "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.05]",
         "disabled:cursor-not-allowed disabled:opacity-60",
         props.className,
       )}
@@ -104,59 +53,57 @@ function SecondaryButton(props: {
   );
 }
 
-function TabButton(props: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+/** One of the page's main sections (installed, available, tasks): an underlined tab. */
+function SectionTab(props: { active: boolean; onClick: () => void; label: string; count: number; busy?: boolean }) {
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={props.active}
       onClick={props.onClick}
       className={classNames(
-        "rounded-lg border px-3 py-2 text-sm  transition",
-        "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
+        "relative inline-flex h-11 items-center gap-2 px-1 text-[14.5px] font-medium transition",
         props.active
-          ? [
-            "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
-            "ring-1 ring-indigo-500/30",
-            "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
-          ].join(" ")
-          : [
-            "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
-            "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
-          ].join(" "),
+          ? "text-gray-900 after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-brand-500 dark:text-white"
+          : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
       )}
     >
-      {props.children}
+      {props.label}
+      <span
+        className={classNames(
+          "rounded-full px-2 py-0.5 text-[13px] font-semibold tabular-nums",
+          props.busy
+            ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+            : props.active
+              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+              : "bg-gray-200/80 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+        )}
+      >
+        {props.count}
+      </span>
     </button>
   );
 }
 
-function savedDate(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { dateStyle: "medium" });
-}
-
-/** Says when the list is not Scipion's live catalog because its server does not answer. */
-function CatalogNotice({ status }: { status?: PluginCatalogStatus }) {
-  if (!status?.source || status.source === "live") return null;
-  const when = savedDate(status.savedAt);
-  const shown = status.source === "saved"
-    ? `Showing the catalog saved here${when ? ` on ${when}` : ""}.`
-    : status.source === "shipped"
-      ? `Showing the catalog that came with ScipionWeb${when ? ` (${when})` : ""}.`
-      : "Showing the plugins ScipionWeb knows and those installed; logos and the newest plugins may be missing.";
+/** A category to narrow the plugins shown. */
+function CategoryChip(props: { active: boolean; onClick: () => void; label: string; count: number }) {
   return (
-    <div role="status"
-         className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[14px] text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-      <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <div>
-        <span className="font-semibold">Scipion's plugin catalog is not answering.</span> {shown} Plugins
-        still install; it is checked again every few minutes.
-      </div>
-    </div>
+    <button
+      type="button"
+      aria-pressed={props.active}
+      onClick={props.onClick}
+      className={classNames(
+        "inline-flex h-8 items-center gap-1.5 rounded-[10px] border px-3 text-[13.5px] font-medium transition",
+        props.active
+          ? "border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900"
+          : "border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-500",
+      )}
+    >
+      {props.label}
+      <span className={classNames("tabular-nums", props.active ? "text-white/70 dark:text-gray-900/60" : "text-gray-400 dark:text-gray-500")}>
+        {props.count}
+      </span>
+    </button>
   );
 }
 
@@ -191,16 +138,8 @@ export default function Plugins() {
     isLoading,
     isError,
     refetch,
-    dataUpdatedAt,
   } = usePlugins({
     refetchInterval: activeTasksCount > 0 ? 2000 : false,
-  });
-
-  // Asked again whenever the list is: it says whether the list is Scipion's live catalog or a copy
-  const { data: catalogStatus } = useQuery<PluginCatalogStatus>({
-    queryKey: ["plugins", "catalog-status", dataUpdatedAt],
-    queryFn: fetchPluginCatalogStatus,
-    enabled: dataUpdatedAt > 0,
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>("available");
@@ -422,209 +361,193 @@ export default function Plugins() {
       />
 
       <div className="h-[calc(100dvh-88px)] min-h-0 overflow-hidden">
-        <CardShell
-          title="Plugins"
-          subtitle="Install, remove, and monitor Scipion plugins and background tasks."
-        >
+        <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-gray-300/85 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:border-gray-700 dark:bg-gray-900">
+          <div className="shrink-0 border-b border-gray-200/90 px-5 pt-4 dark:border-gray-700 lg:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-[19px] font-semibold text-gray-900 dark:text-white">Plugins</h1>
+                  <span className="rounded-full bg-gray-200/80 px-2.5 py-0.5 text-[13px] font-semibold tabular-nums text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                    {installedPlugins.length + availablePlugins.length}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[13.5px] text-gray-500 dark:text-gray-400">
+                  Install, update and remove plugins, and follow their tasks.
+                </p>
+              </div>
+              {canManagePlugins ? (
+                <SecondaryButton
+                  onClick={() => setInstallDevelOpen(true)}
+                  title="Install a local Scipion plugin in devel mode"
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  Install local plugin
+                </SecondaryButton>
+              ) : null}
+            </div>
+
+            <div role="tablist" aria-label="Plugins sections" className="mt-2 flex items-center gap-6">
+              <SectionTab active={activeTab === "installed"} onClick={() => setActiveTab("installed")}
+                          label="Installed" count={installedPlugins.length} />
+              <SectionTab active={activeTab === "available"} onClick={() => setActiveTab("available")}
+                          label="Available" count={availablePlugins.length} />
+              <SectionTab active={activeTab === "tasks"} onClick={() => setActiveTab("tasks")}
+                          label="Tasks" count={activeTasksCount} busy={activeTasksCount > 0} />
+            </div>
+          </div>
+
           {loading && (
             <div
               role="status"
               aria-live="polite"
-              className="absolute inset-0 z-[80] flex flex-col items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75"
+              className="absolute inset-0 z-[80] flex flex-col items-center justify-center rounded-[10px] bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75"
               style={{ pointerEvents: "auto" }}
             >
               <div className="relative">
                 <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-gray-700" />
                 <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-gray-700 dark:border-t-gray-200" />
               </div>
-              <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+              <p className="mt-3 text-[14px] text-gray-700 dark:text-gray-200">
                 Loading <span className="font-medium">Plugins</span>…
               </p>
             </div>
           )}
 
-          {!loading && error ? (
-            <div className="rounded-xl border border-red-200/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-              {error}
-            </div>
-          ) : !loading ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 flex flex-col gap-3">
-                <CatalogNotice status={catalogStatus} />
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-                    <div className="flex flex-wrap gap-1">
-                      <TabButton
-                        active={activeTab === "installed"}
-                        onClick={() => setActiveTab("installed")}
-                      >
-                        Installed ({installedPlugins.length})
-                      </TabButton>
+          <div className="flex min-h-0 flex-1 flex-col bg-gray-100 dark:bg-gray-950">
+            {!loading && error ? (
+              <div className="m-5 rounded-[10px] border border-red-200/70 bg-red-50 p-4 text-[14px] text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                {error}
+              </div>
+            ) : !loading ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="shrink-0 space-y-3 px-5 pt-4 pb-4 lg:px-6">
 
-                      <TabButton
-                        active={activeTab === "available"}
-                        onClick={() => setActiveTab("available")}
-                      >
-                        Available ({availablePlugins.length})
-                      </TabButton>
-
-                      <TabButton
-                        active={activeTab === "tasks"}
-                        onClick={() => setActiveTab("tasks")}
-                      >
-                        Tasks ({activeTasksCount})
-                      </TabButton>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {canManagePlugins && <SecondaryButton
-                      onClick={() => setInstallDevelOpen(true)}
-                      title="Install a local Scipion plugin in devel mode"
-                      className="!border-[#333d49] !bg-[#333d49] !text-white shadow-sm shadow-slate-900/10 hover:!border-[#2b3440] hover:!bg-[#2b3440] hover:!text-white hover:shadow-md dark:!border-slate-600 dark:!bg-[#333d49] dark:!text-white dark:hover:!border-slate-500 dark:hover:!bg-[#2b3440]"
-                    >
-                      <FolderPlus className="h-4 w-4 text-white" />
-                      Install local plugin
-                    </SecondaryButton>}
-                    {/*
-                    <StatPill label="Installed" value={installedPlugins.length} />
-                    <StatPill label="Available" value={availablePlugins.length} />
-                    <StatPill label="Devel" value={develPlugins.length} />
-                    <StatPill label="Tasks" value={tasksCount} /> */}
-                  </div>
-                </div>
-
-                {activeTab !== "tasks" ? (
-                  <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-                    <div className="flex flex-wrap gap-1">
-                      <TabButton
-                        active={activeCategoryId === "all"}
-                        onClick={() => setActiveCategoryId("all")}
-                      >
-                        All ({displayedPlugins.length})
-                      </TabButton>
-
-                      {categoryTabs.map((category) => (
-                        <TabButton
-                          key={category.id}
-                          active={activeCategoryId === category.id}
-                          onClick={() => setActiveCategoryId(category.id)}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative min-w-[220px] flex-1 sm:max-w-md">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        aria-label={activeTab === "tasks" ? "Search tasks" : "Search plugins"}
+                        placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className={classNames(
+                          "h-10 w-full rounded-[10px] border pl-9 pr-10 text-[14.5px] outline-none transition",
+                          "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400",
+                          "focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10",
+                          "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
+                        )}
+                      />
+                      {search ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearch("")}
+                          className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
+                          aria-label="Clear search"
                         >
-                          {category.title} ({category.count})
-                        </TabButton>
-                      ))}
+                          <X className="h-4 w-4" />
+                        </button>
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
 
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="relative w-full max-w-[420px]">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-
-                    <input
-                      type="text"
-                      placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className={classNames(
-                        "w-full rounded-xl border py-2 pl-9 pr-10 text-sm  outline-none transition",
-                        "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
-                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
-                        "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
-                      )}
-                    />
-
-                    {search ? (
-                      <button
-                        type="button"
-                        onClick={() => setSearch("")}
-                        className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
-                        aria-label="Clear search"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                    {activeTab !== "tasks" ? (
+                      <div className="ml-auto">
+                        <PluginViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                      </div>
                     ) : null}
                   </div>
 
                   {activeTab !== "tasks" ? (
-                    <PluginViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                    <div role="group" aria-label="Plugin categories" className="flex flex-wrap items-center gap-1.5">
+                      <CategoryChip active={activeCategoryId === "all"} onClick={() => setActiveCategoryId("all")}
+                                    label="All" count={displayedPlugins.length} />
+                      {categoryTabs.map((category) => (
+                        <CategoryChip
+                          key={category.id}
+                          active={activeCategoryId === category.id}
+                          onClick={() => setActiveCategoryId(category.id)}
+                          label={category.title}
+                          count={category.count}
+                        />
+                      ))}
+                    </div>
                   ) : null}
                 </div>
-              </div>
 
-              {activeTab === "tasks" ? (
-                <PluginTaskCenter
-                  tasks={tasks}
-                  search={search}
-                  onOpenPlugin={openTaskPlugin}
-                  onTasksChanged={refreshTasks}
-                />
-              ) : viewMode === "cards" ? (
-                <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-gray-200/70 bg-white/40 p-4 dark:border-gray-800/80 dark:bg-white/[0.01]">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-                    {filteredPlugins.map((plugin) => (
-                      <PluginCard
-                        key={plugin.pipName}
-                        {...plugin}
-                        processingState={processingByPipName.get(plugin.pipName) ?? null}
-                      />
-                    ))}
-
-                    {filteredPlugins.length === 0 && (
-                      <div className="col-span-full py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No plugins found.
-                      </div>
-                    )}
+                {activeTab === "tasks" ? (
+                  <div className="min-h-0 flex-1 overflow-hidden px-5 pb-5 lg:px-6">
+                    <PluginTaskCenter
+                      tasks={tasks}
+                      search={search}
+                      onOpenPlugin={openTaskPlugin}
+                      onTasksChanged={refreshTasks}
+                    />
                   </div>
-                </div>
-              ) : (
-                <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-                    {canManagePlugins && <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-gray-950/90">
-                      <PluginSelectionBar
-                        selectedCount={selectedPlugins.length}
-                        actionableCount={actionableSelectedPlugins.length}
-                        busy={batchBusy}
-                        optionChecked={batchSkipBinaries}
-                        optionLabel="Skip binaries"
-                        primaryLabel={selectionPrimaryLabel}
-                        busyLabel={selectionBusyLabel}
-                        className="shadow-sm shadow-slate-900/10"
-                        onOptionChange={setBatchSkipBinaries}
-                        onPrimaryAction={installSelectedPlugins}
-                        onClearSelection={() => setSelectedPipNames(new Set())}
-                      />
-                    </div>}
+                ) : viewMode === "cards" ? (
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 lg:px-6">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+                      {filteredPlugins.map((plugin) => (
+                        <PluginCard
+                          key={plugin.pipName}
+                          {...plugin}
+                          processingState={processingByPipName.get(plugin.pipName) ?? null}
+                        />
+                      ))}
 
-                    <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl">
-                      <PluginListTable
-                        plugins={filteredPlugins}
-                        selectedPipNames={selectedPipNames}
-                        processingByPipName={processingByPipName}
-                        activePluginPipName={activeListPluginPipName}
-                        maxHeightClassName="max-h-none"
-                        onTogglePlugin={togglePluginSelection}
-                        onToggleAllVisible={toggleAllVisiblePlugins}
-                        onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
+                      {filteredPlugins.length === 0 && (
+                        <div className="col-span-full rounded-[10px] border border-dashed border-gray-300 bg-white/60 py-12 text-center text-[15px] text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                          No plugins found.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden px-5 pb-5 lg:px-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
+                    <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                      {canManagePlugins && <div className="z-30 mb-3 shrink-0">
+                        <PluginSelectionBar
+                          selectedCount={selectedPlugins.length}
+                          actionableCount={actionableSelectedPlugins.length}
+                          busy={batchBusy}
+                          optionChecked={batchSkipBinaries}
+                          optionLabel="Skip binaries"
+                          primaryLabel={selectionPrimaryLabel}
+                          busyLabel={selectionBusyLabel}
+                          onOptionChange={setBatchSkipBinaries}
+                          onPrimaryAction={installSelectedPlugins}
+                          onClearSelection={() => setSelectedPipNames(new Set())}
+                        />
+                      </div>}
+
+                      <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-[10px]">
+                        <PluginListTable
+                          plugins={filteredPlugins}
+                          selectedPipNames={selectedPipNames}
+                          processingByPipName={processingByPipName}
+                          activePluginPipName={activeListPluginPipName}
+                          maxHeightClassName="max-h-none"
+                          onTogglePlugin={togglePluginSelection}
+                          onToggleAllVisible={toggleAllVisiblePlugins}
+                          onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
+                          onOpenDetails={openPluginDetails}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="2xl:sticky 2xl:top-4 2xl:self-start">
+                      <PluginQuickDetailsPanel
+                        plugin={activeListPlugin}
+                        processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
+                        onClose={() => setActiveListPluginPipName(null)}
                         onOpenDetails={openPluginDetails}
                       />
                     </div>
                   </div>
-
-                  <div className="2xl:sticky 2xl:top-4 2xl:self-start">
-                    <PluginQuickDetailsPanel
-                      plugin={activeListPlugin}
-                      processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
-                      onClose={() => setActiveListPluginPipName(null)}
-                      onOpenDetails={openPluginDetails}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </CardShell >
+                )}
+              </div>
+            ) : null}
+          </div>
+        </section>
       </div>
     </>
   );

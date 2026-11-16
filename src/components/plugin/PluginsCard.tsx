@@ -24,113 +24,91 @@ export default function PluginCard(plugin: PluginCardProps) {
   const showProcessing = plugin.processingState === "installing" || plugin.processingState === "removing";
   const isInstalled = Boolean(plugin.installed);
   const isDevel = Boolean(plugin.devel || plugin.installMode === "devel");
-  const stackStatusBadges = Boolean(isDevel && showUpdate);
+
+  const tagClass = "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[13.5px] font-medium";
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 18 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
       className="h-full"
     >
       <Card
         onClick={handleNavigate}
         className={classNames(
-          "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl border shadow-sm backdrop-blur transition duration-200",
+          "group relative flex h-full min-h-[188px] cursor-pointer flex-col justify-center overflow-hidden rounded-[10px] border bg-white transition-[border-color,box-shadow] duration-200 dark:bg-gray-900",
           showUpdate
-            ? "border-red-500/80 bg-gradient-to-br from-red-50 via-white to-rose-50 hover:-translate-y-0.5 hover:border-red-600 hover:shadow-md hover:ring-2 hover:ring-red-200/70 dark:border-red-700/70 dark:bg-gradient-to-br dark:from-red-950/25 dark:via-gray-900 dark:to-rose-950/20 dark:hover:border-red-500 dark:hover:ring-red-500/10"
-            : isDevel
-              ? "border-indigo-400/80 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 hover:-translate-y-0.5 hover:border-indigo-500 hover:shadow-md hover:ring-2 hover:ring-indigo-200/70 dark:border-indigo-700/70 dark:bg-gradient-to-br dark:from-indigo-950/25 dark:via-gray-900 dark:to-cyan-950/20 dark:hover:border-indigo-500 dark:hover:ring-indigo-500/10"
-              : "border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-slate-100 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md hover:ring-2 hover:ring-slate-200/70 dark:border-gray-800/80 dark:bg-gradient-to-br dark:from-gray-900 dark:via-gray-950 dark:to-black dark:hover:border-slate-600 dark:hover:ring-white/[0.06]",
+            ? "border-red-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-red-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-red-800/80 dark:hover:border-red-600"
+            : "border-gray-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-gray-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-gray-700 dark:hover:border-gray-500",
         )}
       >
-        <div
-          className={classNames(
-            "absolute right-3 top-3 z-10 flex items-end justify-end gap-2",
-            stackStatusBadges ? "flex-col" : "flex-row flex-wrap",
-          )}
-        >
-          {showProcessing ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/90 px-3 py-1 text-[11px] font-semibold text-gray-800 shadow-sm dark:border-gray-700/70 dark:bg-white/[0.08] dark:text-gray-200">
-              <ExecuteIcon className="h-3.5 w-3.5 animate-spin" />
-              {plugin.processingState === "installing" ? "Processing" : "Removing"}
-            </span>
-          ) : null}
-
-          {isDevel ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-300/80 bg-indigo-50 px-3 py-1 text-[11px] font-semibold text-indigo-800 shadow-sm dark:border-indigo-700/60 dark:bg-indigo-500/10 dark:text-indigo-200">
-              <Code2 className="h-3.5 w-3.5" />
-              Devel
-            </span>
-          ) : null}
-
-          {showUpdate ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300/80 bg-red-50 px-3 py-1 text-[11px] font-semibold text-red-800 shadow-sm dark:border-red-700/60 dark:bg-red-500/10 dark:text-red-200">
-              <UpdateIcon className="h-3.5 w-3.5" />
-              Update
-            </span>
-          ) : null}
+        {/* The logo in the top left corner; the texts in the middle of the card, the logo's width kept free on both sides */}
+        <div className="absolute left-3 top-3 flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-[12px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            <PluginLogoImage
+              src={plugin.fullLogo}
+              alt={`${plugin.name} icon`}
+              className="h-14 w-14 object-contain"
+              fallback={(
+                <span className="text-[18px] font-bold uppercase text-gray-500 dark:text-gray-300">
+                  {(plugin.name ?? plugin.pipName ?? "?").slice(0, 2)}
+                </span>
+              )}
+            />
         </div>
 
-        <CardHeader className="flex items-start gap-4 pb-3 pr-24">
-          <div className="shrink-0">
-            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-gray-800/80 dark:bg-white/[0.04]">
-              <PluginLogoImage
-                src={plugin.fullLogo}
-                alt={`${plugin.name} icon`}
-                className="h-10 w-10 object-contain"
-                fallback={(
-                  <span className="text-sm font-bold uppercase text-gray-500 dark:text-gray-300">
-                    {(plugin.name ?? plugin.pipName ?? "?").slice(0, 2)}
-                  </span>
-                )}
-              />
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1">
+        <CardHeader className="flex flex-1 items-center justify-center gap-0 px-[92px] pb-0 text-center">
+          <div className="min-w-0 w-full">
             <h3
-              className="truncate text-base font-semibold text-gray-900 dark:text-white/90"
+              className="truncate text-[17px] font-semibold leading-6 text-gray-900 dark:text-white"
               title={plugin.name}
             >
               {plugin.name}
             </h3>
-
-            <div
-              className="mt-1 truncate text-xs font-medium text-gray-500 dark:text-gray-400"
-              title={plugin.pipName}
-            >
+            <div className="truncate text-[14px] text-gray-500 dark:text-gray-400" title={plugin.pipName}>
               {plugin.pipName}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center rounded-full border border-gray-200/70 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-gray-700 dark:border-gray-800/80 dark:bg-white/[0.03] dark:text-gray-200">
+            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+              <span className={classNames(tagClass, "border-gray-300/80 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200")}>
                 {isInstalled ? `Installed v${plugin.pipVersion ?? "-"}` : `Latest v${plugin.latestRelease}`}
               </span>
 
+              {showProcessing ? (
+                <span className={classNames(tagClass, "border-sky-300/80 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200")}>
+                  <ExecuteIcon className="h-3.5 w-3.5 animate-spin" />
+                  {plugin.processingState === "installing" ? "Processing" : "Removing"}
+                </span>
+              ) : null}
+
               {isDevel ? (
                 <span
-                  className="inline-flex max-w-full items-center rounded-full border border-indigo-200/80 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-800 dark:border-indigo-800/60 dark:bg-indigo-500/10 dark:text-indigo-200"
+                  className={classNames(tagClass, "border-indigo-300/80 bg-indigo-50 text-indigo-800 dark:border-indigo-700/60 dark:bg-indigo-500/10 dark:text-indigo-200")}
                   title={plugin.localPath || "Local devel plugin"}
                 >
-                  Local source
+                  <Code2 className="h-3.5 w-3.5" />
+                  Devel
+                </span>
+              ) : null}
+
+              {showUpdate ? (
+                <span className={classNames(tagClass, "border-red-300/80 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-500/10 dark:text-red-200")}>
+                  <UpdateIcon className="h-3.5 w-3.5" />
+                  Update
                 </span>
               ) : null}
             </div>
           </div>
         </CardHeader>
 
-        <CardFooter className="mt-auto flex items-center justify-center pt-0">
+        {/* At the foot, out of the flow: the logo and the texts stay in the middle of the card */}
+        <CardFooter className="absolute inset-x-0 bottom-3 flex items-center justify-center pt-0">
           {showUpdate ? (
-            <span className="inline-flex items-center gap-2 rounded-xl border border-red-300/80 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 dark:border-red-700/60 dark:bg-red-500/10 dark:text-red-200">
+            <span className="inline-flex items-center gap-1.5 text-[14px] font-medium text-red-700 dark:text-red-300">
               <UpdateIcon className="h-4 w-4" />
               v{plugin.latestRelease} available
             </span>
-          ) : (
-            <span className="inline-flex items-center rounded-xl border border-gray-200/70 bg-white/70 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200">
-              View details
-            </span>
-          )}
+          ) : null}
         </CardFooter>
       </Card>
     </motion.div>

@@ -9,38 +9,32 @@ type PluginViewToggleProps = {
 
 export default function PluginViewToggle({ viewMode, onViewModeChange }: PluginViewToggleProps) {
   return (
-
-
-
-    <div className="inline-flex rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-      <div className="mr-2 flex items-center gap-2 px-2  text-xs  text-gray-700 dark:text-gray-200">
-        <span className="pp-viewLabel">View modes</span>
+    <div
+      role="group"
+      aria-label="Plugins view mode"
+      className="inline-flex shrink-0 rounded-[10px] border border-gray-300/85 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800/60"
+    >
+      {([
+        ["cards", Grid3X3, "Cards"],
+        ["list", List, "List"],
+      ] as const).map(([mode, Icon, title]) => (
         <button
+          key={mode}
           type="button"
-          onClick={() => onViewModeChange("cards")}
+          title={title}
+          aria-label={`${title} view`}
+          aria-pressed={viewMode === mode}
+          onClick={() => onViewModeChange(mode)}
           className={classNames(
-            "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition",
-            viewMode === "cards"
-              ? "bg-[#333d49] text-white shadow-sm"
-              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
+            "inline-flex h-9 w-10 items-center justify-center rounded-lg transition",
+            viewMode === mode
+              ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-300/80 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+              : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
           )}
         >
-          <Grid3X3 className="h-4 w-4" />
+          <Icon className="h-4 w-4" />
         </button>
-
-        <button
-          type="button"
-          onClick={() => onViewModeChange("list")}
-          className={classNames(
-            "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition",
-            viewMode === "list"
-              ? "bg-[#333d49] text-white shadow-sm"
-              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
-          )}
-        >
-          <List className="h-4 w-4" />
-        </button>
-      </div>
+      ))}
     </div>
   );
 }

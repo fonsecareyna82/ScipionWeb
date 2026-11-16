@@ -379,7 +379,7 @@ function TaskStatusBadge({
     return (
         <span
             className={classNames(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold",
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-semibold",
                 getStatusClasses(
                     normalized,
                 ),
@@ -409,7 +409,7 @@ function TaskActionButton(props: {
             disabled={props.disabled}
             title={props.title}
             className={classNames(
-                "inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition",
+                "inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[13px] font-semibold transition",
                 props.danger
                     ? [
                         "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100",
@@ -448,7 +448,7 @@ function TaskCenterTabButton(props: {
             type="button"
             onClick={props.onClick}
             className={classNames(
-                "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
+                "inline-flex items-center gap-2 rounded-[10px] border px-4 py-2 text-sm font-semibold transition",
                 props.active
                     ? `${activeClasses} shadow-md`
                     : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-white/[0.02] dark:text-gray-200 dark:hover:bg-white/[0.05]",
@@ -462,7 +462,7 @@ function TaskCenterTabButton(props: {
 
             <span
                 className={classNames(
-                    "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                    "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[13px] font-bold",
                     props.active
                         ? "bg-white/20 text-white"
                         : "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300",
@@ -1212,7 +1212,7 @@ export default function PluginTaskCenter({
                             />
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-500 dark:text-gray-400">
                             <span>
                                 {task.pipName}
                             </span>
@@ -1239,7 +1239,7 @@ export default function PluginTaskCenter({
 
                         {task.pipNames &&
                             task.pipNames.length > 1 ? (
-                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <div className="mt-2 text-[13px] text-gray-500 dark:text-gray-400">
                                 {
                                     task.pipNames
                                         .length
@@ -1249,7 +1249,7 @@ export default function PluginTaskCenter({
                         ) : null}
 
                         {task.step ? (
-                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-gray-200/80 bg-gray-50/70 px-3 py-2 text-xs text-gray-700 dark:border-gray-800 dark:bg-white/[0.025] dark:text-gray-300">
+                            <div className="mt-3 flex items-start gap-2 rounded-[10px] border border-gray-200/80 bg-gray-50/70 px-3 py-2 text-[13px] text-gray-700 dark:border-gray-800 dark:bg-white/[0.025] dark:text-gray-300">
                                 {isRunningStatus(
                                     task.status,
                                 ) ? (
@@ -1265,7 +1265,7 @@ export default function PluginTaskCenter({
                         ) : null}
 
                         {task.error ? (
-                            <div className="mt-3 rounded-xl border border-red-200/80 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                            <div className="mt-3 rounded-[10px] border border-red-200/80 bg-red-50 px-3 py-2 text-[13px] leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                                 {task.error}
                             </div>
                         ) : null}
@@ -1492,7 +1492,7 @@ export default function PluginTaskCenter({
                     ) : null}
                 </div>
 
-                <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.02]">
+                <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.02]">
                     <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200/70 px-4 py-3 dark:border-gray-800">
                         <div className="min-w-0">
                             <div className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -1503,12 +1503,12 @@ export default function PluginTaskCenter({
                                         : "Running tasks"}
                             </div>
 
-                            <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                            <div className="mt-0.5 text-[13px] text-gray-500 dark:text-gray-400">
                                 {activeDescription}
                             </div>
                         </div>
 
-                        <div className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <div className="shrink-0 text-[13px] font-medium text-gray-500 dark:text-gray-400">
                             {activeTotalCount} total
                         </div>
                     </div>
@@ -1568,7 +1568,7 @@ export default function PluginTaskCenter({
                                     />
                                 </div>
 
-                                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                <div className="mt-1 text-[13px] text-gray-500 dark:text-gray-400">
                                     {getTaskOperationLabel(
                                         currentLogTask.operation,
                                     )}{" "}
@@ -1579,7 +1579,7 @@ export default function PluginTaskCenter({
                                 </div>
 
                                 {currentLogTask.step ? (
-                                    <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                                    <div className="mt-2 text-[13px] text-gray-600 dark:text-gray-300">
                                         {
                                             currentLogTask.step
                                         }
@@ -1594,7 +1594,7 @@ export default function PluginTaskCenter({
                                         null,
                                     )
                                 }
-                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
                                 aria-label="Close log"
                             >
                                 <X className="h-4 w-4" />
@@ -1602,7 +1602,7 @@ export default function PluginTaskCenter({
                         </div>
 
                         {currentLogTask.error ? (
-                            <div className="shrink-0 border-b border-red-200 bg-red-50 px-5 py-3 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                            <div className="shrink-0 border-b border-red-200 bg-red-50 px-5 py-3 text-[13px] leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                                 {
                                     currentLogTask.error
                                 }
@@ -1610,7 +1610,7 @@ export default function PluginTaskCenter({
                         ) : null}
 
                         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-3 dark:border-gray-800">
-                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <div className="flex items-center gap-2 text-[13px] text-gray-500 dark:text-gray-400">
                                 <FileText className="h-4 w-4" />
 
                                 {logLoading &&
@@ -1641,7 +1641,7 @@ export default function PluginTaskCenter({
                         </div>
 
                         {logError ? (
-                            <div className="shrink-0 border-b border-red-200 bg-red-50 px-5 py-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                            <div className="shrink-0 border-b border-red-200 bg-red-50 px-5 py-3 text-[13px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                                 {logError}
                             </div>
                         ) : null}
@@ -1653,7 +1653,7 @@ export default function PluginTaskCenter({
                             className="min-h-0 flex-1 overflow-auto bg-transparent p-5"
                         >
                             {parsedLogSegments.length > 0 ? (
-                                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-200">
+                                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-5 text-gray-700 dark:text-gray-200">
                                     {parsedLogSegments.map(
                                         (segment, index) => (
                                             <span
