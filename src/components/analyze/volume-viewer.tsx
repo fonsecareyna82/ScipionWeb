@@ -160,6 +160,9 @@ const SLICE_LINE_PX = 1.5;
 const SLICE_CROSS_DOT_PX = 6;
 const MEASUREMENT_LINE_PX = 2.5;
 const MEASUREMENT_DOT_PX = 7;
+// The measured distance: its text size and its gap from the line, in screen pixels
+const MEASUREMENT_LABEL_PX = 13;
+const MEASUREMENT_LABEL_GAP_PX = 8;
 
 function screenStroke(widthPx: number) {
   return { strokeWidth: widthPx, vectorEffect: "non-scaling-stroke" as const };
@@ -4520,6 +4523,8 @@ function OrthoSlicePanel({
   const measurementPointerRef = useRef<number | null>(null);
   const panPointerRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null);
   const [measurement, setMeasurement] = useState<SliceMeasurement | null>(null);
+  // The slice view's size on screen, to draw the measurement's text at a fixed size whatever the zoom
+  const [svgScreenSize, setSvgScreenSize] = useState<{ width: number; height: number } | null>(null);
   const viewBoxW = rotate90 ? imageHeight : imageWidth;
   const viewBoxH = rotate90 ? imageWidth : imageHeight;
   const viewportCenterX = viewport.center[viewportHorizontalAxis];
@@ -4534,6 +4539,19 @@ function OrthoSlicePanel({
     setMeasurement(null);
     measurementPointerRef.current = null;
   }, [measurementResetKey, currentSlice]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !imageUrl || typeof ResizeObserver === "undefined") return;
+    const read = () => {
+      const { width, height } = svg.getBoundingClientRect();
+      if (width > 0 && height > 0) setSvgScreenSize({ width, height });
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [imageUrl]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -4648,10 +4666,24 @@ function OrthoSlicePanel({
       (end.x - start.x) * measurementScaleX,
       (end.y - start.y) * measurementScaleY,
     );
-    const midX = (start.x + end.x) / 2;
-    const midY = (start.y + end.y) / 2;
-    const labelOffset = Math.max(3, Math.min(imageWidth, imageHeight) * 0.025);
-    const fontSize = Math.max(3, Math.min(imageWidth, imageHeight) * 0.045);
+    // Image units per screen pixel (the view keeps its aspect: the larger ratio is the one shown)
+    const unitsPerPx = svgScreenSize
+      ? Math.max(viewportWidth / svgScreenSize.width, viewportHeight / svgScreenSize.height)
+      : Math.min(viewportWidth, viewportHeight) / 400;
+    const fontSize = MEASUREMENT_LABEL_PX * unitsPerPx;
+    // The text stands beside the line, never on it: moved off its middle at a right angle
+    const lineX = end.x - start.x;
+    const lineY = end.y - start.y;
+    const lineLength = Math.hypot(lineX, lineY);
+    let normalX = lineLength > 0 ? -lineY / lineLength : 0;
+    let normalY = lineLength > 0 ? lineX / lineLength : -1;
+    if (normalY > 0 || (normalY === 0 && normalX > 0)) {
+      normalX = -normalX;
+      normalY = -normalY;
+    }
+    const offset = (MEASUREMENT_LABEL_GAP_PX + MEASUREMENT_LABEL_PX / 2) * unitsPerPx;
+    const midX = (start.x + end.x) / 2 + normalX * offset;
+    const midY = (start.y + end.y) / 2 + normalY * offset;
 
     return (
       <g pointerEvents="none">
@@ -4672,16 +4704,17 @@ function OrthoSlicePanel({
         ))}
         <text
           x={midX}
-          y={midY - labelOffset}
+          y={midY}
           textAnchor="middle"
-          dominantBaseline="auto"
+          dominantBaseline="central"
           fill="#fef3c7"
           stroke="rgba(17,24,39,0.92)"
-          strokeWidth={fontSize * 0.18}
+          strokeWidth={fontSize * 0.22}
+          strokeLinejoin="round"
           paintOrder="stroke"
           fontSize={fontSize}
-          fontWeight={700}
-          transform={rotate90 ? `rotate(-90 ${midX} ${midY - labelOffset})` : undefined}
+          fontWeight={600}
+          transform={rotate90 ? `rotate(-90 ${midX} ${midY})` : undefined}
         >
           {distance.toFixed(1)} {measurementUnit}
         </text>
