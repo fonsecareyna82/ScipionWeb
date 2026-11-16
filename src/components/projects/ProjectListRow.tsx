@@ -9,7 +9,7 @@ import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
 import { projectAccessLabel } from "@/utils/project-access";
 import { Pin } from "lucide-react";
-import ProjectStatusSummary, { RunningDot } from "./ProjectStatusSummary";
+import { RunningDot } from "./ProjectStatusSummary";
 import { ACTIVE_STATUSES, countIn, formatFullDate, formatRelativeDate } from "@/utils/project-list";
 
 interface ProjectListRowProps {
@@ -252,7 +252,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           crispText,
           "group grid cursor-pointer grid-cols-1 gap-3 rounded-[10px] border bg-white px-4 py-3.5 outline-none transition-[border-color,box-shadow] duration-200",
           "shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-gray-900",
-          "xl:grid-cols-[minmax(240px,1fr)_minmax(200px,280px)_150px_130px_minmax(160px,220px)_auto] xl:items-center",
+          "xl:grid-cols-[minmax(260px,1fr)_130px_150px_130px_minmax(160px,220px)_auto] xl:items-center",
           isSelected
             ? "border-brand-400 ring-2 ring-brand-500/15 dark:border-brand-600"
             : "border-gray-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-gray-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-gray-700 dark:hover:border-gray-500",
@@ -297,11 +297,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Protocols
             </div>
-            {statusCounts && Number(protocolsCount ?? 0) > 0 ? (
-              <ProjectStatusSummary counts={statusCounts} className="text-[13.5px] text-gray-500 dark:text-gray-400" />
-            ) : (
-              <div className="font-semibold text-slate-950 dark:text-white">{protocolsCount ?? "0"}</div>
-            )}
+            <div className="font-semibold text-slate-950 dark:text-white">{protocolsCount ?? "0"}</div>
           </div>
         </div>
 

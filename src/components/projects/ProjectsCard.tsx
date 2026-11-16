@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { Layers3, Pin, X, UserPlus2 } from "lucide-react";
-import ProjectStatusSummary, { RunningDot } from "./ProjectStatusSummary";
+import { RunningDot } from "./ProjectStatusSummary";
 import { ACTIVE_STATUSES, countIn, formatFullDate, formatRelativeDate } from "@/utils/project-list";
 
 import {
@@ -1299,14 +1299,10 @@ export default function ProjectCard(props: ProjectCardProps) {
             <div className="mt-auto px-4 pb-3 pt-3 md:px-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-gray-500 dark:text-gray-400">
-                  {statusCounts && protocolCount > 0 ? (
-                    <ProjectStatusSummary counts={statusCounts} />
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5" title="Protocols">
-                      <Layers3 className="h-4 w-4" />
-                      <span className="font-medium tabular-nums text-gray-800 dark:text-gray-200">{protocolsText}</span>
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1.5" title="Protocols">
+                    <Layers3 className="h-4 w-4" />
+                    <span className="font-medium tabular-nums text-gray-800 dark:text-gray-200">{protocolsText}</span>
+                  </span>
                   {updatedAt || createdAt ? (
                     <span
                       className="inline-flex items-center gap-1.5"

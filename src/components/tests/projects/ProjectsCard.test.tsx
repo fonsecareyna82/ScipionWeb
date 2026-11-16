@@ -134,7 +134,7 @@ describe("ProjectsCard", () => {
     expect(screen.getByText("12 GB")).toBeInTheDocument();
   });
 
-  it("says how its protocols are doing and can be pinned", () => {
+  it("counts its protocols, shows what runs and can be pinned", () => {
     const onTogglePin = vi.fn();
     renderWithProviders(
       <ProjectCard
@@ -149,10 +149,7 @@ describe("ProjectsCard", () => {
       { service: createProjectServiceMock() },
     );
 
-    const summary = screen.getByTestId("project-status-summary");
-    expect(summary).toHaveTextContent("2running");
-    expect(summary).toHaveTextContent("1failed");
-    expect(summary).toHaveTextContent("3finished");
+    expect(screen.getByText("6 protocols")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "2 protocols running" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Pin Beta" }));
