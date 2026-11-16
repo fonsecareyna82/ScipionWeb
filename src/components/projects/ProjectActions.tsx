@@ -249,7 +249,7 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, onShare, c
 
   const triggerClass = classNames(
     crispText,
-    "flex h-9 w-9 items-center justify-center rounded-xl border transition",
+    "flex h-8 w-8 items-center justify-center rounded-[10px] border transition",
     "border-gray-300/80 bg-white text-gray-700 shadow-sm hover:border-gray-400 hover:shadow-md",
     "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-600",
     isMenuOpen ? "border-indigo-500/40 ring-2 ring-indigo-500/15" : "",

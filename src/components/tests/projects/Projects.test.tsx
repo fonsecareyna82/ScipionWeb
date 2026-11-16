@@ -238,7 +238,7 @@ describe("Projects page", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the actions dropdown and shows create/import options", async () => {
+  it("shows New project and opens the import menu", async () => {
     const service = createProjectServiceMock({
       fetchList: vi.fn().mockResolvedValue([]),
     });
@@ -249,9 +249,9 @@ describe("Projects page", () => {
       expect(screen.getByText("No projects found.")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Actions/i }));
+    expect(screen.getByRole("button", { name: /New project/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Import$/ }));
 
-    expect(screen.getByText("New project")).toBeInTheDocument();
     expect(screen.getByText("Import project")).toBeInTheDocument();
     expect(screen.getByText("Import workflow")).toBeInTheDocument();
   });
@@ -285,7 +285,7 @@ describe("Projects page", () => {
     fireEvent.click(
       screen.getByRole(
         "button",
-        { name: /Actions/i },
+        { name: /^Import$/ },
       ),
     );
 
@@ -333,8 +333,7 @@ describe("Projects page", () => {
 
     expect(await screen.findByText("Existing Project")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Actions/i }));
-    fireEvent.click(screen.getByText("New project"));
+    fireEvent.click(screen.getByRole("button", { name: /New project/i }));
 
     expect(screen.getByText("Mock NewProjectModal")).toBeInTheDocument();
 

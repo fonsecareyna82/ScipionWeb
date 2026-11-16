@@ -571,43 +571,31 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const renderViewModeToggle = () => (
     <div
-      className={classNames(
-        crispText,
-        "inline-flex rounded-xl border p-1 shadow-sm",
-        "border-gray-300/80 bg-gray-100/80",
-        "dark:border-gray-700 dark:bg-gray-950",
-      )}
+      role="group"
       aria-label="Projects view mode"
+      className="inline-flex shrink-0 rounded-[10px] border border-gray-300/85 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800/60"
     >
-      <div className="mr-2 flex items-center gap-2 px-2 text-xs text-gray-700 dark:text-gray-200">
-        <span className="pp-viewLabel">View modes</span>
-
+      {([
+        ["cards", LayoutGrid, "Cards"],
+        ["list", List, "List"],
+      ] as const).map(([mode, Icon, title]) => (
         <button
+          key={mode}
           type="button"
-          onClick={() => setViewMode("cards")}
+          title={title}
+          aria-label={`${title} view`}
+          aria-pressed={viewMode === mode}
+          onClick={() => setViewMode(mode)}
           className={classNames(
-            "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-            viewMode === "cards"
-              ? "bg-[#333d49] text-white shadow-sm"
-              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
+            "inline-flex h-9 w-10 items-center justify-center rounded-lg transition",
+            viewMode === mode
+              ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-300/80 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
+              : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
           )}
         >
-          <LayoutGrid className="h-4 w-4" />
+          <Icon className="h-4 w-4" />
         </button>
-
-        <button
-          type="button"
-          onClick={() => setViewMode("list")}
-          className={classNames(
-            "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-            viewMode === "list"
-              ? "bg-[#333d49] text-white shadow-sm"
-              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
-          )}
-        >
-          <List className="h-4 w-4" />
-        </button>
-      </div>
+      ))}
     </div>
   );
 
@@ -619,7 +607,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             <div
               key={i}
               className={classNames(
-                "h-[92px] animate-pulse rounded-2xl border px-4 py-4 shadow-sm",
+                "h-[76px] animate-pulse rounded-[10px] border px-4 py-4",
                 "border-gray-300/80 bg-white",
                 "dark:border-gray-700 dark:bg-gray-900",
               )}
@@ -633,12 +621,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     }
 
     return (
-      <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
             className={classNames(
-              "h-[210px] animate-pulse rounded-2xl border p-5 shadow-sm",
+              "h-[380px] animate-pulse rounded-[10px] border p-5",
               "border-gray-300/80 bg-white",
               "dark:border-gray-700 dark:bg-gray-900",
             )}
@@ -655,11 +643,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const renderProjectGrid = () => (
     <div
-      className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2 lg:grid-cols-3"
       aria-label="Projects cards"
     >
       {filteredProjects.map((project) => (
-        <div key={getProjectCardKey(project)} className="mt-2 h-full">
+        <div key={getProjectCardKey(project)} className="h-full">
           <ProjectCard
             id={project.id}
             label={project.name}
@@ -722,165 +710,154 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     </div>
   );
 
+  const menuItemClass = classNames(
+    "flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[14px] transition",
+    "hover:bg-gray-50 dark:hover:bg-gray-800/70",
+  );
+
   const renderProjectsListWorkspace = () => (
     <div
       className={classNames(
         crispText,
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border p-5 shadow-sm",
-        "border-gray-300/90 bg-white",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border",
+        "border-gray-300/85 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]",
         "dark:border-gray-700 dark:bg-gray-900",
-        "lg:p-6",
       )}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="mb-4 shrink-0 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
-                Projects
-              </h3>
-              <span className="rounded-full border border-gray-300/80 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                {stats.total}
-              </span>
-            </div>
-            {/* Only a warning: a quota near its limit, or full */}
-            {myQuotas.filter((quota) => quota.full || (quota.percent ?? 0) >= 80).map((quota) => (
-              <p key={`${quota.kind}-${quota.targetId}`} data-testid="own-disk-quota"
-                 className={classNames("mt-0.5 text-sm leading-6",
-                   quota.full ? "font-semibold text-red-700 dark:text-red-300"
-                     : (quota.percent ?? 0) >= 80 ? "text-amber-800 dark:text-amber-300" : "text-gray-700 dark:text-gray-300")}>
-                {quota.kind === "user" ? "Your disk quota" : `The disk quota of ${quota.name ?? "your group"}`}:{" "}
-                {formatBytes(quota.usedBytes)} of {formatBytes(quota.limitBytes)}
-                {quota.percent != null ? ` (${Math.round(quota.percent)} %)` : ""}
-                {quota.full ? ". It is full: nothing new can be launched in its projects until space is freed." : "."}
+      <div className="relative flex min-h-0 flex-1 flex-col bg-gray-100 dark:bg-gray-950">
+        <div className="shrink-0 border-b border-gray-200/90 bg-white px-5 py-4 dark:border-gray-700 dark:bg-gray-900 lg:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-[19px] font-semibold text-gray-900 dark:text-white">Projects</h1>
+                <span className="rounded-full bg-gray-200/80 px-2.5 py-0.5 text-[13px] font-semibold tabular-nums text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                  {stats.total}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[13.5px] text-gray-500 dark:text-gray-400">
+                Your projects and the ones shared with you
               </p>
-            ))}
-          </div>
+              {/* Only a warning: a quota near its limit, or full */}
+              {myQuotas.filter((quota) => quota.full || (quota.percent ?? 0) >= 80).map((quota) => (
+                <p key={`${quota.kind}-${quota.targetId}`} data-testid="own-disk-quota"
+                   className={classNames("mt-1 text-[13.5px] leading-6",
+                     quota.full ? "font-semibold text-red-700 dark:text-red-300"
+                       : (quota.percent ?? 0) >= 80 ? "text-amber-800 dark:text-amber-300" : "text-gray-700 dark:text-gray-300")}>
+                  {quota.kind === "user" ? "Your disk quota" : `The disk quota of ${quota.name ?? "your group"}`}:{" "}
+                  {formatBytes(quota.usedBytes)} of {formatBytes(quota.limitBytes)}
+                  {quota.percent != null ? ` (${Math.round(quota.percent)} %)` : ""}
+                  {quota.full ? ". It is full: nothing new can be launched in its projects until space is freed." : "."}
+                </p>
+              ))}
+            </div>
 
-          <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-            {renderViewModeToggle()}
-
-            <div className="relative" ref={dropdownRef}>
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowDropdown((prev) => !prev)}
-                className={classNames(
-                  "inline-flex items-center gap-2 rounded-[10px] px-3 py-2 text-sm font-semibold transition",
-                  "text-white shadow-sm hover:shadow-md hover:brightness-[0.98]",
-                  "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600",
-                )}
+                onClick={() => setShowCreate(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-[14px] font-semibold text-white shadow-sm transition hover:bg-brand-600"
               >
-                <span className="whitespace-nowrap">Actions</span>
-                <ChevronDownIcon className="h-5 w-5 opacity-90" />
+                <PlusCircle className="h-4 w-4" />
+                New project
               </button>
 
-              {showDropdown && (
-                <div
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={showDropdown}
+                  onClick={() => setShowDropdown((prev) => !prev)}
                   className={classNames(
-                    crispText,
-                    "absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl",
-                    "border-gray-300/90 bg-white",
-                    "dark:border-gray-700 dark:bg-gray-900",
+                    "inline-flex h-10 items-center gap-1.5 rounded-[10px] border px-3.5 text-[14px] font-medium transition",
+                    "border-gray-300 bg-white text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-900",
+                    "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-white/[0.05]",
                   )}
                 >
-                  <ul className="text-sm text-gray-800 dark:text-gray-200">
-                    <li>
-                      <button
-                        type="button"
-                        className={classNames(
-                          "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
-                        )}
-                        onClick={() => {
-                          setShowDropdown(false);
-                          setShowCreate(true);
-                        }}
-                      >
-                        <PlusCircle className="h-4 w-4" />
-                        <span>New project</span>
-                      </button>
-                    </li>
+                  <Download className="h-4 w-4" />
+                  Import
+                  <ChevronDownIcon className="h-4 w-4 opacity-70" />
+                </button>
 
-                    <li>
-                      <button
-                        type="button"
-                        className={classNames(
-                          "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
-                        )}
-                        onClick={() => {
-                          setShowDropdown(false);
-                          setShowImportProject(true);
-                        }}
-                      >
-                        <Download className="h-4 w-4" />
-                        <span>Import project</span>
-                      </button>
-                    </li>
-
-                    <li>
-                      <button
-                        type="button"
-                        className={classNames(
-                          "flex w-full items-center gap-2 px-4 py-3 text-left transition",
-                          "hover:bg-gray-50 dark:hover:bg-gray-800/70",
-                        )}
-                        onClick={() => {
-                          setShowDropdown(false);
-                          setShowImportWorkflow(true);
-                        }}
-                      >
-                        <CloudDownload className="h-4 w-4" />
-                        <span>Import workflow</span>
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              )}
+                {showDropdown && (
+                  <div
+                    role="menu"
+                    className={classNames(
+                      crispText,
+                      "absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-[10px] border py-1 shadow-lg",
+                      "border-gray-300/90 bg-white text-gray-800",
+                      "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={menuItemClass}
+                      onClick={() => {
+                        setShowDropdown(false);
+                        setShowImportProject(true);
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Import project</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={menuItemClass}
+                      onClick={() => {
+                        setShowDropdown(false);
+                        setShowImportWorkflow(true);
+                      }}
+                    >
+                      <CloudDownload className="h-4 w-4" />
+                      <span>Import workflow</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mb-4 shrink-0 grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <div className="lg:col-span-6">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search projects…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className={classNames(
-                  crispText,
-                  "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
-                  "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
-                  "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
-                  "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
-                )}
-              />
-            </div>
+        <div className="flex shrink-0 items-center gap-3 px-5 pt-4 pb-4 lg:px-6">
+          <div className="relative min-w-0 flex-1 sm:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search projects…"
+              aria-label="Search projects"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={classNames(
+                crispText,
+                "h-10 w-full rounded-[10px] border pl-9 pr-3 text-[14.5px] outline-none transition",
+                "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400",
+                "focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10",
+                "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
+                "dark:focus:border-brand-800",
+              )}
+            />
           </div>
+          <div className="ml-auto">{renderViewModeToggle()}</div>
         </div>
 
         <div
-          className="min-h-0 flex-1 overscroll-contain"
+          className="min-h-0 flex-1 overscroll-contain px-5 pb-5 lg:px-6"
           style={{
             overflowY: "auto",
             WebkitOverflowScrolling: "touch",
-            paddingRight: 4,
           }}
         >
           {loading && renderLoadingSkeleton()}
 
           {!loading && loadError && (
-            <div className="rounded-2xl border border-red-200/80 bg-red-50 p-4 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+            <div className="rounded-[10px] border border-red-200/80 bg-red-50 p-4 text-[14px] leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
               Error loading projects: {loadError}
             </div>
           )}
 
           {!loading && !loadError && filteredProjects.length === 0 && (
-            <div className="rounded-2xl border border-gray-300/80 bg-white p-6 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+            <div className="rounded-[10px] border border-dashed border-gray-300 px-6 py-12 text-center text-[15px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
               No projects found.
             </div>
           )}

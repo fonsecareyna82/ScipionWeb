@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
-import { X, UserPlus2 } from "lucide-react";
+import { Layers3, X, UserPlus2 } from "lucide-react";
 
 import {
   CalendarIcon,
@@ -301,6 +301,7 @@ export default function ProjectCard(props: ProjectCardProps) {
   const {
     id,
     label,
+    value,
     badgeValue,
     createdAt,
     updatedAt,
@@ -309,7 +310,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     onSelect,
     description = "",
     status,
-    icon = <FolderIcon className="h-5 w-5 text-gray-900 dark:text-white" />,
+    icon = <FolderIcon className="h-5 w-5 text-gray-700 dark:text-gray-200" />,
     onDelete,
     onRename,
     onShare,
@@ -364,6 +365,9 @@ export default function ProjectCard(props: ProjectCardProps) {
     () => projectAccessLabel({ isOwner: normalizedIsOwner, isShared: normalizedIsShared, permission, accessVia }),
     [normalizedIsOwner, normalizedIsShared, permission, accessVia],
   );
+
+  const protocolCount = Number(value ?? 0);
+  const protocolsText = `${Number.isFinite(protocolCount) ? protocolCount : 0} ${protocolCount === 1 ? "protocol" : "protocols"}`;
 
   const statusLabel = useMemo(() => {
     const raw = String(status ?? badgeValue ?? "").trim();
@@ -1030,16 +1034,12 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const cardClass = classNames(
     crispText,
-    "relative min-h-[248px] cursor-pointer overflow-hidden rounded-[22px] border p-4 transition-all duration-300 md:p-5",
-    "border-slate-200/90 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_26%),linear-gradient(145deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))]",
-    "shadow-[0_12px_40px_rgba(15,23,42,0.07)] border-slate-300 hover:border-slate-500",
-    "dark:border-gray-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_24%),linear-gradient(145deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))]",
-    !isSelected ? "hover:border-slate-300 dark:hover:border-slate-700 " : "",
-    !isRenaming && !isSelected
-      ? "hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(15,23,42,0.12)]"
-      : "",
-    "active:border-indigo-500/45 active:ring-2 active:ring-inset active:ring-indigo-500/12",
-    isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/14" : "",
+    "relative min-h-[248px] cursor-pointer overflow-hidden rounded-[10px] border outline-none transition-[border-color,box-shadow] duration-200",
+    "bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-gray-900",
+    isSelected
+      ? "border-brand-400 ring-2 ring-brand-500/15 dark:border-brand-600"
+      : "border-gray-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-gray-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-gray-700 dark:hover:border-gray-500",
+    "focus-visible:ring-2 focus-visible:ring-brand-500/30",
   );
 
 
@@ -1084,107 +1084,54 @@ export default function ProjectCard(props: ProjectCardProps) {
           onContextMenu={openContextMenu}
           className={cardClass}
         >
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent" />
-            <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-indigo-300/25 blur-3xl dark:bg-indigo-500/12" />
-            <div className="absolute -left-8 bottom-4 h-24 w-24 rounded-full bg-cyan-200/30 blur-3xl dark:bg-cyan-500/10" />
-            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/55 to-transparent dark:from-gray-950/20 dark:to-transparent" />
-          </div>
-
           <div className="relative flex h-full flex-col">
-            <div
-              className={classNames(
-                "-mx-4 -mt-4 mb-0 rounded-t-[22px] border-b px-4 pb-3.5 pt-4 md:-mx-5 md:-mt-7 md:px-5 md:pt-5",
-                "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))]",
-                "dark:border-gray-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.78))]",
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <div
+            <div className="flex items-center gap-2.5 border-b border-gray-200/90 bg-gray-50 px-4 py-2 dark:border-gray-700 dark:bg-gray-800/40 md:px-5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center [&_svg]:h-[18px] [&_svg]:w-[18px]">
+                {icon}
+              </span>
+              <span
+                className="min-w-0 truncate text-[15.5px] font-semibold text-gray-900 dark:text-white"
+                title={label}
+              >
+                {newLabel}
+              </span>
+              <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[13px] font-semibold tabular-nums leading-5 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/30">
+                {projectIdLabel}
+              </span>
+
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="hidden items-center rounded-md border border-gray-300/80 bg-white px-2 py-0.5 text-[13px] font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 sm:inline-flex">
+                  {accessLabel}
+                </span>
+                {showGuestBadge ? (
+                  <span className="rounded-md border border-sky-300/80 bg-sky-50 px-2 py-0.5 text-[13px] font-medium text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
+                    Guest
+                  </span>
+                ) : null}
+                {statusLabel ? (
+                  <span
                     className={classNames(
-                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border shadow-sm",
-                      "border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,1),rgba(238,242,255,0.95))]",
-                      "dark:border-slate-700 dark:bg-[linear-gradient(145deg,rgba(30,41,59,0.96),rgba(15,23,42,0.96))]",
+                      "rounded-md border px-2 py-0.5 text-[13px] font-medium",
+                      getStatusToneClasses(statusLabel),
                     )}
                   >
-                    {icon}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <span
-                        className={classNames(
-                          "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.08em]",
-                          "border-indigo-300/80 bg-indigo-50 text-indigo-800",
-                          "dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200",
-                        )}
-                      >
-                        {projectIdLabel}
-                      </span>
-
-                      <span
-                        className={classNames(
-                          "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold",
-                          "border-slate-300/80 bg-white/90 text-slate-700",
-                          "dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200",
-                        )}
-                      >
-                        {accessLabel}
-                      </span>
-
-                      {showGuestBadge ? (
-                        <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
-                          Guest
-                        </span>
-                      ) : null}
-
-                      {statusLabel ? (
-                        <span
-                          className={classNames(
-                            "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold",
-                            getStatusToneClasses(statusLabel),
-                          )}
-                        >
-                          {statusLabel}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className="truncate text-[16px] font-semibold leading-5 tracking-[0.01em] text-slate-950 dark:text-white"
-                        title={label}
-                      >
-                        {newLabel}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="shrink-0 pt-0.5">
-                  <ProjectAction
-                    icon={null}
-                    label=""
-                    onOpen={handleOpen}
-                    onRename={canModify ? handleRename : undefined}
-                    onRemove={canModify ? handleRemove : undefined}
-                    onShare={canModify ? handleShare : undefined}
-                  />
-                </div>
+                    {statusLabel}
+                  </span>
+                ) : null}
+                <ProjectAction
+                  icon={null}
+                  label=""
+                  onOpen={handleOpen}
+                  onRename={canModify ? handleRename : undefined}
+                  onRemove={canModify ? handleRemove : undefined}
+                  onShare={canModify ? handleShare : undefined}
+                />
               </div>
             </div>
 
-            <div className="mt-3">
-              <div
-                className={classNames(
-                  "overflow-hidden rounded-[20px] border",
-                  "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(248,250,252,0.96))]",
-                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_10px_24px_rgba(15,23,42,0.06)]",
-                  "dark:border-gray-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.56),rgba(2,6,23,0.82))]",
-                )}
-              >
-                <div className="relative h-[268px] w-full bg-slate-50/80 dark:bg-gray-900/70">
+            <div className="px-4 pt-3 md:px-5">
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-950">
+                <div className="relative h-[268px] w-full">
                   {showGalleryLoading ? (
                     <div className="h-full overflow-hidden px-2.5 py-2.5">
                       <div className="flex h-full min-w-max items-stretch gap-2.5">
@@ -1205,8 +1152,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                     </div>
                   ) : showGallery ? (
                     <>
-                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
-                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-gray-900 dark:via-gray-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-100 via-gray-100/90 to-transparent dark:from-gray-950 dark:via-gray-950/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-100 via-gray-100/90 to-transparent dark:from-gray-950 dark:via-gray-950/90 dark:to-transparent" />
 
                       <div className="h-full overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin]">
                         <div className="flex h-full min-w-max items-stretch gap-3">
@@ -1223,20 +1170,20 @@ export default function ProjectCard(props: ProjectCardProps) {
                               >
                                 <div
                                   className={classNames(
-                                    "grid h-full grid-rows-[auto,1fr,auto] overflow-hidden rounded-[20px] border transition",
-                                    "border-gray-200/90 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)]",
-                                    "dark:border-gray-800 dark:bg-gray-950 dark:shadow-[0_8px_24px_rgba(0,0,0,0.26)]",
-                                    "group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]",
+                                    "grid h-full grid-rows-[auto,1fr,auto] overflow-hidden rounded-lg border transition",
+                                    "border-gray-300 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.10)]",
+                                    "dark:border-gray-600 dark:bg-gray-800/80 dark:shadow-[0_1px_3px_rgba(0,0,0,0.4)]",
+                                    "group-hover:border-gray-400 dark:group-hover:border-gray-500",
                                   )}
                                 >
                                   <div
                                     className={classNames(
                                       "flex items-center justify-between gap-2 border-b px-3 py-1.5",
-                                      "border-gray-200/80 bg-gray-50",
-                                      "dark:border-gray-800 dark:bg-gray-900",
+                                      "border-gray-200 bg-gray-50",
+                                      "dark:border-gray-700 dark:bg-gray-900/70",
                                     )}
                                   >
-                                    <div className="truncate text-[12px]  text-gray-800 dark:text-slate-200">
+                                    <div className="truncate text-[13px] font-medium text-gray-800 dark:text-slate-200">
                                       {group.label ?? `Protocol ${String(group.protocolId)}`}
                                     </div>
                                   </div>
@@ -1247,7 +1194,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                         <div
                                           key={`${String(group.protocolId)}-${output.outputName ?? index}`}
                                           className={classNames(
-                                            "min-w-0 flex-1 overflow-hidden rounded-[14px] border",
+                                            "min-w-0 flex-1 overflow-hidden rounded-md border",
                                             "border-gray-200 bg-gray-50",
                                             "dark:border-gray-800 dark:bg-gray-900",
                                           )}
@@ -1269,15 +1216,15 @@ export default function ProjectCard(props: ProjectCardProps) {
                                   <div
                                     className={classNames(
                                       "border-t px-3 py-1.5",
-                                      "border-gray-200/80 bg-white",
-                                      "dark:border-gray-800 dark:bg-gray-950",
+                                      "border-gray-200 bg-white",
+                                      "dark:border-gray-700 dark:bg-transparent",
                                     )}
                                   >
 
                                     {group.status ? (
                                       <span
                                         className={classNames(
-                                          "inline-flex max-w-[96px] items-center truncate rounded-full border px-2 py-0.5 text-[12px]",
+                                          "inline-flex max-w-[110px] items-center truncate rounded-md border px-2 py-0.5 text-[13px]",
                                           getStatusToneClasses(group.status),
                                         )}
                                       >
@@ -1330,54 +1277,25 @@ export default function ProjectCard(props: ProjectCardProps) {
               </div>
             </div>
 
-            <div className="mt-auto pt-3">
-              <div
-                className={classNames(
-                  "flex flex-wrap items-center justify-between gap-2.5 border-t pt-3",
-                  "border-slate-200/80 dark:border-gray-800",
-                )}
-              >
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  {updatedAt ? (
-                    <span
-                      className={classNames(
-                        "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
-                        "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
-                      )}
-                    >
-                      <CalendarIcon className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
-                      <span className="text-slate-500 dark:text-slate-400">Updated</span>
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        {formatDateShort(updatedAt)}
-                      </span>
-                    </span>
-                  ) : createdAt ? (
-                    <span
-                      className={classNames(
-                        "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
-                        "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
-                      )}
-                    >
-                      <CalendarIcon className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-300" />
-                      <span className="text-slate-500 dark:text-slate-400">Created</span>
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        {formatDateShort(createdAt)}
+            <div className="mt-auto px-4 pb-3 pt-3 md:px-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13.5px] text-gray-500 dark:text-gray-400">
+                  <span className="inline-flex items-center gap-1.5" title="Protocols">
+                    <Layers3 className="h-4 w-4" />
+                    <span className="font-medium tabular-nums text-gray-800 dark:text-gray-200">{protocolsText}</span>
+                  </span>
+                  {updatedAt || createdAt ? (
+                    <span className="inline-flex items-center gap-1.5" title={updatedAt ? "Updated" : "Created"}>
+                      <CalendarIcon className="h-4 w-4" />
+                      <span className="font-medium text-gray-800 dark:text-gray-200">
+                        {formatDateShort(updatedAt || createdAt)}
                       </span>
                     </span>
                   ) : null}
-
                   {diskUsage ? (
-                    <span
-                      className={classNames(
-                        "inline-flex items-center gap-2 rounded-full border px-3 py-1.25",
-                        "border-slate-200 bg-white/88 text-slate-700",
-                        "dark:border-gray-800 dark:bg-gray-900/88 dark:text-slate-300",
-                      )}
-                    >
-                      <StorageIcon className="h-3.5 w-3.5 text-cyan-700 dark:text-cyan-300" />
-                      <span className="font-semibold text-slate-900 dark:text-white">{diskUsage}</span>
+                    <span className="inline-flex items-center gap-1.5" title="Disk used">
+                      <StorageIcon className="h-4 w-4" />
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{diskUsage}</span>
                     </span>
                   ) : null}
                 </div>
@@ -1389,11 +1307,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                     e.stopPropagation();
                     handleOpen();
                   }}
-                  className={classNames(
-                    "inline-flex items-center gap-2 rounded-[12px] px-4 py-2 text-[13px] font-semibold transition-all duration-200",
-                    "bg-[linear-gradient(135deg,rgba(79,70,229,1),rgba(14,165,233,1),rgba(6,182,212,1))] text-white shadow-[0_10px_24px_rgba(59,130,246,0.28)]",
-                    "hover:-translate-y-0.5 hover:brightness-[1.02] hover:shadow-[0_16px_30px_rgba(59,130,246,0.32)]",
-                  )}
+                  className="inline-flex h-9 items-center gap-2 rounded-[10px] bg-brand-500 px-3.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-brand-600"
                 >
                   <OpenFolderIcon className="h-4 w-4" />
                   Open project
@@ -1411,7 +1325,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                 transition={{ duration: 0.15 }}
                 className={classNames(
                   crispText,
-                  "absolute inset-0 z-20 overflow-hidden rounded-[28px] border",
+                  "absolute inset-0 z-20 overflow-hidden rounded-[10px] border",
                   "border-gray-300/90 bg-white",
                   "dark:border-gray-700 dark:bg-gray-900",
                 )}

@@ -255,20 +255,21 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         }}
         className={classNames(
           crispText,
-          "group grid cursor-pointer grid-cols-1 gap-3 rounded-2xl border px-4 py-4 transition-all duration-200",
-          "border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md",
-          "dark:border-gray-800 dark:bg-gray-950/70 dark:hover:border-slate-700",
-          "xl:grid-cols-[minmax(260px,1fr)_200px_320px_280px_280px_52px] xl:items-center",
-          isSelected ? "border-indigo-400 ring-2 ring-indigo-500/15 dark:border-indigo-600" : "",
+          "group grid cursor-pointer grid-cols-1 gap-3 rounded-[10px] border bg-white px-4 py-3.5 outline-none transition-[border-color,box-shadow] duration-200",
+          "shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-gray-900",
+          "xl:grid-cols-[minmax(260px,1fr)_160px_200px_160px_minmax(180px,240px)_auto] xl:items-center",
+          isSelected
+            ? "border-brand-400 ring-2 ring-brand-500/15 dark:border-brand-600"
+            : "border-gray-300 shadow-[0_1px_3px_rgba(15,23,42,0.08)] hover:border-gray-400 hover:shadow-[0_6px_18px_rgba(15,23,42,0.12)] dark:border-gray-700 dark:hover:border-gray-500",
         )}
       >
         <div className="min-w-0">
           <div className="flex min-w-0 items-start gap-3">
             <div
               className={classNames(
-                "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm",
-                "border-indigo-200 bg-indigo-50 text-indigo-700",
-                "dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200",
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border",
+                "border-gray-200 bg-gray-50 text-gray-700",
+                "dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
               )}
             >
               <FolderOpen className="h-5 w-5" />
@@ -282,12 +283,12 @@ export default function ProjectListRow(props: ProjectListRowProps) {
                 >
                   {name}
                 </span>
-                <span className="rounded-full border border-indigo-300/80 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200">
+                <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[13px] font-semibold tabular-nums leading-5 text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/30">
                   {projectIdLabel}
                 </span>
               </div>
 
-              <p className="mt-1 line-clamp-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              <p className="line-clamp-1 text-[13.5px] leading-6 text-gray-600 dark:text-gray-300">
                 {description?.trim() || "No description available."}
               </p>
             </div>
@@ -295,9 +296,9 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         </div>
 
         <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-          <Layers3 className="h-4 w-4 text-slate-400" />
+          <Layers3 className="h-4 w-4 text-gray-400" />
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-500">
+            <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Protocols
             </div>
             <div className="font-semibold text-slate-950 dark:text-white">{protocolsCount ?? "0"}</div>
@@ -307,7 +308,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
           <CalendarDays className="h-4 w-4 text-slate-400" />
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-500">
+            <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Updated
             </div>
             <div className="font-medium text-slate-950 dark:text-white">{formatDateShort(updatedAt ?? createdAt)}</div>
@@ -317,7 +318,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
           <Database className="h-4 w-4 text-slate-400" />
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-500">
+            <div className="text-[13px] text-gray-500 dark:text-gray-400">
               Storage
             </div>
             <div className="font-medium text-slate-950 dark:text-white">{diskUsage ?? "—"}</div>
@@ -327,13 +328,13 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={classNames(
-              "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+              "inline-flex rounded-md border px-2 py-0.5 text-[13px] font-medium",
               getStatusToneClasses(statusLabel),
             )}
           >
             {statusLabel}
           </span>
-          <span className="inline-flex rounded-full border border-slate-300/80 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200">
+          <span className="inline-flex rounded-md border border-gray-300/80 bg-white px-2 py-0.5 text-[13px] font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
             {accessLabel}
           </span>
         </div>
@@ -346,7 +347,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
               event.stopPropagation();
               handleOpen();
             }}
-            className="hidden h-9 items-center gap-2 rounded-xl border border-slate-300/80 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:shadow-md dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 xl:inline-flex"
+            className="hidden h-9 items-center gap-2 rounded-[10px] bg-brand-500 px-3.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-brand-600 xl:inline-flex"
           >
             Open
           </button>
