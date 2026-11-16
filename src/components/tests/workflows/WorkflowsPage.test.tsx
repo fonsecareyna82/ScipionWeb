@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -35,6 +35,7 @@ describe("WorkflowsPage", () => {
             },
         ]);
         serviceMocks.fetchList.mockResolvedValue([]);
+        window.localStorage.clear();
     });
 
     it("shows the name of the selected workflow in its details", async () => {
@@ -59,11 +60,54 @@ describe("WorkflowsPage", () => {
     it("selects a workflow by clicking anywhere in its row, as on its description", async () => {
         render(<WorkflowsPage />);
 
-        // The description column, outside the name button (which repeats it for small screens)
-        const descriptions = await screen.findAllByText("Movies to 2D classes");
-        const description = descriptions.find((element) => !element.closest("button"));
-        fireEvent.click(description!);
+        // The description of the card, not its name
+        const [description] = await screen.findAllByText("Movies to 2D classes");
+        fireEvent.click(description);
 
         expect(await screen.findByTestId("workflow-details-name")).toHaveTextContent("SPA streaming");
+    });
+
+    describe("order and filters", () => {
+        beforeEach(() => {
+            serviceMocks.fetchWorkflows.mockResolvedValue([
+                { id: "a", name: "Tomo", description: "", protocolsCount: 9, canLoad: false,
+                  missingPluginNames: ["x"], previewGraph: { nodes: [], edges: [] } },
+                { id: "b", name: "Basic SPA", description: "", protocolsCount: 3, canLoad: true,
+                  previewGraph: { nodes: [], edges: [] } },
+            ]);
+        });
+        const names = () => screen.getAllByTitle("Click to select, double-click to load")
+            .map((card) => card.querySelector("span")?.textContent);
+
+        it("orders by name or by protocols, and remembers it", async () => {
+            render(<WorkflowsPage />);
+            await screen.findByText("Tomo");
+            expect(names()).toEqual(["Basic SPA", "Tomo"]);
+
+            fireEvent.change(screen.getByLabelText("Sort workflows by"), { target: { value: "protocols" } });
+            expect(names()).toEqual(["Tomo", "Basic SPA"]);
+            expect(window.localStorage.getItem("scipion.workflows.sort.v1")).toBe("protocols");
+        });
+
+        it("shows those ready to load or those that need plugins, with their counts", async () => {
+            render(<WorkflowsPage />);
+            await screen.findByText("Tomo");
+            const filters = screen.getByRole("group", { name: "Show workflows" });
+
+            fireEvent.click(within(filters).getByRole("button", { name: /Ready to load\s*1/ }));
+            expect(names()).toEqual(["Basic SPA"]);
+            fireEvent.click(within(filters).getByRole("button", { name: /Need plugins\s*1/ }));
+            expect(names()).toEqual(["Tomo"]);
+        });
+
+        it("offers to clear the search when nothing matches", async () => {
+            render(<WorkflowsPage />);
+            await screen.findByText("Tomo");
+            fireEvent.change(screen.getByLabelText("Search workflows"), { target: { value: "zzz" } });
+            expect(screen.getByText("No workflows match your search.")).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole("button", { name: /Clear search and filters/ }));
+            expect(names()).toHaveLength(2);
+        });
     });
 });
