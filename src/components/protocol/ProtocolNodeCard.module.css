@@ -750,10 +750,13 @@
 .statusBadge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 8px;
 
   border-radius: 9999px;
-  padding: 4px 10px;
+  /* The status is in small letters, which sit low in their line: less room above than below centres them */
+  padding: 0.06em 10px 0.2em;
 
   color: #fff;
   line-height: 1;
@@ -1355,6 +1358,47 @@
     radial-gradient(circle at top left, rgba(56, 189, 248, 0.17), transparent 46%),
     linear-gradient(135deg, rgba(14, 165, 233, 0.17), rgba(14, 165, 233, 0.05)) !important;
   border-color: rgba(56, 189, 248, 0.52);
+}
+
+/* In dark mode the status reads as a light tint of its colour on a soft tint of it (white text was hard to read). */
+:global(.dark) .statusBadge {
+  background-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e2e8f0;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.45);
+}
+
+:global(.dark) .statusBadge[data-status="running"] {
+  background-color: rgba(251, 191, 36, 0.22) !important;
+  color: #fcd34d;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.55);
+}
+
+:global(.dark) .statusBadge[data-status="scheduled"],
+:global(.dark) .statusBadge[data-status="interactive"] {
+  background-color: rgba(254, 240, 138, 0.12) !important;
+  color: #fef08a;
+  box-shadow: inset 0 0 0 1px rgba(254, 240, 138, 0.4);
+}
+
+:global(.dark) .statusBadge[data-status="finished"] {
+  background-color: rgba(34, 197, 94, 0.2) !important;
+  color: #86efac;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.5);
+}
+
+:global(.dark) .statusBadge[data-status="failed"],
+:global(.dark) .statusBadge[data-status="aborted"] {
+  background-color: rgba(248, 113, 113, 0.2) !important;
+  color: #fca5a5;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.55);
+}
+
+:global(.dark) .statusBadge[data-status="saved"],
+:global(.dark) .statusBadge[data-status="launched"],
+:global(.dark) .statusBadge[data-status="new"] {
+  background-color: rgba(56, 189, 248, 0.2) !important;
+  color: #7dd3fc;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.5);
 }
 
 :global(.dark) .header {

@@ -2588,6 +2588,7 @@ export default function ProtocolNodeCard({
                   <div className={styles.footerTopRow}>
                     <span
                       className={styles.statusBadge}
+                      data-status={normalizedStatus}
                       style={{
                         backgroundColor: statusBadgeColors[data.status] || "var(--app-n-400)",
                       }}
