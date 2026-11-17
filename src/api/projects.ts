@@ -1409,6 +1409,7 @@ export async function launchExternalViewer(
     message: raw?.message ?? null,
     pid: typeof raw?.pid === "number" ? raw.pid : null,
     data: raw?.data,
+    display: raw?.display?.path ? raw.display : null,
   };
 }
 

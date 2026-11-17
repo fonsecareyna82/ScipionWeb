@@ -157,6 +157,8 @@ export default defineConfig((env: ConfigEnv): UserConfig => {
             target: "http://localhost:8080",
             changeOrigin: true,
             secure: false,
+            // Desktop programs shown in the browser talk to the API over a WebSocket
+            ws: true,
           },
           "/uploads": {
             target: "https://scipion.i2pc.es",

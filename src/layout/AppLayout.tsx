@@ -6,6 +6,7 @@ import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 import FacilityAlertsBanner from "@/components/facility/FacilityAlertsBanner";
+import RemoteDisplayHost from "@/components/analyze/RemoteDisplayHost";
 import PageErrorBoundary from "@/components/common/PageErrorBoundary";
 
 const LayoutContent: React.FC = () => {
@@ -65,6 +66,11 @@ const LayoutContent: React.FC = () => {
           </PageErrorBoundary>
         </main>
       </div>
+
+      {/* Desktop programs opened on the server, in windows of their own over every page */}
+      <PageErrorBoundary silent label="The viewers opened on the server">
+        <RemoteDisplayHost />
+      </PageErrorBoundary>
     </div>
   );
 };

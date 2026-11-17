@@ -408,3 +408,9 @@ body.sfw-active #projectpage-portal-root .pp-dialogContent {
 body.sfw-active .MuiModal-root.sfw-launcher-dialog {
     z-index: 1300 !important;
 }
+
+/* A page inside the window (a program shown from the server) must not take the pointer while the window moves */
+.sfw-window[data-dragging="true"] iframe,
+.sfw-window[data-resizing="true"] iframe {
+    pointer-events: none;
+}

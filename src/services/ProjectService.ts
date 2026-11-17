@@ -2069,6 +2069,8 @@ export type ExternalViewerLaunchPayload = {
   objectId?: Id;
   objectKind?: string;
   params?: Record<string, unknown>;
+  /** Run it on the server and show its window in the browser. */
+  inBrowser?: boolean;
 };
 
 export type ExternalViewerLaunchResult = {
@@ -2077,6 +2079,8 @@ export type ExternalViewerLaunchResult = {
   message?: string | null;
   pid?: number | null;
   data?: unknown;
+  /** Where the browser shows it, when it was opened in the browser. */
+  display?: import("@/api/remoteDisplays").RemoteDisplay | null;
 };
 
 

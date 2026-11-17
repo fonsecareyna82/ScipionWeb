@@ -9,6 +9,7 @@ import {
 import { OpenInNew as OpenExternalIcon } from "@mui/icons-material";
 import toast from "react-hot-toast";
 import { useProjectService } from "@/ProjectServiceContext";
+import { remoteDisplaysAvailable, showRemoteDisplay } from "@/api/remoteDisplays";
 import type {
   ExternalViewerDescriptor,
   Id,
@@ -56,6 +57,10 @@ function getErrorMessage(error: unknown): string {
       return detail;
     }
 
+    if (detail && typeof detail === "object" && typeof detail.message === "string") {
+      return detail.message;
+    }
+
     if (typeof message === "string" && message.trim()) {
       return message;
     }
@@ -78,6 +83,18 @@ export default function ExternalViewersBar({
   const [viewers, setViewers] = useState<ExternalViewerDescriptor[]>([]);
   const [loading, setLoading] = useState(false);
   const [launchingViewerId, setLaunchingViewerId] = useState<string | null>(null);
+  // The server shows the viewer's window in a browser tab: no data leaves it
+  const [inBrowser, setInBrowser] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void remoteDisplaysAvailable().then((available) => {
+      if (!cancelled) setInBrowser(available);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const cacheKey = useMemo(
     () => buildExternalViewersCacheKey({ projectId, protocolId, outputName, objectId, objectKind }),
@@ -184,10 +201,16 @@ export default function ExternalViewersBar({
         {
           objectId,
           objectKind,
+          ...(inBrowser ? { inBrowser: true } : {}),
         },
       );
 
-      toast.success(result?.message || `${viewer.label} launch requested.`);
+      if (inBrowser && result?.display) {
+        // A window of the web shows it, over every page
+        showRemoteDisplay(result.display);
+      } else {
+        toast.success(result?.message || `${viewer.label} launch requested.`);
+      }
     } catch (error) {
       console.error("Failed to launch external viewer", error);
       toast.error(getErrorMessage(error));
@@ -220,7 +243,9 @@ export default function ExternalViewersBar({
 
           const title =
             viewer.available
-              ? `Open with ${viewer.label}`
+              ? inBrowser
+                ? `Open with ${viewer.label} on the server, in a window here`
+                : `Open with ${viewer.label}`
               : viewer.reason || `${viewer.label} is not available`;
 
           return (
