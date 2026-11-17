@@ -1885,6 +1885,14 @@ export default function ProjectPage() {
     }
   }, [previousNodeId]);
 
+  // A protocol deleted elsewhere (another tab, another user) is let go of as well
+  useEffect(() => {
+    const protocols = project?.protocols as Record<string, unknown> | undefined;
+    if (workflowLogsProtocolId && protocols && !(workflowLogsProtocolId in protocols)) {
+      setWorkflowLogsProtocolId(null);
+    }
+  }, [project?.protocols, workflowLogsProtocolId]);
+
   const [viewMode, setViewMode] = useState<"hierarchical" | "grid" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const projectTableRef =
@@ -10554,6 +10562,9 @@ export default function ProjectPage() {
                     }
 
                     clearAllSelectionHard();
+                    // The logs/summary panel lets go of a protocol that no longer exists
+                    setWorkflowLogsProtocolId((current) =>
+                      current && ids.map(String).includes(current) ? null : current);
 
                     toast.success(
                       ids.length > 1
