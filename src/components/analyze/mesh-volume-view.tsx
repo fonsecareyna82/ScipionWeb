@@ -78,6 +78,8 @@ export type MeshVolumeViewProps = {
     cameraStateKey?: string | number | null;
     cameraStateRef?: MutableRefObject<MeshCameraState | null>;
     onError?: (message: string) => void;
+    /** The browser took the graphics context away (too many 3D views, or the graphics card reset): rebuild the view. */
+    onContextLost?: () => void;
     active?: boolean;
     renderStyle?: MeshRenderStyle;
     lengthScale?: MeshLengthScale;
@@ -642,6 +644,7 @@ export default function MeshVolumeView({
     cameraStateKey = "default",
     cameraStateRef: externalCameraStateRef,
     onError,
+    onContextLost,
     active = true,
     renderStyle = DEFAULT_MESH_RENDER_STYLE,
     lengthScale,
@@ -660,6 +663,8 @@ export default function MeshVolumeView({
     const internalCameraStateRef = useRef<MeshCameraState | null>(null);
     const cameraStateRef = externalCameraStateRef ?? internalCameraStateRef;
     const onErrorRef = useRef(onError);
+    const onContextLostRef = useRef(onContextLost);
+    onContextLostRef.current = onContextLost;
     const materialRef = useRef<THREE.MeshPhongMaterial | null>(null);
     const renderStyleRef = useRef(renderStyle);
     const applyRenderStyleRef = useRef<() => void>(() => undefined);
@@ -799,6 +804,9 @@ export default function MeshVolumeView({
         let smaaPass: SMAAPass | null = null;
         let orientationGizmo: VolumeOrientationGizmo | null = null;
         let frameId: number | null = null;
+        let frameWindow: Window = window;
+        // The document that shows the view: the page, or the external window it was moved to
+        const viewDocument = () => host.ownerDocument ?? document;
         let dragState: DragState | null = null;
 
         try {
@@ -1172,7 +1180,7 @@ export default function MeshVolumeView({
 
             const renderFrame = () => {
                 frameId = null;
-                if (!activeRef.current || document.visibilityState === "hidden") return;
+                if (!activeRef.current || viewDocument().visibilityState === "hidden") return;
 
                 const dt = Math.min(clock.getDelta(), 0.1);
                 applyRenderQuality();
@@ -1199,8 +1207,9 @@ export default function MeshVolumeView({
             };
 
             const requestRender = () => {
-                if (frameId != null || !activeRef.current || document.visibilityState === "hidden") return;
-                frameId = window.requestAnimationFrame(renderFrame);
+                if (frameId != null || !activeRef.current || viewDocument().visibilityState === "hidden") return;
+                frameWindow = viewDocument().defaultView ?? window;
+                frameId = frameWindow.requestAnimationFrame(renderFrame);
             };
 
             requestRenderRef.current = requestRender;
@@ -1274,7 +1283,7 @@ export default function MeshVolumeView({
             };
 
             const handleVisibilityChange = () => {
-                if (document.visibilityState !== "hidden") requestRender();
+                if (viewDocument().visibilityState !== "hidden") requestRender();
             };
 
             controls.addEventListener("change", handleControlsChange);
@@ -1430,9 +1439,18 @@ export default function MeshVolumeView({
             host.addEventListener("pointerup", endDrag, { passive: false });
             host.addEventListener("pointercancel", endDrag, { passive: false });
 
+            // Without its graphics context the view would stay frozen: it is built again
+            const canvas = renderer.domElement;
+            const handleContextLost = (event: Event) => {
+                event.preventDefault();
+                onContextLostRef.current?.();
+            };
+            canvas.addEventListener("webglcontextlost", handleContextLost);
+
             return () => {
                 saveCameraState();
-                if (frameId != null) window.cancelAnimationFrame(frameId);
+                canvas.removeEventListener("webglcontextlost", handleContextLost);
+                if (frameId != null) frameWindow.cancelAnimationFrame(frameId);
                 observer.disconnect();
 
                 controls.removeEventListener("change", handleControlsChange);
@@ -1467,6 +1485,8 @@ export default function MeshVolumeView({
                 for (const pair of Object.values(slicePlanes)) pair.forEach(plane => setClippingSliceImage(plane.material, null));
                 disposeObject3d(scene);
                 renderer?.dispose();
+                // Hand the context back now, not when the page frees memory: browsers keep only a few
+                renderer?.forceContextLoss();
 
                 if (renderer?.domElement.parentElement === host) {
                     host.removeChild(renderer.domElement);

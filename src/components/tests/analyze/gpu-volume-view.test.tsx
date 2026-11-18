@@ -320,6 +320,11 @@ vi.mock("three", () => {
         dispose() {
             this.disposed = true;
         }
+
+        contextReleased = false;
+        forceContextLoss() {
+            this.contextReleased = true;
+        }
     }
 
     class Clock {
@@ -961,6 +966,28 @@ describe("GpuVolumeView", () => {
         expect(threeState.lastRenderer.addedEvents).toContain("wheel");
         expect(threeState.lastRenderer.addedEvents).toContain("pointerdown");
         expect(threeState.lastRenderer.addedEvents).toContain("dblclick");
+    });
+
+    it("asks to be built again when the browser takes its graphics context away", async () => {
+        const onContextLost = vi.fn();
+        render(<GpuVolumeView {...makeProps()} onContextLost={onContextLost} />);
+        await waitFor(() => expect(threeState.lastRenderer).not.toBeNull());
+
+        const lost = new Event("webglcontextlost", { cancelable: true });
+        threeState.lastRenderer.domElement.dispatchEvent(lost);
+
+        expect(onContextLost).toHaveBeenCalledTimes(1);
+        expect(lost.defaultPrevented).toBe(true);
+    });
+
+    it("hands its graphics context back when it closes", async () => {
+        const view = render(<GpuVolumeView {...makeProps()} />);
+        await waitFor(() => expect(threeState.lastRenderer).not.toBeNull());
+        const renderer = threeState.lastRenderer;
+
+        view.unmount();
+
+        expect(renderer.contextReleased).toBe(true);
     });
 
     it("resets the camera on double click", async () => {

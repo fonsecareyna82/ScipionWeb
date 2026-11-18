@@ -44,6 +44,8 @@ export type GpuVolumeViewProps = {
   sliceVisibility?: VolumeSliceVisibility;
   slicePlaneOpacity?: number;
   onError?: (msg: string) => void;
+  /** The browser took the graphics context away (too many 3D views, or the graphics card reset): rebuild the view. */
+  onContextLost?: () => void;
   // Set by the view: saves the current view as a PNG.
   captureRef?: React.MutableRefObject<VolumeImageCapture | null>;
 };
@@ -629,6 +631,7 @@ export default function GpuVolumeView({
   sliceVisibility = { x: false, y: false, z: false },
   slicePlaneOpacity = 0.05,
   onError,
+  onContextLost,
   captureRef,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -648,6 +651,8 @@ export default function GpuVolumeView({
   const applyCameraCommandRef = useRef<(command: VolumeCameraCommand) => void>(() => { });
 
   const onErrorRef = useRef(onError);
+  const onContextLostRef = useRef(onContextLost);
+  onContextLostRef.current = onContextLost;
   const captureRefRef = useRef(captureRef);
   captureRefRef.current = captureRef;
 
@@ -1116,12 +1121,24 @@ export default function GpuVolumeView({
     window.addEventListener("pointercancel", onPointerUp);
     renderer.domElement.addEventListener("dblclick", resetView);
 
+    // The document that shows the view: the page, or the external window it was moved to
+    const viewDocument = () => mount.ownerDocument ?? document;
+    let frameWindow: Window = window;
+
     const requestRender = () => {
-      if (rafRef.current != null || document.visibilityState === "hidden") return;
+      if (rafRef.current != null || viewDocument().visibilityState === "hidden") return;
 
       performanceState.requestedAt = performance.now();
-      rafRef.current = requestAnimationFrame(renderFrame);
+      frameWindow = viewDocument().defaultView ?? window;
+      rafRef.current = frameWindow.requestAnimationFrame(renderFrame);
     };
+
+    // Without its graphics context the view would stay frozen: it is built again
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      onContextLostRef.current?.();
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
 
     // A frame that comes long after it was asked for means the GPU is still
     // busy with the previous ones.
@@ -1145,7 +1162,7 @@ export default function GpuVolumeView({
     requestRenderRef.current = requestRender;
 
     const onVisibilityChange = () => {
-      if (document.visibilityState !== "hidden") requestRender();
+      if (viewDocument().visibilityState !== "hidden") requestRender();
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -1154,7 +1171,7 @@ export default function GpuVolumeView({
 
     function renderFrame() {
       rafRef.current = null;
-      if (document.visibilityState === "hidden") return;
+      if (viewDocument().visibilityState === "hidden") return;
 
       const rendererNow = rendererRef.current;
       const sceneNow = sceneRef.current;
@@ -1291,8 +1308,9 @@ export default function GpuVolumeView({
     cleanupRef.current = () => {
       if (captureRefRef.current?.current === capture) captureRefRef.current.current = null;
       if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
+        frameWindow.cancelAnimationFrame(rafRef.current);
       }
+      renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
 
       ro.disconnect();
 
@@ -1352,6 +1370,8 @@ export default function GpuVolumeView({
       }
 
       renderer.dispose();
+      // Hand the context back now, not when the page frees memory: browsers keep only a few
+      renderer.forceContextLoss();
 
       rendererRef.current = null;
       sceneRef.current = null;
