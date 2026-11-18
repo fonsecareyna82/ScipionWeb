@@ -3603,7 +3603,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   // The class type comes from the protocol output, not an output name.
-  const supportsClassContrast = /^(SetOfClasses2D|SetOfClasses3D)$/i.test(
+  // Averages (a subset of class averages, for example) show as the classes they came from
+  const supportsClassContrast = /^(SetOfClasses2D|SetOfClasses3D|SetOfAverages)$/i.test(
     String(outputClassName ?? "").trim(),
   );
 

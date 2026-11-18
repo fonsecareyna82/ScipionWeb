@@ -2129,6 +2129,19 @@ describe("MetadataViewer", () => {
             fireEvent.click(await screen.findByRole("option", { name: "Class001 objects" }));
         }
 
+        it("shows a set of averages (a subset of class averages) as the classes it came from", async () => {
+            mockClassAndMemberParticleTables();
+            renderClassViewer("SetOfAverages");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataImageCellObjectUrl).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects", 0, "preview",
+                    expect.objectContaining({ contrastMode: "enhanced" }),
+                );
+            });
+        });
+
         it.each(["SetOfClasses2D", "SetOfClasses3D"])(
             "requests Original for member particles of %s after Enhanced class averages",
             async (outputClassName) => {
