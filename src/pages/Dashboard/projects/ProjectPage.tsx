@@ -5440,9 +5440,61 @@ export default function ProjectPage() {
   ]);
 
   /* ------------------------ Reorganize ------------------------ */
+  // The protocol the user is looking at, and where it is on the screen: the selected one if it is in view, else
+  // the one nearest the middle of the view. Reorganizing puts it back at the same place.
+  const pickViewAnchor = useCallback((): { id: string; screenX: number; screenY: number; zoom: number } | null => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    const wrapper = flowWrapperRef.current;
+    if (!inst || !wrapper) return null;
+    const vp = inst.getViewport();
+    const zoom = vp.zoom || 1;
+    const width = wrapper.clientWidth;
+    const height = wrapper.clientHeight;
+    if (!width || !height) return null;
+    const left = -vp.x / zoom;
+    const top = -vp.y / zoom;
+    const right = left + width / zoom;
+    const bottom = top + height / zoom;
+    const middleX = (left + right) / 2;
+    const middleY = (top + bottom) / 2;
+
+    const placed = (nodesRef.current as Node[]).filter(
+      (node) => !node.hidden && Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y));
+    const centerOf = (node: Node) => ({
+      x: node.position.x + (node.width ?? 0) / 2,
+      y: node.position.y + (node.height ?? 0) / 2,
+    });
+    const inView = (node: Node) => {
+      const { x, y } = centerOf(node);
+      return x >= left && x <= right && y >= top && y <= bottom;
+    };
+
+    const selected = placed.find((node) => String(node.id) === String(selectedIdRef.current ?? ""));
+    let anchor = selected && inView(selected) ? selected : null;
+    if (!anchor) {
+      let best = Infinity;
+      for (const node of placed) {
+        const { x, y } = centerOf(node);
+        const distance = (x - middleX) ** 2 + (y - middleY) ** 2;
+        if (distance < best) {
+          best = distance;
+          anchor = node;
+        }
+      }
+    }
+    if (!anchor) return null;
+    return {
+      id: String(anchor.id),
+      screenX: anchor.position.x * zoom + vp.x,
+      screenY: anchor.position.y * zoom + vp.y,
+      zoom,
+    };
+  }, []);
+
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
+      const viewAnchor = viewMode === "hierarchical" ? pickViewAnchor() : null;
       try {
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
@@ -5598,7 +5650,19 @@ export default function ProjectPage() {
 
         requestAnimationFrame(() => {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-          if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+          const anchorNode = viewAnchor
+            ? nodesWithPositions.find((node) => String(node.id) === viewAnchor.id)
+            : undefined;
+          if (inst && anchorNode && viewMode === "hierarchical") {
+            // The protocol the user was looking at stays where it was on the screen
+            const next = {
+              x: viewAnchor!.screenX - anchorNode.position.x * viewAnchor!.zoom,
+              y: viewAnchor!.screenY - anchorNode.position.y * viewAnchor!.zoom,
+              zoom: viewAnchor!.zoom,
+            };
+            inst.setViewport(next);
+            setViewport(next);
+          } else if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
           } else if (inst) {
@@ -5613,7 +5677,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth,
+    [projectName, viewMode, graphDirection, centerLikeButton, pickViewAnchor, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth,
       seedNodesWithSelectionAndThumbnails,
       protocolOutputThumbnailsEnabled,
       loadProtocolOutputThumbnailsForNodes,
