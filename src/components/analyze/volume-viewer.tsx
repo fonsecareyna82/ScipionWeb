@@ -114,6 +114,8 @@ type OrthoViewport = {
 
 type SliceImageState = {
   url: string | null;
+  /** The volume the shown slice belongs to (the previous one, for a moment, after choosing another). */
+  urlVolumeId: string | number | null;
   loading: boolean;
   error: string | null;
 };
@@ -1195,30 +1197,31 @@ export default function VolumeViewer({
       (sliceLayoutMode === "triple" && visibleTripleSlices.some((slice) => !!slice.url))
     );
 
-  const [delayedViewerLoading, setDelayedViewerLoading] = useState(false);
+  // After choosing another volume, the slices shown still belong to the previous one until the new ones arrive
+  const showsPreviousVolume =
+    hasVisibleSliceContent &&
+    selectedId != null &&
+    (
+      sliceLayoutMode === "single"
+        ? singleSlice.urlVolumeId != null && String(singleSlice.urlVolumeId) !== String(selectedId)
+        : visibleTripleSlices.some((slice) => !!slice.url && slice.urlVolumeId != null && String(slice.urlVolumeId) !== String(selectedId))
+    );
+
+  // While something is on screen, it stays there (no blink to a loading page and back): a small note says the next
+  // one is coming, only when it takes long enough to be noticed
+  const switchingInPlace = hasVisibleSliceContent && (showViewerLoading || showsPreviousVolume);
+  const [switchingNoteVisible, setSwitchingNoteVisible] = useState(false);
 
   useEffect(() => {
-    if (!showViewerLoading) {
-      setDelayedViewerLoading(false);
+    if (!switchingInPlace) {
+      setSwitchingNoteVisible(false);
       return;
     }
+    const timer = window.setTimeout(() => setSwitchingNoteVisible(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [switchingInPlace]);
 
-    if (!hasVisibleSliceContent) {
-      setDelayedViewerLoading(true);
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setDelayedViewerLoading(true);
-    }, 180);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [showViewerLoading, hasVisibleSliceContent]);
-
-  const viewerLoadingVisible =
-    showViewerLoading && (!hasVisibleSliceContent || delayedViewerLoading);
+  const viewerLoadingVisible = showViewerLoading && !hasVisibleSliceContent;
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
 
@@ -1875,6 +1878,22 @@ export default function VolumeViewer({
     setGpuError(msg);
   }, []);
 
+  // The browser can take the 3D view's graphics context away (many 3D views open, or the graphics card reset):
+  // the view is built again. If it keeps happening, the card is in trouble and the view says so.
+  const [view3dGeneration, setView3dGeneration] = useState(0);
+  const contextLossTimesRef = useRef<number[]>([]);
+  const handle3dContextLost = useCallback(() => {
+    const now = Date.now();
+    const recent = contextLossTimesRef.current.filter((time) => now - time < 60_000);
+    recent.push(now);
+    contextLossTimesRef.current = recent;
+    if (recent.length > 3) {
+      setGpuError("The 3D view keeps losing the graphics card. Close other 3D views or reload the page.");
+      return;
+    }
+    window.setTimeout(() => setView3dGeneration((generation) => generation + 1), 250);
+  }, []);
+
   const panelBasis = 280;
 
   const histogramLevelRange = useMemo<[number, number] | null>(() => {
@@ -2431,6 +2450,20 @@ export default function VolumeViewer({
                   : undefined
               }
             >
+              {switchingNoteVisible && (
+                <Box
+                  role="status"
+                  aria-label="Loading the selected volume"
+                  sx={{
+                    position: "absolute", top: 8, right: 8, zIndex: 4, pointerEvents: "none",
+                    display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderRadius: 999,
+                    bgcolor: "rgba(17,24,39,0.72)", color: "#fff", fontSize: 13.5,
+                  }}
+                >
+                  <CircularProgress size={14} sx={{ color: "#fff" }} />
+                  Loading…
+                </Box>
+              )}
               {viewerLoadingVisible ? (
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center", color: "text.secondary" }}>
                   <CircularProgress size={18} />
@@ -2543,6 +2576,8 @@ export default function VolumeViewer({
                 !gpuError
               ) ? (
                 <GpuVolumeView
+                  key={`gpu-${view3dGeneration}`}
+                  onContextLost={handle3dContextLost}
                   values={mapData.values}
                   dims={mapData.dims}
                   order={mapData.order}
@@ -2568,6 +2603,8 @@ export default function VolumeViewer({
                 />
               ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
                 <MeshVolumeView
+                  key={`mesh-${view3dGeneration}`}
+                  onContextLost={handle3dContextLost}
                   mesh={surfaceMesh}
                   displayMode={renderMode3d === "mesh" ? "mesh" : "surface"}
                   opacity={opacity3d}
@@ -5183,7 +5220,9 @@ function useVolumeSliceImage({
   };
   cacheRef: React.MutableRefObject<SliceImageCache>;
 }): SliceImageState {
-  const [url, setUrl] = useState<string | null>(null);
+  const [shown, setShown] = useState<{ url: string | null; volumeId: string | number | null }>({ url: null, volumeId: null });
+  const url = shown.url;
+  const setUrl = (next: string | null, ofVolume: string | number | null) => setShown({ url: next, volumeId: ofVolume });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -5193,6 +5232,7 @@ function useVolumeSliceImage({
     requestKey: string;
     cacheKey: string;
     sliceIndex: number;
+    volumeId: string | number;
   } | null>(null);
 
   const requestKeyRef = useRef<string | null>(null);
@@ -5262,7 +5302,7 @@ function useVolumeSliceImage({
 
         if (cachedAfterFetch) {
           result?.revoke?.();
-          setUrl(cachedAfterFetch.url);
+          setUrl(cachedAfterFetch.url, job.volumeId);
         } else if (result?.url && result?.revoke) {
           storeCachedEntry(
             cacheRef.current,
@@ -5270,9 +5310,9 @@ function useVolumeSliceImage({
             { url: result.url, revoke: result.revoke },
             SLICE_IMAGE_CACHE_MAX_ITEMS,
           );
-          setUrl(result.url);
+          setUrl(result.url, job.volumeId);
         } else {
-          setUrl(result?.url ?? null);
+          setUrl(result?.url ?? null, job.volumeId);
         }
       } catch (e: any) {
         if (
@@ -5350,7 +5390,7 @@ function useVolumeSliceImage({
       controllerRef.current = null;
       pendingJobRef.current = null;
       inFlightRef.current = false;
-      setUrl(cached.url);
+      setUrl(cached.url, volumeId);
       setError(null);
       setLoading(false);
       return;
@@ -5360,6 +5400,7 @@ function useVolumeSliceImage({
       requestKey,
       cacheKey,
       sliceIndex: clampedIndex,
+      volumeId,
     };
 
     runNextRef.current?.();
@@ -5528,7 +5569,7 @@ function useVolumeSliceImage({
       !error
     );
 
-  return { url, loading: effectiveLoading, error };
+  return { url, urlVolumeId: shown.volumeId, loading: effectiveLoading, error };
 }
 
 /**

@@ -466,6 +466,34 @@ describe("VolumeViewer", () => {
         });
     });
 
+    it("keeps the current slice on screen while another volume loads, without a loading page", async () => {
+        renderViewer();
+        await waitFor(() => expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalled());
+        await waitFor(() => expect(screen.queryByText(/Loading (tomogram|slices)/)).not.toBeInTheDocument());
+
+        const info = createDeferred<ReturnType<typeof makeInfo>>();
+        const slice = createDeferred<ReturnType<typeof makeSliceUrl>>();
+        serviceMocks.getVolumeInfo.mockImplementation(async (_p: number, _r: number, _o: string, volumeId: number) =>
+            Number(volumeId) === 2 ? info.promise : makeInfo(Number(volumeId)));
+        serviceMocks.fetchVolumeSliceObjectUrl.mockImplementation(async (
+            _p: number, _r: number, _o: string, volumeId: number, sliceIndex: number, options?: { axis?: string },
+        ) => (Number(volumeId) === 2 ? slice.promise : makeSliceUrl(String(options?.axis ?? "z"), Number(sliceIndex))));
+
+        fireEvent.click(screen.getByText("Vol B"));
+
+        // The previous slice stays, with a small note, while the new volume is read and its slice comes
+        expect(await screen.findByRole("status", { name: "Loading the selected volume" })).toBeInTheDocument();
+        info.resolve(makeInfo(2));
+        await waitFor(() => expect(serviceMocks.fetchVolumeSliceObjectUrl).toHaveBeenCalledWith(
+            1, 2, "volumeOutput", 2, expect.any(Number), expect.anything()));
+        expect(screen.queryByText(/Loading (tomogram|slices)/)).not.toBeInTheDocument();
+        expect(screen.getByRole("status", { name: "Loading the selected volume" })).toBeInTheDocument();
+
+        slice.resolve(makeSliceUrl("z", 3));
+        await waitFor(() => expect(screen.queryByRole("status", { name: "Loading the selected volume" })).not.toBeInTheDocument());
+        expect(screen.queryByText(/Loading (tomogram|slices)/)).not.toBeInTheDocument();
+    });
+
     it("changes the selected volume and refreshes metadata", async () => {
         renderViewer();
 
