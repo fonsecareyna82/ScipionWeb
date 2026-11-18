@@ -165,12 +165,21 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     });
     return () => { cancelled = true; };
   }, [open, suppliedStatus, service, projectId, protocolId, statusScope]);
-  const statusHue: Record<string, string> = {
-    running: "amber", scheduled: "yellow", interactive: "yellow", finished: "green",
-    failed: "red", aborted: "red", saved: "blue", launched: "blue", new: "blue", root: "blue",
+  // The badge sits on the viewer's header, dark in every theme: solid colours that read on it
+  const statusColors: Record<string, { background: string; color: string }> = {
+    running: { background: "#f59e0b", color: "#1f2937" },
+    scheduled: { background: "#facc15", color: "#1f2937" },
+    interactive: { background: "#facc15", color: "#1f2937" },
+    finished: { background: "#16a34a", color: "#ffffff" },
+    failed: { background: "#dc2626", color: "#ffffff" },
+    aborted: { background: "#dc2626", color: "#ffffff" },
+    saved: { background: "#2563eb", color: "#ffffff" },
+    launched: { background: "#2563eb", color: "#ffffff" },
+    new: { background: "#2563eb", color: "#ffffff" },
+    root: { background: "#2563eb", color: "#ffffff" },
   };
-  const hue = statusHue[badgeStatus];
-  const protocolBadgeSize = Math.max(28, String(protocolId).length * 6 + 12);
+  const badgeColors = statusColors[badgeStatus] ?? { background: "#4b5563", color: "#ffffff" };
+  const protocolBadgeSize = Math.max(32, Math.round(String(protocolId).length * 8.5 + 14));
 
   const fileInitialTable = metadataFile ? metadataFile.initialTable ?? null : undefined;
   const { theme: appTheme } = useScipionTheme();
@@ -563,15 +572,14 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
 
 
   const protocolSubtitle = (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle">
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle text-[14px]">
       <span className="shrink-0">Protocol:</span>
       <span aria-label={`Protocol ID ${protocolId}`} data-protocol-status={badgeStatus || "unknown"}
             title={badgeStatus ? `Protocol ${protocolId} · ${badgeStatus}` : `Protocol ${protocolId}`}
-            className="inline-flex shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold leading-none tabular-nums"
+            className="inline-flex shrink-0 items-center justify-center rounded-full border text-[13.5px] font-bold leading-none tabular-nums"
             style={{ width: protocolBadgeSize, height: protocolBadgeSize,
-              backgroundColor: hue ? `var(--app-${hue}-100)` : "var(--app-surface-3)",
-              color: hue ? `var(--app-${hue}-800)` : "var(--app-muted)",
-              borderColor: hue ? `var(--app-${hue}-200)` : "var(--app-border)" }}>
+              backgroundColor: badgeColors.background, color: badgeColors.color,
+              borderColor: "rgba(255,255,255,0.35)" }}>
         {String(protocolId)}
       </span>
       <span className="truncate">{String(protocolLabel)}</span>

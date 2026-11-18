@@ -133,9 +133,13 @@ describe("AnalyzeOutputDialog", () => {
         const badge = screen.getByLabelText("Protocol ID 34");
         expect(badge).toHaveClass("rounded-full");
         expect(badge.style.width).toBe(badge.style.height);
-        expect(badge.style.backgroundColor).toBe("var(--app-amber-100)");
+        expect(badge.style.backgroundColor).toBe("rgb(245, 158, 11)");
         view.rerender(<AnalyzeOutputDialog {...makeProps({ protocolStatus: "finished" })} />);
-        expect(badge.style.backgroundColor).toBe("var(--app-green-100)");
+        expect(badge.style.backgroundColor).toBe("rgb(22, 163, 74)");
+        // An interactive protocol: dark number on yellow, readable on the dark header
+        view.rerender(<AnalyzeOutputDialog {...makeProps({ protocolStatus: "interactive" })} />);
+        expect(badge.style.backgroundColor).toBe("rgb(250, 204, 21)");
+        expect(badge.style.color).toBe("rgb(31, 41, 55)");
         expect(mocks.fetchProtocolDetails).not.toHaveBeenCalled();
     });
 
@@ -154,7 +158,7 @@ describe("AnalyzeOutputDialog", () => {
         view.rerender(<AnalyzeOutputDialog {...makeProps({ protocolId: "35", protocolStatus: undefined })} />);
         await waitFor(() => expect(screen.getByLabelText("Protocol ID 35")).toHaveAttribute("data-protocol-status", "failed"));
         await act(async () => finishOld({ id: "34", status: "finished" }));
-        expect(screen.getByLabelText("Protocol ID 35").style.backgroundColor).toBe("var(--app-red-100)");
+        expect(screen.getByLabelText("Protocol ID 35").style.backgroundColor).toBe("rgb(220, 38, 38)");
     });
 
     it("does not render the dialog title when closed", () => {
