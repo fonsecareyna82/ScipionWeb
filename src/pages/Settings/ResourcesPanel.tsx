@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
-    Alert, Box, Button, Card, CardContent, CardHeader, Chip, CircularProgress, LinearProgress, Paper, Stack, Typography,
+    Alert, Box, Button, Card, CardContent, Chip, CircularProgress, LinearProgress, Paper, Stack, Typography,
 } from "@mui/material";
-import { Cpu, HardDrive, MemoryStick, RefreshCw } from "lucide-react";
+import { useTheme } from "@mui/material/styles";
+import { SectionHeader } from "./SettingsSection";
+import { Activity, Cpu, HardDrive, MemoryStick, RefreshCw } from "lucide-react";
 
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { getResources, type GpuUse, type Machine, type MachineGpu, type ResourceRun, type Resources } from "@/api/resources";
 import { formatHours } from "@/api/usage";
+import type { InstanceResources } from "@/services/ProjectService";
 import { useFacilityStyles, FACILITY_TEXT } from "@/pages/Facility/facilityStyles";
 
 const REFRESH_MS = 10_000;
@@ -100,19 +103,55 @@ function GpuCard({ gpu, seeAll, colors }: { gpu: MachineGpu; seeAll: boolean; co
     );
 }
 
-function MachineCard({ machine, seeAll, colors }: { machine: Machine; seeAll: boolean; colors: Colors }) {
+/** What does not change on the server ScipionWeb runs on: processor, cores, system, scheduler. */
+export function serverFacts(server: InstanceResources): string[] {
+    const cores = server.physicalCores || server.logicalCores
+        ? `${server.physicalCores ?? "?"} cores · ${server.logicalCores ?? "?"} threads` : "";
+    return [server.cpuModel, cores, [server.operatingSystem, server.architecture].filter(Boolean).join(" "),
+            server.schedulerName ? `Scheduler: ${server.schedulerName}` : ""].filter(Boolean);
+}
+
+function isServer(machine: Machine, server: InstanceResources | null | undefined): boolean {
+    if (!server) return false;
+    const short = (name: string | null | undefined) => String(name ?? "").split(".")[0].toLowerCase();
+    return Boolean(machine.hostname) && [server.hostname, server.fqdn].some((name) => short(name) === short(machine.hostname));
+}
+
+function MachineHeader({ name, runs, facts, main, colors }: {
+    name: string; runs: number | null; facts: string[]; main: boolean; colors: Colors;
+}) {
+    return (
+        <Box sx={{ mb: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1.25} flexWrap="wrap" useFlexGap>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{name}</Typography>
+                {main && <Chip size="small" label="ScipionWeb server" sx={{ fontSize: 13 }} />}
+                {runs != null && (
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                        {runs} {runs === 1 ? "run" : "runs"} now
+                    </Typography>
+                )}
+            </Stack>
+            {facts.length > 0 && (
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.25 }}>
+                    {facts.join(" · ")}
+                </Typography>
+            )}
+        </Box>
+    );
+}
+
+function MachineCard({ machine, seeAll, colors, server }: {
+    machine: Machine; seeAll: boolean; colors: Colors; server?: InstanceResources | null;
+}) {
+    const main = isServer(machine, server);
     const load = percent(machine.load1, machine.cpuCount);
     const memoryUsed = machine.memoryTotalBytes != null && machine.memoryAvailableBytes != null
         ? machine.memoryTotalBytes - machine.memoryAvailableBytes : null;
     return (
         <Paper variant="outlined" data-testid={`machine-${machine.hostname}`}
                sx={{ p: 2, borderRadius: 2, bgcolor: "transparent", borderColor: colors.border, color: colors.text }}>
-            <Stack direction="row" alignItems="baseline" spacing={1.5} sx={{ mb: 1.5 }}>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{machine.hostname}</Typography>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                    {machine.runs} {machine.runs === 1 ? "run" : "runs"} now
-                </Typography>
-            </Stack>
+            <MachineHeader name={machine.hostname} runs={machine.runs} main={main}
+                           facts={main && server ? serverFacts(server) : []} colors={colors} />
             {machine.error ? (
                 <Alert severity="warning">This machine could not tell what it has in use.</Alert>
             ) : (
@@ -170,9 +209,11 @@ function Section({ title, children, colors }: { title: string; children: React.R
     );
 }
 
-/** Settings → Instance: what the machines have in use right now, what runs and what waits. */
-export default function ResourcesPanel() {
-    const { colors, actionButtonSx, cardSx, cardHeaderSx } = useFacilityStyles();
+/** Settings → Instance: the machines (the ScipionWeb server with what it is), what they have in use right now,
+ * what runs and what waits. */
+export default function ResourcesPanel({ server = null }: { server?: InstanceResources | null } = {}) {
+    const { colors, actionButtonSx, cardSx } = useFacilityStyles();
+    const muiTheme = useTheme();
     const [data, setData] = useState<Resources | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -209,20 +250,22 @@ export default function ResourcesPanel() {
     const noteSx = { fontSize: FACILITY_TEXT.note, color: colors.muted };
 
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
-                title="Machines now"
-                subheader={`What each machine running protocols has in use, refreshed every 10 s${
+        <Card variant="outlined" sx={{ ...cardSx, borderRadius: 3 }}>
+            <SectionHeader
+                icon={<Activity size={19} />}
+                title="Machines"
+                subtitle={`What each machine running protocols is and has in use, refreshed every 10 s${
                     updatedAt ? ` (last at ${updatedAt.toLocaleTimeString()})` : ""}.`}
-                sx={cardHeaderSx}
-                action={
+                colors={{ text: colors.text, muted: colors.muted, primary: muiTheme.palette.primary.main }}
+                isDarkMode={muiTheme.palette.mode === "dark"}
+                actions={
                     <Button size="small" variant="outlined" sx={actionButtonSx} disabled={loading}
                             startIcon={<RefreshCw size={15} />} onClick={() => void load()}>
                         Reload
                     </Button>
                 }
             />
-            <CardContent sx={{ pt: 2 }}>
+            <CardContent sx={{ pt: 1.5, px: 2.5 }}>
                 <Stack spacing={2.5}>
 
                     {error && <Alert severity="error">{error}</Alert>}
@@ -232,20 +275,30 @@ export default function ResourcesPanel() {
 
                     {data && (
                         <>
-                            <Section title="Machines" colors={colors}>
-                                {data.machines.length === 0 ? (
+                            <Stack spacing={2}>
+                                {data.machines.length === 0 && (
                                     <Alert severity="info">
                                         No machine answered: the workers that run the protocols may be stopped.
                                     </Alert>
-                                ) : (
-                                    <Stack spacing={2}>
-                                        {data.machines.map((machine) => (
-                                            <MachineCard key={machine.hostname} machine={machine} seeAll={data.seeAll}
-                                                         colors={colors} />
-                                        ))}
-                                    </Stack>
                                 )}
-                            </Section>
+                                {data.machines.map((machine) => (
+                                    <MachineCard key={machine.hostname} machine={machine} seeAll={data.seeAll}
+                                                 colors={colors} server={server} />
+                                ))}
+                                {/* The server, when no worker of it answered: at least what it is */}
+                                {server && !data.machines.some((machine) => isServer(machine, server)) && (
+                                    <Paper variant="outlined" data-testid="server-facts"
+                                           sx={{ p: 2, borderRadius: 2, bgcolor: "transparent",
+                                                 borderColor: colors.border, color: colors.text }}>
+                                        <MachineHeader name={server.hostname || server.hostAlias} runs={null} main
+                                                       facts={[...serverFacts(server),
+                                                               `${formatBytes(server.ramTotalBytes)} memory`,
+                                                               ...server.gpus.map((gpu) => gpu.name)]}
+                                                       colors={colors} />
+                                        <Typography sx={noteSx}>Its use now is not known: no worker runs on it.</Typography>
+                                    </Paper>
+                                )}
+                            </Stack>
 
                             <Section title={data.seeAll ? "Running now" : "Your runs now"} colors={colors}>
                                 {mine.length === 0 && (

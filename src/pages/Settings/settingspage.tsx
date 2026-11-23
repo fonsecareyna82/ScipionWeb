@@ -73,6 +73,7 @@ import AuditPanel from "@/pages/Settings/AuditPanel";
 import UsagePanel from "@/pages/Settings/UsagePanel";
 import NotificationsPanel from "@/pages/Settings/NotificationsPanel";
 import UserPreferencesPanel from "@/pages/Settings/UserPreferencesPanel";
+import InstancePanel from "@/pages/Settings/InstancePanel";
 import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
 import { usePermissions } from "@/hooks/usePermissions";
 import { setDisplayPreferences } from "@/theme/displayPreferences";
@@ -178,33 +179,6 @@ function clampNumber(value: unknown, fallback: number, min?: number, max?: numbe
   const v = Number.isFinite(n) ? n : fallback;
   const vMin = typeof min === "number" ? Math.max(v, min) : v;
   return typeof max === "number" ? Math.min(vMin, max) : vMin;
-}
-
-function formatBytes(
-  value: unknown
-): string {
-  const bytes = Number(value);
-
-  if (
-    !Number.isFinite(bytes) ||
-    bytes <= 0
-  ) {
-    return "—";
-  }
-
-  const gib =
-    bytes / (1024 ** 3);
-
-  if (gib >= 1) {
-    return `${gib.toFixed(
-      gib >= 100 ? 0 : 1
-    )} GiB`;
-  }
-
-  const mib =
-    bytes / (1024 ** 2);
-
-  return `${mib.toFixed(0)} MiB`;
 }
 
 function getErrorMsg(e: any): string {
@@ -532,13 +506,14 @@ export default function SettingsPage() {
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
 
+  // The server's facts only add to the Machines block: their loading and error are not shown
   const [
-    instanceResourcesLoading,
+    ,
     setInstanceResourcesLoading,
   ] = useState(false);
 
   const [
-    instanceResourcesError,
+    ,
     setInstanceResourcesError,
   ] = useState<string | null>(null);
 
@@ -830,7 +805,8 @@ export default function SettingsPage() {
   }, [svc]);
 
   useEffect(() => {
-    if (tab !== "host") return;
+    // The Instance tab offers the host's queues as default queue
+    if (tab !== "host" && tab !== "instance") return;
     if (hostLoadedOnce) return;
     void loadHostSettings();
   }, [tab, hostLoadedOnce, loadHostSettings]);
@@ -1432,290 +1408,19 @@ export default function SettingsPage() {
       <Stack spacing={1.75}>
         {instanceError && <Alert severity="error">{instanceError}</Alert>}
 
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Execution" subheader="Task execution and per-user concurrency." sx={cardHeaderSx} />
-          <CardContent sx={{ pt: 2 }}>
-            <Grid container spacing={2} sx={{ width: "100%" }}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  sx={fieldSx}
-                  fullWidth
-                  label="Default queue name"
-                  value={instanceDraft.defaultQueueName}
-                  onChange={(e) => setInstanceDraft((prev) => (prev ? { ...prev, defaultQueueName: e.target.value } : prev))}
-                  helperText='Example: "default"'
-                  size="small"
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  sx={fieldSx}
-                  fullWidth
-                  label="Max concurrent runs per user"
-                  type="number"
-                  value={instanceDraft.maxConcurrentRunsPerUser}
-                  inputProps={{ min: 0, max: 64, step: 1 }}
-                  onChange={(e) =>
-                    setInstanceDraft((prev) =>
-                      prev ? { ...prev, maxConcurrentRunsPerUser: clampNumber(e.target.value, 0, 0, 64) } : prev,
-                    )
-                  }
-                  helperText={"0 = no limit (default). Protocols launched together (Run all, Continue all) count "
-                    + "as one; streaming protocols still receiving data never count."}
-                  size="small"
-                />
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-        <Card
-          variant="outlined"
-          sx={cardSx}
-        >
-          <CardHeader
-            title="Master resources"
-            subheader={
-              "Resources visible to the ScipionAPI " +
-              "process running on the master."
-            }
-            sx={cardHeaderSx}
-          />
-
-          <CardContent sx={{ pt: 2 }}>
-            {(
-              instanceResourcesLoading &&
-              !instanceResources
-            ) ? (
-              <Skeleton
-                variant="rounded"
-                height={180}
-              />
-
-            ) : instanceResourcesError ? (
-              <Alert severity="warning">
-                {instanceResourcesError}
-              </Alert>
-
-            ) : instanceResources ? (
-              <Stack spacing={1.5}>
-                <Grid
-                  container
-                  spacing={1.25}
-                  sx={{ width: "100%" }}
-                >
-                  {[
-                    [
-                      "Host alias",
-                      instanceResources.hostAlias
-                      || "—",
-                    ],
-                    [
-                      "Hostname",
-                      instanceResources.hostname
-                      || "—",
-                    ],
-                    [
-                      "Full host name",
-                      instanceResources.fqdn
-                      || "—",
-                    ],
-                    [
-                      "Scheduler",
-                      instanceResources.schedulerName
-                      || "—",
-                    ],
-                    [
-                      "Operating system",
-                      instanceResources
-                        .operatingSystem
-                      || "—",
-                    ],
-                    [
-                      "Architecture",
-                      instanceResources
-                        .architecture
-                      || "—",
-                    ],
-                    [
-                      "Physical cores",
-                      String(
-                        instanceResources
-                          .physicalCores
-                        ?? "—"
-                      ),
-                    ],
-                    [
-                      "Logical cores",
-                      String(
-                        instanceResources
-                          .logicalCores
-                        ?? "—"
-                      ),
-                    ],
-                    [
-                      "RAM",
-                      formatBytes(
-                        instanceResources
-                          .ramTotalBytes
-                      ),
-                    ],
-                  ].map(
-                    ([label, value]) => (
-                      <Grid
-                        key={label}
-                        size={{
-                          xs: 12,
-                          sm: 6,
-                          md: 4,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            p: 1.25,
-                            height: "100%",
-                            borderRadius: 2,
-                            border: "1px solid",
-                            borderColor:
-                              colors.border,
-                            bgcolor:
-                              colors.hover,
-                          }}
-                        >
-                          <Typography
-                            sx={{
-                              fontSize: 11.5,
-                              color:
-                                colors.muted,
-                            }}
-                          >
-                            {label}
-                          </Typography>
-
-                          <Typography
-                            sx={{
-                              mt: 0.25,
-                              fontSize: 13,
-                              fontWeight: 800,
-                              color:
-                                colors.text,
-                              overflowWrap:
-                                "anywhere",
-                            }}
-                          >
-                            {value}
-                          </Typography>
-                        </Box>
-                      </Grid>
-                    )
-                  )}
-                </Grid>
-
-                <Box>
-                  <Typography
-                    sx={{
-                      fontSize: 11.5,
-                      color: colors.muted,
-                    }}
-                  >
-                    CPU
-                  </Typography>
-
-                  <Typography
-                    sx={{
-                      mt: 0.25,
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: colors.text,
-                    }}
-                  >
-                    {
-                      instanceResources
-                        .cpuModel
-                      || "—"
-                    }
-                  </Typography>
-                </Box>
-
-                <Divider sx={dividerSx} />
-
-                <Box>
-                  <Typography
-                    sx={{
-                      mb: 0.75,
-                      fontSize: 11.5,
-                      color: colors.muted,
-                    }}
-                  >
-                    GPUs ({
-                      instanceResources
-                        .gpuCount
-                    })
-                  </Typography>
-
-                  {instanceResources
-                    .gpus.length > 0 ? (
-                    <Stack
-                      direction="row"
-                      spacing={0.75}
-                      useFlexGap
-                      flexWrap="wrap"
-                    >
-                      {instanceResources
-                        .gpus
-                        .map((gpu) => (
-                          <Chip
-                            key={gpu.index}
-                            size="small"
-                            label={
-                              (
-                                `GPU ${gpu.index} · ` +
-                                gpu.name
-                              ) +
-                              (
-                                gpu.memoryTotalBytes
-                                  ? (
-                                    " · " +
-                                    formatBytes(
-                                      gpu
-                                        .memoryTotalBytes
-                                    )
-                                  )
-                                  : ""
-                              )
-                            }
-                          />
-                        ))}
-                    </Stack>
-                  ) : (
-                    <Typography
-                      sx={{
-                        fontSize: 12.5,
-                        color: colors.muted,
-                      }}
-                    >
-                      No NVIDIA GPUs detected
-                      by the API process.
-                    </Typography>
-                  )}
-                </Box>
-              </Stack>
-            ) : (
-              <Typography
-                sx={{
-                  fontSize: 12.5,
-                  color: colors.muted,
-                }}
-              >
-                Resource information
-                is not available.
-              </Typography>
-            )}
-          </CardContent>
-        </Card>
+        <InstancePanel
+          value={instanceDraft}
+          onChange={(update) => setInstanceDraft((prev) => (prev ? update(prev) : prev))}
+          queueNames={hostAvailable && hostLoadedOnce ? (hostBase?.queues ?? []).map((queue) => queue.name)
+            .filter(Boolean) : null}
+          colors={colors}
+          isDarkMode={isDarkMode}
+          fieldSx={fieldSx}
+          menuPaperSx={menuPaperSx}
+        />
         <SignInProvidersCard cardSx={cardSx} cardHeaderSx={cardHeaderSx} fieldSx={fieldSx}
                              actionButtonSx={actionButtonSx} colors={colors} />
-        <ResourcesPanel />
+        <ResourcesPanel server={instanceResources} />
       </Stack>
     );
   };
@@ -2242,7 +1947,7 @@ export default function SettingsPage() {
                                 ? renderTagsContent()
                                 : renderEnvironmentContent()}
 
-              {tab !== "user" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
+              {tab !== "user" && tab !== "instance" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
                 && tab !== "disk" && tab !== "notifications" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />

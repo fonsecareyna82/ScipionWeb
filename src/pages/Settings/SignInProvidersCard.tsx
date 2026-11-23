@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-    Alert, Box, Button, Card, CardContent, CardHeader, Chip, FormControlLabel, MenuItem, Stack, Switch, TextField,
+    Alert, Box, Button, Card, CardContent, Chip, FormControlLabel, MenuItem, Stack, Switch, TextField,
     Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { Copy, KeyRound, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -11,6 +12,7 @@ import {
     type SignInProviderPayload, type SignInProviderSetup,
 } from "@/api/settings";
 import SettingsDialog from "./SettingsDialog";
+import { SectionHeader } from "./SettingsSection";
 
 type Styles = { cardSx: any; cardHeaderSx: any; fieldSx: any; actionButtonSx?: any;
     colors: { border: string; text: string; muted: string } };
@@ -98,7 +100,8 @@ function ProviderDialog({ provider, onClose, onSaved }: {
 }
 
 /** Settings → Instance: the institutions people may sign in with (none by default). */
-export default function SignInProvidersCard({ cardSx, cardHeaderSx, actionButtonSx, colors }: Styles) {
+export default function SignInProvidersCard({ cardSx, actionButtonSx, colors }: Styles) {
+    const muiTheme = useTheme();
     const [providers, setProviders] = useState<SignInProviderSetup[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [editing, setEditing] = useState<SignInProviderSetup | "new" | null>(null);
@@ -148,19 +151,22 @@ export default function SignInProvidersCard({ cardSx, cardHeaderSx, actionButton
     };
 
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
+        <Card variant="outlined" sx={{ ...cardSx, borderRadius: 3 }}>
+            <SectionHeader
+                icon={<KeyRound size={19} />}
                 title="Sign in with an institution"
-                subheader="People may sign in with their institution's account (Keycloak or any OpenID Connect service) instead of a ScipionWeb password. None by default."
-                sx={cardHeaderSx}
-                action={
+                subtitle={"People may sign in with their institution's account (Keycloak or any OpenID Connect "
+                    + "service) instead of a ScipionWeb password. None by default."}
+                colors={{ text: colors.text, muted: colors.muted, primary: muiTheme.palette.primary.main }}
+                isDarkMode={muiTheme.palette.mode === "dark"}
+                actions={
                     <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={15} />}
                             onClick={() => setEditing("new")}>
                         Add
                     </Button>
                 }
             />
-            <CardContent sx={{ pt: 1 }}>
+            <CardContent sx={{ pt: 1, px: 2.5 }}>
                 {error && <Alert severity="error">{error}</Alert>}
                 {providers && providers.length === 0 && (
                     <Typography sx={{ fontSize: 14, color: colors.muted }}>

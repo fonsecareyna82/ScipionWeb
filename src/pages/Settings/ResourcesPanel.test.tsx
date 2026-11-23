@@ -42,8 +42,14 @@ const resources: Resources = {
         reason: "Waits for a free run slot: 2 of 2 in use" }],
 };
 
-function renderPage() {
-    return render(<MemoryRouter><ResourcesPanel /></MemoryRouter>);
+const server = {
+    hostAlias: "localhost", hostname: "gpu1", fqdn: "gpu1.cnb.csic.es", schedulerName: "slurm",
+    operatingSystem: "Linux", architecture: "x86_64", cpuModel: "AMD EPYC 7543", physicalCores: 32, logicalCores: 64,
+    ramTotalBytes: 512 * GB, gpuCount: 1, gpus: [{ index: 0, name: "NVIDIA A100", memoryTotalBytes: 40 * GB }],
+};
+
+function renderPage(props: { server?: typeof server | null } = {}) {
+    return render(<MemoryRouter><ResourcesPanel {...props} /></MemoryRouter>);
 }
 
 describe("ResourcesPanel", () => {
@@ -79,5 +85,21 @@ describe("ResourcesPanel", () => {
     it("names whose run it is for who sees everything", () => {
         expect(runTitle({ ...mine, mine: false })).toBe("Ana Test: 3D classes in Apoferritin");
         expect(runTitle(another)).toBe("Another user");
+    });
+    it("tells what the ScipionWeb server is on its own machine", async () => {
+        renderPage({ server });
+        const machine = await screen.findByTestId("machine-gpu1");
+        expect(machine).toHaveTextContent("ScipionWeb server");
+        expect(machine).toHaveTextContent("AMD EPYC 7543 · 32 cores · 64 threads · Linux x86_64 · Scheduler: slurm");
+        expect(screen.queryByTestId("server-facts")).not.toBeInTheDocument();
+    });
+
+    it("still tells what the server is when no worker runs on it", async () => {
+        vi.mocked(getResources).mockResolvedValue({ ...resources, machines: [], runs: [], waiting: [] });
+        renderPage({ server });
+        const facts = await screen.findByTestId("server-facts");
+        expect(facts).toHaveTextContent("AMD EPYC 7543");
+        expect(facts).toHaveTextContent("NVIDIA A100");
+        expect(facts).toHaveTextContent("Its use now is not known");
     });
 });

@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  Box, Button, Card, Divider, MenuItem, Select, Stack, Switch, ToggleButton,
-  ToggleButtonGroup, Typography,
-} from "@mui/material";
+import { Box, Button, MenuItem, Select, Stack, Switch, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import {
   Clock, Focus, Image, LayoutGrid, Map as MapIcon, Monitor, Moon, Palette, RefreshCw, Rows3, Rows4, Sun, Table,
   Workflow,
@@ -10,6 +7,7 @@ import {
 
 import { TreeIcon } from "@/icons";
 import type { UserSettings } from "@/services/ProjectService";
+import { choiceButtonsSx, SETTINGS_TEXT, settingLabelId, SettingRow, SettingsSection } from "./SettingsSection";
 
 type Colors = {
   border: string; text: string; muted: string; card: string; hover: string; menu: string; primary: string;
@@ -25,9 +23,8 @@ type Props = {
   menuPaperSx: object;
 };
 
-const TITLE = 15;
-const TEXT = 13.5;
-const CONTROL = 14;
+const TEXT = SETTINGS_TEXT.text;
+const CONTROL = SETTINGS_TEXT.control;
 
 const TEXT_SIZES: { value: number; label: string; glyph: number }[] = [
   { value: 0.9, label: "Small", glyph: 12 },
@@ -74,84 +71,16 @@ export default function UserPreferencesPanel({
     return () => window.clearInterval(id);
   }, []);
 
-  const tint = isDarkMode ? "rgba(96,165,250,0.14)" : "rgba(37,99,235,0.08)";
-
-  const choiceSx = {
-    flexWrap: "wrap",
-    gap: 1,
-    "& .MuiToggleButtonGroup-grouped": {
-      m: 0,
-      border: "1px solid",
-      borderColor: colors.border,
-      borderRadius: "10px !important",
-      px: 1.75,
-      py: 0.9,
-      gap: 1,
-      textTransform: "none",
-      fontSize: CONTROL,
-      fontWeight: 600,
-      color: colors.muted,
-      bgcolor: "transparent",
-      "&:hover": { bgcolor: colors.hover },
-      "&.Mui-selected": {
-        color: colors.text,
-        bgcolor: tint,
-        borderColor: colors.primary,
-        "&:hover": { bgcolor: tint },
-      },
-    },
-  } as const;
+  const choiceSx = choiceButtonsSx(colors, isDarkMode);
 
   const section = (icon: React.ReactNode, title: string, subtitle: string, rows: React.ReactNode[]) => (
-    <Card variant="outlined" sx={{ borderRadius: 3, bgcolor: colors.card, borderColor: colors.border }}>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ px: 2.5, pt: 2.25, pb: 1.25 }}>
-        <Box
-          sx={{
-            width: 36, height: 36, borderRadius: 2, flexShrink: 0, display: "grid", placeItems: "center",
-            bgcolor: tint, color: colors.primary,
-          }}
-        >
-          {icon}
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography component="h3" sx={{ fontSize: 16.5, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>
-            {title}
-          </Typography>
-          <Typography sx={{ fontSize: TEXT, color: colors.muted, lineHeight: 1.4 }}>{subtitle}</Typography>
-        </Box>
-      </Stack>
-      <Box sx={{ px: 2.5 }}>
-        {rows.map((row, index) => (
-          <React.Fragment key={index}>
-            {index > 0 && <Divider sx={{ borderColor: colors.border }} />}
-            {row}
-          </React.Fragment>
-        ))}
-      </Box>
-    </Card>
+    <SettingsSection icon={icon} title={title} subtitle={subtitle} colors={colors} isDarkMode={isDarkMode}>
+      {rows}
+    </SettingsSection>
   );
 
   const row = (title: string, description: React.ReactNode, control: React.ReactNode, labelFor?: string) => (
-    <Box
-      sx={{
-        display: "flex", alignItems: { xs: "flex-start", md: "center" }, justifyContent: "space-between",
-        flexDirection: { xs: "column", md: "row" }, gap: { xs: 1.25, md: 3 }, py: 2,
-      }}
-    >
-      <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
-        <Typography
-          component={labelFor ? "label" : "div"}
-          htmlFor={labelFor}
-          sx={{ display: "block", fontSize: TITLE, fontWeight: 700, color: colors.text }}
-        >
-          {title}
-        </Typography>
-        <Typography component="div" sx={{ fontSize: TEXT, color: colors.muted, mt: 0.25, lineHeight: 1.45 }}>
-          {description}
-        </Typography>
-      </Box>
-      <Box sx={{ flexShrink: 0, maxWidth: "100%" }}>{control}</Box>
-    </Box>
+    <SettingRow title={title} description={description} control={control} labelFor={labelFor} colors={colors} />
   );
 
   const toggle = (id: string, checked: boolean, onToggle: (next: boolean) => void) => (
@@ -205,6 +134,7 @@ export default function UserPreferencesPanel({
           </>,
           <Select
             id="settings-time-zone"
+            labelId={settingLabelId("settings-time-zone")}
             size="small"
             value={value.timeZone}
             displayEmpty
