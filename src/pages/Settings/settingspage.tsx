@@ -3,44 +3,30 @@ import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import { useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import Grid from "@mui/material/Grid";
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  Chip,
-  CircularProgress,
-  Collapse,
   Divider,
-  InputAdornment,
   Paper,
   Skeleton,
   Stack,
   Tab,
   Tabs,
-  TextField,
   Typography,
-  Table as MuiTable,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import {
-  BellRing, Braces, Cpu, HardDrive, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck,
+  BellRing, Braces, Cpu, HardDrive, Network, RefreshCw, RotateCcw, Save, ScrollText, Server, ShieldCheck,
   Tag, UserCog, UserRound, UsersRound,
 } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 import TagsPanel from "@/pages/Settings/TagsPanel";
+import EnvironmentPanel, { type EnvironmentRow } from "@/pages/Settings/EnvironmentPanel";
 import HostSettingsPanel, {
   type HostSettings,
   defaultHostSettings,
@@ -105,11 +91,6 @@ type InstanceSettings = {
   maxConcurrentRunsPerUser: number;
 };
 
-type EnvironmentRow = {
-  name: string;
-  value: string;
-  isOverride: boolean;
-};
 
 type InstanceSettingsPatch =
   Partial<InstanceSettings>;
@@ -154,17 +135,6 @@ const defaultInstanceSettings:
 
 // Wide enough for every tab in one row (and the wide tables of Users, Audit and Disk usage)
 const wrapperMaxWidth = 1400;
-const fieldFontSize = 14;
-const environmentNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-function safeStringify(value: unknown): string {
-  // safeStringify
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return "{}";
-  }
-}
 
 function clampNumber(value: unknown, fallback: number, min?: number, max?: number): number {
   // clampNumber
@@ -225,6 +195,8 @@ function normalizeEnvironmentRows(raw: any): EnvironmentRow[] {
         ).trim(),
         value: String(item?.value ?? ""),
         isOverride: Boolean(item?.isOverride),
+        default: item?.default == null ? "" : String(item.default),
+        description: item?.description == null ? "" : String(item.description),
       }))
       .filter(
         (item: EnvironmentRow) =>
@@ -365,26 +337,6 @@ function sanitizeInstanceSettings(
       64,
     ),
   };
-}
-
-async function copyToClipboard(text: string): Promise<void> {
-  // copyToClipboard
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.top = "0";
-  textarea.style.left = "0";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
 }
 
 function getTimeZoneOptions(): string[] {
@@ -528,12 +480,8 @@ export default function SettingsPage() {
   const [environmentBase, setEnvironmentBase] = useState<EnvironmentRow[]>([]);
   const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentRow[]>([]);
   const [environmentLoadedOnce, setEnvironmentLoadedOnce] = useState(false);
-  const [environmentFilter, setEnvironmentFilter] = useState("");
 
-  const [newEnvironmentName, setNewEnvironmentName] = useState("");
-  const [newEnvironmentValue, setNewEnvironmentValue] = useState("");
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [hostLoading, setHostLoading] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
@@ -591,81 +539,15 @@ export default function SettingsPage() {
     return Object.keys(patch).length ? patch : null;
   }, [environmentBase, environmentDraft]);
 
-  const filteredEnvironmentRows = useMemo(() => {
-    // filteredEnvironmentRows
-    const q = environmentFilter.trim().toLowerCase();
-    if (!q) return environmentDraft;
+  const handleEnvironmentValueChange = useCallback((name: string, value: string) => {
+    setEnvironmentDraft((prev) => prev.map((row) => (row.name === name ? { ...row, value } : row)));
+  }, []);
 
-    return environmentDraft.filter((row) => {
-      const name = row.name.toLowerCase();
-      const value = row.value.toLowerCase();
-      return name.includes(q) || value.includes(q);
-    });
-  }, [environmentDraft, environmentFilter]);
-
-  const newEnvironmentNameTrimmed = useMemo(() => {
-    return newEnvironmentName.trim();
-  }, [newEnvironmentName]);
-
-  const newEnvironmentNameExists = useMemo(() => {
-    if (!newEnvironmentNameTrimmed) return false;
-
-    return environmentDraft.some(
-      (row) => row.name === newEnvironmentNameTrimmed,
-    );
-  }, [environmentDraft, newEnvironmentNameTrimmed]);
-
-  const newEnvironmentNameInvalid = useMemo(() => {
-    if (!newEnvironmentNameTrimmed) return false;
-
-    return !environmentNamePattern.test(newEnvironmentNameTrimmed);
-  }, [newEnvironmentNameTrimmed]);
-
-  const canAddEnvironmentVariable = useMemo(() => {
-    return (
-      environmentAvailable &&
-      !environmentLoading &&
-      newEnvironmentNameTrimmed.length > 0 &&
-      !newEnvironmentNameExists &&
-      !newEnvironmentNameInvalid
-    );
-  }, [
-    environmentAvailable,
-    environmentLoading,
-    newEnvironmentNameTrimmed,
-    newEnvironmentNameExists,
-    newEnvironmentNameInvalid,
-  ]);
-
-  const handleAddEnvironmentVariable = useCallback(() => {
-    const name = newEnvironmentName.trim();
-
-    if (!name) {
-      toast.error("Variable name is required.");
-      return;
-    }
-
-    if (!environmentNamePattern.test(name)) {
-      toast.error("Variable name can only contain letters, numbers and underscores, and cannot start with a number.");
-      return;
-    }
-
-    if (environmentDraft.some((row) => row.name === name)) {
-      toast.error(`Environment variable ${name} already exists.`);
-      return;
-    }
-
-    setEnvironmentDraft((prev) => {
-      return [...prev, { name, value: newEnvironmentValue, isOverride: false, }].sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-    });
-
-    setNewEnvironmentName("");
-    setNewEnvironmentValue("");
-    setEnvironmentFilter("");
-  }, [environmentDraft, newEnvironmentName, newEnvironmentValue]);
-
+  const handleAddEnvironmentVariable = useCallback((name: string, value: string) => {
+    setEnvironmentDraft((prev) => (prev.some((row) => row.name === name)
+      ? prev
+      : [...prev, { name, value, isOverride: false }].sort((a, b) => a.name.localeCompare(b.name))));
+  }, []);
 
   const loadHostSettings = useCallback(async () => {
     setHostLoading(true);
@@ -1058,33 +940,6 @@ export default function SettingsPage() {
     setEnvironmentDraft(environmentBase);
   }, [environmentBase]);
 
-  const handleCopyAdvanced = useCallback(async () => {
-    try {
-      const payload =
-        tab === "user"
-          ? (userDraft ?? userBase ?? {})
-          : tab === "instance"
-            ? (instanceDraft ?? instanceBase ?? {})
-            : tab === "host"
-              ? (hostDraft ?? hostBase ?? {})
-              : (environmentDraft ?? []);
-
-      await copyToClipboard(safeStringify(payload));
-      toast.success("Copied.");
-    } catch {
-      toast.error("Copy failed.");
-    }
-  }, [
-    tab,
-    userDraft,
-    userBase,
-    instanceDraft,
-    instanceBase,
-    hostDraft,
-    hostBase,
-    environmentDraft,
-  ]);
-
   const headerRight = useMemo(() => {
     // The panels with their own actions (Save, Reload…) have none up here
     if (tab === "tags" || tab === "jobs" || tab === "users" || tab === "roles" || tab === "groups"
@@ -1093,7 +948,6 @@ export default function SettingsPage() {
     const isUser = tab === "user";
     const isInstance = tab === "instance";
     const isHost = tab === "host";
-    const isEnvironment = tab === "environment";
 
     const busy = isUser
       ? userLoading
@@ -1314,327 +1168,21 @@ export default function SettingsPage() {
   };
 
   const renderEnvironmentContent = () => {
-    // renderEnvironmentContent
     if (!environmentAvailable) {
       return <Alert severity="info">Environment variables are restricted to admin users.</Alert>;
     }
-
-    if (environmentLoading && environmentDraft.length === 0) {
-      return (
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader
-            title="Environment"
-            subheader="Loading backend environment variables..."
-            sx={cardHeaderSx}
-          />
-          <CardContent
-            sx={{
-              pt: 2,
-              minHeight: 320,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Stack spacing={1.5} alignItems="center">
-              <CircularProgress size={28} thickness={4.5} />
-              <Typography sx={{ fontSize: 13, color: colors.muted }}>
-                Loading environment variables...
-              </Typography>
-            </Stack>
-          </CardContent>
-        </Card>
-      );
-    }
-
     return (
-      <Stack spacing={1.75}>
-        {environmentError && <Alert severity="error">{environmentError}</Alert>}
-
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader
-            title="Environment"
-            subheader="Inspect and edit backend environment variables exposed by the server."
-            sx={cardHeaderSx}
-          />
-          <CardContent sx={{ pt: 2 }}>
-            <Stack spacing={1.5}>
-              <Grid container spacing={2} sx={{ width: "100%" }}>
-                <Grid size={{ xs: 12, md: 8 }}>
-                  <TextField
-                    sx={fieldSx}
-                    fullWidth
-                    size="small"
-                    label="Filter"
-                    value={environmentFilter}
-                    onChange={(e) => setEnvironmentFilter(e.target.value)}
-                    placeholder="Filter by variable name or value"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Search size={16} />
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText="Use this to quickly find specific variables."
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: colors.hover, border: "1px solid", borderColor: colors.border }}>
-                    <Typography sx={{ fontSize: 12.5, fontWeight: 800, mb: 0.25, color: colors.text }}>Rows</Typography>
-                    <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                      Showing {filteredEnvironmentRows.length} of {environmentDraft.length} variables.
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-
-              <Card
-                variant="outlined"
-                sx={{
-                  borderRadius: 2,
-                  bgcolor: colors.hover,
-                  borderColor: colors.border,
-                }}
-              >
-                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-                  <Grid container spacing={1.25} sx={{ width: "100%" }} alignItems="flex-start">
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        sx={fieldSx}
-                        fullWidth
-                        size="small"
-                        label="New variable"
-                        value={newEnvironmentName}
-                        disabled={environmentLoading}
-                        onChange={(e) => setNewEnvironmentName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && canAddEnvironmentVariable) {
-                            e.preventDefault();
-                            handleAddEnvironmentVariable();
-                          }
-                        }}
-                        error={newEnvironmentNameExists || newEnvironmentNameInvalid}
-                        helperText={
-                          newEnvironmentNameExists
-                            ? "This variable already exists."
-                            : newEnvironmentNameInvalid
-                              ? "Use letters, numbers and underscores. It cannot start with a number."
-                              : "Example: SCIPION_HOME"
-                        }
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 5 }}>
-                      <TextField
-                        sx={fieldSx}
-                        fullWidth
-                        size="small"
-                        label="Value"
-                        value={newEnvironmentValue}
-                        disabled={environmentLoading}
-                        onChange={(e) => setNewEnvironmentValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && e.ctrlKey && canAddEnvironmentVariable) {
-                            e.preventDefault();
-                            handleAddEnvironmentVariable();
-                          }
-                        }}
-                        helperText="Ctrl+Enter to add."
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 3 }}>
-                      <Button
-                        sx={{ ...actionButtonSx, height: 40, width: "100%" }}
-                        variant="outlined"
-                        size="small"
-                        startIcon={<Plus size={16} />}
-                        disabled={!canAddEnvironmentVariable}
-                        onClick={handleAddEnvironmentVariable}
-                      >
-                        Add variable
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-
-              {environmentDraft.length === 0 ? (
-                <Alert severity="info">No environment variables returned by the backend.</Alert>
-              ) : (
-                <Box sx={{ position: "relative" }}>
-                  <TableContainer
-                    component={Paper}
-                    variant="outlined"
-                    sx={{
-                      bgcolor: "transparent",
-                      borderColor: colors.border,
-                      borderRadius: 2,
-                      overflow: "auto",
-                      maxHeight: { xs: 360, md: 360 },
-                      transition: "opacity 160ms ease",
-                      opacity: environmentLoading ? 0.55 : 1,
-                    }}
-                  >
-                    <MuiTable size="small" stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell
-                            sx={{
-                              minWidth: 280,
-                              bgcolor: colors.surface,
-                              color: colors.text,
-                              borderColor: colors.border,
-                              fontSize: 12,
-                              fontWeight: 900,
-                            }}
-                          >
-                            Variable
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              bgcolor: colors.surface,
-                              color: colors.text,
-                              borderColor: colors.border,
-                              fontSize: 12,
-                              fontWeight: 900,
-                            }}
-                          >
-                            Value
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{
-                              width: 150,
-                            }}
-                          >
-                            Override
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-
-                      <TableBody>
-                        {filteredEnvironmentRows.map((row) => {
-                          const originalIndex = environmentDraft.findIndex((item) => item.name === row.name);
-
-                          return (
-                            <TableRow key={row.name} hover>
-                              <TableCell
-                                sx={{
-                                  verticalAlign: "top",
-                                  borderColor: colors.border,
-                                  color: colors.text,
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                                }}
-                              >
-                                {row.name}
-                              </TableCell>
-
-                              <TableCell sx={{ borderColor: colors.border }}>
-                                <TextField
-                                  sx={fieldSx}
-                                  fullWidth
-                                  multiline
-                                  minRows={1}
-                                  maxRows={8}
-                                  size="small"
-                                  value={row.value}
-                                  disabled={environmentLoading}
-                                  onChange={(e) => {
-                                    const nextValue = e.target.value;
-                                    setEnvironmentDraft((prev) => {
-                                      const next = [...prev];
-                                      if (originalIndex >= 0 && originalIndex < next.length) {
-                                        next[originalIndex] = { ...next[originalIndex], value: nextValue };
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  placeholder="Variable value"
-                                />
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {row.isOverride ? (
-                                  <Button
-                                    size="small"
-                                    variant="text"
-                                    startIcon={
-                                      <RotateCcw
-                                        size={15}
-                                      />
-                                    }
-                                    disabled={
-                                      environmentLoading
-                                    }
-                                    onClick={() =>
-                                      void handleResetEnvironmentVariable(
-                                        row.name
-                                      )
-                                    }
-                                  >
-                                    Reset
-                                  </Button>
-                                ) : (
-                                  <Chip
-                                    size="small"
-                                    label="Base"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </MuiTable>
-                  </TableContainer>
-
-                  {environmentLoading && (
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 2,
-                        bgcolor: isDarkMode ? "rgba(2, 6, 23, 0.38)" : "rgba(255,255,255,0.52)",
-                        backdropFilter: "blur(2px)",
-                        pointerEvents: "all",
-                      }}
-                    >
-                      <Stack spacing={1.25} alignItems="center">
-                        <CircularProgress size={28} thickness={4.5} />
-                        <Typography sx={{ fontSize: 13, color: colors.text, fontWeight: 700 }}>
-                          Saving environment variables...
-                        </Typography>
-                      </Stack>
-                    </Box>
-                  )}
-                </Box>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-      </Stack>
+      <EnvironmentPanel
+        rows={environmentDraft}
+        savedRows={environmentBase}
+        loading={environmentLoading}
+        error={environmentError}
+        onChange={handleEnvironmentValueChange}
+        onAdd={handleAddEnvironmentVariable}
+        onBackToDefault={(name) => void handleResetEnvironmentVariable(name)}
+      />
     );
   };
-
-  const advancedPayload = useMemo(() => {
-    if (tab === "user") return userDraft ?? userBase ?? {};
-    if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
-    if (tab === "host") return hostDraft ?? hostBase ?? {};
-    return environmentDraft ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, hostDraft, hostBase, environmentDraft]);
 
   return (
     <>
@@ -1746,56 +1294,6 @@ export default function SettingsPage() {
                                 ? <TagsPanel />
                                 : renderEnvironmentContent()}
 
-              {tab !== "user" && tab !== "instance" && tab !== "host" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
-                && tab !== "disk" && tab !== "notifications" && tab !== "tags" ? (
-                <>
-                  <Divider sx={{ my: 2, ...dividerSx }} />
-
-                  <Stack spacing={1}>
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1}
-                      alignItems={{ xs: "stretch", sm: "center" }}
-                      justifyContent="space-between"
-                    >
-                      <Typography sx={{ fontWeight: 900, fontSize: 13, color: colors.text }}>
-                        Advanced (read-only JSON)
-                      </Typography>
-
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button sx={actionButtonSx} variant="outlined" onClick={() => setShowAdvanced((v) => !v)} size="small">
-                          {showAdvanced ? "Hide" : "Show"}
-                        </Button>
-                        <Button sx={actionButtonSx} variant="outlined" onClick={handleCopyAdvanced} size="small">
-                          Copy
-                        </Button>
-                      </Stack>
-                    </Stack>
-
-                    <Collapse in={showAdvanced} timeout="auto" unmountOnExit>
-                      <TextField
-                        value={safeStringify(advancedPayload)}
-                        multiline
-                        minRows={10}
-                        fullWidth
-                        size="small"
-                        inputProps={{
-                          readOnly: true,
-                          style: {
-                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                            fontSize: "12px",
-                            color: colors.text,
-                          },
-                        }}
-                        sx={fieldSx}
-                      />
-                      <Typography sx={{ mt: 1, color: colors.muted, fontSize: 12 }}>
-                        This view is intended for diagnostics and support. Use the controls above to edit values.
-                      </Typography>
-                    </Collapse>
-                  </Stack>
-                </>
-              ) : null}
             </Box>
 
           </Paper>
