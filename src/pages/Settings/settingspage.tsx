@@ -1916,9 +1916,7 @@ export default function SettingsPage() {
                           ? <RolesPanel />
                           : tab === "groups"
                             ? (
-                              <GroupsPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
-                                           selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors}
-                                           actionButtonSx={actionButtonSx} saveButtonSx={saveButtonSx} />
+                              <GroupsPanel />
                             )
                             : tab === "audit"
                               ? (

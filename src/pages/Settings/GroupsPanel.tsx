@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     CircularProgress,
     FormControl,
     InputLabel,
@@ -15,8 +12,9 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { Plus, RefreshCw, Trash2, Users } from "lucide-react";
-import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import { useTheme } from "@mui/material/styles";
+import { Crown, Eye, Plus, RefreshCw, Trash2, Users, UsersRound } from "lucide-react";
+import SettingsDialog from "./SettingsDialog";
 import toast from "react-hot-toast";
 
 import {
@@ -31,33 +29,42 @@ import {
     type Role,
 } from "@/api/access";
 import { listAdminUsers, type AdminUser } from "@/api/users";
+import { SETTINGS_TEXT, SettingsSection, sectionTint } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 
+// The page may still pass its own look; the panel uses the shared Settings one
 type PanelStyles = {
-    fieldSx: any;
-    cardSx: any;
-    cardHeaderSx: any;
-    selectSx: any;
-    menuPaperSx: any;
+    fieldSx?: any;
+    cardSx?: any;
+    cardHeaderSx?: any;
+    selectSx?: any;
+    menuPaperSx?: any;
     actionButtonSx?: any;
     saveButtonSx?: any;
-    colors: { border: string; text: string; muted: string; surface: string; hover: string };
+    colors?: { border: string; text: string; muted: string; surface: string; hover: string };
 };
 
-const PI_ACCESS_OPTIONS: { value: PiAccess; label: string }[] = [
-    { value: "none", label: "None" },
-    { value: "view", label: "View" },
-    { value: "work", label: "Work" },
-    { value: "manage", label: "Manage" },
+const PI_ACCESS_OPTIONS: { value: PiAccess; label: string; meaning: string }[] = [
+    { value: "none", label: "None", meaning: "The PIs do not see their members' projects." },
+    { value: "view", label: "View", meaning: "The PIs see their members' projects, without changing them." },
+    { value: "work", label: "Work", meaning: "The PIs can also run protocols in their members' projects." },
+    { value: "manage", label: "Manage", meaning: "The PIs can do anything in their members' projects, also share or delete them." },
 ];
+
+const MEMBERS_SHOWN = 8;
 
 function userName(user: { firstName?: string | null; lastName?: string | null; email?: string }) {
     return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "—";
 }
 
-export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, menuPaperSx, colors, actionButtonSx,
-                                      saveButtonSx }: PanelStyles) {
-    const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
-    const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the old look props are still accepted
+export default function GroupsPanel(_styles: PanelStyles = {}) {
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, fieldSx, selectSx, menuPaperSx, actionButtonSx: actionSx, saveButtonSx: saveSx } =
+        useSettingsStyles(isDarkMode);
+    const sectionColors = { ...colors, hover: colors.hover };
     const [groups, setGroups] = useState<Group[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -112,70 +119,111 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
         );
     }
 
+    const tint = sectionTint(isDarkMode);
+    const pill = (label: ReactNode, strong: boolean, key?: string | number, title?: string) => (
+        <Box key={key} component="span" title={title} sx={{
+            display: "inline-flex", alignItems: "center", gap: 0.5, px: 1, py: 0.3, borderRadius: 999,
+            fontSize: SETTINGS_TEXT.text, fontWeight: 600, border: "1px solid",
+            borderColor: strong ? "transparent" : colors.border, bgcolor: strong ? tint : "transparent",
+            color: strong ? colors.text : colors.muted,
+        }}>
+            {label}
+        </Box>
+    );
+    const label = { fontSize: SETTINGS_TEXT.text, color: colors.muted, minWidth: 74 } as const;
+
     return (
-        <Stack spacing={1.75}>
+        <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Groups"
-                    subheader="People who work together (a lab, the facility staff). Members hold the group's roles and see what is shared with it."
-                    sx={cardHeaderSx}
-                    action={
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
-                                    disabled={loading} onClick={() => void load()}>
-                                Reload
-                            </Button>
-                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
-                                    onClick={() => setEditing("new")}>
-                                New group
-                            </Button>
-                        </Stack>
-                    }
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1}>
-                        {groups.length === 0 && <Alert severity="info">No groups yet.</Alert>}
-                        {groups.map((group) => (
-                            <Box key={group.id} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                                    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                                        <Typography sx={{ fontSize: 14, fontWeight: 800, color: colors.text }}>
-                                            {group.name}
-                                        </Typography>
-                                        <Typography sx={{ fontSize: 12.5, color: colors.muted }}>
-                                            {group.description || "—"} · Roles:{" "}
-                                            {group.roleIds.map((id) => roleNames.get(id) ?? `#${id}`).join(", ") || "none"}
-                                        </Typography>
-                                        <Typography sx={{ fontSize: 12, color: colors.muted }}>
-                                            PI access to the members' projects: {group.piAccess ?? "view"}
-                                        </Typography>
-                                        <Typography sx={{ fontSize: 12, color: colors.muted }}>
-                                            {group.members.length
-                                                ? group.members.map((member) =>
-                                                    userName(member) + (member.groupRole === "pi" ? " (PI)" : "")).join(", ")
-                                                : "No members"}
-                                        </Typography>
+            <SettingsSection
+                icon={<UsersRound size={19} />}
+                title="Groups"
+                subtitle="People who work together (a lab, the facility staff). Members hold the group's roles and see what is shared with it."
+                actions={
+                    <Stack direction="row" spacing={1}>
+                        <Button size="small" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                                disabled={loading} onClick={() => void load()}>
+                            Reload
+                        </Button>
+                        <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
+                                onClick={() => setEditing("new")}>
+                            New group
+                        </Button>
+                    </Stack>
+                }
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
+            >
+                {groups.length === 0 && (
+                    <Typography sx={{ fontSize: SETTINGS_TEXT.control, color: colors.muted, py: 2.5 }}>
+                        No groups yet.
+                    </Typography>
+                )}
+                {groups.map((group) => {
+                    const access = PI_ACCESS_OPTIONS.find((option) => option.value === (group.piAccess ?? "view"));
+                    const pis = group.members.filter((member) => member.groupRole === "pi");
+                    const members = [...pis, ...group.members.filter((member) => member.groupRole !== "pi")];
+                    return (
+                        <Box key={group.id} data-testid={`group-${group.id}`} sx={{
+                            display: "flex", gap: { xs: 1.25, md: 3 }, py: 2,
+                            flexDirection: { xs: "column", md: "row" }, alignItems: { md: "flex-start" },
+                        }}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
+                                    {group.name}
+                                </Typography>
+                                {group.description && (
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mt: 0.25 }}>
+                                        {group.description}
+                                    </Typography>
+                                )}
+                                <Stack spacing={0.9} sx={{ mt: 1.25 }}>
+                                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" alignItems="center">
+                                        <Typography sx={label}>Roles</Typography>
+                                        {group.roleIds.length
+                                            ? group.roleIds.map((id) => pill(roleNames.get(id) ?? `#${id}`, true, id))
+                                            : pill("None", false)}
                                     </Stack>
-                                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                        <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(group)}>
-                                            Edit
-                                        </Button>
-                                        <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }} onClick={() => setDeleting(group)}>
-                                            Delete
-                                        </Button>
+                                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" alignItems="center">
+                                        <Typography sx={label}>Members</Typography>
+                                        {members.length === 0 && pill("Nobody yet", false)}
+                                        {members.slice(0, MEMBERS_SHOWN).map((member) => member.groupRole === "pi"
+                                            ? pill(<><Crown size={13} />{userName(member)} · PI</>, true, member.userId)
+                                            : pill(userName(member), false, member.userId))}
+                                        {members.length > MEMBERS_SHOWN && pill(`+${members.length - MEMBERS_SHOWN} more`, false)}
                                     </Stack>
+                                    {pis.length > 0 && access && (
+                                        <Stack direction="row" spacing={0.75} alignItems="center">
+                                            <Typography sx={label}>PI access</Typography>
+                                            {pill(<><Eye size={13} />{access.label}</>, false, undefined, access.meaning)}
+                                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>
+                                                {access.meaning}
+                                            </Typography>
+                                        </Stack>
+                                    )}
                                 </Stack>
                             </Box>
-                        ))}
-                    </Stack>
-                </CardContent>
-            </Card>
+                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, whiteSpace: "nowrap" }}>
+                                    {plural(group.members.length, "member")}
+                                </Typography>
+                                <Button size="small" sx={actionSx} onClick={() => setEditing(group)}>
+                                    Edit
+                                </Button>
+                                <Button size="small" sx={{ ...actionSx, color: "#dc2626" }}
+                                        startIcon={<Trash2 size={15} />} onClick={() => setDeleting(group)}>
+                                    Delete
+                                </Button>
+                            </Stack>
+                        </Box>
+                    );
+                })}
+            </SettingsSection>
 
             {deleting !== null && (
                 <SettingsDialog
                     title="Delete group?"
-                    description="This action cannot be undone. Its members lose its roles and the projects shared with it."
+                    description="This cannot be undone. Its members lose its roles and the projects shared with it."
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -186,8 +234,8 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: 14 }}>
-                        <strong>{deleting.name}</strong> · {deleting.members.length} members
+                    <Typography sx={{ fontSize: SETTINGS_TEXT.control }}>
+                        <strong>{deleting.name}</strong> · {plural(deleting.members.length, "member")}
                     </Typography>
                 </SettingsDialog>
             )}
@@ -202,6 +250,7 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
                     fieldSx={fieldSx}
                     selectSx={selectSx}
                     menuPaperSx={menuPaperSx}
+                    muted={colors.muted}
                     onClose={() => setEditing(null)}
                     onSaved={() => {
                         setEditing(null);
@@ -213,8 +262,9 @@ export default function GroupsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, m
     );
 }
 
-function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, actionButtonSx, saveButtonSx, onClose,
-                       onSaved }: {
+function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, muted, actionButtonSx, saveButtonSx,
+                       onClose, onSaved }: {
+    muted: string;
     actionButtonSx: any;
     saveButtonSx: any;
     group: Group | null;
@@ -323,8 +373,11 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, acti
                                 <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                             ))}
                         </Select>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: muted, mt: 0.75, ml: 0.25 }}>
+                            {PI_ACCESS_OPTIONS.find((option) => option.value === piAccess)?.meaning}
+                        </Typography>
                     </FormControl>
-                    <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: muted }}>
                         You can only give roles whose permissions you hold yourself. Raising the PI access
                         needs as much over every project (view: projects.viewAll; work or manage:
                         projects.manageAll).
