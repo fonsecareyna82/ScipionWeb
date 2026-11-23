@@ -643,7 +643,7 @@ export default function SettingsPage() {
     return muiDark || darkClassEnabled;
   }, [muiTheme.palette.mode, darkClassEnabled]);
 
-  const { colors, fieldSx, selectSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
+  const { colors, fieldSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
           saveButtonSx } = useSettingsStyles(isDarkMode);
 
 
@@ -1920,9 +1920,7 @@ export default function SettingsPage() {
                             )
                             : tab === "audit"
                               ? (
-                                <AuditPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
-                                            selectSx={selectSx} menuPaperSx={menuPaperSx} colors={colors}
-                                            actionButtonSx={actionButtonSx} />
+                                <AuditPanel />
                               )
                               : tab === "disk"
                                 ? (

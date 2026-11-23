@@ -79,6 +79,22 @@ describe("AuditPanel", () => {
       { action: "auth", text: "", before: null }, 100));
   });
 
+  it("shows only the last days when a period is chosen, and names every action", async () => {
+    accessMocks.listAuditEvents.mockResolvedValue({
+      events: [{ ...event(5, "facility.sessionCreated"), createdAt: new Date().toISOString() }], nextBefore: null });
+    render(<AuditPanel {...styles} />);
+    expect(await screen.findByText("Created a facility session")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
+
+    const before = Date.now();
+    fireEvent.click(screen.getByRole("button", { name: "7 days" }));
+    await waitFor(() => expect(accessMocks.listAuditEvents).toHaveBeenCalledTimes(2));
+    const [query] = accessMocks.listAuditEvents.mock.calls[1];
+    const days = (before - new Date(query.since).getTime()) / 86_400_000;
+    expect(days).toBeGreaterThan(6.99);
+    expect(days).toBeLessThan(7.01);
+  });
+
   it("describes the details of an event in a line", () => {
     expect(describeAuditValue({ rolesAdded: ["User", "Technician"], isActive: true })).toBe(
       "rolesAdded: User, Technician; isActive: true");
