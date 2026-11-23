@@ -1947,7 +1947,7 @@ export default function SettingsPage() {
                                 ? renderTagsContent()
                                 : renderEnvironmentContent()}
 
-              {tab !== "user" && tab !== "instance" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
+              {tab !== "user" && tab !== "instance" && tab !== "host" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
                 && tab !== "disk" && tab !== "notifications" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />

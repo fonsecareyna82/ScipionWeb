@@ -1,17 +1,10 @@
-import { useMemo } from "react";
-import Grid from "@mui/material/Grid";
+import React, { useMemo, useRef } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  Chip,
-  Divider,
-  FormControlLabel,
   IconButton,
-  Paper,
   Skeleton,
   Stack,
   Switch,
@@ -25,8 +18,20 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import type { SxProps, Theme } from "@mui/material/styles";
-import { CircleAlert, Plus, Trash2 } from "lucide-react";
+import { useTheme, type SxProps, type Theme } from "@mui/material/styles";
+import { CircleAlert, FileCode, ListChecks, Network, Plus, SquareTerminal, Trash2 } from "lucide-react";
+
+import { SETTINGS_TEXT, SettingRow, SettingsSection } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
+import HostAutoSetup from "./HostAutoSetup";
+
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+const SCHEDULERS = ["SLURM", "PBS/TORQUE", "SGE", "LSF", "HTCondor"];
+
+/** A command word in a sentence. */
+function Code({ children }: { children: React.ReactNode }) {
+  return <Box component="code" sx={{ fontFamily: MONO, fontSize: "0.95em" }}>{children}</Box>;
+}
 
 export type HostQueueParam = {
   variableName: string;
@@ -59,9 +64,9 @@ type HostSettingsPanelProps = {
   loading: boolean;
   error: string | null;
   fieldSx: SxProps<Theme>;
-  cardSx: SxProps<Theme>;
-  cardHeaderSx: SxProps<Theme>;
-  dividerSx: SxProps<Theme>;
+  cardSx?: SxProps<Theme>;
+  cardHeaderSx?: SxProps<Theme>;
+  dividerSx?: SxProps<Theme>;
   colors: {
     border: string;
     text: string;
@@ -461,12 +466,12 @@ export default function HostSettingsPanel({
   loading,
   error,
   fieldSx,
-  cardSx,
-  cardHeaderSx,
-  dividerSx,
   colors,
 }: HostSettingsPanelProps) {
   const warnings = useMemo(() => getValidationWarnings(value), [value]);
+  const isDarkMode = useTheme().palette.mode === "dark";
+  const settings = useSettingsStyles(isDarkMode);
+  const templateRef = useRef<HTMLTextAreaElement | null>(null);
 
   if (loading && !value) {
     return (
@@ -553,515 +558,244 @@ export default function HostSettingsPanel({
     });
   };
 
+  const sectionColors = { ...colors, card: settings.colors.card, primary: settings.colors.primary,
+                          hover: settings.colors.hover };
+  const note = { fontSize: SETTINGS_TEXT.text, color: colors.muted } as const;
+  const codeFieldSx = {
+    ...(fieldSx as object),
+    "& .MuiInputBase-input": { fontFamily: MONO, fontSize: SETTINGS_TEXT.control, color: colors.text },
+  };
+  const wideField = { width: { xs: "100%", md: 480 } };
+
+  const insertPlaceholder = (placeholder: string) => {
+    // At the cursor of the template (or at its end)
+    const area = templateRef.current;
+    const text = value.submitTemplate;
+    const start = area?.selectionStart ?? text.length;
+    const end = area?.selectionEnd ?? text.length;
+    updateValue({ submitTemplate: text.slice(0, start) + placeholder + text.slice(end) });
+    window.requestAnimationFrame(() => {
+      if (!area) return;
+      area.focus();
+      area.setSelectionRange(start + placeholder.length, start + placeholder.length);
+    });
+  };
+
+  const command = (key: "parallelCommand" | "submitCommand" | "cancelCommand" | "checkCommand" | "jobDoneRegex",
+                   title: string, description: React.ReactNode, placeholder: string) => (
+    <SettingRow
+      key={key}
+      title={title}
+      labelFor={`host-${key}`}
+      description={description}
+      colors={sectionColors}
+      control={
+        <TextField id={`host-${key}`} size="small" sx={{ ...codeFieldSx, ...wideField }} value={value[key]}
+                   placeholder={placeholder} onChange={(e) => updateValue({ [key]: e.target.value })} />
+      }
+    />
+  );
+
+  const headCellSx = { fontSize: SETTINGS_TEXT.text, fontWeight: 700, color: colors.muted, borderColor: colors.border,
+                       bgcolor: "transparent", whiteSpace: "nowrap" } as const;
+
   return (
-    <Stack spacing={1.75}>
+    <Stack spacing={2}>
       {error && <Alert severity="error">{error}</Alert>}
 
       {warnings.length > 0 && (
-        <Alert
-          severity="warning"
-          icon={<CircleAlert size={18} />}
-          sx={{
-            border: "1px solid",
-            borderColor: colors.border,
-            bgcolor: colors.hover,
-            color: colors.text,
-          }}
-        >
-          <Stack spacing={0.5}>
+        <Alert severity="warning" icon={<CircleAlert size={18} />} sx={{ alignItems: "flex-start" }}>
+          <Typography sx={{ fontSize: SETTINGS_TEXT.control, fontWeight: 700, mb: 0.5 }}>Check before saving</Typography>
+          <Stack component="ul" spacing={0.25} sx={{ m: 0, pl: 2.5 }}>
             {warnings.map((warning) => (
-              <Typography
-                key={warning}
-                sx={{ fontSize: 12.5, color: colors.text }}
-              >
-                • {warning}
-              </Typography>
+              <Typography component="li" key={warning} sx={{ fontSize: SETTINGS_TEXT.text }}>{warning}</Typography>
             ))}
           </Stack>
         </Alert>
       )}
 
-      <Card variant="outlined" sx={cardSx}>
-        <CardHeader
-          title="General"
-          subheader="Host identity, scheduler label, and queue policy."
-          sx={cardHeaderSx}
+      <SettingsSection icon={<Network size={19} />} title="Cluster"
+                       subtitle="How this server sends protocols to a cluster's scheduler. Detect fills the form from what this server has."
+                       colors={sectionColors} isDarkMode={isDarkMode}
+                       actions={<HostAutoSetup value={value} onChange={onChange} colors={colors}
+                                               actionButtonSx={settings.actionButtonSx}
+                                               saveButtonSx={settings.saveButtonSx} />}>
+        <SettingRow
+          title="Host name"
+          labelFor="host-alias"
+          description='How protocols name this host, e.g. "localhost" or "cluster".'
+          colors={sectionColors}
+          control={<TextField id="host-alias" size="small" sx={{ ...(fieldSx as object), ...wideField }}
+                              value={value.hostAlias} onChange={(e) => updateValue({ hostAlias: e.target.value })} />}
         />
-        <CardContent sx={{ pt: 2 }}>
-          <Grid container spacing={2} sx={{ width: "100%" }}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Host alias"
-                value={value.hostAlias}
-                onChange={(e) => updateValue({ hostAlias: e.target.value })}
-                helperText='Example: "localhost" or "cluster"'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Scheduler name"
-                value={value.schedulerName}
-                onChange={(e) => updateValue({ schedulerName: e.target.value })}
-                helperText='Examples: "PBS/TORQUE", "SLURM", "SGE"'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(value.mandatory)}
-                    onChange={(e) => updateValue({ mandatory: e.target.checked })}
-                    size="small"
-                  />
-                }
-                label={
-                  <Typography
-                    sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}
-                  >
-                    Queue required
-                  </Typography>
-                }
-              />
-              <Typography sx={{ fontSize: 12, color: colors.muted }}>
-                Forces jobs to be submitted through a queue.
-              </Typography>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Chip size="small" label={`Queues: ${value.queues.length}`} />
-                <Chip size="small" label={value.schedulerName || "Unknown scheduler"} />
-              </Stack>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined" sx={cardSx}>
-        <CardHeader
-          title="Commands"
-          subheader="Execution and queue interaction commands."
-          sx={cardHeaderSx}
-        />
-        <CardContent sx={{ pt: 2 }}>
-          <Grid container spacing={2} sx={{ width: "100%" }}>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Parallel command"
-                value={value.parallelCommand}
-                onChange={(e) => updateValue({ parallelCommand: e.target.value })}
-                helperText='Example: mpirun -np %_(JOB_NODES)d %_(COMMAND)s'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Submit command"
-                value={value.submitCommand}
-                onChange={(e) => updateValue({ submitCommand: e.target.value })}
-                helperText='Usually includes "%_(JOB_SCRIPT)s"'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Cancel command"
-                value={value.cancelCommand}
-                onChange={(e) => updateValue({ cancelCommand: e.target.value })}
-                helperText='Usually includes "%_(JOB_ID)s"'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Check command"
-                value={value.checkCommand}
-                onChange={(e) => updateValue({ checkCommand: e.target.value })}
-                helperText='Usually includes "%_(JOB_ID)s"'
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                sx={fieldSx}
-                fullWidth
-                size="small"
-                label="Job done regex"
-                value={value.jobDoneRegex}
-                onChange={(e) => updateValue({ jobDoneRegex: e.target.value })}
-                helperText="Optional regex used to detect completed jobs."
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined" sx={cardSx}>
-        <CardHeader
-          title="Submit template"
-          subheader="Template used to generate the scheduler submit script."
-          sx={cardHeaderSx}
-        />
-        <CardContent sx={{ pt: 2 }}>
-          <Stack spacing={1.5}>
-            <Box
-              sx={{
-                p: 1.25,
-                borderRadius: 2,
-                bgcolor: colors.hover,
-                border: "1px solid",
-                borderColor: colors.border,
-              }}
-            >
-              <Typography
-                sx={{ fontSize: 12.5, fontWeight: 800, mb: 0.75, color: colors.text }}
-              >
-                Available placeholders
-              </Typography>
-
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                {availablePlaceholders.map((placeholder) => (
-                  <Chip
-                    key={placeholder}
-                    size="small"
-                    label={placeholder}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: colors.border,
-                      bgcolor: "transparent",
-                      color: colors.text,
-                      fontFamily:
-                        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                    }}
-                  />
-                ))}
-              </Stack>
-            </Box>
-
-            <TextField
-              sx={fieldSx}
-              fullWidth
-              multiline
-              minRows={18}
-              size="small"
-              label="Template"
-              value={value.submitTemplate}
-              onChange={(e) => updateValue({ submitTemplate: e.target.value })}
-              inputProps={{
-                style: {
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: "12px",
-                  color: colors.text,
-                },
-              }}
-              helperText="Use placeholders instead of hardcoded job-specific values."
+        <SettingRow
+          title="Scheduler"
+          labelFor="host-scheduler"
+          description="The name of the cluster's scheduler, as shown to the users."
+          colors={sectionColors}
+          control={
+            <Autocomplete
+              freeSolo
+              options={SCHEDULERS}
+              value={value.schedulerName}
+              onInputChange={(_, next) => updateValue({ schedulerName: next })}
+              sx={wideField}
+              renderInput={(params) => <TextField {...params} id="host-scheduler" size="small" sx={fieldSx} />}
             />
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined" sx={cardSx}>
-        <CardHeader
-          title="Queues"
-          subheader="Queues exposed to the UI and their variable definitions."
-          sx={cardHeaderSx}
-          action={
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={addQueue}
-              startIcon={<Plus size={16} />}
-              sx={{
-                textTransform: "none",
-                fontSize: 12,
-                color: colors.text,
-                borderColor: colors.border,
-                backgroundColor: "wheat",
-              }}
-            >
-              Add queue
-            </Button>
           }
         />
-        <CardContent sx={{ pt: 2 }}>
-          {value.queues.length === 0 ? (
-            <Alert severity="info">No queues configured.</Alert>
-          ) : (
-            <Stack spacing={1.5}>
-              {value.queues.map((queue, queueIndex) => (
-                <Box
-                  key={`${queue.name}-${queueIndex}`}
-                  sx={{
-                    border: "1px solid",
-                    borderColor: colors.border,
-                    borderRadius: 2,
-                    overflow: "hidden",
-                  }}
-                >
-                  <Box
-                    sx={{
-                      px: 1.5,
-                      py: 1.25,
-                      bgcolor: colors.surface,
-                      borderBottom: "1px solid",
-                      borderColor: colors.border,
-                    }}
-                  >
-                    <Stack
-                      direction={{ xs: "column", md: "row" }}
-                      spacing={1.25}
-                      alignItems={{ xs: "stretch", md: "center" }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <TextField
-                          sx={{fontSize: 13}}
-                          fullWidth
-                          size="small"
-                          label="Queue name"
-                          value={queue.name}
-                          onChange={(e) =>
-                            updateQueue(queueIndex, { name: e.target.value })
-                          }
-                          helperText='Examples: "default", "tesla", "gpu-long"'
-                        />
-                      </Box>
+        <SettingRow
+          title="Queue required"
+          labelFor="host-mandatory"
+          description="Every protocol must go through a queue: running directly on this server is not offered."
+          colors={sectionColors}
+          control={<Switch id="host-mandatory" checked={Boolean(value.mandatory)}
+                           onChange={(e) => updateValue({ mandatory: e.target.checked })} />}
+        />
+      </SettingsSection>
 
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => addQueueParam(queueIndex)}
-                          startIcon={<Plus size={16} />}
-                          sx={{
-                            textTransform: "none",
-                            fontSize: 12,
-                            color: colors.text,
-                            borderColor: colors.border,
-                            backgroundColor: "wheat",
-                          }}
-                        >
-                          Add variable
-                        </Button>
+      <SettingsSection icon={<SquareTerminal size={19} />} title="Commands"
+                       subtitle="How jobs are started, sent, stopped and followed. Words like %_(JOB_ID)s are filled in for each job."
+                       colors={sectionColors} isDarkMode={isDarkMode}>
+        {command("parallelCommand", "Parallel command",
+          <>Runs a program on several processors. Uses <Code>%_(JOB_NODES)d</Code> and <Code>%_(COMMAND)s</Code>.</>,
+          "mpirun -np %_(JOB_NODES)d %_(COMMAND)s")}
+        {command("submitCommand", "Send a job",
+          <>Sends the job's script to the queue. Uses <Code>%_(JOB_SCRIPT)s</Code>.</>, "sbatch %_(JOB_SCRIPT)s")}
+        {command("cancelCommand", "Cancel a job", <>Stops a job. Uses <Code>%_(JOB_ID)s</Code>.</>,
+          "scancel %_(JOB_ID)s")}
+        {command("checkCommand", "Check a job", <>Asks how a job is doing. Uses <Code>%_(JOB_ID)s</Code>.</>,
+          "squeue -h -j %_(JOB_ID)s")}
+        {command("jobDoneRegex", "Job finished when",
+          "Optional. A pattern that, found in the check command's answer, means the job has ended.", "")}
+      </SettingsSection>
 
-                        <Tooltip title="Delete queue">
-                          <IconButton
-                            size="small"
-                            onClick={() => removeQueue(queueIndex)}
-                            sx={{ color: colors.muted }}
-                          >
-                            <Trash2 size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </Stack>
-                  </Box>
+      <SettingsSection icon={<FileCode size={19} />} title="Job script"
+                       subtitle="The script sent to the scheduler for every job. Click a word below to put it where the cursor is."
+                       colors={sectionColors} isDarkMode={isDarkMode} plain>
+        <Stack spacing={1.5}>
+          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+            {availablePlaceholders.map((placeholder) => (
+              <Button key={placeholder} size="small" onClick={() => insertPlaceholder(placeholder)}
+                      aria-label={`Insert ${placeholder}`}
+                      sx={{ ...settings.actionButtonSx, minHeight: 30, px: 1.25, fontFamily: MONO, fontSize: 13,
+                            fontWeight: 500 }}>
+                {placeholder}
+              </Button>
+            ))}
+          </Stack>
+          <TextField
+            fullWidth
+            multiline
+            minRows={18}
+            size="small"
+            value={value.submitTemplate}
+            inputRef={templateRef}
+            onChange={(e) => updateValue({ submitTemplate: e.target.value })}
+            inputProps={{ "aria-label": "Job script", spellCheck: false }}
+            sx={{ ...codeFieldSx, "& .MuiInputBase-input": { fontFamily: MONO, fontSize: 13.5, lineHeight: 1.6,
+                                                              color: colors.text } }}
+          />
+        </Stack>
+      </SettingsSection>
 
-                  <Box sx={{ p: 1.25 }}>
-                    {queue.params.length === 0 ? (
-                      <Typography sx={{ fontSize: 12, color: colors.muted }}>
-                        This queue has no variable definitions.
-                      </Typography>
-                    ) : (
-                      <TableContainer
-                        component={Paper}
-                        variant="outlined"
-                        sx={{
-                          bgcolor: "transparent",
-                          borderColor: colors.border,
-                          borderRadius: 2,
-                          overflow: "auto",
-                        }}
-                      >
-                        <MuiTable size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell
-                                sx={{
-                                  minWidth: 180,
-                                  bgcolor: colors.surface,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                }}
-                              >
-                                Variable name
-                              </TableCell>
+      <SettingsSection
+        icon={<ListChecks size={19} />}
+        title="Queues"
+        subtitle="The queues users can choose, each with the values they may set (memory, time…)."
+        colors={sectionColors}
+        isDarkMode={isDarkMode}
+        plain
+        actions={
+          <Button size="small" sx={settings.actionButtonSx} startIcon={<Plus size={15} />} onClick={addQueue}>
+            Add queue
+          </Button>
+        }
+      >
+        {value.queues.length === 0 ? (
+          <Typography sx={note}>No queues: protocols can only run directly on this server.</Typography>
+        ) : (
+          <Stack spacing={1.5}>
+            {value.queues.map((queue, queueIndex) => (
+              <Box key={queueIndex} data-testid={`queue-${queueIndex}`}
+                   sx={{ border: "1px solid", borderColor: colors.border, borderRadius: 2, p: 2 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "center" }}>
+                  <TextField size="small" label="Queue name" value={queue.name} sx={{ ...(fieldSx as object), flex: 1 }}
+                             onChange={(e) => updateQueue(queueIndex, { name: e.target.value })} />
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" sx={settings.actionButtonSx} startIcon={<Plus size={15} />}
+                            onClick={() => addQueueParam(queueIndex)}>
+                      Add value
+                    </Button>
+                    <Button size="small" sx={{ ...settings.actionButtonSx, color: "#dc2626" }}
+                            startIcon={<Trash2 size={15} />} onClick={() => removeQueue(queueIndex)}
+                            aria-label={`Delete the queue ${queue.name}`}>
+                      Delete
+                    </Button>
+                  </Stack>
+                </Stack>
 
-                              <TableCell
-                                sx={{
-                                  minWidth: 140,
-                                  bgcolor: colors.surface,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                }}
-                              >
-                                Default value
-                              </TableCell>
-
-                              <TableCell
-                                sx={{
-                                  minWidth: 180,
-                                  bgcolor: colors.surface,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                }}
-                              >
-                                Label
-                              </TableCell>
-
-                              <TableCell
-                                sx={{
-                                  minWidth: 280,
-                                  bgcolor: colors.surface,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                }}
-                              >
-                                Help
-                              </TableCell>
-
-                              <TableCell
-                                sx={{
-                                  width: 60,
-                                  bgcolor: colors.surface,
-                                  color: colors.text,
-                                  borderColor: colors.border,
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                }}
-                              />
-                            </TableRow>
-                          </TableHead>
-
-                          <TableBody>
-                            {queue.params.map((param, paramIndex) => (
-                              <TableRow
-                                key={`${param.variableName}-${paramIndex}`}
-                                hover
-                              >
-                                <TableCell sx={{ borderColor: colors.border }}>
-                                  <TextField
-                                    sx={fieldSx}
-                                    fullWidth
-                                    size="small"
-                                    value={param.variableName}
-                                    onChange={(e) =>
-                                      updateQueueParam(queueIndex, paramIndex, {
-                                        variableName: e.target.value,
-                                      })
-                                    }
-                                    placeholder="JOB_MEMORY"
-                                  />
-                                </TableCell>
-
-                                <TableCell sx={{ borderColor: colors.border }}>
-                                  <TextField
-                                    sx={fieldSx}
-                                    fullWidth
-                                    size="small"
-                                    value={param.value}
-                                    onChange={(e) =>
-                                      updateQueueParam(queueIndex, paramIndex, {
-                                        value: e.target.value,
-                                      })
-                                    }
-                                    placeholder="8192"
-                                  />
-                                </TableCell>
-
-                                <TableCell sx={{ borderColor: colors.border }}>
-                                  <TextField
-                                    sx={fieldSx}
-                                    fullWidth
-                                    size="small"
-                                    value={param.label}
-                                    onChange={(e) =>
-                                      updateQueueParam(queueIndex, paramIndex, {
-                                        label: e.target.value,
-                                      })
-                                    }
-                                    placeholder="Memory (MB)"
-                                  />
-                                </TableCell>
-
-                                <TableCell sx={{ borderColor: colors.border }}>
-                                  <TextField
-                                    sx={fieldSx}
-                                    fullWidth
-                                    multiline
-                                    minRows={1}
-                                    maxRows={5}
-                                    size="small"
-                                    value={param.help}
-                                    onChange={(e) =>
-                                      updateQueueParam(queueIndex, paramIndex, {
-                                        help: e.target.value,
-                                      })
-                                    }
-                                    placeholder="Select amount of memory (in megabytes) for this job"
-                                  />
-                                </TableCell>
-
-                                <TableCell sx={{ borderColor: colors.border }}>
-                                  <Tooltip title="Delete variable">
-                                    <IconButton
-                                      size="small"
-                                      onClick={() =>
-                                        removeQueueParam(queueIndex, paramIndex)
-                                      }
-                                      sx={{ color: colors.muted }}
-                                    >
-                                      <Trash2 size={16} />
-                                    </IconButton>
-                                  </Tooltip>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </MuiTable>
-                      </TableContainer>
-                    )}
-                  </Box>
-                </Box>
-              ))}
-            </Stack>
-          )}
-
-          <Divider sx={{ my: 2, ...dividerSx }} />
-
-          <Typography sx={{ fontSize: 12, color: colors.muted }}>
-            Each queue variable is stored as: variable name, default value, label, and help.
-          </Typography>
-        </CardContent>
-      </Card>
+                {queue.params.length === 0 ? (
+                  <Typography sx={{ ...note, mt: 1.5 }}>Users set nothing for this queue.</Typography>
+                ) : (
+                  <TableContainer sx={{ mt: 1.5, overflowX: "auto" }}>
+                    <MuiTable size="small" aria-label={`Values of the queue ${queue.name}`}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ ...headCellSx, minWidth: 170 }}>Variable</TableCell>
+                          <TableCell sx={{ ...headCellSx, minWidth: 120 }}>Default</TableCell>
+                          <TableCell sx={{ ...headCellSx, minWidth: 170 }}>Label shown</TableCell>
+                          <TableCell sx={{ ...headCellSx, minWidth: 260 }}>Help shown</TableCell>
+                          <TableCell sx={{ ...headCellSx, width: 48 }} />
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {queue.params.map((param, paramIndex) => (
+                          <TableRow key={paramIndex}>
+                            <TableCell sx={{ borderColor: colors.border, pl: 0 }}>
+                              <TextField size="small" fullWidth sx={codeFieldSx} value={param.variableName}
+                                         placeholder="JOB_MEMORY" inputProps={{ "aria-label": "Variable" }}
+                                         onChange={(e) => updateQueueParam(queueIndex, paramIndex,
+                                                                           { variableName: e.target.value })} />
+                            </TableCell>
+                            <TableCell sx={{ borderColor: colors.border }}>
+                              <TextField size="small" fullWidth sx={fieldSx} value={param.value} placeholder="8192"
+                                         inputProps={{ "aria-label": "Default" }}
+                                         onChange={(e) => updateQueueParam(queueIndex, paramIndex,
+                                                                           { value: e.target.value })} />
+                            </TableCell>
+                            <TableCell sx={{ borderColor: colors.border }}>
+                              <TextField size="small" fullWidth sx={fieldSx} value={param.label}
+                                         placeholder="Memory (MB)" inputProps={{ "aria-label": "Label shown" }}
+                                         onChange={(e) => updateQueueParam(queueIndex, paramIndex,
+                                                                           { label: e.target.value })} />
+                            </TableCell>
+                            <TableCell sx={{ borderColor: colors.border }}>
+                              <TextField size="small" fullWidth multiline minRows={1} maxRows={5} sx={fieldSx}
+                                         value={param.help} placeholder="Memory for this job, in megabytes"
+                                         inputProps={{ "aria-label": "Help shown" }}
+                                         onChange={(e) => updateQueueParam(queueIndex, paramIndex,
+                                                                           { help: e.target.value })} />
+                            </TableCell>
+                            <TableCell sx={{ borderColor: colors.border, pr: 0 }}>
+                              <Tooltip title="Delete this value">
+                                <IconButton size="small" onClick={() => removeQueueParam(queueIndex, paramIndex)}
+                                            sx={{ color: colors.muted }} aria-label="Delete this value">
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </MuiTable>
+                  </TableContainer>
+                )}
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </SettingsSection>
     </Stack>
   );
 }

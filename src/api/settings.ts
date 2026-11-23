@@ -482,3 +482,70 @@ export const removeSignInProvider = (id: number) =>
 export const testSignInProvider = (id: number) =>
   signInRequest<{ ok: boolean; error?: string; issuer?: string; keys?: number }>(
     `/${id}/test`, { method: "POST" }, "Failed to test the sign-in provider");
+
+/* ======================= host: set up from this server ======================= */
+
+export type DetectedQueue = {
+  name: string;
+  default: boolean;
+  hours: number | null;
+  cpus: number;
+  memoryMb: number;
+  gpus: number;
+  nodes: number;
+  up: boolean;
+  /** Its machines are off now and start when a job comes (a cloud cluster) */
+  asleep?: boolean;
+  /** What its machines have could not be read while they are off */
+  unknown?: boolean;
+};
+
+export type HostDetection = {
+  scheduler: string | null;
+  supported: boolean;
+  message: string;
+  settings: any | null;
+  queues: DetectedQueue[];
+};
+
+export type HostTest = {
+  id: string;
+  queue: string;
+  state: "starting" | "submitting" | "queued" | "running" | "finished" | "failed" | "cancelled";
+  message: string;
+  jobId: string | null;
+  output: string;
+  script?: string;
+  submitCommand?: string;
+  queueAnswer?: string;
+};
+
+/** The scheduler this server can send jobs to, and a host configuration proposed for it (nothing is saved). */
+export async function detectHostSettings(): Promise<HostDetection> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/host/detect`, { method: "POST" });
+  if (!res.ok) throw await toApiError(res, "Failed to look for a scheduler");
+  return safeJson<HostDetection>(res);
+}
+
+/** Sends a small test job with a host configuration, saved or not. */
+export async function startHostTest(settings: unknown, queue: string): Promise<HostTest> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/host/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings, queue }),
+  });
+  if (!res.ok) throw await toApiError(res, "Failed to send the test job");
+  return safeJson<HostTest>(res);
+}
+
+export async function getHostTest(testId: string): Promise<HostTest> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/host/test/${encodeURIComponent(testId)}`, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to read the test job");
+  return safeJson<HostTest>(res);
+}
+
+export async function cancelHostTest(testId: string): Promise<HostTest> {
+  const res = await fetchWithAuth(`${BASE_URL}/settings/host/test/${encodeURIComponent(testId)}`, { method: "DELETE" });
+  if (!res.ok) throw await toApiError(res, "Failed to cancel the test job");
+  return safeJson<HostTest>(res);
+}
