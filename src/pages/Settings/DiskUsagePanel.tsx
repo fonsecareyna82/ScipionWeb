@@ -3,12 +3,10 @@ import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     Chip,
     CircularProgress,
     IconButton,
+    InputAdornment,
     LinearProgress,
     Stack,
     Table,
@@ -25,20 +23,23 @@ import {
     type SxProps,
     type Theme,
 } from "@mui/material";
-import { RefreshCw, Ruler, X } from "lucide-react";
+import { useTheme } from "@mui/material/styles";
+import { HardDrive, RefreshCw, Ruler, Search, X } from "lucide-react";
 
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
 import { getStorageUsage, measureStorage, type ProjectStorage, type StorageReport } from "@/api/storage";
-import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import { choiceButtonsSx, SETTINGS_TEXT, SettingsSection, sectionTint } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 import StorageQuotasCard from "./StorageQuotasCard";
 import { usePermissions } from "@/hooks/usePermissions";
 
+// The page may still pass its own look; the panel uses the shared Settings one
 type PanelStyles = {
-    fieldSx: SxProps<Theme>;
-    cardSx: SxProps<Theme>;
-    cardHeaderSx: SxProps<Theme>;
+    fieldSx?: SxProps<Theme>;
+    cardSx?: SxProps<Theme>;
+    cardHeaderSx?: SxProps<Theme>;
     actionButtonSx?: SxProps<Theme>;
-    colors: { border: string; text: string; muted: string; surface: string; hover: string };
+    colors?: { border: string; text: string; muted: string; surface: string; hover: string };
 };
 
 type View = "users" | "groups" | "projects";
@@ -79,8 +80,11 @@ function measureState(project: ProjectStorage): { label: string; color: "default
     return { label: formatWhen(project.measuredAt), color: "default" };
 }
 
-export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionButtonSx, colors }: PanelStyles) {
-    const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the old look props are still accepted
+export default function DiskUsagePanel(_styles: PanelStyles = {}) {
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, fieldSx, actionButtonSx: actionSx } = useSettingsStyles(isDarkMode);
+    const sectionColors = { ...colors, hover: colors.hover };
     const { can } = usePermissions();
     const [report, setReport] = useState<StorageReport | null>(null);
     const [loading, setLoading] = useState(true);
@@ -141,10 +145,14 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
 
     const total = report?.total.totalBytes ?? 0;
     const disk = report?.disk ?? null;
-    const cellSx = { fontSize: 14, color: colors.text, borderColor: colors.border, verticalAlign: "top" };
-    const headSx = { ...cellSx, fontWeight: 800, color: colors.muted, whiteSpace: "nowrap" };
+    const cellSx = { fontSize: SETTINGS_TEXT.control, color: colors.text, borderColor: colors.border, verticalAlign: "top" };
+    const headSx = { ...cellSx, fontSize: SETTINGS_TEXT.text, fontWeight: 700, color: colors.muted, whiteSpace: "nowrap",
+                     bgcolor: colors.card };
     const numberSx = { ...cellSx, textAlign: "right" as const, whiteSpace: "nowrap" };
-    const noteSx = { fontSize: 13.5, color: colors.muted };
+    const noteSx = { fontSize: SETTINGS_TEXT.text, color: colors.muted };
+    const statSx = { p: 2, borderRadius: 2.5, bgcolor: sectionTint(isDarkMode) };
+    const tableBoxSx = { border: `1px solid ${colors.border}`, borderRadius: 2, maxHeight: { xs: 480, md: 560 },
+                         overflowY: "auto" };
 
     const showProjectsOf = (userId: number) => {
         setOwnerId(userId);
@@ -153,49 +161,50 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
     };
 
     return (
-        <Stack spacing={1.75}>
+        <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
+            <SettingsSection
+                    icon={<HardDrive size={19} />}
                     title="Disk usage"
-                    subheader={"What the projects take on the disk, by user, group and project. The API measures "
-                        + "each project in the background: once a day, an hour after it changed, and when asked."}
-                    sx={cardHeaderSx}
-                    action={
+                    subtitle={"What the projects take on the disk, by person, group and project. Each project is "
+                        + "measured in the background: once a day, an hour after it changes, and when asked."}
+                    colors={sectionColors}
+                    isDarkMode={isDarkMode}
+                    plain
+                    actions={
                         <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<Ruler size={15} />}
+                            <Button size="small" sx={actionSx} startIcon={<Ruler size={15} />}
                                     onClick={() => void measure()}>
                                 Measure all again
                             </Button>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                            <Button size="small" sx={actionSx} startIcon={<RefreshCw size={15} />}
                                     disabled={loading} onClick={() => void load()}>
                                 Reload
                             </Button>
                         </Stack>
                     }
-                />
-                <CardContent sx={{ pt: 2 }}>
+                >
                     {loading && !report ? (
                         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress size={26} /></Box>
                     ) : report ? (
                         <Stack spacing={2.25}>
                             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                                <Box sx={{ flex: 1, p: 1.75, border: `1px solid ${colors.border}`, borderRadius: 2 }}>
+                                <Box sx={{ flex: 1, ...statSx }}>
                                     <Typography sx={noteSx}>The projects</Typography>
-                                    <Typography sx={{ fontSize: 22, fontWeight: 800, color: colors.text }}>
+                                    <Typography sx={{ fontSize: 24, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>
                                         {formatBytes(total)}
                                     </Typography>
                                     <Typography sx={noteSx}>
-                                        {report.total.projects} projects of {report.users.length} users
+                                        {report.total.projects} projects of {report.users.length} people
                                         {report.total.measured < report.total.projects
                                             ? ` · ${report.total.projects - report.total.measured} not measured yet`
                                             : ""}
                                     </Typography>
                                 </Box>
                                 {disk && (
-                                    <Box sx={{ flex: 2, p: 1.75, border: `1px solid ${colors.border}`, borderRadius: 2 }}>
+                                    <Box sx={{ flex: 2, ...statSx }}>
                                         <Typography sx={noteSx}>The projects' disk ({disk.path})</Typography>
-                                        <Typography sx={{ fontSize: 22, fontWeight: 800, color: colors.text }}>
+                                        <Typography sx={{ fontSize: 24, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>
                                             {formatBytes(disk.freeBytes)} free
                                             <Typography component="span" sx={{ ...noteSx, ml: 1 }}>
                                                 of {formatBytes(disk.totalBytes)}
@@ -224,21 +233,25 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
                             )}
 
                             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-                                <ToggleButtonGroup exclusive size="small" value={view}
-                                                   onChange={(_, value) => value && setView(value)}>
-                                    <ToggleButton value="users" sx={{ fontSize: 14, px: 2 }}>By user</ToggleButton>
-                                    <ToggleButton value="groups" sx={{ fontSize: 14, px: 2 }}>By group</ToggleButton>
-                                    <ToggleButton value="projects" sx={{ fontSize: 14, px: 2 }}>By project</ToggleButton>
+                                <ToggleButtonGroup exclusive size="small" value={view} aria-label="Disk usage by"
+                                                   onChange={(_, value) => value && setView(value)}
+                                                   sx={choiceButtonsSx(sectionColors, isDarkMode)}>
+                                    <ToggleButton value="users">By user</ToggleButton>
+                                    <ToggleButton value="groups">By group</ToggleButton>
+                                    <ToggleButton value="projects">By project</ToggleButton>
                                 </ToggleButtonGroup>
-                                <TextField sx={[{ flex: 1 }, ...(Array.isArray(fieldSx) ? fieldSx : [fieldSx])]} size="small"
+                                <TextField sx={{ ...fieldSx, flex: 1 }} size="small"
                                            label="Search" value={text}
                                            placeholder="A name, an email, a project…"
-                                           onChange={(e) => setText(e.target.value)} />
+                                           onChange={(e) => setText(e.target.value)}
+                                           InputProps={{ startAdornment: (
+                                               <InputAdornment position="start"><Search size={16} /></InputAdornment>
+                                           ) }} />
                             </Stack>
 
                             {view === "users" && (
-                                <TableContainer sx={{ border: `1px solid ${colors.border}`, borderRadius: 2 }}>
-                                    <Table size="small" aria-label="Disk usage by user">
+                                <TableContainer sx={tableBoxSx}>
+                                    <Table size="small" stickyHeader aria-label="Disk usage by user">
                                         <TableHead>
                                             <TableRow>
                                                 <TableCell sx={headSx}>User</TableCell>
@@ -282,8 +295,8 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
 
                             {view === "groups" && (
                                 <Stack spacing={1}>
-                                    <TableContainer sx={{ border: `1px solid ${colors.border}`, borderRadius: 2 }}>
-                                        <Table size="small" aria-label="Disk usage by group">
+                                    <TableContainer sx={tableBoxSx}>
+                                        <Table size="small" stickyHeader aria-label="Disk usage by group">
                                             <TableHead>
                                                 <TableRow>
                                                     <TableCell sx={headSx}>Group</TableCell>
@@ -325,8 +338,8 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
                                                   deleteIcon={<X size={15} />} sx={{ fontSize: 14 }} />
                                         </Box>
                                     )}
-                                    <TableContainer sx={{ border: `1px solid ${colors.border}`, borderRadius: 2 }}>
-                                        <Table size="small" aria-label="Disk usage by project">
+                                    <TableContainer sx={tableBoxSx}>
+                                        <Table size="small" stickyHeader aria-label="Disk usage by project">
                                             <TableHead>
                                                 <TableRow>
                                                     <TableCell sx={headSx}>Project</TableCell>
@@ -379,7 +392,7 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
                                                             </TableCell>
                                                             <TableCell sx={cellSx}>
                                                                 {state.color === "default" ? (
-                                                                    <Typography sx={{ fontSize: 14 }}>{state.label}</Typography>
+                                                                    <Typography sx={{ fontSize: SETTINGS_TEXT.control }}>{state.label}</Typography>
                                                                 ) : (
                                                                     <Chip size="small" color={state.color}
                                                                           label={state.label} sx={{ fontSize: 13.5 }} />
@@ -416,10 +429,8 @@ export default function DiskUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionBu
                             )}
                         </Stack>
                     ) : null}
-                </CardContent>
-            </Card>
-            <StorageQuotasCard report={report} canEdit={can("settings.manage")} fieldSx={fieldSx} cardSx={cardSx}
-                               cardHeaderSx={cardHeaderSx} actionButtonSx={actionSx} colors={colors} />
+            </SettingsSection>
+            <StorageQuotasCard report={report} canEdit={can("settings.manage")} />
         </Stack>
     );
 }

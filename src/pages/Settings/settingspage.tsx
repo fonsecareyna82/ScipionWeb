@@ -1924,8 +1924,7 @@ export default function SettingsPage() {
                               )
                               : tab === "disk"
                                 ? (
-                                  <UsagePanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
-                                              colors={colors} actionButtonSx={actionButtonSx} />
+                                  <UsagePanel />
                                 )
                               : tab === "notifications"
                                 ? <NotificationsPanel canManage={can("settings.manage")} />

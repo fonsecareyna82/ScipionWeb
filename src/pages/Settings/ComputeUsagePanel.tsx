@@ -3,11 +3,9 @@ import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     Chip,
     CircularProgress,
+    InputAdornment,
     MenuItem,
     Stack,
     Table,
@@ -23,7 +21,8 @@ import {
     type SxProps,
     type Theme,
 } from "@mui/material";
-import { Download, RefreshCw, X } from "lucide-react";
+import { useTheme } from "@mui/material/styles";
+import { Cpu, Download, RefreshCw, Search, X } from "lucide-react";
 
 import {
     formatHours,
@@ -36,14 +35,16 @@ import {
     type UserRuns,
 } from "@/api/usage";
 import { formatBytes } from "@/components/projects/ProjectOverviewPanel";
-import { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import { choiceButtonsSx, SETTINGS_TEXT, SettingsSection, sectionTint } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 
+// The page may still pass its own look; the panel uses the shared Settings one
 type PanelStyles = {
-    fieldSx: SxProps<Theme>;
-    cardSx: SxProps<Theme>;
-    cardHeaderSx: SxProps<Theme>;
+    fieldSx?: SxProps<Theme>;
+    cardSx?: SxProps<Theme>;
+    cardHeaderSx?: SxProps<Theme>;
     actionButtonSx?: SxProps<Theme>;
-    colors: { border: string; text: string; muted: string; surface: string; hover: string };
+    colors?: { border: string; text: string; muted: string; surface: string; hover: string };
 };
 
 type View = "users" | "groups" | "protocols" | "machines";
@@ -131,8 +132,11 @@ const STATUS_COLORS: Record<string, "success" | "error" | "warning" | "info" | "
 type Row = ComputeTotals & { key: string; name: string; note?: string | null; detail?: string | null;
     userId?: number | null };
 
-export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actionButtonSx, colors }: PanelStyles) {
-    const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the old look props are still accepted
+export default function ComputeUsagePanel(_styles: PanelStyles = {}) {
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, fieldSx, actionButtonSx: actionSx } = useSettingsStyles(isDarkMode);
+    const sectionColors = { ...colors, hover: colors.hover };
     const [periodKey, setPeriodKey] = useState<PeriodKey>("month");
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
@@ -202,10 +206,13 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
     }, [report, view, query]);
 
     const total = report?.total;
-    const cellSx = { fontSize: 14, color: colors.text, borderColor: colors.border, verticalAlign: "top" };
-    const headSx = { ...cellSx, fontWeight: 800, color: colors.muted, whiteSpace: "nowrap" };
+    const cellSx = { fontSize: SETTINGS_TEXT.control, color: colors.text, borderColor: colors.border, verticalAlign: "top" };
+    const headSx = { ...cellSx, fontSize: SETTINGS_TEXT.text, fontWeight: 700, color: colors.muted, whiteSpace: "nowrap",
+                     bgcolor: colors.card };
     const numberSx = { ...cellSx, textAlign: "right" as const, whiteSpace: "nowrap" };
-    const noteSx = { fontSize: 13.5, color: colors.muted };
+    const noteSx = { fontSize: SETTINGS_TEXT.text, color: colors.muted };
+    const tableBoxSx = { border: `1px solid ${colors.border}`, borderRadius: 2, maxHeight: { xs: 480, md: 560 },
+                         overflowY: "auto" };
     const firstColumn = { users: "User", groups: "Group", protocols: "Protocol", machines: "Machine" }[view];
     const detailColumn = { users: "Uses most", groups: "Uses most", protocols: "", machines: "GPU hours by GPU" }[view];
 
@@ -237,16 +244,16 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
     };
 
     const card = (label: string, value: string, note?: string) => (
-        <Box sx={{ flex: 1, p: 1.75, border: `1px solid ${colors.border}`, borderRadius: 2 }}>
+        <Box sx={{ flex: 1, p: 2, borderRadius: 2.5, bgcolor: sectionTint(isDarkMode) }}>
             <Typography sx={noteSx}>{label}</Typography>
-            <Typography sx={{ fontSize: 22, fontWeight: 800, color: colors.text }}>{value}</Typography>
+            <Typography sx={{ fontSize: 24, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>{value}</Typography>
             {note && <Typography sx={noteSx}>{note}</Typography>}
         </Box>
     );
 
     const runsTable = (runs: ComputeRun[], label: string, showUser: boolean) => (
-        <TableContainer sx={{ border: `1px solid ${colors.border}`, borderRadius: 2 }}>
-            <Table size="small" aria-label={label}>
+        <TableContainer sx={tableBoxSx}>
+            <Table size="small" stickyHeader aria-label={label}>
                 <TableHead>
                     <TableRow>
                         {showUser && <TableCell sx={headSx}>User</TableCell>}
@@ -310,33 +317,34 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
     );
 
     return (
-        <Stack spacing={1.75}>
+        <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
+            <SettingsSection
+                    icon={<Cpu size={19} />}
                     title="Computing"
-                    subheader={"What each user, group, protocol and machine ran in the period. Hours are the "
-                        + "time the runs ran; GPU hours, those hours times the GPUs each run was given; GPU use, how busy "
-                        + "those GPUs really were while the runs went on."}
-                    sx={cardHeaderSx}
-                    action={
+                    subtitle={"What each person, group, protocol and machine ran in the period. Run hours: how long "
+                        + "the runs ran. GPU hours: those hours times the GPUs each run had. GPU use: how busy those GPUs "
+                        + "really were."}
+                    colors={sectionColors}
+                    isDarkMode={isDarkMode}
+                    plain
+                    actions={
                         <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<Download size={15} />}
+                            <Button size="small" sx={actionSx} startIcon={<Download size={15} />}
                                     disabled={!report} onClick={exportCsv}>
                                 Export CSV
                             </Button>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                            <Button size="small" sx={actionSx} startIcon={<RefreshCw size={15} />}
                                     disabled={loading} onClick={() => void load()}>
                                 Reload
                             </Button>
                         </Stack>
                     }
-                />
-                <CardContent sx={{ pt: 2 }}>
+                >
                     <Stack spacing={2.25}>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-                            <TextField select size="small" label="Period" value={periodKey} sx={[{ minWidth: 200 },
-                                ...(Array.isArray(fieldSx) ? fieldSx : [fieldSx])]}
+                            <TextField select size="small" label="Period" value={periodKey}
+                                       sx={{ ...fieldSx, minWidth: 200 }}
                                        onChange={(e) => setPeriodKey(e.target.value as PeriodKey)}>
                                 {PERIODS.map((option) => (
                                     <MenuItem key={option.key} value={option.key} sx={{ fontSize: 15 }}>
@@ -406,24 +414,25 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}
                                                alignItems={{ sm: "center" }}>
                                             <ToggleButtonGroup exclusive size="small" value={view}
-                                                               onChange={(_, value) => value && setView(value)}>
-                                                <ToggleButton value="users" sx={{ fontSize: 14, px: 2 }}>By user</ToggleButton>
-                                                <ToggleButton value="groups" sx={{ fontSize: 14, px: 2 }}>By group</ToggleButton>
-                                                <ToggleButton value="protocols" sx={{ fontSize: 14, px: 2 }}>
-                                                    By protocol
-                                                </ToggleButton>
-                                                <ToggleButton value="machines" sx={{ fontSize: 14, px: 2 }}>
-                                                    By machine
-                                                </ToggleButton>
+                                                               aria-label="Computing by"
+                                                               onChange={(_, value) => value && setView(value)}
+                                                               sx={choiceButtonsSx(sectionColors, isDarkMode)}>
+                                                <ToggleButton value="users">By user</ToggleButton>
+                                                <ToggleButton value="groups">By group</ToggleButton>
+                                                <ToggleButton value="protocols">By protocol</ToggleButton>
+                                                <ToggleButton value="machines">By machine</ToggleButton>
                                             </ToggleButtonGroup>
-                                            <TextField sx={[{ flex: 1 }, ...(Array.isArray(fieldSx) ? fieldSx : [fieldSx])]}
+                                            <TextField sx={{ ...fieldSx, flex: 1 }}
                                                        size="small" label="Search" value={text}
                                                        placeholder="A name, an email, a protocol, a machine…"
-                                                       onChange={(e) => setText(e.target.value)} />
+                                                       onChange={(e) => setText(e.target.value)}
+                                                       InputProps={{ startAdornment: (
+                                                           <InputAdornment position="start"><Search size={16} /></InputAdornment>
+                                                       ) }} />
                                         </Stack>
 
-                                        <TableContainer sx={{ border: `1px solid ${colors.border}`, borderRadius: 2 }}>
-                                            <Table size="small" aria-label={`Computing by ${view.replace(/s$/, "")}`}>
+                                        <TableContainer sx={tableBoxSx}>
+                                            <Table size="small" stickyHeader aria-label={`Computing by ${view.replace(/s$/, "")}`}>
                                                 <TableHead>
                                                     <TableRow>
                                                         <TableCell sx={headSx}>{firstColumn}</TableCell>
@@ -495,7 +504,7 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
 
                                         {report.running.length > 0 && (
                                             <Stack spacing={1}>
-                                                <Typography sx={{ fontSize: 15.5, fontWeight: 800, color: colors.text }}>
+                                                <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
                                                     Running now
                                                 </Typography>
                                                 {runsTable(report.running, "Running now", true)}
@@ -510,8 +519,7 @@ export default function ComputeUsagePanel({ fieldSx, cardSx, cardHeaderSx, actio
                             </Stack>
                         ) : null}
                     </Stack>
-                </CardContent>
-            </Card>
+            </SettingsSection>
         </Stack>
     );
 }
