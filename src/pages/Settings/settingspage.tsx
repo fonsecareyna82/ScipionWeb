@@ -1,12 +1,11 @@
 // src/pages/settingspage.tsx
 import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import { useSearchParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/Grid";
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Card,
@@ -41,8 +40,7 @@ import {
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
-import TagManager from "@/components/tags/TagManager";
-import type { ProtocolTag } from "@/components/tags/tagTypes";
+import TagsPanel from "@/pages/Settings/TagsPanel";
 import HostSettingsPanel, {
   type HostSettings,
   defaultHostSettings,
@@ -118,11 +116,6 @@ type InstanceSettingsPatch =
 
 type EnvironmentPatch =
   Record<string, string>;
-
-type ProjectOption = {
-  id: string;
-  name: string;
-};
 
 const defaultUserSettings:
   UserSettings = {
@@ -542,100 +535,12 @@ export default function SettingsPage() {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // tagsUiState
-  const [tagsDraft, setTagsDraft] = useState<ProtocolTag[]>([]);
-
-  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
-  const [projectsError, setProjectsError] = useState<string | null>(null);
-  const [projectsLoadedOnce, setProjectsLoadedOnce] = useState(false);
-
-  const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
-
-  const projectAutocompleteValue = useMemo(() => {
-    // projectAutocompleteValue
-    if (projectOptions.length === 0) return null;
-
-    if (selectedProject && projectOptions.some((p) => String(p.id) === String(selectedProject.id))) {
-      return selectedProject;
-    }
-
-    return projectOptions[0];
-  }, [projectOptions, selectedProject]);
-
-  const projectsRequestInFlightRef = useRef(false);
-
-  const selectedProjectId = useMemo(() => {
-    // selectedProjectId
-    const raw = String(selectedProject?.id ?? "").trim();
-    if (!raw) return null;
-
-    const asNumber = Number(raw);
-    if (Number.isFinite(asNumber)) return asNumber;
-
-    return raw;
-  }, [selectedProject?.id]);
-
   const [hostLoading, setHostLoading] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
   const [hostAvailable, setHostAvailable] = useState(true);
   const [hostBase, setHostBase] = useState<HostSettings | null>(null);
   const [hostDraft, setHostDraft] = useState<HostSettings | null>(null);
   const [hostLoadedOnce, setHostLoadedOnce] = useState(false);
-
-  const loadProjectsForTagsTab = useCallback(async () => {
-    // loadProjectsForTagsTab
-    if (projectsRequestInFlightRef.current) return;
-    projectsRequestInFlightRef.current = true;
-
-    setProjectsLoading(true);
-    setProjectsError(null);
-
-    try {
-      const data = await svc.fetchList();
-
-      const normalized: ProjectOption[] = Array.isArray(data)
-        ? data
-          .map((p: any) => ({
-            id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
-            name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
-          }))
-          .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
-        : [];
-
-      setProjectOptions(normalized);
-      setProjectsLoadedOnce(true);
-
-      setSelectedProject((prev) => {
-        // computeNextSelectedProject
-        if (normalized.length === 0) return null;
-
-        if (prev && normalized.some((x) => String(x.id) === String(prev.id))) {
-          return prev;
-        }
-
-        return normalized[0];
-      });
-    } catch (e: any) {
-      const msg = getErrorMsg(e);
-      setProjectsError(msg);
-      setProjectOptions([]);
-      setSelectedProject(null);
-
-      // allowRetryOnTabSwitch
-      setProjectsLoadedOnce(false);
-    } finally {
-      setProjectsLoading(false);
-      projectsRequestInFlightRef.current = false;
-    }
-  }, [svc]);
-
-  useEffect(() => {
-    // lazyLoadProjectsOnTagsTabOpen
-    if (tab !== "tags") return;
-    if (projectsLoadedOnce) return;
-    void loadProjectsForTagsTab();
-  }, [tab, projectsLoadedOnce, loadProjectsForTagsTab]);
 
   const isDarkMode = useMemo(() => {
     // The theme shown now: the one chosen in the form only applies once saved
@@ -645,20 +550,6 @@ export default function SettingsPage() {
 
   const { colors, fieldSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
           saveButtonSx } = useSettingsStyles(isDarkMode);
-
-
-
-
-
-  const autocompletePaperComponent = useCallback(
-    (props: any) => {
-      // autocompletePaperComponent
-      return <Paper {...props} sx={menuPaperSx} />;
-    },
-    [menuPaperSx],
-  );
-
-
 
 
 
@@ -1176,9 +1067,7 @@ export default function SettingsPage() {
             ? (instanceDraft ?? instanceBase ?? {})
             : tab === "host"
               ? (hostDraft ?? hostBase ?? {})
-              : tab === "environment"
-                ? (environmentDraft ?? [])
-                : (tagsDraft ?? []);
+              : (environmentDraft ?? []);
 
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
@@ -1194,7 +1083,6 @@ export default function SettingsPage() {
     hostDraft,
     hostBase,
     environmentDraft,
-    tagsDraft,
   ]);
 
   const headerRight = useMemo(() => {
@@ -1421,79 +1309,6 @@ export default function SettingsPage() {
         <SignInProvidersCard cardSx={cardSx} cardHeaderSx={cardHeaderSx} fieldSx={fieldSx}
                              actionButtonSx={actionButtonSx} colors={colors} />
         <ResourcesPanel server={instanceResources} />
-      </Stack>
-    );
-  };
-
-  const renderTagsContent = () => {
-    // renderTagsContent
-    const hasProjects = projectOptions.length > 0;
-
-    return (
-      <Stack spacing={1.75}>
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Tags" subheader="Create and manage protocol tags per project." sx={cardHeaderSx} />
-          <CardContent sx={{ pt: 2 }}>
-            <Stack spacing={1.25}>
-              {projectsError && <Alert severity="error">{projectsError}</Alert>}
-
-              <Autocomplete<ProjectOption, false, boolean, false>
-                PaperComponent={autocompletePaperComponent}
-                options={projectOptions}
-                value={projectAutocompleteValue}
-                loading={projectsLoading}
-                getOptionLabel={(o) => String((o as any)?.name ?? "")}
-                isOptionEqualToValue={(a, b) => String((a as any)?.id) === String((b as any)?.id)}
-                onChange={(_, next) => {
-                  // onProjectSelectionChange
-                  if (!next) return;
-                  setSelectedProject(next);
-                }}
-                renderOption={(props, option) => {
-                  // renderProjectOption
-                  return (
-                    <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
-                      {option.name}
-                    </Box>
-                  );
-                }}
-                renderInput={(params) => {
-                  // renderProjectInput
-                  return (
-                    <TextField
-                      {...params}
-                      sx={fieldSx}
-                      fullWidth
-                      label="Project"
-                      size="small"
-                      helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
-                    />
-                  );
-                }}
-                disableClearable={projectOptions.length > 0}
-                disabled={projectsLoading || Boolean(projectsError) || projectOptions.length === 0}
-              />
-
-              {!projectsLoading && !projectsError && !hasProjects ? (
-                <Alert severity="info">No projects found.</Alert>
-              ) : !selectedProjectId ? (
-                <Alert severity="info">Select a project to manage tags.</Alert>
-              ) : (
-                <>
-                  <TagManager
-                    projectId={selectedProjectId as any}
-                    title="Tags"
-                    onTagsChange={setTagsDraft}
-                  />
-
-                  <Typography sx={{ mt: 0.5, fontSize: 12, color: colors.muted }}>
-                    You can switch projects using the selector above.
-                  </Typography>
-                </>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
       </Stack>
     );
   };
@@ -1818,9 +1633,8 @@ export default function SettingsPage() {
     if (tab === "user") return userDraft ?? userBase ?? {};
     if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
     if (tab === "host") return hostDraft ?? hostBase ?? {};
-    if (tab === "environment") return environmentDraft ?? [];
-    return tagsDraft ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, hostDraft, hostBase, environmentDraft, tagsDraft]);
+    return environmentDraft ?? [];
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, hostDraft, hostBase, environmentDraft]);
 
   return (
     <>
@@ -1929,11 +1743,11 @@ export default function SettingsPage() {
                               : tab === "notifications"
                                 ? <NotificationsPanel canManage={can("settings.manage")} />
                               : tab === "tags"
-                                ? renderTagsContent()
+                                ? <TagsPanel />
                                 : renderEnvironmentContent()}
 
               {tab !== "user" && tab !== "instance" && tab !== "host" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
-                && tab !== "disk" && tab !== "notifications" ? (
+                && tab !== "disk" && tab !== "notifications" && tab !== "tags" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />
 

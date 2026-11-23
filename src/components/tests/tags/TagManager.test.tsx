@@ -30,7 +30,7 @@ function setup(overrides: Record<string, any> = {}, props: Record<string, any> =
   const onTagsChange = vi.fn();
   const onTagDeleted = vi.fn();
   renderWithProviders(
-    <TagManager title="Protocol tags" projectId={7} onTagsChange={onTagsChange} onTagDeleted={onTagDeleted} {...props} />,
+    <TagManager projectId={7} onTagsChange={onTagsChange} onTagDeleted={onTagDeleted} {...props} />,
     { service },
   );
   return { service: service as any, onTagsChange, onTagDeleted };
@@ -45,7 +45,6 @@ describe("TagManager", () => {
   it("loads and lists the project's tags", async () => {
     const { service, onTagsChange } = setup();
 
-    expect(screen.getByText("Protocol tags")).toBeInTheDocument();
     expect(await screen.findByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("First tag")).toBeInTheDocument();
     expect(service.listProjectTags).toHaveBeenCalledWith(7);
@@ -131,6 +130,8 @@ describe("TagManager", () => {
 
   it("asks before deleting, saying how many protocols use the tag", async () => {
     const { service, onTagDeleted } = setup({}, { getUsageCount: () => 3 });
+    // The row says it too
+    expect(await screen.findByText("3 protocols")).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: "Delete tag Alpha" }));
     const confirm = await screen.findByRole("dialog", { name: /Delete tag/ });
@@ -152,6 +153,7 @@ describe("TagManager", () => {
   it("shows the empty state when there are no tags", async () => {
     setup({ listProjectTags: vi.fn().mockResolvedValue([]) });
 
-    expect(await screen.findByText("No tags yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No tags in this project yet.")).toBeInTheDocument();
+    expect(screen.getByText("0 tags")).toBeInTheDocument();
   });
 });
