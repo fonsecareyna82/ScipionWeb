@@ -1,7 +1,34 @@
 // The MUI theme of the whole app, from the same colours as the CSS (src/theme/tokens.ts).
 import { createTheme, type Theme, type ThemeOptions } from "@mui/material/styles";
+import { deepmerge } from "@mui/utils";
 
+import { getDisplayPreferences, scaledFontSize, type DisplayPreferences } from "./displayPreferences";
 import { APP_TOKENS, type ThemeMode } from "./tokens";
+
+/** The user's text size and density: MUI's font sizes and spacing. */
+function displayOptions(prefs: DisplayPreferences): ThemeOptions {
+  const compact = prefs.density === "compact";
+  return {
+    // Compact: three quarters of MUI's 8 px for paddings, margins and gaps
+    spacing: compact ? 6 : 8,
+    typography: { fontSize: 14 * prefs.fontScale },
+    // A font size given in sx (a number is pixels) follows the text size too
+    unstable_sxConfig: {
+      fontSize: { themeKey: "typography", transform: (value: unknown) => scaledFontSize(value) },
+    },
+    components: compact
+      ? {
+          MuiTableCell: { defaultProps: { size: "small" } },
+          MuiList: { defaultProps: { dense: true } },
+          MuiMenuItem: { defaultProps: { dense: true } },
+          MuiListItemButton: { defaultProps: { dense: true } },
+          MuiToolbar: { defaultProps: { variant: "dense" } },
+          MuiTab: { styleOverrides: { root: { minHeight: 40 } } },
+          MuiTabs: { styleOverrides: { root: { minHeight: 40 } } },
+        }
+      : {},
+  } as ThemeOptions;
+}
 
 function paletteFor(mode: ThemeMode): ThemeOptions["palette"] {
   const t = APP_TOKENS[mode];
@@ -35,29 +62,29 @@ function paletteFor(mode: ThemeMode): ThemeOptions["palette"] {
   };
 }
 
-/** The app theme for a mode; extra options (e.g. portal containers) are merged on top. */
+/** The app theme for a mode, with the user's text size and density; extra options (e.g. portal containers) are
+ * merged on top. */
 export function createAppTheme(mode: ThemeMode, ...extra: ThemeOptions[]): Theme {
   const t = APP_TOKENS[mode];
   const dark = mode === "dark";
-  return createTheme(
-    {
-      palette: paletteFor(mode),
-      components: {
-        // Flat panels: MUI lightens dark papers with an overlay gradient by elevation.
-        MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
-        MuiTooltip: dark
-          ? { styleOverrides: { tooltip: { backgroundColor: t.surface3, color: t.text, border: `1px solid ${t.borderStrong}` } } }
-          : {},
-        MuiTableCell: { styleOverrides: { root: { borderColor: t.border } } },
-        MuiDivider: { styleOverrides: { root: { borderColor: t.border } } },
-        MuiOutlinedInput: dark
-          ? { styleOverrides: { notchedOutline: { borderColor: t.borderStrong } } }
-          : {},
-        MuiMenu: dark
-          ? { styleOverrides: { paper: { border: `1px solid ${t.border}` } } }
-          : {},
-      },
+  // Typography and sx are only built from the first options: the display ones go in there
+  const base: ThemeOptions = {
+    palette: paletteFor(mode),
+    components: {
+      // Flat panels: MUI lightens dark papers with an overlay gradient by elevation.
+      MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+      MuiTooltip: dark
+        ? { styleOverrides: { tooltip: { backgroundColor: t.surface3, color: t.text, border: `1px solid ${t.borderStrong}` } } }
+        : {},
+      MuiTableCell: { styleOverrides: { root: { borderColor: t.border } } },
+      MuiDivider: { styleOverrides: { root: { borderColor: t.border } } },
+      MuiOutlinedInput: dark
+        ? { styleOverrides: { notchedOutline: { borderColor: t.borderStrong } } }
+        : {},
+      MuiMenu: dark
+        ? { styleOverrides: { paper: { border: `1px solid ${t.border}` } } }
+        : {},
     },
-    ...extra,
-  );
+  };
+  return createTheme(deepmerge(base, displayOptions(getDisplayPreferences())), ...extra);
 }

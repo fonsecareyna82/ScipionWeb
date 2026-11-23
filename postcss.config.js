@@ -67,6 +67,38 @@ function scopeWidgetCss() {
 }
 scopeWidgetCss.postcss = true;
 
+
+// The user's text size (Settings → User): every absolute font size of the CSS, and the absolute line heights
+// that go with them, are multiplied by --sw-font-scale (1 when it is not set, as in the embedded widget).
+// Relative sizes (em, %, keywords) already follow their parent; the root's font size is left alone so rem
+// values are not scaled twice.
+const FONT_SCALE = "var(--sw-font-scale, 1)";
+
+function scaleFontSizes() {
+  const isRelative = (value) => /%/.test(value) || /(^|[^a-z])[\d.]+em\b/i.test(value) || /^[a-z-]+$/i.test(value);
+  const isRootRule = (decl) => {
+    const selector = decl.parent?.selector ?? "";
+    return selector.split(",").some((part) => /^\s*(html|:root)\s*$/i.test(part));
+  };
+  return {
+    postcssPlugin: "scaleFontSizes",
+    Declaration(decl) {
+      const prop = decl.prop.toLowerCase();
+      const value = decl.value.trim();
+      if (value.includes("--sw-font-scale") || isRelative(value)) return;
+      if (prop === "font-size") {
+        if (isRootRule(decl) || !/(\d(px|rem)\b)|var\(/.test(value)) return;
+      } else if (prop === "line-height" || prop === "--tw-leading") {
+        if (!/(\d(px|rem)\b)|var\(--spacing/.test(value)) return;
+      } else {
+        return;
+      }
+      decl.value = `calc(${value} * ${FONT_SCALE})`;
+    },
+  };
+}
+scaleFontSizes.postcss = true;
+
 export default {
-  plugins: [tailwindcss(), ...(isWidgetBuild ? [scopeWidgetCss()] : [])],
+  plugins: [tailwindcss(), scaleFontSizes(), ...(isWidgetBuild ? [scopeWidgetCss()] : [])],
 };

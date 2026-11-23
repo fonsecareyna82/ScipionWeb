@@ -8,6 +8,7 @@ import AppSidebar from "./AppSidebar";
 import FacilityAlertsBanner from "@/components/facility/FacilityAlertsBanner";
 import RemoteDisplayHost from "@/components/analyze/RemoteDisplayHost";
 import PageErrorBoundary from "@/components/common/PageErrorBoundary";
+import DisplayPreferencesSync from "@/theme/DisplayPreferencesSync";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -71,6 +72,9 @@ const LayoutContent: React.FC = () => {
       <PageErrorBoundary silent label="The viewers opened on the server">
         <RemoteDisplayHost />
       </PageErrorBoundary>
+
+      {/* The user's text size, density and time zone */}
+      <DisplayPreferencesSync />
     </div>
   );
 };

@@ -138,51 +138,59 @@ export function useSettingsStyles(isDarkMode: boolean, fontSizes: SettingsFontSi
       },
     } as const;
   }, [colors.muted, colors.primary, colors.text]);
+  // Buttons: plain and flat, the same height everywhere, never smaller than 13.5 px
+  const buttonBase = useMemo(() => ({
+    textTransform: "none",
+    fontSize: Math.max(buttonFontSize, 13.5),
+    fontWeight: 600,
+    lineHeight: 1.2,
+    minHeight: 36,
+    px: 1.75,
+    borderRadius: "8px",
+    boxShadow: "none",
+    "& .MuiButton-startIcon": { mr: 0.75, ml: -0.25 },
+  }) as const, [buttonFontSize]);
+
   const actionButtonSx = useMemo(() => {
     // actionButtonSx
-    const bg = isDarkMode ? "rgba(255,255,255,0.04)" : "rgba(17,24,39,0.03)";
-    const bgHover = isDarkMode ? "rgba(255,255,255,0.07)" : "rgba(17,24,39,0.06)";
-    const inset = isDarkMode ? "0 1px 0 rgba(255,255,255,0.06) inset" : "0 1px 0 rgba(255,255,255,0.7) inset";
-    const shadow = isDarkMode ? "0 8px 18px rgba(0,0,0,0.28)" : "0 10px 22px rgba(17,24,39,0.10)";
-
     return {
-      textTransform: "none",
-      fontSize: buttonFontSize,
+      ...buttonBase,
       color: colors.text,
-      borderColor: colors.border,
-      borderRadius: 3,
-      bgcolor: bg,
-      backgroundImage: isDarkMode
-        ? "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.00))"
-        : "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.10))",
-      boxShadow: `${inset}, ${shadow}`,
+      bgcolor: isDarkMode ? "rgba(255,255,255,0.03)" : "#ffffff",
+      border: "1px solid",
+      borderColor: isDarkMode ? "rgba(255,255,255,0.16)" : "rgba(17,24,39,0.16)",
+      boxShadow: isDarkMode ? "none" : "0 1px 2px rgba(16,24,40,0.05)",
       "&:hover": {
-        borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border,
-        bgcolor: bgHover,
-        boxShadow: `${inset}, ${isDarkMode ? "0 10px 22px rgba(0,0,0,0.34)" : "0 12px 26px rgba(17,24,39,0.14)"}`,
+        bgcolor: colors.hover,
+        borderColor: isDarkMode ? "rgba(255,255,255,0.28)" : "rgba(17,24,39,0.28)",
+        boxShadow: isDarkMode ? "none" : "0 1px 2px rgba(16,24,40,0.05)",
+      },
+      "&.Mui-disabled": {
+        color: colors.muted,
+        borderColor: colors.border,
+        bgcolor: "transparent",
+        boxShadow: "none",
+        opacity: 0.6,
       },
     } as const;
-  }, [colors.border, colors.text, isDarkMode, buttonFontSize]);
+  }, [buttonBase, colors.border, colors.hover, colors.muted, colors.text, isDarkMode]);
   const saveButtonSx = useMemo(() => {
     // saveButtonSx
-    const inset = "0 1px 0 rgba(255,255,255,0.18) inset";
-    const shadow = isDarkMode ? "0 12px 26px rgba(0,0,0,0.30)" : "0 12px 26px rgba(17,24,39,0.16)";
-
     return {
-      textTransform: "none",
-      fontSize: buttonFontSize,
-      borderRadius: 3,
+      ...buttonBase,
       bgcolor: colors.primary,
       color: colors.primaryContrast,
-      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.00))",
-      boxShadow: `${inset}, ${shadow}`,
-      "&:hover": {
-        bgcolor: colors.primary,
-        filter: "brightness(0.96)",
-        boxShadow: `${inset}, ${isDarkMode ? "0 14px 30px rgba(0,0,0,0.36)" : "0 14px 30px rgba(17,24,39,0.20)"}`,
+      border: "1px solid",
+      borderColor: colors.primary,
+      boxShadow: isDarkMode ? "none" : "0 1px 2px rgba(16,24,40,0.10)",
+      "&:hover": { bgcolor: colors.primary, filter: "brightness(0.92)", boxShadow: "none" },
+      "&.Mui-disabled": {
+        bgcolor: isDarkMode ? "rgba(255,255,255,0.06)" : "rgba(17,24,39,0.06)",
+        borderColor: "transparent",
+        color: colors.muted,
       },
     } as const;
-  }, [colors.primary, colors.primaryContrast, isDarkMode, buttonFontSize]);
+  }, [buttonBase, colors.muted, colors.primary, colors.primaryContrast, isDarkMode]);
 
   return { colors, fieldSx, selectSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
            saveButtonSx };

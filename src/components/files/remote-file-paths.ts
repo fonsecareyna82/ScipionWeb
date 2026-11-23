@@ -1,4 +1,6 @@
 // Paths, sizes and dates of the remote file browser. Pure functions, so they can be tested alone.
+import { zonedParts } from "@/theme/displayPreferences";
+
 
 export type RemoteEntry = {
   name: string;
@@ -166,12 +168,14 @@ export function humanBytes(n?: number | null): string | undefined {
 /** A modification date: the time today, the day this year, the full date otherwise. */
 export function formatModified(mtime: number | null | undefined, now: Date = new Date()): string {
   if (mtime == null || !Number.isFinite(mtime)) return "";
-  const date = new Date(mtime * 1000);
+  // In the user's time zone
+  const date = zonedParts(new Date(mtime * 1000));
+  const today = zonedParts(now);
   const pad = (value: number) => String(value).padStart(2, "0");
-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  if (date.toDateString() === now.toDateString()) return time;
-  if (date.getFullYear() === now.getFullYear()) return `${day.slice(5)} ${time}`;
+  const time = `${pad(date.hour)}:${pad(date.minute)}`;
+  const day = `${date.year}-${pad(date.month)}-${pad(date.day)}`;
+  if (date.year === today.year && date.month === today.month && date.day === today.day) return time;
+  if (date.year === today.year) return `${day.slice(5)} ${time}`;
   return day;
 }
 

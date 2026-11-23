@@ -1,6 +1,7 @@
 // src/components/analyze/analyze-output-dialog.tsx
 import { useProjectService } from "@/ProjectServiceContext";
 import { createAppTheme } from "@/theme/muiTheme";
+import { useDisplayPreferences } from "@/theme/displayPreferences";
 import {
   memo,
   useCallback,
@@ -255,6 +256,8 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
       : undefined;
 
 
+  // Rebuilt when the user changes their text size or density
+  const displayPreferences = useDisplayPreferences();
   const muiTheme =
     useMemo(
       () =>
@@ -297,6 +300,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
       [
         appTheme,
         externalPortalContainer,
+        displayPreferences,
       ],
     );
 

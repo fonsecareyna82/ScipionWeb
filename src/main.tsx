@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+// The user's text size, density and time zone, from the last visit, before anything is drawn
+import "./theme/displayPreferences";
 import "./index.css";
 import "./styles/theme-tokens.css";
 import "swiper/swiper-bundle.css";

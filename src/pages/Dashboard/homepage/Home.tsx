@@ -28,6 +28,7 @@ import {
 import { TreeIcon } from "@/icons";
 import PageMeta from "@/components/common/PageMeta";
 import { readPinnedIds, togglePinnedId, writePinnedIds } from "@/utils/projectPins";
+import { formatInTimeZone } from "@/theme/displayPreferences";
 
 type ProjectRow = {
   id: string;
@@ -138,13 +139,13 @@ function formatDateTime(raw?: string): string {
   if (Number.isNaN(d.getTime())) return "—";
 
   try {
-    return new Intl.DateTimeFormat(undefined, {
+    return formatInTimeZone(d, {
       year: "numeric",
       month: "short",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(d);
+    });
   } catch {
     return d.toISOString();
   }

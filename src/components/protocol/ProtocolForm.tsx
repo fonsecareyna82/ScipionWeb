@@ -1,5 +1,6 @@
 // src/components/ProtocolForm.tsx
 import { createAppTheme } from "@/theme/muiTheme";
+import { useDisplayPreferences } from "@/theme/displayPreferences";
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import * as React from "react";
 import toast from "react-hot-toast";
@@ -549,6 +550,8 @@ export default function ProtocolForm({
     );
 
 
+  // Rebuilt when the user changes their text size or density
+  const displayPreferences = useDisplayPreferences();
   const protocolMuiTheme =
     useMemo(
       () =>
@@ -591,6 +594,7 @@ export default function ProtocolForm({
       [
         appTheme,
         externalPortalContainer,
+        displayPreferences,
       ],
     );
 

@@ -3798,12 +3798,21 @@ export default function ProjectPage() {
     return payload.positions.filter(isValidPosItem);
   };
 
+  // Saved positions of a direction are only ever those of nodes laid out in it (their handles say which: LR leaves
+  // from the right). Positions of the other direction saved under it would come back on every load of that view,
+  // drawing one direction's tree with the other's edges until a Reorganize.
+  const nodesLaidOutIn = (nodes: Node[], direction: "TB" | "LR") =>
+    nodes.every((node) => !node.sourcePosition || (node.sourcePosition === "right") === (direction === "LR"));
+
   const writePersistedPositions = (
     key: string,
     direction: "TB" | "LR",
     topologySignature: string,
-    positions: Array<{ id: string; position: { x: number; y: number } }>
+    positions: Array<{ id: string; position: { x: number; y: number } }>,
+    // The nodes the positions are from: those on screen unless said
+    sourceNodes: Node[] = nodesRef.current as Node[],
   ) => {
+    if (!nodesLaidOutIn(sourceNodes, direction)) return;
     const payload: PersistedNodePositionsV6 = {
       version: nodePositionsVersion,
       direction,
@@ -3949,7 +3958,7 @@ export default function ProjectPage() {
         const topologySignature = graphTopologySignatureRef.current;
 
         if (topologySignature) {
-          writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+          writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions, resolvedNodes);
         }
       } catch {
         // noOp
@@ -4076,8 +4085,11 @@ export default function ProjectPage() {
   const loadNodesWithPositions = (
     loadedNodes: Node[],
     protocols: Record<string, any>,
-    options?: { ignoreSaved?: boolean }
+    // The direction the nodes were laid out in. A caller that read it from a ref (an older closure of this
+    // function would see an outdated one) passes it, so saved positions of the other direction are not used.
+    options?: { ignoreSaved?: boolean; direction?: "TB" | "LR" }
   ): Node[] => {
+    const direction = options?.direction ?? graphDirection;
     const topologySignature = getGraphTopologySignature(protocols);
     graphTopologySignatureRef.current = topologySignature;
 
@@ -4085,7 +4097,7 @@ export default function ProjectPage() {
       ? []
       : readPersistedPositions(
         storageKeyHier,
-        graphDirection,
+        direction,
         topologySignature
       );
 
@@ -4109,18 +4121,19 @@ export default function ProjectPage() {
 
     const resolvedNodes = centerProjectOverGraphBranches(
       nodesWithPositions,
-      graphDirection
+      direction
     );
 
     try {
       writePersistedPositions(
         storageKeyHier,
-        graphDirection,
+        direction,
         topologySignature,
         resolvedNodes.map((node) => ({
           id: String(node.id),
           position: node.position,
-        }))
+        })),
+        resolvedNodes
       );
     } catch {
       // noOp
@@ -4192,7 +4205,7 @@ export default function ProjectPage() {
       }));
 
       try {
-        writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+        writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions, resolvedNodes);
       } catch {
         // noOp
       }
@@ -4397,7 +4410,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           mode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes, data.protocols)
+            ? loadNodesWithPositions(loadedNodes, data.protocols, { direction: dir })
             : loadedNodes;
 
         const nodesWithTick =
@@ -4610,7 +4623,8 @@ export default function ProjectPage() {
                     hierarchicalNodes.map((node) => ({
                       id: String(node.id),
                       position: node.position,
-                    }))
+                    })),
+                    hierarchicalNodes
                   );
                 } catch {
                   // noOp

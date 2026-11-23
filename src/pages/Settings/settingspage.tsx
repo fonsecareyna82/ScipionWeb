@@ -1,7 +1,7 @@
 // src/pages/settingspage.tsx
 import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import { useSearchParams } from "react-router-dom";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/Grid";
 import {
@@ -16,16 +16,10 @@ import {
   CircularProgress,
   Collapse,
   Divider,
-  FormControl,
-  FormControlLabel,
   InputAdornment,
-  InputLabel,
-  MenuItem,
   Paper,
-  Select,
   Skeleton,
   Stack,
-  Switch,
   Tab,
   Tabs,
   TextField,
@@ -40,9 +34,8 @@ import {
 import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
-import { TreeIcon } from "@/icons";
 import {
-  BellRing, Braces, Cpu, HardDrive, LayoutGrid, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck, Table,
+  BellRing, Braces, Cpu, HardDrive, Network, Plus, RefreshCw, RotateCcw, Save, ScrollText, Search, Server, ShieldCheck,
   Tag, UserCog, UserRound, UsersRound,
 } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
@@ -79,8 +72,19 @@ import GroupsPanel from "@/pages/Settings/GroupsPanel";
 import AuditPanel from "@/pages/Settings/AuditPanel";
 import UsagePanel from "@/pages/Settings/UsagePanel";
 import NotificationsPanel from "@/pages/Settings/NotificationsPanel";
+import UserPreferencesPanel from "@/pages/Settings/UserPreferencesPanel";
 import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
 import { usePermissions } from "@/hooks/usePermissions";
+import { setDisplayPreferences } from "@/theme/displayPreferences";
+
+/** The saved text size, density and time zone, applied to the whole app. */
+function applyDisplayPreferences(settings: UserSettings) {
+  setDisplayPreferences({
+    fontScale: settings.fontScale,
+    density: settings.uiDensity,
+    timeZone: settings.timeZone || undefined,
+  });
+}
 
 
 type TabKey =
@@ -125,7 +129,8 @@ const defaultUserSettings:
   uiDensity: "comfortable",
   fontScale: 1.0,
   language: "en",
-  timeZone: "Europe/Madrid",
+  // Empty: the time zone of this computer
+  timeZone: "",
 
   workflowViewMode:
     DEFAULT_PROJECT_USER_SETTINGS
@@ -457,38 +462,6 @@ function getTimeZoneOptions(): string[] {
   return fallback;
 }
 
-function getViewModeMeta(
-  mode: UserSettings["workflowViewMode"]
-): {
-  label: string;
-  icon: React.ReactNode;
-} {
-  // getViewModeMeta
-  switch (mode) {
-    case "treeTb":
-      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon w-4 h-4" /> };
-
-    case "treeLr":
-      return {
-        label: "Tree LR",
-        icon: (
-          <span className="inline-flex -rotate-90">
-            <TreeIcon className="pp-btnIcon w-4 h-4" />
-          </span>
-        ),
-      };
-
-    case "grid":
-      return { label: "Grid", icon: <LayoutGrid className="pp-btnIcon w-4 h-4" /> };
-
-    case "table":
-      return { label: "Table", icon: <Table className="pp-btnIcon w-4 h-4" /> };
-
-    default:
-      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon w-4 h-4" /> };
-  }
-}
-
 export default function SettingsPage() {
   const svc = useProjectService() as any;
   const muiTheme = useTheme();
@@ -690,10 +663,10 @@ export default function SettingsPage() {
   }, [tab, projectsLoadedOnce, loadProjectsForTagsTab]);
 
   const isDarkMode = useMemo(() => {
-    // isDarkMode
+    // The theme shown now: the one chosen in the form only applies once saved
     const muiDark = muiTheme.palette.mode === "dark";
-    return muiDark || darkClassEnabled || userDraft?.theme === "dark";
-  }, [muiTheme.palette.mode, darkClassEnabled, userDraft?.theme]);
+    return muiDark || darkClassEnabled;
+  }, [muiTheme.palette.mode, darkClassEnabled]);
 
   const { colors, fieldSx, selectSx, menuPaperSx, cardHeaderSx, cardSx, dividerSx, tabsSx, actionButtonSx,
           saveButtonSx } = useSettingsStyles(isDarkMode);
@@ -720,8 +693,9 @@ export default function SettingsPage() {
     // timeZoneOptions
     const opts = getTimeZoneOptions();
     const current = userDraft?.timeZone ?? userBase?.timeZone ?? "";
-    if (current && !opts.includes(current)) return [current, ...opts];
-    return opts;
+    // The first choice is always "this computer's" (empty)
+    const zones = current && !opts.includes(current) ? [current, ...opts] : opts;
+    return ["", ...zones];
   }, [userDraft?.timeZone, userBase?.timeZone]);
 
 
@@ -872,6 +846,7 @@ export default function SettingsPage() {
       const data = sanitizeUserSettings(raw);
       setUserBase(data);
       setUserDraft(data);
+      applyDisplayPreferences(data);
     } catch (e: any) {
       const msg = getErrorMsg(e);
       setUserError(msg);
@@ -1060,6 +1035,7 @@ export default function SettingsPage() {
       setUserDraft(saved);
       // The saved theme is the one shown (also the header's toggle uses it).
       setThemePreference(saved.theme);
+      applyDisplayPreferences(saved);
       toast.success("User settings saved.");
     } catch (e: any) {
       const msg = getErrorMsg(e);
@@ -1307,7 +1283,12 @@ export default function SettingsPage() {
 
     return (
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-        {hasChanges && <Chip size="small" label="Unsaved changes" />}
+        {hasChanges && (
+          <Stack direction="row" spacing={0.75} alignItems="center" role="status" sx={{ pr: 0.5 }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#f59e0b" }} />
+            <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: colors.muted }}>Unsaved changes</Typography>
+          </Stack>
+        )}
 
         <Button
           sx={actionButtonSx}
@@ -1315,7 +1296,7 @@ export default function SettingsPage() {
           onClick={onReload}
           disabled={busy}
           size="small"
-          startIcon={<RefreshCw size={16} />}
+          startIcon={<RefreshCw size={15} />}
         >
           Reload
         </Button>
@@ -1326,7 +1307,7 @@ export default function SettingsPage() {
           onClick={onReset}
           disabled={busy || !hasChanges}
           size="small"
-          startIcon={<RotateCcw size={16} />}
+          startIcon={<RotateCcw size={15} />}
         >
           Reset
         </Button>
@@ -1337,7 +1318,7 @@ export default function SettingsPage() {
           onClick={onSave}
           disabled={busy || !canSave || !hasChanges}
           size="small"
-          startIcon={<Save size={16} />}
+          startIcon={<Save size={15} />}
         >
           Save
         </Button>
@@ -1373,6 +1354,7 @@ export default function SettingsPage() {
     handleSaveEnvironment,
     actionButtonSx,
     saveButtonSx,
+    colors.muted,
   ]);
 
   const renderHostContent = () => {
@@ -1411,334 +1393,18 @@ export default function SettingsPage() {
       return <Alert severity="error">Unable to load user settings. Please try reloading.</Alert>;
     }
 
-    const autoRefreshEnabled = userDraft.workflowsAutoRefreshSec > 0;
-    const selectedViewMeta = getViewModeMeta(userDraft.workflowViewMode);
-
     return (
       <Stack spacing={1.75}>
         {userError && <Alert severity="error">{userError}</Alert>}
-
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Appearance" subheader="Theme, density, and typography scaling." sx={cardHeaderSx} />
-          <CardContent sx={{ pt: 2 }}>
-            <Grid container spacing={2} sx={{ width: "100%" }}>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: fieldFontSize, color: colors.muted }} id="themeLabel">
-                    Theme
-                  </InputLabel>
-                  <Select
-                    sx={selectSx}
-                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                    labelId="themeLabel"
-                    label="Theme"
-                    value={userDraft.theme}
-                    onChange={(e) =>
-                      setUserDraft((prev) => (prev ? { ...prev, theme: e.target.value as UserSettings["theme"] } : prev))
-                    }
-                  >
-                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="light">
-                      Light
-                    </MenuItem>
-                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="dark">
-                      Dark
-                    </MenuItem>
-                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="system">
-                      System (follow the operating system)
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: fieldFontSize, color: colors.muted }} id="densityLabel">
-                    UI density
-                  </InputLabel>
-                  <Select
-                    sx={selectSx}
-                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                    labelId="densityLabel"
-                    label="UI density"
-                    value={userDraft.uiDensity}
-                    onChange={(e) =>
-                      setUserDraft((prev) =>
-                        prev ? { ...prev, uiDensity: e.target.value as UserSettings["uiDensity"] } : prev,
-                      )
-                    }
-                  >
-                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="comfortable">
-                      Comfortable
-                    </MenuItem>
-                    <MenuItem sx={{ fontSize: fieldFontSize, color: colors.text }} value="compact">
-                      Compact
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <TextField
-                  sx={fieldSx}
-                  fullWidth
-                  size="small"
-                  label="Font scale"
-                  type="number"
-                  value={userDraft.fontScale}
-                  inputProps={{ min: 0.85, max: 1.25, step: 0.01 }}
-                  onChange={(e) =>
-                    setUserDraft((prev) =>
-                      prev ? { ...prev, fontScale: clampNumber(e.target.value, 1.0, 0.85, 1.25) } : prev,
-                    )
-                  }
-                  helperText="0.85–1.25"
-                />
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Time" subheader="Time zone used for formatting and scheduling." sx={cardHeaderSx} />
-          <CardContent sx={{ pt: 2 }}>
-            <Autocomplete<string, false, boolean, false>
-              PaperComponent={autocompletePaperComponent}
-              options={timeZoneOptions}
-              value={userDraft.timeZone}
-              loading={userLoading}
-              onChange={(_, next) => {
-                // onTimeZoneChange
-                if (!next) return;
-                setUserDraft((prev) => (prev ? { ...prev, timeZone: String(next) } : prev));
-              }}
-              renderInput={(params) => {
-                // renderTimeZoneInput
-                return (
-                  <TextField
-                    {...params}
-                    sx={fieldSx}
-                    fullWidth
-                    label="Time zone"
-                    size="small"
-                    helperText="Select the time zone used across the UI."
-                  />
-                );
-              }}
-              disableClearable
-            />
-          </CardContent>
-        </Card>
-
-        <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Workflow viewer" subheader="Layout mode, navigation helpers, and refresh behavior." sx={cardHeaderSx} />
-          <CardContent sx={{ pt: 2 }}>
-            <Grid container spacing={2} sx={{ width: "100%" }}>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ fontSize: fieldFontSize, color: colors.muted }} id="viewModeLabel">
-                    Default workflow view
-                  </InputLabel>
-                  <Select
-                    sx={selectSx}
-                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                    labelId="viewModeLabel"
-                    label="Default workflow view"
-                    value={userDraft.workflowViewMode}
-                    renderValue={(v) => {
-                      const meta = getViewModeMeta(
-                        v as UserSettings["workflowViewMode"]
-                      );
-
-                      return (
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="center"
-                        >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              opacity: 0.9,
-                            }}
-                          >
-                            {meta.icon}
-                          </Box>
-
-                          <Typography
-                            sx={{
-                              fontSize: fieldFontSize,
-                              color: colors.text,
-                            }}
-                          >
-                            {meta.label}
-                          </Typography>
-                        </Stack>
-                      );
-                    }}
-                    onChange={(e) =>
-                      setUserDraft((prev) =>
-                        prev
-                          ? {
-                            ...prev,
-                            workflowViewMode:
-                              e.target.value as UserSettings["workflowViewMode"],
-                          }
-                          : prev
-                      )
-                    }
-                  >
-                    {(
-                      [
-                        "treeTb",
-                        "treeLr",
-                        "grid",
-                        "table",
-                      ] as UserSettings["workflowViewMode"][]
-                    ).map((m) => {
-                      const meta = getViewModeMeta(m);
-                      return (
-                        <MenuItem key={m} value={m} sx={{ fontSize: fieldFontSize, color: colors.text }}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Box sx={{ display: "flex", alignItems: "center", opacity: 0.9 }}>{meta.icon}</Box>
-                            <Typography sx={{ fontSize: fieldFontSize, color: colors.text }}>{meta.label}</Typography>
-                          </Stack>
-                        </MenuItem>
-                      );
-                    })}
-                  </Select>
-                </FormControl>
-
-                <Typography sx={{ mt: 0.75, fontSize: fieldFontSize, color: colors.muted }}>
-                  Current: {selectedViewMeta.label}
-                </Typography>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(userDraft.graphMiniMapEnabled)}
-                      onChange={(e) => setUserDraft((prev) => (prev ? { ...prev, graphMiniMapEnabled: e.target.checked } : prev))}
-                      size="small"
-                    />
-                  }
-                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Show mini map by default</Typography>}
-                />
-                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  Shows the workflow overview map when opening a project.
-                </Typography>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(userDraft.graphFocusModeEnabled)}
-                      onChange={(e) => setUserDraft((prev) => (prev ? { ...prev, graphFocusModeEnabled: e.target.checked } : prev))}
-                      size="small"
-                    />
-                  }
-                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Enable focus mode by default</Typography>}
-                />
-                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  De-emphasizes nodes and edges outside the current selection.
-                </Typography>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(userDraft.protocolOutputThumbnailsEnabled)}
-                      onChange={(e) =>
-                        setUserDraft((prev) =>
-                          prev
-                            ? {
-                              ...prev,
-                              protocolOutputThumbnailsEnabled: e.target.checked,
-                            }
-                            : prev,
-                        )
-                      }
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
-                      Protocol thumbnails
-                    </Typography>
-                  }
-                />
-                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  Shows output thumbnails inside workflow protocol cards when available.
-                </Typography>
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <Divider sx={{ my: 1, ...dividerSx }} />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={userDraft.workflowsAutoRefreshSec > 0}
-                      onChange={(e) =>
-                        setUserDraft((prev) => {
-                          if (!prev) return prev;
-                          if (!e.target.checked) return { ...prev, workflowsAutoRefreshSec: 0 };
-                          const next = prev.workflowsAutoRefreshSec > 0 ? prev.workflowsAutoRefreshSec : 5;
-                          return { ...prev, workflowsAutoRefreshSec: clampNumber(next, 5, 1, 300) };
-                        })
-                      }
-                      size="small"
-                    />
-                  }
-                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Workflow auto-refresh</Typography>}
-                />
-                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  Automatically reloads workflow state using the interval below.
-                </Typography>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <TextField
-                  sx={fieldSx}
-                  fullWidth
-                  size="small"
-                  label="Interval"
-                  type="number"
-                  value={autoRefreshEnabled ? userDraft.workflowsAutoRefreshSec : 0}
-                  disabled={!autoRefreshEnabled}
-                  inputProps={{ min: 1, max: 300, step: 1 }}
-                  onChange={(e) =>
-                    setUserDraft((prev) =>
-                      prev ? { ...prev, workflowsAutoRefreshSec: clampNumber(e.target.value, 5, 1, 300) } : prev,
-                    )
-                  }
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <span style={{ fontSize: fieldFontSize, color: colors.muted }}>sec</span>
-                      </InputAdornment>
-                    ),
-                  }}
-                  helperText={!autoRefreshEnabled ? "Disabled" : "1–300 seconds"}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: colors.hover, border: "1px solid", borderColor: colors.border }}>
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 800, mb: 0.25, color: colors.text }}>Note</Typography>
-                  <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                    Set interval to a small value only if your workflows change frequently.
-                  </Typography>
-                </Box>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
+        <UserPreferencesPanel
+          value={userDraft}
+          onChange={(update) => setUserDraft((prev) => (prev ? update(prev) : prev))}
+          timeZoneOptions={timeZoneOptions}
+          colors={colors}
+          isDarkMode={isDarkMode}
+          fieldSx={fieldSx}
+          menuPaperSx={menuPaperSx}
+        />
       </Stack>
     );
   };
@@ -2519,7 +2185,9 @@ export default function SettingsPage() {
             <Divider sx={dividerSx} />
 
             <Box
+              className="bg-gray-100 dark:bg-gray-950"
               sx={{
+                // Behind the cards, the grey of the projects list
                 p: 2,
                 minHeight: 0,
                 flex: 1,
@@ -2574,7 +2242,7 @@ export default function SettingsPage() {
                                 ? renderTagsContent()
                                 : renderEnvironmentContent()}
 
-              {tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
+              {tab !== "user" && tab !== "jobs" && tab !== "users" && tab !== "roles" && tab !== "groups" && tab !== "audit"
                 && tab !== "disk" && tab !== "notifications" ? (
                 <>
                   <Divider sx={{ my: 2, ...dividerSx }} />

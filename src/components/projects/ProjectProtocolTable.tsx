@@ -79,6 +79,7 @@ import {
   type ProtocolTableColumnFilter,
   type ProtocolTableColumnFilters,
 } from "@/components/projects/protocol-table-filters";
+import { formatInTimeZone } from "@/theme/displayPreferences";
 
 export type ProjectProtocolTableRow = {
   id: string;
@@ -472,13 +473,13 @@ function formatDateTime(value: unknown): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
 
-  return new Intl.DateTimeFormat(undefined, {
+  return formatInTimeZone(date, {
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  });
 }
 
 function formatExtraTableValue(extra: NormalizedExtraTableColumn): string {

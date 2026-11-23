@@ -219,6 +219,12 @@
   body {
     @apply relative font-normal font-outfit z-1 bg-gray-50;
   }
+
+  /* Text without a size of its own follows the user's text size too (see postcss.config.js). Only in the app:
+     data-density is set by its display preferences, never in a page that embeds the widget. */
+  :root[data-density] body {
+    font-size: 1rem;
+  }
 }
 
 @utility menu-item {
