@@ -1,4 +1,4 @@
-import {
+import React, {
     useCallback,
     useEffect,
     useRef,
@@ -10,27 +10,25 @@ import toast from "react-hot-toast";
 import {
     Alert,
     Box,
-    Card,
-    CardContent,
-    Chip,
     CircularProgress,
-    Paper,
     Stack,
-    Tab,
-    Tabs,
     Table,
     TableBody,
     TableCell,
     TableContainer,
     TableHead,
     TableRow,
+    ToggleButton,
+    ToggleButtonGroup,
     Typography,
     Button,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import {
     Activity,
     Cpu,
+    HardDrive,
     History,
     Puzzle,
     Server,
@@ -52,60 +50,30 @@ import {
 import type {
     ActiveProtocolJob,
     JobMonitoringOverview,
+    NodeCapabilities,
     NodeCapabilitiesList,
     RecentProtocolJob,
 } from "@/services/ProjectService";
 import NodeScratch from "./NodeScratch";
+import { choiceButtonsSx, SETTINGS_TEXT, SettingsSection } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 import { usePermissions } from "@/hooks/usePermissions";
 
 
 const AUTO_REFRESH_MS = 3000;
 const RECENT_LIMIT = 25;
 
-const protocolStatusColors:
-    Record<
-        string,
-        {
-            backgroundColor: string;
-            color: string;
-        }
-    > = {
-    running: {
-        backgroundColor: "#918516",
-        color: "#FFFFFF",
-    },
-    saved: {
-        backgroundColor: "#1E90FF",
-        color: "#FFFFFF",
-    },
-    launched: {
-        backgroundColor: "#1E90FF",
-        color: "#FFFFFF",
-    },
-    finished: {
-        backgroundColor: "#28A745",
-        color: "#FFFFFF",
-    },
-    failed: {
-        backgroundColor: "#DC3545",
-        color: "#FFFFFF",
-    },
-    aborted: {
-        backgroundColor: "#DC3545",
-        color: "#FFFFFF",
-    },
-    interactive: {
-        backgroundColor: "#FFC107",
-        color: "var(--app-n-800)",
-    },
-    scheduled: {
-        backgroundColor: "#918516",
-        color: "#FFFFFF",
-    },
-    new: {
-        backgroundColor: "#1E90FF",
-        color: "#FFFFFF",
-    },
+// The same colours as the protocol badges elsewhere in the app
+const protocolStatusColors: Record<string, { backgroundColor: string; color: string }> = {
+    running: { backgroundColor: "#f59e0b", color: "#1f2937" },
+    scheduled: { backgroundColor: "#facc15", color: "#1f2937" },
+    interactive: { backgroundColor: "#facc15", color: "#1f2937" },
+    finished: { backgroundColor: "#16a34a", color: "#ffffff" },
+    failed: { backgroundColor: "#dc2626", color: "#ffffff" },
+    aborted: { backgroundColor: "#dc2626", color: "#ffffff" },
+    saved: { backgroundColor: "#2563eb", color: "#ffffff" },
+    launched: { backgroundColor: "#2563eb", color: "#ffffff" },
+    new: { backgroundColor: "#2563eb", color: "#ffffff" },
 };
 
 
@@ -123,8 +91,8 @@ function getProtocolStatusSx(
         normalizedStatus
         ]
         ?? {
-            backgroundColor: "var(--app-n-500)",
-            color: "#FFFFFF",
+            backgroundColor: "#4b5563",
+            color: "#ffffff",
         }
     );
 }
@@ -255,50 +223,72 @@ function getErrorMessage(
 }
 
 
-function RuntimeCell({
-    job,
-}: {
-    job: ActiveProtocolJob;
-}) {
-    const hasRuntimeInfo =
-        job.workerPid != null
-        || job.protocolPid != null
-        || job.jobIds.length > 0;
+function formatTime(value: string | null | undefined): string {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString();
+}
 
-    if (!hasRuntimeInfo) {
-        return (
-            <Typography
-                variant="caption"
-                color="text.secondary"
-            >
-                —
-            </Typography>
-        );
-    }
 
+/** A worker as people call it: what it does. */
+export function workerTitle(worker: { kind?: string | null; name: string }): string {
+    const kind = worker.kind ?? (worker.name.startsWith("plugins@") ? "plugins" : "protocols");
+    return kind === "plugins" ? "Plugin installer" : "Protocol runner";
+}
+
+
+/** Where an active run is executed. */
+function executionLabel(job: ActiveProtocolJob): string {
+    if (job.worker) return workerTitle({ name: job.worker }) + (job.worker.includes("@") ? ` on ${job.worker.split("@")[1]}` : "");
+    if (job.jobIds.length > 0) return job.protocolPid ? "Steps through the queue" : "Through the queue";
+    return job.protocolPid ? "On this server" : "—";
+}
+
+
+function RuntimeCell({ job, textSx }: { job: ActiveProtocolJob; textSx: object }) {
+    const lines = [
+        job.workerPid != null ? `Worker process ${job.workerPid}` : null,
+        job.protocolPid != null ? `Protocol process ${job.protocolPid}` : null,
+        job.jobIds.length > 0 ? `${job.jobIds.length === 1 ? "Queue job" : "Queue jobs"} ${job.jobIds.join(", ")}` : null,
+    ].filter(Boolean) as string[];
+    if (!lines.length) return <Typography sx={textSx}>—</Typography>;
     return (
         <Stack spacing={0.25}>
-            {job.workerPid != null ? (
-                <Typography variant="caption">
-                    Celery PID: {job.workerPid}
-                </Typography>
-            ) : null}
-
-            {job.protocolPid != null ? (
-                <Typography variant="caption">
-                    Protocol PID: {job.protocolPid}
-                </Typography>
-            ) : null}
-
-            {job.jobIds.length > 0 ? (
-                <Typography variant="caption">
-                    {job.jobIds.length === 1
-                        ? "Queue job: "
-                        : "Queue jobs: "}
-                    {job.jobIds.join(", ")}
-                </Typography>
-            ) : null}
+            {lines.map((line) => <Typography key={line} sx={textSx}>{line}</Typography>)}
         </Stack>
+    );
+}
+
+
+/** A node's plugins: the first ones, and all of them on request. */
+function NodePlugins({ plugins, textSx, colors }: {
+    plugins: NodeCapabilities["plugins"]; textSx: object; colors: { border: string; text: string };
+}) {
+    const [all, setAll] = useState(false);
+    const shown = all ? plugins : plugins.slice(0, 8);
+    return (
+        <Box>
+            <Typography sx={{ ...textSx, mb: 0.75 }}>Plugins ({plugins.length})</Typography>
+            {plugins.length ? (
+                <Stack direction="row" useFlexGap flexWrap="wrap" spacing={0.75}>
+                    {shown.map((plugin) => (
+                        <Box key={plugin.pipName ?? plugin.name} component="span"
+                             sx={{ px: 1, py: 0.25, borderRadius: 999, border: "1px solid", borderColor: colors.border,
+                                   fontSize: 13, color: colors.text, whiteSpace: "nowrap" }}>
+                            {(plugin.name || plugin.pipName || "unknown") + (plugin.pipVersion ? ` ${plugin.pipVersion}` : "")}
+                        </Box>
+                    ))}
+                    {plugins.length > 8 && (
+                        <Button size="small" onClick={() => setAll((value) => !value)}
+                                sx={{ textTransform: "none", fontSize: 13.5, py: 0, minWidth: 0 }}>
+                            {all ? "Show fewer" : `Show all ${plugins.length}`}
+                        </Button>
+                    )}
+                </Stack>
+            ) : (
+                <Typography sx={textSx}>None reported.</Typography>
+            )}
+        </Box>
     );
 }
 
@@ -306,6 +296,8 @@ function RuntimeCell({
 export default function JobsSettingsPanel() {
     const svc = useProjectService();
     const { can } = usePermissions();
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, actionButtonSx, saveButtonSx } = useSettingsStyles(isDarkMode);
 
     const [data, setData] =
         useState<JobMonitoringOverview | null>(
@@ -614,977 +606,307 @@ export default function JobsSettingsPanel() {
     }
 
 
+    const sectionColors = { ...colors, hover: colors.hover };
+    const text = { fontSize: SETTINGS_TEXT.text, color: colors.muted } as const;
+    const strong = { fontSize: SETTINGS_TEXT.control, fontWeight: 600, color: colors.text } as const;
+    const headCellSx = {
+        fontSize: SETTINGS_TEXT.text, fontWeight: 700, color: colors.muted, bgcolor: colors.card,
+        borderColor: colors.border, whiteSpace: "nowrap",
+    } as const;
+    const cellSx = { fontSize: SETTINGS_TEXT.control, color: colors.text, borderColor: colors.border,
+                     verticalAlign: "top" } as const;
+    const allOnline = data.workers.length > 0 && data.workers.every((worker) => worker.online);
+
+    const statusChip = (status: string | null | undefined) => {
+        const look = getProtocolStatusSx(status ?? "");
+        return (
+            <Box component="span" sx={{ display: "inline-block", px: 1, py: 0.25, borderRadius: 999,
+                                         fontSize: 13, fontWeight: 700, textTransform: "capitalize", ...look }}>
+                {status || "unknown"}
+            </Box>
+        );
+    };
+
+    const stateBadge = (online: boolean, label: string) => (
+        <Stack direction="row" spacing={0.75} alignItems="center">
+            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: online ? "#16a34a" : "#9ca3af" }} />
+            <Typography sx={{ fontSize: SETTINGS_TEXT.text, fontWeight: 600, color: colors.text }}>{label}</Typography>
+        </Stack>
+    );
+
+    const tableBox = (children: React.ReactNode) => (
+        <TableContainer sx={{ maxHeight: { xs: 360, md: 460 }, overflowY: "auto", border: "1px solid",
+                              borderColor: colors.border, borderRadius: 2 }}>
+            {children}
+        </TableContainer>
+    );
+
     return (
         <Stack spacing={2}>
-            <Stack
-                direction={{
-                    xs: "column",
-                    sm: "row",
-                }}
-                spacing={1.5}
-                alignItems={{
-                    xs: "flex-start",
-                    sm: "center",
-                }}
-                justifyContent="space-between"
+            {error ? <Alert severity="warning">{error}</Alert> : null}
+
+            <SettingsSection
+                icon={<Server size={19} />}
+                title="Workers"
+                subtitle={`The background services that run protocols and install plugins. Updated every 3 s, last at ${
+                    formatTime(data.refreshedAt)}.`}
+                actions={data.workers.length ? stateBadge(allOnline, allOnline ? "All answering" : "Not all answering")
+                    : null}
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
             >
-                <Box>
-                    <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                    >
-                        <Activity size={18} />
+                {!data.celeryAvailable ? (
+                    <Alert severity="warning" sx={{ my: 1.5 }}>
+                        No worker answered. The history of the runs is still available below.
+                    </Alert>
+                ) : null}
+                {data.workers.map((worker) => {
+                    const busyWorker = workerAction !== null;
+                    const host = worker.name.includes("@") ? worker.name.split("@").slice(1).join("@") : "";
+                    return (
+                        <Box key={worker.name} data-testid={`worker-${worker.name}`}
+                             sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2.5, py: 2 }}>
+                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: "1 1 260px", minWidth: 0 }}>
+                                {worker.kind === "plugins" ? <Puzzle size={20} /> : <Cpu size={20} />}
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
+                                        {workerTitle(worker)}
+                                    </Typography>
+                                    <Typography sx={text} noWrap title={worker.name}>
+                                        {[host, worker.queues.length ? `queue ${worker.queues.join(", ")}` : ""]
+                                            .filter(Boolean).join(" · ") || worker.name}
+                                    </Typography>
+                                </Box>
+                            </Stack>
 
-                        <Typography
-                            variant="h6"
-                            sx={{
-                                fontWeight: 800,
-                            }}
-                        >
-                            Jobs monitor
-                        </Typography>
-
-                        <Chip
-                            size="small"
-                            color={
-                                data.celeryAvailable
-                                    ? "success"
-                                    : "warning"
-                            }
-                            label={
-                                data.celeryAvailable
-                                    ? "Celery online"
-                                    : "Celery unavailable"
-                            }
-                        />
-                    </Stack>
-
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ mt: 0.5 }}
-                    >
-                        Last update:{" "}
-                        {formatDate(
-                            data.refreshedAt,
-                        )}
-                    </Typography>
-                </Box>
-
-            </Stack>
-
-
-            {!data.celeryAvailable ? (
-                <Alert severity="warning">
-                    {data.celeryError
-                        || "No Celery workers responded. PostgreSQL history remains available."}
-                </Alert>
-            ) : null}
-
-
-            {error ? (
-                <Alert severity="warning">
-                    {error}
-                </Alert>
-            ) : null}
-
-
-            <Box
-                sx={{
-                    display: "grid",
-                    gridTemplateColumns: {
-                        xs: "1fr",
-                        md: "repeat(2, minmax(0, 1fr))",
-                    },
-                    gap: 2,
-                }}
-            >
-                {data.workers.map(
-                    (worker) => (
-                        <Card
-                            key={worker.name}
-                            variant="outlined"
-                        >
-                            <CardContent>
-                                <Stack
-                                    direction="row"
-                                    alignItems="flex-start"
-                                    justifyContent="space-between"
-                                    spacing={2}
-                                >
-                                    <Stack
-                                        direction="row"
-                                        spacing={1.25}
-                                        alignItems="center"
-                                    >
-                                        {worker.name.startsWith(
-                                            "protocols@",
-                                        ) ? (
-                                            <Cpu size={20} />
-                                        ) : (
-                                            <Server size={20} />
-                                        )}
-
-                                        <Box>
-                                            <Typography
-                                                sx={{
-                                                    fontSize: 14,
-                                                    fontWeight: 800,
-                                                }}
-                                            >
-                                                {worker.name}
+                            <Stack direction="row" spacing={3}>
+                                {[["Slots", worker.concurrency], ["Running", worker.active], ["Reserved", worker.reserved]]
+                                    .map(([label, count]) => (
+                                        <Box key={label as string} sx={{ textAlign: "center", minWidth: 56 }}>
+                                            <Typography sx={{ fontSize: 18, fontWeight: 800, color: colors.text,
+                                                              lineHeight: 1.2 }}>
+                                                {count}
                                             </Typography>
-
-                                            <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                            >
-                                                Queue:{" "}
-                                                {worker.queues.length
-                                                    ? worker.queues.join(
-                                                        ", ",
-                                                    )
-                                                    : "—"}
-                                            </Typography>
+                                            <Typography sx={text}>{label}</Typography>
                                         </Box>
-                                    </Stack>
+                                    ))}
+                            </Stack>
 
-                                    <Chip
-                                        size="small"
-                                        color={
-                                            worker.online
-                                                ? "success"
-                                                : "default"
-                                        }
-                                        label={
-                                            worker.online
-                                                ? "Online"
-                                                : "Offline"
-                                        }
-                                    />
-                                </Stack>
-
-                                <Box
-                                    sx={{
-                                        display: "grid",
-                                        gridTemplateColumns:
-                                            "repeat(3, 1fr)",
-                                        gap: 1,
-                                        mt: 2,
-                                    }}
-                                >
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Concurrency
-                                        </Typography>
-
-                                        <Typography
-                                            sx={{
-                                                fontWeight: 800,
-                                            }}
-                                        >
-                                            {worker.concurrency}
-                                        </Typography>
-                                    </Box>
-
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Active
-                                        </Typography>
-
-                                        <Typography
-                                            sx={{
-                                                fontWeight: 800,
-                                            }}
-                                        >
-                                            {worker.active}
-                                        </Typography>
-                                    </Box>
-
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Reserved
-                                        </Typography>
-
-                                        <Typography
-                                            sx={{
-                                                fontWeight: 800,
-                                            }}
-                                        >
-                                            {worker.reserved}
-                                        </Typography>
-                                    </Box>
-
-                                    <Stack
-                                        direction="row"
-                                        spacing={1}
-                                        justifyContent="flex-end"
-                                        sx={{
-                                            gridColumn: "1 / -1",
-                                            mt: 1,
-                                            pt: 1.5,
-                                            borderTop: 1,
-                                            borderColor: "divider",
-                                        }}
-                                    >
-                                        {worker.state === "offline" ? (
-                                            <Button
-                                                size="small"
-                                                variant="contained"
-                                                color="success"
-                                                startIcon={<Play size={15} />}
-                                                disabled={
-                                                    workerAction !== null
-                                                }
-                                                onClick={() => {
-                                                    void handleWorkerAction(
-                                                        worker.kind as JobWorkerKind,
-                                                        "start",
-                                                        worker.active,
-                                                    );
-                                                }}
-                                            >
-                                                Start
-                                            </Button>
-                                        ) : (
-                                            <>
-                                                <Button
-                                                    size="small"
-                                                    variant="outlined"
-                                                    color="error"
-                                                    startIcon={<Square size={15} />}
-                                                    disabled={
-                                                        workerAction !== null
-                                                        || !worker.pid
-                                                    }
-                                                    onClick={() => {
-                                                        void handleWorkerAction(
-                                                            worker.kind as JobWorkerKind,
-                                                            "stop",
-                                                            worker.active,
-                                                        );
-                                                    }}
-                                                >
-                                                    Stop
-                                                </Button>
-
-                                                <Button
-                                                    size="small"
-                                                    variant="contained"
-                                                    color="warning"
-                                                    startIcon={<RefreshCw size={15} />}
-                                                    disabled={
-                                                        workerAction !== null
-                                                        || !worker.pid
-                                                    }
-                                                    onClick={() => {
-                                                        void handleWorkerAction(
-                                                            worker.kind as JobWorkerKind,
-                                                            "restart",
-                                                            worker.active,
-                                                        );
-                                                    }}
-                                                >
-                                                    Restart
-                                                </Button>
-                                            </>
-                                        )}
-                                    </Stack>
+                            <Stack direction="row" spacing={1.25} alignItems="center" sx={{ ml: { md: "auto" } }}>
+                                <Box sx={{ minWidth: 96 }}>
+                                    {stateBadge(worker.online, worker.state === "unresponsive" ? "Not answering"
+                                        : worker.online ? "Online" : "Stopped")}
                                 </Box>
-                            </CardContent>
-                        </Card>
-                    ),
-                )}
-            </Box>
+                                {worker.state === "offline" ? (
+                                    <Button size="small" sx={saveButtonSx} startIcon={<Play size={15} />}
+                                            disabled={busyWorker}
+                                            onClick={() => void handleWorkerAction(worker.kind as JobWorkerKind, "start",
+                                                                                   worker.active)}>
+                                        Start
+                                    </Button>
+                                ) : (
+                                    <>
+                                        <Button size="small" sx={actionButtonSx} startIcon={<RefreshCw size={15} />}
+                                                disabled={busyWorker || !worker.pid}
+                                                onClick={() => void handleWorkerAction(worker.kind as JobWorkerKind,
+                                                                                       "restart", worker.active)}>
+                                            Restart
+                                        </Button>
+                                        <Button size="small" sx={{ ...actionButtonSx, color: "#dc2626" }}
+                                                startIcon={<Square size={15} />}
+                                                disabled={busyWorker || !worker.pid}
+                                                onClick={() => void handleWorkerAction(worker.kind as JobWorkerKind,
+                                                                                       "stop", worker.active)}>
+                                            Stop
+                                        </Button>
+                                    </>
+                                )}
+                            </Stack>
+                        </Box>
+                    );
+                })}
+            </SettingsSection>
 
-            <Stack spacing={1}>
-                <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                    justifyContent="space-between"
-                >
-                    <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                    >
-                        <Server size={18} />
-
-                        <Typography
-                            variant="subtitle1"
-                            sx={{ fontWeight: 800 }}
-                        >
-                            Node capabilities
-                        </Typography>
-
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                        >
-                            GPUs and installed plugins reported by each node
-                        </Typography>
-                    </Stack>
-
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<RefreshCw size={15} />}
-                        disabled={nodeCapabilitiesLoading}
-                        onClick={() => {
-                            void loadNodeCapabilities();
-                        }}
-                    >
-                        {nodeCapabilitiesLoading
-                            ? "Refreshing…"
-                            : "Refresh nodes"}
+            <SettingsSection
+                icon={<HardDrive size={19} />}
+                title="Nodes"
+                subtitle="What each machine that runs protocols has: graphics cards, its fast scratch disk and the plugins installed."
+                actions={
+                    <Button size="small" sx={actionButtonSx} startIcon={<RefreshCw size={15} />}
+                            disabled={nodeCapabilitiesLoading} onClick={() => void loadNodeCapabilities()}>
+                        {nodeCapabilitiesLoading ? "Refreshing…" : "Refresh"}
                     </Button>
-                </Stack>
-
-                {nodeCapabilitiesError ? (
-                    <Alert severity="warning">
-                        {nodeCapabilitiesError}
-                    </Alert>
-                ) : null}
-
-                {!nodeCapabilitiesError
-                    && nodeCapabilities
-                    && !nodeCapabilities.available ? (
-                    <Alert severity="info">
-                        {nodeCapabilities.error
-                            || "No node capability reports were received."}
-                    </Alert>
-                ) : null}
-
-                {nodeCapabilitiesLoading
-                    && nodeCapabilities === null ? (
-                    <Box
-                        sx={{
-                            minHeight: 80,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                        }}
-                    >
-                        <CircularProgress size={22} />
-                    </Box>
-                ) : null}
-
-                {nodeCapabilities
-                    && nodeCapabilities.nodes.length > 0 ? (
-                    <Box
-                        sx={{
-                            display: "grid",
-                            gridTemplateColumns: {
-                                xs: "1fr",
-                                md: "repeat(2, 1fr)",
-                            },
-                            gap: 1.5,
-                        }}
-                    >
-                        {nodeCapabilities.nodes.map((node) => (
-                            <Card
-                                key={node.hostname}
-                                variant="outlined"
-                                sx={{ borderRadius: 2.5 }}
-                            >
-                                <CardContent>
-                                    <Stack spacing={1}>
-                                        <Stack
-                                            direction="row"
-                                            spacing={1}
-                                            alignItems="center"
-                                        >
-                                            <Server size={16} />
-
-                                            <Typography
-                                                sx={{ fontWeight: 700 }}
-                                            >
-                                                {node.hostname}
-                                            </Typography>
-                                        </Stack>
-
-                                        {node.error ? (
-                                            <Alert severity="warning" sx={{ py: 0 }}>
-                                                {node.error}
-                                            </Alert>
-                                        ) : (
-                                            <>
-                                                <Box>
-                                                    <Stack
-                                                        direction="row"
-                                                        spacing={0.75}
-                                                        alignItems="center"
-                                                        sx={{ mb: 0.5 }}
-                                                    >
-                                                        <Cpu size={14} />
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            GPUs ({node.gpuCount})
-                                                        </Typography>
-                                                    </Stack>
-
-                                                    {node.gpus.length > 0 ? (
-                                                        <Stack
-                                                            direction="row"
-                                                            spacing={0.75}
-                                                            useFlexGap
-                                                            flexWrap="wrap"
-                                                        >
-                                                            {node.gpus.map((gpu) => (
-                                                                <Chip
-                                                                    key={gpu.index}
-                                                                    size="small"
-                                                                    label={
-                                                                        `GPU ${gpu.index} · ${gpu.name}`
-                                                                        + (gpu.memoryTotalBytes
-                                                                            ? ` · ${formatBytes(gpu.memoryTotalBytes)}`
-                                                                            : "")
-                                                                    }
-                                                                />
-                                                            ))}
-                                                        </Stack>
-                                                    ) : (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            No NVIDIA GPUs detected
-                                                        </Typography>
-                                                    )}
-                                                </Box>
-
-                                                <NodeScratch hostname={node.hostname} scratch={node.scratch}
-                                                             canEdit={can("settings.manage")}
-                                                             canClean={can("jobs.manage")}
-                                                             onSaved={() => void loadNodeCapabilities()} />
-
-                                                <Box>
-                                                    <Stack
-                                                        direction="row"
-                                                        spacing={0.75}
-                                                        alignItems="center"
-                                                        sx={{ mb: 0.5 }}
-                                                    >
-                                                        <Puzzle size={14} />
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            Installed plugins ({node.plugins.length})
-                                                        </Typography>
-                                                    </Stack>
-
-                                                    {node.plugins.length > 0 ? (
-                                                        <Stack
-                                                            direction="row"
-                                                            spacing={0.75}
-                                                            useFlexGap
-                                                            flexWrap="wrap"
-                                                        >
-                                                            {node.plugins.slice(0, 10).map((plugin) => (
-                                                                <Chip
-                                                                    key={plugin.pipName ?? plugin.name}
-                                                                    size="small"
-                                                                    variant="outlined"
-                                                                    label={
-                                                                        (plugin.name || plugin.pipName || "unknown")
-                                                                        + (plugin.pipVersion
-                                                                            ? ` ${plugin.pipVersion}`
-                                                                            : "")
-                                                                    }
-                                                                />
-                                                            ))}
-
-                                                            {node.plugins.length > 10 ? (
-                                                                <Chip
-                                                                    size="small"
-                                                                    variant="outlined"
-                                                                    label={`+${node.plugins.length - 10} more`}
-                                                                />
-                                                            ) : null}
-                                                        </Stack>
-                                                    ) : (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            No plugins reported
-                                                        </Typography>
-                                                    )}
-                                                </Box>
-                                            </>
-                                        )}
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </Box>
-                ) : null}
-            </Stack>
-
-            <Paper
-                elevation={0}
-                sx={{
-                    p: 0.5,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 2.5,
-                    bgcolor: "action.hover",
-                }}
+                }
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
+                plain
             >
-                <Tabs
-                    value={jobsView}
-                    onChange={(
-                        _,
-                        value: "active" | "recent",
-                    ) => {
-                        setJobsView(value);
-                    }}
-                    variant="fullWidth"
-                    aria-label="Job monitoring views"
-                    sx={{
-                        minHeight: 44,
-
-                        "& .MuiTabs-indicator": {
-                            display: "none",
-                        },
-
-                        "& .MuiTab-root": {
-                            minHeight: 44,
-                            borderRadius: 2,
-                            textTransform: "none",
-                            fontSize: 13,
-                            fontWeight: 800,
-                            color: "text.secondary",
-                            transition: "all 160ms ease",
-                        },
-
-                        "& .MuiTab-root.Mui-selected": {
-                            bgcolor: "background.paper",
-                            color: "text.primary",
-                            boxShadow: 1,
-                        },
-                    }}
-                >
-                    <Tab
-                        disableRipple
-                        value="active"
-                        label={
-                            <Stack
-                                component="span"
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                            >
-                                <Activity size={16} />
-
-                                <Box component="span">
-                                    Active
-                                </Box>
-
-                                <Box
-                                    component="span"
-                                    sx={{
-                                        minWidth: 22,
-                                        height: 22,
-                                        px: 0.75,
-                                        borderRadius: 999,
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        bgcolor: "action.selected",
-                                        fontSize: 11,
-                                        fontWeight: 900,
-                                        lineHeight: 1,
-                                    }}
-                                >
-                                    {data.activeJobs.length}
-                                </Box>
-                            </Stack>
-                        }
-                    />
-
-                    <Tab
-                        disableRipple
-                        value="recent"
-                        label={
-                            <Stack
-                                component="span"
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                            >
-                                <History size={16} />
-
-                                <Box component="span">
-                                    Recent
-                                </Box>
-
-                                <Box
-                                    component="span"
-                                    sx={{
-                                        minWidth: 22,
-                                        height: 22,
-                                        px: 0.75,
-                                        borderRadius: 999,
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        bgcolor: "action.selected",
-                                        fontSize: 11,
-                                        fontWeight: 900,
-                                        lineHeight: 1,
-                                    }}
-                                >
-                                    {data.recentJobs.length}
-                                </Box>
-                            </Stack>
-                        }
-                    />
-                </Tabs>
-            </Paper>
-
-            {jobsView === "active" ? (
-                <Card variant="outlined">
-                    <CardContent>
-                        {data.activeJobs.length === 0 ? (
-                            <Alert severity="success">
-                                No active protocol jobs.
-                            </Alert>
-                        ) : (
-                            <TableContainer
-                                component={Paper}
-                                variant="outlined"
-                                sx={{
-                                    maxHeight: {
-                                        xs: 340,
-                                        md: 420,
-                                    },
-                                    overflowY: "auto",
-                                }}
-                            >
-                                <Table
-                                    size="small"
-                                    stickyHeader
-                                >
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>Project</TableCell>
-                                            <TableCell>Protocol</TableCell>
-                                            <TableCell>Status</TableCell>
-                                            <TableCell>Execution</TableCell>
-                                            <TableCell>Runtime</TableCell>
-                                            <TableCell align="right">
-                                                Elapsed
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableHead>
-
-                                    <TableBody>
-                                        {data.activeJobs.map(
-                                            (job) => (
-                                                <TableRow
-                                                    key={job.taskId}
-                                                    hover
-                                                >
-                                                    <TableCell>
-                                                        <Typography
-                                                            title={
-                                                                job.projectName
-                                                                ?? undefined
-                                                            }
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {getProjectLabel(
-                                                                job.projectName,
-                                                                job.projectId,
-                                                            )}
-                                                        </Typography>
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            Project {job.projectId}
-                                                        </Typography>
-                                                    </TableCell>
-
-                                                    <TableCell>
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {job.protocolClassName
-                                                                || "Protocol"}
-                                                        </Typography>
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            #{job.protocolId}
-                                                            {job.runMode !== "unknown"
-                                                                ? ` · ${job.runMode}`
-                                                                : ""}
-                                                        </Typography>
-                                                    </TableCell>
-
-                                                    <TableCell>
-                                                        <Stack
-                                                            spacing={0.5}
-                                                            alignItems="flex-start"
-                                                        >
-                                                            <Chip
-                                                                size="small"
-                                                                label={
-                                                                    job.protocolStatus
-                                                                    || "unknown"
-                                                                }
-                                                                sx={{
-                                                                    ...getProtocolStatusSx(
-                                                                        job.protocolStatus,
-                                                                    ),
-                                                                    fontWeight: 700,
-                                                                }}
-                                                            />
-
-                                                            {job.celeryState ? (
-                                                                <Typography
-                                                                    variant="caption"
-                                                                    color="text.secondary"
-                                                                >
-                                                                    Celery:{" "}
-                                                                    {job.celeryState}
+                <Stack spacing={1.5}>
+                    {nodeCapabilitiesError ? <Alert severity="warning">{nodeCapabilitiesError}</Alert> : null}
+                    {!nodeCapabilitiesError && nodeCapabilities && !nodeCapabilities.available ? (
+                        <Typography sx={text}>{nodeCapabilities.error || "No machine reported what it has."}</Typography>
+                    ) : null}
+                    {nodeCapabilitiesLoading && nodeCapabilities === null ? (
+                        <Box sx={{ minHeight: 80, display: "grid", placeItems: "center" }}><CircularProgress size={22} /></Box>
+                    ) : null}
+                    {nodeCapabilities && nodeCapabilities.nodes.length > 0 ? (
+                        <Box sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { xs: "1fr", lg: "repeat(2, 1fr)" } }}>
+                            {nodeCapabilities.nodes.map((node) => (
+                                <Box key={node.hostname} data-testid={`node-${node.hostname}`}
+                                     sx={{ p: 2, border: "1px solid", borderColor: colors.border, borderRadius: 2 }}>
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 800, color: colors.text,
+                                                      mb: 1.25 }}>
+                                        {node.hostname}
+                                    </Typography>
+                                    {node.error ? (
+                                        <Alert severity="warning" sx={{ py: 0 }}>{node.error}</Alert>
+                                    ) : (
+                                        <Stack spacing={1.75}>
+                                            <Box>
+                                                <Typography sx={{ ...text, mb: 0.75 }}>Graphics cards ({node.gpus.length})</Typography>
+                                                {node.gpus.length ? (
+                                                    <Stack spacing={0.75}>
+                                                        {node.gpus.map((gpu) => (
+                                                            <Stack key={gpu.index} direction="row" spacing={1.25}
+                                                                   alignItems="center">
+                                                                <Cpu size={15} color={colors.primary} />
+                                                                <Typography sx={{ ...strong, flex: 1, minWidth: 0 }} noWrap>
+                                                                    {gpu.name}
                                                                 </Typography>
-                                                            ) : null}
-
-                                                            {job.step ? (
-                                                                <Typography
-                                                                    variant="caption"
-                                                                    color="text.secondary"
-                                                                >
-                                                                    {job.step}
+                                                                <Typography sx={text}>
+                                                                    {gpu.memoryTotalBytes ? formatBytes(gpu.memoryTotalBytes) : ""}
+                                                                    {"  "}#{gpu.index}
                                                                 </Typography>
-                                                            ) : null}
-                                                        </Stack>
-                                                    </TableCell>
+                                                            </Stack>
+                                                        ))}
+                                                    </Stack>
+                                                ) : (
+                                                    <Typography sx={text}>None.</Typography>
+                                                )}
+                                            </Box>
 
-                                                    <TableCell>
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {job.worker
-                                                                ? job.worker
-                                                                : job.jobIds.length > 0
-                                                                    ? (
-                                                                        job.protocolPid
-                                                                            ? "Queue steps runtime"
-                                                                            : "Queued protocol"
-                                                                    )
-                                                                    : job.protocolPid
-                                                                        ? "Local protocol"
-                                                                        : "Protocol runtime"}
-                                                        </Typography>
+                                            <NodeScratch hostname={node.hostname} scratch={node.scratch}
+                                                         canEdit={can("settings.manage")}
+                                                         canClean={can("jobs.manage")}
+                                                         onSaved={() => void loadNodeCapabilities()} />
 
-                                                        {job.worker && job.queue ? (
-                                                            <Typography
-                                                                variant="caption"
-                                                                color="text.secondary"
-                                                            >
-                                                                Queue: {job.queue}
-                                                            </Typography>
-                                                        ) : null}
-                                                    </TableCell>
+                                            <NodePlugins plugins={node.plugins} textSx={text} colors={colors} />
+                                        </Stack>
+                                    )}
+                                </Box>
+                            ))}
+                        </Box>
+                    ) : null}
+                </Stack>
+            </SettingsSection>
 
-                                                    <TableCell>
-                                                        <RuntimeCell
-                                                            job={job}
-                                                        />
-                                                    </TableCell>
-
-                                                    <TableCell align="right">
-                                                        {formatDuration(
-                                                            job.elapsedSeconds,
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ),
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        )}
-                    </CardContent>
-                </Card>
-            ) : null}
-
-
-            {jobsView === "recent" ? (
-                <Card variant="outlined">
-                    <CardContent>
-                        {data.recentJobs.length === 0 ? (
-                            <Alert severity="info">
-                                No recent protocol executions.
-                            </Alert>
-                        ) : (
-                            <TableContainer
-                                component={Paper}
-                                variant="outlined"
-                                sx={{
-                                    maxHeight: {
-                                        xs: 340,
-                                        md: 420,
-                                    },
-                                    overflowY: "auto",
-                                }}
-                            >
-                                <Table
-                                    size="small"
-                                    stickyHeader
-                                >
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>Project</TableCell>
-                                            <TableCell>Protocol</TableCell>
-                                            <TableCell>Status</TableCell>
-                                            <TableCell>Runtime</TableCell>
-                                            <TableCell align="right">
-                                                Updated
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableHead>
-
-                                    <TableBody>
-                                        {data.recentJobs.map(
-                                            (
-                                                job: RecentProtocolJob,
-                                            ) => (
-                                                <TableRow
-                                                    key={
-                                                        `${job.projectId}-${job.protocolId}`
-                                                    }
-                                                    hover
-                                                >
-                                                    <TableCell>
-                                                        <Typography
-                                                            title={job.projectName}
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {getProjectLabel(
-                                                                job.projectName,
-                                                                job.projectId,
-                                                            )}
-                                                        </Typography>
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            Project {job.projectId}
-                                                        </Typography>
-                                                    </TableCell>
-
-                                                    <TableCell>
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {job.protocolClassName}
-                                                        </Typography>
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            #{job.protocolId}
-                                                        </Typography>
-                                                    </TableCell>
-
-                                                    <TableCell>
-                                                        <Chip
-                                                            size="small"
-                                                            label={job.status}
-                                                            sx={{
-                                                                ...getProtocolStatusSx(
-                                                                    job.status,
-                                                                ),
-                                                                fontWeight: 700,
-                                                            }}
-                                                        />
-                                                    </TableCell>
-
-                                                    <TableCell>
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 12,
-                                                            }}
-                                                        >
-                                                            {formatDuration(
-                                                                job.elapsedTimeSeconds,
-                                                            )}
-                                                        </Typography>
-
-                                                        {job.jobIds.length > 0 ? (
-                                                            <Typography
-                                                                variant="caption"
-                                                                color="text.secondary"
-                                                            >
-                                                                Job{" "}
-                                                                {job.jobIds.join(", ")}
-                                                            </Typography>
-                                                        ) : null}
-                                                    </TableCell>
-
-                                                    <TableCell align="right">
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 12,
-                                                            }}
-                                                        >
-                                                            {formatDate(
-                                                                job.updatedAt
-                                                                || job.createdAt,
-                                                            )}
-                                                        </Typography>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ),
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        )}
-                    </CardContent>
-                </Card>
-            ) : null}
+            <SettingsSection
+                icon={<Activity size={19} />}
+                title="Protocol runs"
+                subtitle={jobsView === "active" ? "What is running now, on every machine."
+                    : `The last ${RECENT_LIMIT} runs that ended or changed.`}
+                actions={
+                    <ToggleButtonGroup exclusive size="small" value={jobsView} aria-label="Protocol runs"
+                                       onChange={(_, next) => next && setJobsView(next)}
+                                       sx={choiceButtonsSx(sectionColors, isDarkMode)}>
+                        <ToggleButton value="active"><Activity size={16} />Running ({data.activeJobs.length})</ToggleButton>
+                        <ToggleButton value="recent"><History size={16} />Recent ({data.recentJobs.length})</ToggleButton>
+                    </ToggleButtonGroup>
+                }
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
+                plain
+            >
+                {jobsView === "active" ? (
+                    data.activeJobs.length === 0 ? (
+                        <Typography sx={text}>Nothing is running now.</Typography>
+                    ) : tableBox(
+                        <Table size="small" stickyHeader aria-label="Running protocols">
+                            <TableHead>
+                                <TableRow>
+                                    {["Project", "Protocol", "Status", "Where", "Processes"].map((label) => (
+                                        <TableCell key={label} sx={headCellSx}>{label}</TableCell>
+                                    ))}
+                                    <TableCell align="right" sx={headCellSx}>Running for</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {data.activeJobs.map((job) => (
+                                    <TableRow key={job.taskId} hover>
+                                        <TableCell sx={cellSx}>
+                                            <Typography sx={strong} title={job.projectName ?? undefined}>
+                                                {getProjectLabel(job.projectName, job.projectId)}
+                                            </Typography>
+                                            <Typography sx={text}>Project {job.projectId}</Typography>
+                                        </TableCell>
+                                        <TableCell sx={cellSx}>
+                                            <Typography sx={strong}>{job.protocolClassName || "Protocol"}</Typography>
+                                            <Typography sx={text}>
+                                                #{job.protocolId}{job.runMode !== "unknown" ? ` · ${job.runMode}` : ""}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell sx={cellSx}>
+                                            {statusChip(job.protocolStatus)}
+                                            {job.step ? <Typography sx={{ ...text, mt: 0.5 }}>{job.step}</Typography> : null}
+                                        </TableCell>
+                                        <TableCell sx={cellSx}>
+                                            <Typography sx={strong}>{executionLabel(job)}</Typography>
+                                            {job.worker && job.queue ? <Typography sx={text}>Queue {job.queue}</Typography> : null}
+                                        </TableCell>
+                                        <TableCell sx={cellSx}><RuntimeCell job={job} textSx={text} /></TableCell>
+                                        <TableCell align="right" sx={{ ...cellSx, whiteSpace: "nowrap" }}>
+                                            {formatDuration(job.elapsedSeconds)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>,
+                    )
+                ) : (
+                    data.recentJobs.length === 0 ? (
+                        <Typography sx={text}>No runs yet.</Typography>
+                    ) : tableBox(
+                        <Table size="small" stickyHeader aria-label="Recent protocol runs">
+                            <TableHead>
+                                <TableRow>
+                                    {["Project", "Protocol", "Status", "Took"].map((label) => (
+                                        <TableCell key={label} sx={headCellSx}>{label}</TableCell>
+                                    ))}
+                                    <TableCell align="right" sx={headCellSx}>Updated</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {data.recentJobs.map((job: RecentProtocolJob) => (
+                                    <TableRow key={`${job.projectId}-${job.protocolId}`} hover>
+                                        <TableCell sx={cellSx}>
+                                            <Typography sx={strong} title={job.projectName}>
+                                                {getProjectLabel(job.projectName, job.projectId)}
+                                            </Typography>
+                                            <Typography sx={text}>Project {job.projectId}</Typography>
+                                        </TableCell>
+                                        <TableCell sx={cellSx}>
+                                            <Typography sx={strong}>{job.protocolClassName}</Typography>
+                                            <Typography sx={text}>#{job.protocolId}</Typography>
+                                        </TableCell>
+                                        <TableCell sx={cellSx}>{statusChip(job.status)}</TableCell>
+                                        <TableCell sx={cellSx}>
+                                            {formatDuration(job.elapsedTimeSeconds)}
+                                            {job.jobIds.length > 0 ? (
+                                                <Typography sx={text}>
+                                                    {job.jobIds.length === 1 ? "Queue job" : "Queue jobs"} {job.jobIds.join(", ")}
+                                                </Typography>
+                                            ) : null}
+                                        </TableCell>
+                                        <TableCell align="right" sx={{ ...cellSx, whiteSpace: "nowrap" }}>
+                                            {formatDate(job.updatedAt || job.createdAt)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>,
+                    )
+                )}
+            </SettingsSection>
 
             {pendingWorkerAction !== null && (
                 <SettingsDialog

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { Brush, HardDrive, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { cleanNodeScratch, saveNodeScratch, type NodeScratch as Scratch } from "@/api/settings";
 import SettingsDialog from "./SettingsDialog";
+import { useSettingsStyles } from "./useSettingsStyles";
 
 function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null) return "";
@@ -33,6 +35,8 @@ export default function NodeScratch({ hostname, scratch, canEdit, canClean = fal
   canClean?: boolean;
   onSaved?: () => void;
 }) {
+  const { actionButtonSx, colors } = useSettingsStyles(useTheme().palette.mode === "dark");
+  const note = { fontSize: 13.5, color: colors.muted } as const;
   const [editing, setEditing] = useState(false);
   const [path, setPath] = useState(scratch?.path ?? "");
   const [busy, setBusy] = useState(false);
@@ -69,31 +73,31 @@ export default function NodeScratch({ hostname, scratch, canEdit, canClean = fal
 
   return (
     <Box data-testid={`scratch-${hostname}`}>
-      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.5 }}>
-        <HardDrive size={14} />
-        <Typography variant="caption" color="text.secondary">Scratch (fast local disk)</Typography>
+      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.75 }}>
+        <HardDrive size={15} />
+        <Typography sx={note}>Scratch (fast local disk)</Typography>
         {canEdit && (
-          <Button size="small" variant="text" startIcon={<Pencil size={12} />} onClick={() => { setPath(current ?? ""); setEditing(true); }}
-                  sx={{ textTransform: "none", minWidth: 0, py: 0, ml: "auto !important" }} aria-label={`Change the scratch of ${hostname}`}>
+          <Button size="small" startIcon={<Pencil size={14} />} onClick={() => { setPath(current ?? ""); setEditing(true); }}
+                  sx={{ ...actionButtonSx, ml: "auto !important" }} aria-label={`Change the scratch of ${hostname}`}>
             Change
           </Button>
         )}
       </Stack>
       {!current ? (
-        <Typography variant="caption" color="text.secondary">
+        <Typography sx={note}>
           None: the protocols' temporary files stay in the project.
         </Typography>
       ) : scratch?.error ? (
         <Alert severity="warning" sx={{ py: 0 }}>{current}: {scratch.error}</Alert>
       ) : (
-        <Typography sx={{ fontSize: 13.5 }}>
+        <Typography sx={{ fontSize: 14, color: colors.text }}>
           <Box component="span" sx={{ fontFamily: "monospace" }}>{current}</Box>
           {scratch?.freeBytes != null ? ` · ${formatBytes(scratch.freeBytes)} free of ${formatBytes(scratch.totalBytes)}` : ""}
         </Typography>
       )}
       {current && (
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
-          <Typography variant="caption" color="text.secondary" data-testid={`scratch-last-${hostname}`}>
+          <Typography sx={note} data-testid={`scratch-last-${hostname}`}>
             {last
               ? `Cleaned ${ago(last.at)}: ${last.removed.length} folder${last.removed.length === 1 ? "" : "s"} removed`
                 + (last.freedBytes ? `, ${formatBytes(last.freedBytes)} freed` : "")
@@ -101,8 +105,8 @@ export default function NodeScratch({ hostname, scratch, canEdit, canClean = fal
               : "Cleaned every hour: what crashed or deleted protocols left there."}
           </Typography>
           {canClean && (
-            <Button size="small" variant="outlined" startIcon={<Brush size={12} />} disabled={busy}
-                    onClick={() => void clean()} sx={{ textTransform: "none", py: 0 }}
+            <Button size="small" startIcon={<Brush size={14} />} disabled={busy}
+                    onClick={() => void clean()} sx={actionButtonSx}
                     aria-label={`Clean the scratch of ${hostname} now`}>
               Clean now
             </Button>
