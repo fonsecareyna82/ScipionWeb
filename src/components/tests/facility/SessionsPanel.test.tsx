@@ -76,7 +76,10 @@ describe("The sessions of the facility", () => {
     render(<SessionsPanel {...styles} canEdit />);
 
     expect(await screen.findByText(NAME)).toBeInTheDocument();
-    expect(screen.getByText(/Talos Arctica · SPA · 31 Oct 2026 · Gaoxin Lu · group Shannon lab · booking B-1203/)).toBeInTheDocument();
+    const about = screen.getByLabelText("About the session");
+    for (const fact of ["Talos Arctica", "SPA", "31 Oct 2026", "Gaoxin Lu", "group Shannon lab", "booking B-1203"]) {
+      expect(within(about).getByText(fact)).toBeInTheDocument();
+    }
     expect(screen.getByText(`${NAME}_ATLAS`)).toBeInTheDocument();
     expect(screen.getByText(`${NAME}_DATA_01`)).toBeInTheDocument();
     expect(screen.getByText("NZ251 · box 2 green · position 2 · grid #6 · nsp9+T2C3")).toBeInTheDocument();

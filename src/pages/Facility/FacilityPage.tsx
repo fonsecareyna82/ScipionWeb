@@ -95,7 +95,9 @@ export default function FacilityPage() {
               <Divider sx={dividerSx} />
             </>
           )}
-          <Stack sx={{ p: 2, minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
+          {/* Behind the cards, the grey of Settings and the projects list */}
+          <Stack className="bg-gray-100 dark:bg-gray-950"
+                 sx={{ p: 2, minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
             {content}
           </Stack>
         </Paper>

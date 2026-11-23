@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
 import {
     Alert,
     Autocomplete,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     Checkbox,
     CircularProgress,
     FormControl,
@@ -19,10 +16,15 @@ import {
     Select,
     Stack,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
 } from "@mui/material";
-import { Activity, AlertTriangle, CalendarClock, Copy, FolderOpen, Info, Play, Plus, RefreshCw, RotateCw, Search, Square, Trash2, X } from "lucide-react";
+import {
+    Activity, AlertTriangle, CalendarClock, CalendarDays, Copy, FolderOpen, Info, Layers, Microscope as MicroscopeIcon, Pencil, Play, Plus,
+    RefreshCw, RotateCw, Search, Square, Ticket, Trash2, UserRound, UsersRound, Workflow, X,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -53,7 +55,9 @@ import {
     type SessionStatus,
     type SessionTechnique,
 } from "@/api/facility";
-import { FACILITY_TEXT } from "./facilityStyles";
+import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
+import { SettingsSection, choiceButtonsSx } from "@/pages/Settings/SettingsSection";
+import { useIsDark } from "@/context/ThemeContext";
 import ImageStrip from "./ImageStrip";
 import NavigationReport from "./NavigationReport";
 
@@ -100,6 +104,8 @@ const FILTER_LABELS: Record<SessionFilter, string> = {
 function positionsOf(slots: number | undefined): number[] {
     return Array.from({ length: Math.max(1, slots ?? 12) }, (_, index) => index + 1);
 }
+const FILTER_ORDER: SessionFilter[] = ["active", "acquiring", "planned", "finished", "archived", "all"];
+
 const SEARCH_DELAY_MS = 300;
 // While a session acquires, the list follows its folders: the watcher looks at them every 30 s
 const ACQUIRING_REFRESH_MS = 30000;
@@ -247,9 +253,10 @@ function SessionFolders({ session, colors, onProcess, onReread }: {
     onReread?: (dataset: SessionDataset) => void;
 }) {
     return (
-        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 1.5, px: 1.25, py: 0.75 }}>
+        <Box sx={{ borderTop: `1px solid ${colors.border}`, bgcolor: colors.hover, px: 2, py: 1 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, fontWeight: 700, color: colors.muted }}>
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, fontWeight: 800, color: colors.muted, textTransform: "uppercase",
+                                  letterSpacing: 0.5 }}>
                     Folders for the microscope
                 </Typography>
                 <Button size="small" variant="text" startIcon={<Copy size={14} />}
@@ -258,7 +265,7 @@ function SessionFolders({ session, colors, onProcess, onReread }: {
                     Copy all
                 </Button>
             </Stack>
-            <Stack spacing={0.25}>
+            <Stack spacing={0.5}>
                 {session.datasets.map((dataset) => (
                     <Box key={dataset.id} sx={{ minWidth: 0 }}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
@@ -411,10 +418,13 @@ function DatasetProcessing({ session, dataset, colors, onProcess }: {
     );
 }
 
-export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, menuPaperSx, colors, actionButtonSx,
+export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, actionButtonSx,
                                         saveButtonSx, canEdit }: PanelStyles & { canEdit: boolean }) {
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
+    const isDark = useIsDark();
+    // The look of the Settings sections (card colour, the accent of the icons)
+    const sectionColors = { ...useFacilityStyles().colors, ...colors };
     const [sessions, setSessions] = useState<FacilitySession[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -504,118 +514,150 @@ export default function SessionsPanel({ fieldSx, cardSx, cardHeaderSx, selectSx,
     }, [load]);
 
     return (
-        <Stack spacing={1.75}>
-            {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Sessions"
-                    subheader="Each stay on a microscope: who it is for, its booking, and the folders the microscope writes, an ATLAS and a DATA per grid, each DATA pointing to the grid it was acquired on."
-                    sx={cardHeaderSx}
-                    action={
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
-                                    disabled={loading} onClick={() => void load()}>
-                                Reload
+        <Stack spacing={2}>
+            <SettingsSection
+                plain
+                icon={<CalendarClock size={19} />}
+                title="Sessions"
+                subtitle="Each stay on a microscope: who it is for, its booking, and the folders the microscope writes, an ATLAS and a DATA per grid."
+                colors={sectionColors}
+                isDarkMode={isDark}
+                actions={
+                    <Stack direction="row" spacing={1}>
+                        <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                                disabled={loading} onClick={() => void load()}>
+                            Reload
+                        </Button>
+                        {canEdit && (
+                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
+                                    onClick={() => setEditing("new")}>
+                                New session
                             </Button>
-                            {canEdit && (
-                                <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
-                                        onClick={() => setEditing("new")}>
-                                    New session
-                                </Button>
+                        )}
+                    </Stack>
+                }
+            >
+                <Stack spacing={1.5}>
+                    {error && <Alert severity="error">{error}</Alert>}
+                    <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5} alignItems={{ lg: "center" }}
+                           justifyContent="space-between">
+                        <ToggleButtonGroup exclusive size="small" value={filter} aria-label="Sessions shown"
+                                           onChange={(_, value) => value && setFilter(value as SessionFilter)}
+                                           sx={choiceButtonsSx({ ...sectionColors, hover: colors.hover }, isDark)}>
+                            {FILTER_ORDER.map((value) => (
+                                <ToggleButton key={value} value={value}>{FILTER_LABELS[value]}</ToggleButton>
+                            ))}
+                        </ToggleButtonGroup>
+                        <TextField sx={{ ...fieldSx, width: { xs: "100%", lg: 340 } }} size="small"
+                                   placeholder="Search by name, booking, user or group"
+                                   value={search} onChange={(e) => setSearch(e.target.value)}
+                                   inputProps={{ "aria-label": "Search sessions" }}
+                                   InputProps={{ startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> }} />
+                    </Stack>
+                    {loading && sessions.length === 0 && (
+                        <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>
+                    )}
+                    {!loading && sessions.length === 0 && (
+                        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 3, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
+                                {appliedSearch || filter !== "active" ? "No session matches." : "No sessions planned or under way."}
+                            </Typography>
+                            {canEdit && !appliedSearch && filter === "active" && (
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.5 }}>
+                                    Plan one with New session: its folders are ready before the user reaches the microscope.
+                                </Typography>
                             )}
-                        </Stack>
-                    }
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1.25}>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
-                            <TextField sx={{ ...fieldSx, flex: 1 }} size="small" placeholder="Search by name, booking, user or group"
-                                       value={search} onChange={(e) => setSearch(e.target.value)}
-                                       inputProps={{ "aria-label": "Search sessions" }}
-                                       InputProps={{ startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> }} />
-                            <FormControl size="small" sx={{ minWidth: 220 }}>
-                                <InputLabel id="session-filter-label">Show</InputLabel>
-                                <Select labelId="session-filter-label" label="Show" sx={selectSx} value={filter}
-                                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                        onChange={(e) => setFilter(e.target.value as SessionFilter)}>
-                                    {(Object.keys(FILTER_LABELS) as SessionFilter[]).map((value) => (
-                                        <MenuItem key={value} value={value}>{FILTER_LABELS[value]}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Stack>
-                        {loading && sessions.length === 0 && (
-                            <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>
-                        )}
-                        {!loading && sessions.length === 0 && (
-                            <Alert severity="info">{appliedSearch || filter !== "active" ? "No session matches." : "No sessions planned or under way."}</Alert>
-                        )}
-                        {sessions.map((session) => (
-                            <Box key={session.id} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                                <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="space-between">
-                                    <Stack spacing={0.4} sx={{ minWidth: 0 }}>
-                                        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800, color: colors.text,
-                                                              fontFamily: "monospace", wordBreak: "break-all" }}>
-                                                {session.name}
-                                            </Typography>
-                                            <Box sx={{ px: 0.9, py: 0.15, borderRadius: 10, flexShrink: 0,
-                                                       border: `1px solid ${SESSION_STATUS_COLORS[session.status]}`,
-                                                       color: SESSION_STATUS_COLORS[session.status] }}>
-                                                <Typography sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 700 }}>
-                                                    {SESSION_STATUS_LABELS[session.status]}
+                        </Box>
+                    )}
+                    {sessions.map((session) => {
+                        const statusColor = SESSION_STATUS_COLORS[session.status];
+                        const facts: { icon: ReactNode; text: string }[] = [
+                            { icon: <MicroscopeIcon size={15} />, text: session.microscopeName ?? "" },
+                            { icon: <Layers size={15} />, text: TECHNIQUE_LABELS[session.technique] },
+                            { icon: <CalendarDays size={15} />, text: formatDate(session.scheduledOn) },
+                            { icon: <UserRound size={15} />, text: session.userName || session.userEmail || "" },
+                            { icon: <UsersRound size={15} />, text: session.groupName ? `group ${session.groupName}` : "" },
+                            { icon: <Ticket size={15} />, text: session.bookingRef ? `booking ${session.bookingRef}` : "" },
+                            {
+                                icon: <Workflow size={15} />,
+                                text: session.templateId
+                                    ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}${session.oneProject ? ", one project" : ""}`
+                                    : "no processing template",
+                            },
+                        ].filter((fact) => fact.text);
+                        return (
+                            <Box key={session.id} data-testid={`session-${session.id}`}
+                                 sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${statusColor}`, borderRadius: 2.5,
+                                       bgcolor: sectionColors.card, overflow: "hidden" }}>
+                                <Box sx={{ px: 2, pt: 1.5, pb: 1.25 }}>
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "flex-start" }}
+                                           justifyContent="space-between">
+                                        <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                                                <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle + 0.5, fontWeight: 800, color: colors.text,
+                                                                  fontFamily: "monospace", wordBreak: "break-all" }}>
+                                                    {session.name}
                                                 </Typography>
-                                            </Box>
+                                                <Box component="span" sx={{ px: 1, borderRadius: 10, flexShrink: 0, lineHeight: 1.7,
+                                                                            fontSize: FACILITY_TEXT.badge, fontWeight: 700,
+                                                                            color: statusColor, bgcolor: `${statusColor}1f` }}>
+                                                    {SESSION_STATUS_LABELS[session.status]}
+                                                </Box>
+                                            </Stack>
+                                            <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} rowGap={0.5}
+                                                   aria-label="About the session">
+                                                {facts.map((fact) => (
+                                                    <Stack key={fact.text} direction="row" spacing={0.6} alignItems="center"
+                                                           sx={{ color: colors.muted, minWidth: 0 }}>
+                                                        {fact.icon}
+                                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>
+                                                            {fact.text}
+                                                        </Typography>
+                                                    </Stack>
+                                                ))}
+                                            </Stack>
+                                            {(session.images?.length ?? 0) > 0 && (
+                                                <Box sx={{ pt: 0.25 }}><ImageStrip images={session.images ?? []} size={56} colors={colors} /></Box>
+                                            )}
                                         </Stack>
-                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                            {[session.microscopeName, TECHNIQUE_LABELS[session.technique], formatDate(session.scheduledOn),
-                                              session.userName || session.userEmail, session.groupName && `group ${session.groupName}`,
-                                              session.bookingRef && `booking ${session.bookingRef}`,
-                                              session.templateId
-                                                  ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}${session.oneProject ? ", one project" : ""}`
-                                                  : "no processing template"]
-                                                .filter(Boolean).join(" · ")}
-                                        </Typography>
-                                        {(session.images?.length ?? 0) > 0 && (
-                                            <Box sx={{ pt: 0.5 }}><ImageStrip images={session.images ?? []} size={56} colors={colors} /></Box>
+                                        {canEdit && (
+                                            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                                                {session.status === "planned" && (
+                                                    <Button size="small" variant="contained" sx={saveSx} startIcon={<Play size={14} />}
+                                                            disabled={busy} onClick={() => void setStatus(session, "acquiring")}>
+                                                        Start
+                                                    </Button>
+                                                )}
+                                                {session.status === "acquiring" && (
+                                                    <Button size="small" variant="outlined" sx={actionSx} startIcon={<Square size={13} />}
+                                                            disabled={busy} onClick={() => void setStatus(session, "finished")}>
+                                                        Finish
+                                                    </Button>
+                                                )}
+                                                <Button size="small" variant="outlined" sx={actionSx} startIcon={<Pencil size={14} />}
+                                                        onClick={() => setEditing(session)}>
+                                                    Edit
+                                                </Button>
+                                                {session.status === "planned" && (
+                                                    <Tooltip arrow title="Delete">
+                                                        <IconButton size="small" aria-label="Delete" sx={{ color: "#dc2626" }}
+                                                                    onClick={() => setDeleting(session)}>
+                                                            <Trash2 size={17} />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
+                                            </Stack>
                                         )}
                                     </Stack>
-                                    {canEdit && (
-                                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                            {session.status === "planned" && (
-                                                <Button size="small" variant="outlined" sx={actionSx} startIcon={<Play size={14} />}
-                                                        disabled={busy} onClick={() => void setStatus(session, "acquiring")}>
-                                                    Start
-                                                </Button>
-                                            )}
-                                            {session.status === "acquiring" && (
-                                                <Button size="small" variant="outlined" sx={actionSx} startIcon={<Square size={13} />}
-                                                        disabled={busy} onClick={() => void setStatus(session, "finished")}>
-                                                    Finish
-                                                </Button>
-                                            )}
-                                            <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(session)}>
-                                                Edit
-                                            </Button>
-                                            {session.status === "planned" && (
-                                                <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }}
-                                                        onClick={() => setDeleting(session)}>
-                                                    Delete
-                                                </Button>
-                                            )}
-                                        </Stack>
-                                    )}
-                                </Stack>
-                                <Box sx={{ mt: 1.25 }}>
-                                    <SessionFolders session={session} colors={colors}
-                                                    onProcess={canEdit ? (dataset) => void process(dataset) : undefined}
-                                                    onReread={canEdit ? (dataset) => void reread(dataset) : undefined} />
                                 </Box>
+                                <SessionFolders session={session} colors={colors}
+                                                onProcess={canEdit ? (dataset) => void process(dataset) : undefined}
+                                                onReread={canEdit ? (dataset) => void reread(dataset) : undefined} />
                             </Box>
-                        ))}
-                    </Stack>
-                </CardContent>
-            </Card>
+                        );
+                    })}
+                </Stack>
+            </SettingsSection>
 
             {deleting !== null && (
                 <SettingsDialog
