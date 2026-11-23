@@ -53,7 +53,8 @@ describe("Settings: notifications", () => {
 
     fireEvent.mouseDown(within(screen.getByTestId("notification-kind-facility.retention")).getByRole("combobox"));
     expect(screen.queryByRole("option", { name: "Not at all" })).not.toBeInTheDocument();
-    expect(screen.getByText("My session's data are about to be deleted · always mailed")).toBeInTheDocument();
+    expect(within(screen.getByTestId("notification-kind-facility.retention")).getByText("Always mailed")).toBeInTheDocument();
+    expect(within(screen.getByTestId("notification-kind-facility.booking")).queryByText("Always mailed")).not.toBeInTheDocument();
     // Only the user's own part
     expect(screen.queryByText("Mail server")).not.toBeInTheDocument();
   });
@@ -70,6 +71,10 @@ describe("Settings: notifications", () => {
     notificationMocks.sendTestMail.mockResolvedValue({ sentTo: ["me@cnb.csic.es"] });
     render(<NotificationsPanel canManage />);
 
+    // Each part has its own choice at the top; the user's own notices come first
+    expect(await screen.findByTestId("notification-kind-facility.booking")).toBeInTheDocument();
+    expect(screen.queryByLabelText("The web's address")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mail server" }));
     expect(await screen.findByDisplayValue("smtp.cnb.csic.es")).toBeInTheDocument();
     expect(screen.getByText("Set: leave it empty to keep it")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("The web's address"), { target: { value: "https://scipion.example.org" } });
@@ -91,6 +96,7 @@ describe("Settings: notifications", () => {
     await waitFor(() => expect(notificationMocks.sendTestMail).toHaveBeenCalledWith("me@cnb.csic.es"));
 
     // The mails sent, with why one did not go
+    fireEvent.click(screen.getByRole("button", { name: "Mails sent" }));
     const failed = await screen.findByTestId("outbox-9");
     expect(within(failed).getByText("Failed")).toBeInTheDocument();
     expect(within(failed).getByText("The mail server did not take it: Connection refused")).toBeInTheDocument();
@@ -100,9 +106,9 @@ describe("Settings: notifications", () => {
     notificationMocks.saveNotificationDefaults.mockResolvedValue({ kinds: [{ ...booking, channel: "web" }, retention] });
     render(<NotificationsPanel canManage />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Defaults" }));
     await screen.findByText("Defaults for everyone");
-    const rows = await screen.findAllByTestId("notification-kind-facility.booking");
-    await chooseIn(rows[1], "Only in the web");
+    await chooseIn(await screen.findByTestId("notification-kind-facility.booking"), "Only in the web");
 
     await waitFor(() => expect(notificationMocks.saveNotificationDefaults).toHaveBeenCalledWith({ "facility.booking": "web" }));
   });
