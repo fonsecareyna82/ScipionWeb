@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     Checkbox,
-    Chip,
     CircularProgress,
     FormControlLabel,
     Stack,
@@ -15,7 +11,8 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useTheme } from "@mui/material/styles";
+import { KeyRound, Lock, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 import toast from "react-hot-toast";
 
@@ -29,14 +26,17 @@ import {
     type Role,
     type RolePayload,
 } from "@/api/access";
+import { SETTINGS_TEXT, SettingsSection, sectionTint } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 
+// The page may still pass its own look; the panel uses the shared Settings one
 type PanelStyles = {
-    fieldSx: any;
-    cardSx: any;
-    cardHeaderSx: any;
+    fieldSx?: any;
+    cardSx?: any;
+    cardHeaderSx?: any;
     actionButtonSx?: any;
     saveButtonSx?: any;
-    colors: { border: string; text: string; muted: string; surface: string; hover: string };
+    colors?: { border: string; text: string; muted: string; surface: string; hover: string };
 };
 
 // The permissions grouped as the catalogue names them (projects.create → Projects)
@@ -54,9 +54,13 @@ function permissionAreas(permissions: Permission[]): [string, Permission[]][] {
     return Array.from(areas.entries());
 }
 
-export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
-    const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
-    const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the old look props are still accepted
+export default function RolesPanel(_styles: PanelStyles = {}) {
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, fieldSx, actionButtonSx: actionSx, saveButtonSx: saveSx } = useSettingsStyles(isDarkMode);
+    const sectionColors = { ...colors, hover: colors.hover };
     const [roles, setRoles] = useState<Role[]>([]);
     const [permissions, setPermissions] = useState<Permission[]>([]);
     const [loading, setLoading] = useState(true);
@@ -64,6 +68,7 @@ export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, acti
     const [editing, setEditing] = useState<Role | "new" | null>(null);
     const [deleting, setDeleting] = useState<Role | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
+    const areas = useMemo(() => permissionAreas(permissions), [permissions]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -105,68 +110,96 @@ export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, acti
         );
     }
 
+    const tint = sectionTint(isDarkMode);
+    const pill = (label: ReactNode, strong: boolean, key?: string) => (
+        <Box key={key} component="span" sx={{
+            display: "inline-flex", alignItems: "center", gap: 0.5, px: 1, py: 0.3, borderRadius: 999,
+            fontSize: SETTINGS_TEXT.text, fontWeight: 600, border: "1px solid",
+            borderColor: strong ? "transparent" : colors.border, bgcolor: strong ? tint : "transparent",
+            color: strong ? colors.text : colors.muted,
+        }}>
+            {label}
+        </Box>
+    );
+
     return (
-        <Stack spacing={1.75}>
+        <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Roles"
-                    subheader="A role is a set of permissions. Users hold the roles given to them and to their groups."
-                    sx={cardHeaderSx}
-                    action={
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
-                                    disabled={loading} onClick={() => void load()}>
-                                Reload
-                            </Button>
-                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
-                                    onClick={() => setEditing("new")}>
-                                New role
-                            </Button>
-                        </Stack>
-                    }
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1}>
-                        {roles.map((role) => (
-                            <Box key={role.id} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                                    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Typography sx={{ fontSize: 14, fontWeight: 800, color: colors.text }}>
-                                                {role.name}
-                                            </Typography>
-                                            {role.isSystem && <Chip size="small" label="System" />}
-                                            {role.isDefault && <Chip size="small" variant="outlined" label="New accounts" />}
-                                        </Stack>
-                                        <Typography sx={{ fontSize: 12.5, color: colors.muted }}>
-                                            {role.description || "—"} · {role.usersCount} users · {role.groupsCount} groups
-                                        </Typography>
-                                        <Typography sx={{ fontSize: 12, color: colors.muted }}>
-                                            {role.isSystem ? "Every permission" : role.permissions.join(", ") || "No permissions"}
-                                        </Typography>
-                                    </Stack>
-                                    {!role.isSystem && (
-                                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                            <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(role)}>
-                                                Edit
-                                            </Button>
-                                            <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }} onClick={() => setDeleting(role)}>
-                                                Delete
-                                            </Button>
-                                        </Stack>
-                                    )}
+            <SettingsSection
+                icon={<ShieldCheck size={19} />}
+                title="Roles"
+                subtitle="A role is a set of permissions. People hold the roles given to them and to their groups."
+                actions={
+                    <Stack direction="row" spacing={1}>
+                        <Button size="small" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                                disabled={loading} onClick={() => void load()}>
+                            Reload
+                        </Button>
+                        <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
+                                onClick={() => setEditing("new")}>
+                            New role
+                        </Button>
+                    </Stack>
+                }
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
+            >
+                {roles.map((role) => {
+                    const held = new Set(role.permissions);
+                    return (
+                        <Box key={role.id} data-testid={`role-${role.id}`} sx={{
+                            display: "flex", gap: { xs: 1.25, md: 3 }, py: 2,
+                            flexDirection: { xs: "column", md: "row" }, alignItems: { md: "center" },
+                        }}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
+                                        {role.name}
+                                    </Typography>
+                                    {role.isSystem && pill(<><Lock size={13} />Built in</>, false)}
+                                    {role.isDefault && pill(<><UserPlus size={13} />New accounts get it</>, false)}
+                                </Stack>
+                                {role.description && (
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mt: 0.25 }}>
+                                        {role.description}
+                                    </Typography>
+                                )}
+                                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+                                    {role.isSystem
+                                        ? pill("Every permission", true)
+                                        : role.permissions.length === 0
+                                            ? pill("No permissions", false)
+                                            : areas.map(([area, items]) => {
+                                                const count = items.filter((item) => held.has(item.name)).length;
+                                                return count ? pill(`${area} ${count}/${items.length}`, true, area) : null;
+                                            })}
                                 </Stack>
                             </Box>
-                        ))}
-                    </Stack>
-                </CardContent>
-            </Card>
+                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, whiteSpace: "nowrap" }}>
+                                    {plural(role.usersCount, "person").replace("persons", "people")} · {plural(role.groupsCount, "group")}
+                                </Typography>
+                                {!role.isSystem && (
+                                    <>
+                                        <Button size="small" sx={actionSx} onClick={() => setEditing(role)}>
+                                            Edit
+                                        </Button>
+                                        <Button size="small" sx={{ ...actionSx, color: "#dc2626" }}
+                                                startIcon={<Trash2 size={15} />} onClick={() => setDeleting(role)}>
+                                            Delete
+                                        </Button>
+                                    </>
+                                )}
+                            </Stack>
+                        </Box>
+                    );
+                })}
+            </SettingsSection>
 
             {deleting !== null && (
                 <SettingsDialog
                     title="Delete role?"
-                    description="This action cannot be undone. Its users and groups lose its permissions."
+                    description="This cannot be undone. Its people and groups lose its permissions."
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -177,8 +210,9 @@ export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, acti
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: 14 }}>
-                        <strong>{deleting.name}</strong> · {deleting.usersCount} users · {deleting.groupsCount} groups
+                    <Typography sx={{ fontSize: SETTINGS_TEXT.control }}>
+                        <strong>{deleting.name}</strong> · {plural(deleting.usersCount, "person").replace("persons", "people")}
+                        {" · "}{plural(deleting.groupsCount, "group")}
                     </Typography>
                 </SettingsDialog>
             )}
@@ -190,6 +224,7 @@ export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, acti
                     role={editing === "new" ? null : editing}
                     permissions={permissions}
                     fieldSx={fieldSx}
+                    colors={colors}
                     onClose={() => setEditing(null)}
                     onSaved={() => {
                         setEditing(null);
@@ -201,7 +236,8 @@ export default function RolesPanel({ fieldSx, cardSx, cardHeaderSx, colors, acti
     );
 }
 
-function RoleDialog({ role, permissions, fieldSx, actionButtonSx, saveButtonSx, onClose, onSaved }: {
+function RoleDialog({ role, permissions, fieldSx, colors, actionButtonSx, saveButtonSx, onClose, onSaved }: {
+    colors: { border: string; text: string; muted: string };
     actionButtonSx: any;
     saveButtonSx: any;
     role: Role | null;
@@ -277,19 +313,19 @@ function RoleDialog({ role, permissions, fieldSx, actionButtonSx, saveButtonSx, 
                 <FormControlLabel
                     sx={{ m: 0 }}
                     control={<Switch size="small" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />}
-                    label={<Typography sx={{ fontSize: 13.5, ml: 1 }}>Give it to new accounts</Typography>}
+                    label={<Typography sx={{ fontSize: SETTINGS_TEXT.control, ml: 1 }}>Give it to new accounts</Typography>}
                 />
                 {areas.map(([area, items]) => {
                     const chosenHere = items.filter((permission) => chosen.has(permission.name)).length;
                     return (
-                        <Box key={area} sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
+                        <Box key={area} sx={{ border: "1px solid", borderColor: colors.border, borderRadius: 2 }}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between"
-                                   sx={{ px: 1.5, py: 0.75, borderBottom: 1, borderColor: "divider" }}>
-                                <Typography sx={{ fontSize: 13, fontWeight: 800 }}>
+                                   sx={{ px: 1.75, py: 0.9, borderBottom: "1px solid", borderColor: colors.border }}>
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
                                     {area} <Box component="span" sx={{ fontWeight: 500, opacity: 0.65 }}>
                                         · {chosenHere}/{items.length}</Box>
                                 </Typography>
-                                <Button size="small" sx={{ ...ROUNDED_BUTTON_SX, minWidth: 0 }}
+                                <Button size="small" sx={{ ...(actionButtonSx ?? ROUNDED_BUTTON_SX), minWidth: 0 }}
                                         onClick={() => setArea(items, chosenHere < items.length)}>
                                     {chosenHere < items.length ? "Select all" : "Clear"}
                                 </Button>
@@ -304,10 +340,10 @@ function RoleDialog({ role, permissions, fieldSx, actionButtonSx, saveButtonSx, 
                                                            onChange={() => toggle(permission.name)} />}
                                         label={
                                             <Box sx={{ pt: 0.6 }}>
-                                                <Typography sx={{ fontSize: 13, lineHeight: 1.35 }}>
+                                                <Typography sx={{ fontSize: SETTINGS_TEXT.control, lineHeight: 1.4, color: colors.text }}>
                                                     {permission.description}
                                                 </Typography>
-                                                <Typography sx={{ fontSize: 11.5, opacity: 0.6, fontFamily: "monospace" }}>
+                                                <Typography sx={{ fontSize: 13, color: colors.muted, fontFamily: "monospace" }}>
                                                     {permission.name}
                                                 </Typography>
                                             </Box>

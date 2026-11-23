@@ -1913,8 +1913,7 @@ export default function SettingsPage() {
                           <UserManagementPanel currentUserId={currentUser?.id ?? null} />
                         )
                         : tab === "roles"
-                          ? <RolesPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
-                                        actionButtonSx={actionButtonSx} saveButtonSx={saveButtonSx} />
+                          ? <RolesPanel />
                           : tab === "groups"
                             ? (
                               <GroupsPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx}
