@@ -1910,16 +1910,7 @@ export default function SettingsPage() {
                       ? renderHostContent()
                       : tab === "users"
                         ? (
-                          <UserManagementPanel
-                            currentUserId={currentUser?.id ?? null}
-                            fieldSx={fieldSx}
-                            cardSx={cardSx}
-                            cardHeaderSx={cardHeaderSx}
-                            selectSx={selectSx}
-                            menuPaperSx={menuPaperSx}
-                            actionButtonSx={actionButtonSx}
-                            colors={colors}
-                          />
+                          <UserManagementPanel currentUserId={currentUser?.id ?? null} />
                         )
                         : tab === "roles"
                           ? <RolesPanel fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}

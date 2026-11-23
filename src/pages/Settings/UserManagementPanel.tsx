@@ -3,16 +3,11 @@ import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
-    Chip,
     CircularProgress,
     FormControl,
     IconButton,
     InputAdornment,
     MenuItem,
-    Paper,
     Select,
     Stack,
     Switch,
@@ -23,10 +18,13 @@ import {
     TableHead,
     TableRow,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
 } from "@mui/material";
-import { RefreshCw, Search, Trash2 } from "lucide-react";
+import { useTheme } from "@mui/material/styles";
+import { CircleCheck, CircleDashed, RefreshCw, Search, Trash2, UserCheck, UserCog, UserX, Users } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -40,16 +38,19 @@ import {
 } from "@/api/users";
 import { listGroupNames, listRoles, type Role } from "@/api/access";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
+import { choiceButtonsSx, SETTINGS_TEXT, SettingsSection } from "./SettingsSection";
+import { useSettingsStyles } from "./useSettingsStyles";
 
 type UserManagementPanelProps = {
     currentUserId: number | null;
-    fieldSx: any;
-    cardSx: any;
-    cardHeaderSx: any;
-    selectSx: any;
-    menuPaperSx: any;
+    // The page's own look; the panel takes the shared Settings one when they are not given
+    fieldSx?: any;
+    cardSx?: any;
+    cardHeaderSx?: any;
+    selectSx?: any;
+    menuPaperSx?: any;
     actionButtonSx?: any;
-    colors: {
+    colors?: {
         border: string;
         text: string;
         muted: string;
@@ -58,20 +59,28 @@ type UserManagementPanelProps = {
     };
 };
 
-export default function UserManagementPanel({
-    currentUserId,
-    fieldSx,
-    cardSx,
-    cardHeaderSx,
-    selectSx,
-    menuPaperSx,
-    actionButtonSx,
-    colors,
-}: UserManagementPanelProps) {
+type Show = "all" | "active" | "inactive";
+
+function fullName(user: AdminUser): string {
+    return [user.firstName, user.lastName].filter(Boolean).join(" ");
+}
+
+function initials(user: AdminUser): string {
+    const name = fullName(user) || user.email;
+    const parts = name.split(/[\s@.]+/).filter(Boolean);
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+export default function UserManagementPanel({ currentUserId }: UserManagementPanelProps) {
+    const isDarkMode = useTheme().palette.mode === "dark";
+    const { colors, fieldSx, selectSx, menuPaperSx, actionButtonSx } = useSettingsStyles(isDarkMode);
+    const sectionColors = { ...colors, hover: colors.hover };
+
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState("");
+    const [show, setShow] = useState<Show>("all");
     const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
     const [roles, setRoles] = useState<Role[]>([]);
     const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
@@ -99,38 +108,32 @@ export default function UserManagementPanel({
         void loadUsers();
     }, [loadUsers]);
 
+    // New accounts wait, inactive, until an administrator activates them
+    const inactiveCount = useMemo(() => users.filter((user) => !user.isActive).length, [users]);
+    const activeCount = users.length - inactiveCount;
+
     const filteredUsers = useMemo(() => {
         const query = filter.trim().toLowerCase();
-        if (!query) return users;
-
         return users.filter((user) => {
-            const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.toLowerCase();
-
+            if (show === "active" && !user.isActive) return false;
+            if (show === "inactive" && user.isActive) return false;
+            if (!query) return true;
             return (
-                fullName.includes(query) ||
+                fullName(user).toLowerCase().includes(query) ||
                 user.email.toLowerCase().includes(query) ||
                 String(user.institution ?? "").toLowerCase().includes(query) ||
                 roles.some((role) => user.roleIds?.includes(role.id) && role.name.toLowerCase().includes(query)) ||
                 groups.some((group) => user.groupIds?.includes(group.id) && group.name.toLowerCase().includes(query))
             );
         });
-    }, [users, filter, roles, groups]);
-
-    // New accounts wait, inactive, until an administrator activates them
-    const inactiveCount = useMemo(() => users.filter((user) => !user.isActive).length, [users]);
+    }, [users, filter, show, roles, groups]);
 
     const updateUser = useCallback(async (user: AdminUser, patch: AdminUserPatch) => {
         setUpdatingIds((prev) => new Set(prev).add(user.id));
 
         try {
             const updated = await updateAdminUser(user.id, patch);
-
-            setUsers((prev) =>
-                prev.map((item) =>
-                    item.id === updated.id ? updated : item
-                )
-            );
-
+            setUsers((prev) => prev.map((item) => item.id === updated.id ? updated : item));
             toast.success("User updated.");
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to update user"));
@@ -151,43 +154,57 @@ export default function UserManagementPanel({
         );
     }
 
+    const text = { fontSize: SETTINGS_TEXT.text, color: colors.muted } as const;
+    const headCellSx = {
+        fontSize: SETTINGS_TEXT.text, fontWeight: 700, color: colors.muted, bgcolor: colors.card,
+        borderColor: colors.border, whiteSpace: "nowrap",
+    } as const;
+    const cellSx = { fontSize: SETTINGS_TEXT.control, color: colors.text, borderColor: colors.border } as const;
+
     return (
-        <Stack spacing={1.75}>
+        <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
 
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Users"
-                    subheader="Activate accounts and choose their roles and groups."
-                    sx={cardHeaderSx}
-                    action={
-                        <Button
-                            size="small"
-                            variant="outlined"
-                            sx={actionButtonSx ?? ROUNDED_BUTTON_SX}
-                            startIcon={<RefreshCw size={15} />}
-                            disabled={loading}
-                            onClick={() => void loadUsers()}
-                        >
-                            Reload
-                        </Button>
-                    }
-                />
-
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1.5}>
-                        {inactiveCount > 0 && (
-                            <Alert severity="info">
+            <SettingsSection
+                icon={<UserCog size={19} />}
+                title="Accounts"
+                subtitle="Activate new accounts and choose what each person can do (roles) and who they work with (groups)."
+                actions={
+                    <Button size="small" sx={actionButtonSx} startIcon={<RefreshCw size={15} />} disabled={loading}
+                            onClick={() => void loadUsers()}>
+                        Reload
+                    </Button>
+                }
+                colors={sectionColors}
+                isDarkMode={isDarkMode}
+                plain
+            >
+                <Stack spacing={1.75}>
+                    {inactiveCount > 0 && (
+                        <Box sx={{
+                            display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap", px: 2, py: 1.25,
+                            borderRadius: 2, border: "1px solid",
+                            borderColor: isDarkMode ? "rgba(251,191,36,0.35)" : "rgba(217,119,6,0.35)",
+                            bgcolor: isDarkMode ? "rgba(251,191,36,0.08)" : "rgba(254,243,199,0.6)",
+                        }}>
+                            <UserX size={18} color={isDarkMode ? "#fbbf24" : "#b45309"} />
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.control, color: colors.text, flex: 1, minWidth: 200 }}>
                                 {inactiveCount === 1
                                     ? "1 account is not active. "
                                     : `${inactiveCount} accounts are not active. `}
                                 New accounts cannot sign in until you turn on Active.
-                            </Alert>
-                        )}
+                            </Typography>
+                            {show !== "inactive" && (
+                                <Button size="small" sx={actionButtonSx} onClick={() => setShow("inactive")}>
+                                    Show them
+                                </Button>
+                            )}
+                        </Box>
+                    )}
 
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
                         <TextField
-                            sx={fieldSx}
-                            fullWidth
+                            sx={{ ...fieldSx, flex: 1 }}
                             size="small"
                             label="Search users"
                             value={filter}
@@ -201,34 +218,29 @@ export default function UserManagementPanel({
                                 ),
                             }}
                         />
+                        <ToggleButtonGroup exclusive size="small" value={show} aria-label="Which accounts"
+                                           onChange={(_, next) => next && setShow(next)}
+                                           sx={choiceButtonsSx(sectionColors, isDarkMode)}>
+                            <ToggleButton value="all"><Users size={16} />All ({users.length})</ToggleButton>
+                            <ToggleButton value="active"><UserCheck size={16} />Active ({activeCount})</ToggleButton>
+                            <ToggleButton value="inactive"><UserX size={16} />Not active ({inactiveCount})</ToggleButton>
+                        </ToggleButtonGroup>
+                    </Stack>
 
-                        <TableContainer
-                            component={Paper}
-                            variant="outlined"
-                            sx={{
-                                bgcolor: "transparent",
-                                borderColor: colors.border,
-                                borderRadius: 2,
-                                overflow: "auto",
-                            }}
-                        >
-                            <MuiTable size="small">
+                    {filteredUsers.length === 0 ? (
+                        <Typography sx={{ ...text, py: 2 }}>
+                            {filter.trim() ? "No account matches the search." : "No account here."}
+                        </Typography>
+                    ) : (
+                        <TableContainer sx={{ border: "1px solid", borderColor: colors.border, borderRadius: 2,
+                                              overflow: "auto" }}>
+                            <MuiTable size="small" aria-label="Accounts">
                                 <TableHead>
                                     <TableRow>
-                                        {["User", "Email", "Institution", "Roles", "Groups", "Active", "Verified", ""].map((label) => (
-                                            <TableCell
-                                                key={label}
-                                                sx={{
-                                                    bgcolor: colors.surface,
-                                                    color: colors.text,
-                                                    borderColor: colors.border,
-                                                    fontSize: 12,
-                                                    fontWeight: 900,
-                                                }}
-                                            >
-                                                {label}
-                                            </TableCell>
+                                        {["Person", "Institution", "Roles", "Groups", "Active", "Email"].map((label) => (
+                                            <TableCell key={label} sx={headCellSx}>{label}</TableCell>
                                         ))}
+                                        <TableCell sx={headCellSx} />
                                     </TableRow>
                                 </TableHead>
 
@@ -238,28 +250,47 @@ export default function UserManagementPanel({
                                         const updating = updatingIds.has(user.id);
 
                                         return (
-                                            <TableRow key={user.id} hover>
-                                                <TableCell sx={{ borderColor: colors.border }}>
-                                                    <Stack direction="row" spacing={1} alignItems="center">
-                                                        <Typography sx={{ fontSize: 13, fontWeight: 800, color: colors.text }}>
-                                                            {[user.firstName, user.lastName].filter(Boolean).join(" ") || "—"}
-                                                        </Typography>
-
-                                                        {isCurrentUser && (
-                                                            <Chip size="small" label="You" />
-                                                        )}
+                                            <TableRow key={user.id} hover
+                                                      sx={{ opacity: user.isActive ? 1 : 0.78,
+                                                            "& td": { py: 1.1 } }}>
+                                                <TableCell sx={{ ...cellSx, minWidth: 240 }}>
+                                                    <Stack direction="row" spacing={1.25} alignItems="center">
+                                                        <Box aria-hidden sx={{
+                                                            width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                                                            display: "grid", placeItems: "center", fontSize: 13.5,
+                                                            fontWeight: 800, color: colors.primary,
+                                                            bgcolor: isDarkMode ? "rgba(96,165,250,0.14)" : "rgba(37,99,235,0.08)",
+                                                        }}>
+                                                            {initials(user)}
+                                                        </Box>
+                                                        <Box sx={{ minWidth: 0 }}>
+                                                            <Stack direction="row" spacing={0.75} alignItems="center">
+                                                                <Typography sx={{ fontSize: SETTINGS_TEXT.control, fontWeight: 700,
+                                                                                  color: colors.text }}>
+                                                                    {fullName(user) || "—"}
+                                                                </Typography>
+                                                                {isCurrentUser && (
+                                                                    <Box component="span" sx={{
+                                                                        px: 0.9, py: 0.1, borderRadius: 999, fontSize: 12.5,
+                                                                        fontWeight: 700, color: colors.primary,
+                                                                        border: "1px solid", borderColor: colors.primary,
+                                                                    }}>
+                                                                        You
+                                                                    </Box>
+                                                                )}
+                                                            </Stack>
+                                                            <Typography sx={{ ...text, wordBreak: "break-all" }}>
+                                                                {user.email}
+                                                            </Typography>
+                                                        </Box>
                                                     </Stack>
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border, color: colors.text, fontSize: 12.5 }}>
-                                                    {user.email}
-                                                </TableCell>
-
-                                                <TableCell sx={{ borderColor: colors.border, color: colors.text, fontSize: 12.5 }}>
+                                                <TableCell sx={{ ...cellSx, color: user.institution ? colors.text : colors.muted }}>
                                                     {user.institution || "—"}
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border, minWidth: 190 }}>
+                                                <TableCell sx={{ ...cellSx, minWidth: 190 }}>
                                                     <IdsSelect
                                                         label={`Roles ${user.email}`}
                                                         options={roles}
@@ -271,7 +302,7 @@ export default function UserManagementPanel({
                                                     />
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border, minWidth: 170 }}>
+                                                <TableCell sx={{ ...cellSx, minWidth: 170 }}>
                                                     <IdsSelect
                                                         label={`Groups ${user.email}`}
                                                         options={groups}
@@ -283,40 +314,41 @@ export default function UserManagementPanel({
                                                     />
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border, minWidth: 135 }}>
-                                                    <Stack direction="row" spacing={0.75} alignItems="center">
-                                                        <Switch
-                                                            size="small"
-                                                            checked={user.isActive}
-                                                            disabled={updating || isCurrentUser}
-                                                            slotProps={{
-                                                                input: {
-                                                                    "aria-label": `Active ${user.email}`,
-                                                                },
-                                                            }}
-                                                            onChange={(e) =>
-                                                                void updateUser(user, {
-                                                                    isActive: e.target.checked,
-                                                                })
-                                                            }
-                                                        />
-
-                                                        <Typography sx={{ fontSize: 12.5, color: colors.muted }}>
-                                                            {user.isActive ? "Active" : "Disabled"}
-                                                        </Typography>
-                                                    </Stack>
+                                                <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
+                                                    <Tooltip arrow title={isCurrentUser ? "You cannot turn off your own account" : ""}>
+                                                        <Stack direction="row" spacing={0.5} alignItems="center" component="span">
+                                                            <Switch
+                                                                size="small"
+                                                                checked={user.isActive}
+                                                                disabled={updating || isCurrentUser}
+                                                                slotProps={{ input: { "aria-label": `Active ${user.email}` } }}
+                                                                onChange={(e) => void updateUser(user, { isActive: e.target.checked })}
+                                                            />
+                                                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, fontWeight: 600,
+                                                                              color: user.isActive ? colors.text : colors.muted }}>
+                                                                {user.isActive ? "Active" : "Not active"}
+                                                            </Typography>
+                                                        </Stack>
+                                                    </Tooltip>
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border }}>
-                                                    <Chip
-                                                        size="small"
-                                                        variant="outlined"
-                                                        label={user.isVerified ? "Verified" : "Pending"}
-                                                        color={user.isVerified ? "success" : "default"}
-                                                    />
+                                                <TableCell sx={{ ...cellSx, whiteSpace: "nowrap" }}>
+                                                    <Tooltip arrow title={user.isVerified
+                                                        ? "The person confirmed this address"
+                                                        : "The person has not confirmed this address yet"}>
+                                                        <Stack direction="row" spacing={0.6} alignItems="center" component="span">
+                                                            {user.isVerified
+                                                                ? <CircleCheck size={16} color="#16a34a" />
+                                                                : <CircleDashed size={16} color={colors.muted} />}
+                                                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: user.isVerified
+                                                                ? colors.text : colors.muted }}>
+                                                                {user.isVerified ? "Confirmed" : "Not confirmed"}
+                                                            </Typography>
+                                                        </Stack>
+                                                    </Tooltip>
                                                 </TableCell>
 
-                                                <TableCell sx={{ borderColor: colors.border }}>
+                                                <TableCell sx={{ ...cellSx, width: 48 }} align="right">
                                                     {!isCurrentUser && (
                                                         <Tooltip arrow title="Delete the account, with its projects">
                                                             <IconButton size="small" aria-label={`Delete ${user.email}`}
@@ -332,16 +364,13 @@ export default function UserManagementPanel({
                                 </TableBody>
                             </MuiTable>
                         </TableContainer>
-
-                        {!loading && filteredUsers.length === 0 && (
-                            <Alert severity="info">No users match the current filter.</Alert>
-                        )}
-                    </Stack>
-                </CardContent>
-            </Card>
+                    )}
+                </Stack>
+            </SettingsSection>
 
             {deleting && (
-                <DeleteUserDialog user={deleting} fieldSx={fieldSx} actionButtonSx={actionButtonSx} colors={colors}
+                <DeleteUserDialog user={deleting} fieldSx={fieldSx} actionButtonSx={actionButtonSx}
+                                  colors={colors}
                                   onClose={() => setDeleting(null)}
                                   onDeleted={(userId) => {
                                       setUsers((prev) => prev.filter((item) => item.id !== userId));
@@ -364,7 +393,7 @@ function DeleteUserDialog({ user, fieldSx, actionButtonSx, colors, onClose, onDe
     user: AdminUser;
     fieldSx: any;
     actionButtonSx?: any;
-    colors: UserManagementPanelProps["colors"];
+    colors: { border: string; text: string; muted: string };
     onClose: () => void;
     onDeleted: (userId: number) => void;
 }) {

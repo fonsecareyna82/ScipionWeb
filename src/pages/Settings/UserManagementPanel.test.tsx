@@ -172,6 +172,20 @@ describe("UserManagementPanel", () => {
         expect(await screen.findByText(/1 account is not active/)).toBeInTheDocument();
     });
 
+    it("shows only the accounts that are not active", async () => {
+        vi.mocked(listAdminUsers).mockResolvedValue([
+            ...users,
+            { ...users[1], id: 99, email: "pending@example.com", isActive: false },
+        ]);
+        renderPanel();
+        await screen.findByText("pending@example.com");
+
+        fireEvent.click(screen.getByRole("button", { name: "Show them" }));
+        expect(screen.getByRole("button", { name: /Not active \(1\)/ })).toHaveAttribute("aria-pressed", "true");
+        expect(screen.queryByText("admin@example.com")).not.toBeInTheDocument();
+        expect(screen.getByText("pending@example.com")).toBeInTheDocument();
+    });
+
     it("says nothing about inactive accounts when every account is active", async () => {
         renderPanel();
 
