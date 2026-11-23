@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef, type FC } fro
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
-import { ProtocolsTree, type ProtocolNode } from "./ProtocolTree";
+import { ProtocolsTree, type ProtocolNode, type ProtocolsTreeHandle } from "./ProtocolTree";
 import { BoxCubeIcon } from "@/icons";
 import styles from "./protocolsdrawer.module.css";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -110,6 +110,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   const [selectedRoot, setSelectedRoot] = useState<ProtocolNode | null>(null);
   const [searchText, setSearchText] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const treeRef = useRef<ProtocolsTreeHandle | null>(null);
 
   const lastLoadedProjectId = useRef<number | null>(null);
 
@@ -296,6 +297,9 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
             placeholder="Search protocols..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
+            // ↑ ↓ choose a protocol, Enter opens it, without leaving the search
+            onKeyDown={(e) => { treeRef.current?.handleKey(e); }}
+            aria-label="Search protocols"
             className={styles.searchInput}
           />
         </div>
@@ -304,6 +308,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
       <div className={styles.treeArea}>
         {selectedRoot ? (
           <ProtocolsTree
+            ref={treeRef}
             data={[selectedRoot]}
             searchText={searchText}
             isDark={hostIsDark}

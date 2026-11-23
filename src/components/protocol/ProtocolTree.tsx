@@ -1,4 +1,6 @@
-import { useState, useEffect, type FC } from "react";
+import {
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type FC, type KeyboardEvent,
+} from "react";
 import {
   DocsIcon,
   FolderIcon,
@@ -8,85 +10,6 @@ import {
 } from "@/icons";
 import { HelpCircle } from "lucide-react";
 import styles from "./protocoltree.module.css";
-
-// --- Icon components ---
-export const BetaIcon: FC<{ className?: string }> = ({ className }) => (
-  <svg
-    width="72"
-    height="72"
-    viewBox="0 0 140 60"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-  >
-    <rect width="140" height="60" fill="#dc3545" rx="14" ry="14" />
-    <text
-      x="70"
-      y="30"
-      fill="#ffffff"
-      fontSize="30"
-      fontFamily="Arial"
-      fontWeight="bold"
-      textAnchor="middle"
-      dominantBaseline="middle"
-    >
-      BETA
-    </text>
-  </svg>
-);
-
-export const NewIcon: FC<{ className?: string }> = ({ className }) => (
-  <svg
-    width="72"
-    height="72"
-    viewBox="0 0 140 60"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-  >
-    <rect width="140" height="60" fill="#28a745" rx="14" ry="14" />
-    <text
-      x="70"
-      y="30"
-      fill="#ffffff"
-      fontSize="28"
-      fontFamily="Arial"
-      fontWeight="bold"
-      textAnchor="middle"
-      dominantBaseline="middle"
-    >
-      NEW
-    </text>
-  </svg>
-);
-
-export const UpdatedIcon: FC<{ className?: string }> = ({ className }) => (
-  <svg
-    width="72"
-    height="72"
-    viewBox="0 0 140 60"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-  >
-    <rect width="140" height="60" fill="#ffc107" rx="14" ry="14" />
-    <text
-      x="70"
-      y="30"
-      fill="#000000"
-      fontSize="28"
-      fontFamily="Arial"
-      fontWeight="bold"
-      textAnchor="middle"
-      dominantBaseline="middle"
-    >
-      UPDATED
-    </text>
-  </svg>
-);
-
-export const ProtocolIcons: Record<string, FC<{ className?: string }>> = {
-  beta: BetaIcon,
-  new: NewIcon,
-  updated: UpdatedIcon,
-};
 
 // --- Types ---
 export interface IconData {
@@ -107,6 +30,12 @@ export interface ProtocolNode {
   childs?: ProtocolNode[];
 }
 
+/** Lets the search field drive the tree with the keyboard: ↑ ↓ move, → ← open and close, Enter opens. */
+export interface ProtocolsTreeHandle {
+  /** True when the key was used by the tree. */
+  handleKey: (event: KeyboardEvent) => boolean;
+}
+
 interface ProtocolsTreeProps {
   data: ProtocolNode[];
   searchText?: string;
@@ -115,130 +44,251 @@ interface ProtocolsTreeProps {
   isDark?: boolean;
 }
 
-// --- Recursive search ---
-const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
-  const lowerSearch = search.toLowerCase();
-
-  return nodes.map((node) => {
-    const matches = node.text.toLowerCase().includes(lowerSearch);
-
-    if (matches) return { ...node, childs: node.childs };
-
-    const filteredChildren = node.childs ? filterTree(node.childs, search) : undefined;
-
-    if (filteredChildren && filteredChildren.length > 0) return { ...node, childs: filteredChildren };
-
-    return null;
-  }).filter(Boolean) as ProtocolNode[];
+// The badges a protocol may carry (new, beta, updated)
+const BADGES: Record<string, { label: string; className: string }> = {
+  beta: { label: "Beta", className: styles.badgeBeta },
+  new: { label: "New", className: styles.badgeNew },
+  updated: { label: "Updated", className: styles.badgeUpdated },
 };
 
-// --- Highlight function ---
-const highlightText = (text: string, search: string) => {
-  if (!search) return text;
+const GROUP_TAGS = new Set(["section", "protocol_group", "package"]);
 
-  // escapeSearchForRegex
-  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`(${escaped})`, "gi");
+const isProtocol = (node: ProtocolNode) => node.tag === "protocol" && !!node.value;
+
+// --- Search: every word, in any order, without minding case, accents, dashes or underscores ---
+function normalizeForSearch(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[-_/.]+/g, " ");
+}
+
+function searchWords(search: string): string[] {
+  return normalizeForSearch(search).split(/\s+/).filter(Boolean);
+}
+
+/**
+ * The branches where every word is found in a node's name or in the names of the folders above it. A folder that
+ * matches on its own keeps everything inside it.
+ */
+const filterTree = (nodes: ProtocolNode[], words: string[], above = ""): ProtocolNode[] =>
+  nodes
+    .map((node) => {
+      const context = `${above} ${normalizeForSearch(node.text)}`;
+      if (words.every((word) => context.includes(word))) return node;
+      const children = node.childs ? filterTree(node.childs, words, context) : [];
+      return children.length > 0 ? { ...node, childs: children } : null;
+    })
+    .filter(Boolean) as ProtocolNode[];
+
+const countProtocols = (nodes: ProtocolNode[] | undefined): number =>
+  (nodes ?? []).reduce((total, node) => total + (isProtocol(node) ? 1 : 0) + countProtocols(node.childs), 0);
+
+// --- Highlight every word searched ---
+const highlightText = (text: string, words: string[]) => {
+  if (words.length === 0) return text;
+
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
   const parts = text.split(regex);
 
   return parts.map((part, idx) =>
-    regex.test(part) ? (
+    idx % 2 === 1 ? (
       <mark key={idx} className={styles.highlight}>
         {part}
       </mark>
     ) : (
       part
-    )
+    ),
   );
 };
 
+type Row = { key: string; node: ProtocolNode; parentKey: string | null; hasChildren: boolean };
+
 // --- Main tree ---
-export const ProtocolsTree: FC<ProtocolsTreeProps> = ({
+export const ProtocolsTree = forwardRef<ProtocolsTreeHandle, ProtocolsTreeProps>(function ProtocolsTree({
   data,
   searchText = "",
   onNodeDoubleClick,
   onNodeHelpClick,
   isDark = false,
-}) => {
-  const filteredData = searchText ? filterTree(data, searchText) : data;
+}, ref) {
+  const words = useMemo(() => searchWords(searchText), [searchText]);
+  const searching = words.length > 0;
+  const filteredData = useMemo(() => (searching ? filterTree(data, words) : data), [data, words, searching]);
+  const found = useMemo(() => countProtocols(filteredData), [filteredData]);
+
+  // Folders opened or closed by hand; a new search starts again from the defaults
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const isExpanded = useCallback((key: string, node: ProtocolNode, isRoot: boolean) => {
+    const hasChildren = !!node.childs?.length;
+    if (key in toggled) return toggled[key];
+    if (searching) return hasChildren && (isRoot || GROUP_TAGS.has(node.tag ?? ""));
+    return node.openItem === true || node.openItem === "True";
+  }, [toggled, searching]);
+
+  // The rows shown now, top to bottom
+  const rows = useMemo(() => {
+    const list: Row[] = [];
+    const walk = (nodes: ProtocolNode[], parentKey: string | null) => {
+      nodes.forEach((node, idx) => {
+        const key = parentKey == null ? String(idx) : `${parentKey}/${idx}`;
+        const hasChildren = !!node.childs?.length;
+        list.push({ key, node, parentKey, hasChildren });
+        if (hasChildren && isExpanded(key, node, parentKey == null)) walk(node.childs!, key);
+      });
+    };
+    walk(filteredData, null);
+    return list;
+  }, [filteredData, isExpanded]);
+
+  // A new search: folders back to their defaults, and the first protocol found ready for Enter
+  const firstProtocolKey = rows.find((row) => isProtocol(row.node))?.key ?? null;
+  const firstProtocolRef = useRef(firstProtocolKey);
+  firstProtocolRef.current = firstProtocolKey;
+  useEffect(() => {
+    setToggled({});
+    setActiveKey(null);
+  }, [searchText]);
+  useEffect(() => {
+    if (searching) setActiveKey((current) => current ?? firstProtocolRef.current);
+  }, [searching, searchText]);
+
+  useEffect(() => {
+    if (!activeKey) return;
+    const row = scrollRef.current?.querySelector(`[data-key="${activeKey}"]`) as HTMLElement | null;
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [activeKey]);
+
+  const toggle = useCallback((key: string, node: ProtocolNode, isRoot: boolean, open?: boolean) => {
+    setToggled((current) => ({ ...current, [key]: open ?? !isExpanded(key, node, isRoot) }));
+  }, [isExpanded]);
+
+  const openProtocol = useCallback((node: ProtocolNode) => {
+    if (isProtocol(node)) onNodeDoubleClick?.(node.value!);
+  }, [onNodeDoubleClick]);
+
+  const handleKey = useCallback((event: KeyboardEvent): boolean => {
+    const index = rows.findIndex((row) => row.key === activeKey);
+    const active = index >= 0 ? rows[index] : null;
+    const move = (to: number) => {
+      if (rows.length === 0) return;
+      setActiveKey(rows[Math.max(0, Math.min(rows.length - 1, to))].key);
+    };
+
+    switch (event.key) {
+      case "ArrowDown":
+        move(active ? index + 1 : 0);
+        break;
+      case "ArrowUp":
+        move(active ? index - 1 : rows.length - 1);
+        break;
+      case "ArrowRight":
+        if (!active?.hasChildren) return false;
+        toggle(active.key, active.node, active.parentKey == null, true);
+        break;
+      case "ArrowLeft":
+        if (!active) return false;
+        if (active.hasChildren && isExpanded(active.key, active.node, active.parentKey == null)) {
+          toggle(active.key, active.node, active.parentKey == null, false);
+        } else if (active.parentKey != null) {
+          setActiveKey(active.parentKey);
+        } else {
+          return false;
+        }
+        break;
+      case "Enter": {
+        const target = active ?? rows.find((row) => isProtocol(row.node)) ?? null;
+        if (!target) return false;
+        if (isProtocol(target.node)) openProtocol(target.node);
+        else if (target.hasChildren) toggle(target.key, target.node, target.parentKey == null);
+        break;
+      }
+      default:
+        return false;
+    }
+    event.preventDefault();
+    return true;
+  }, [rows, activeKey, isExpanded, toggle, openProtocol]);
+
+  useImperativeHandle(ref, () => ({ handleKey }), [handleKey]);
+
+  const renderNodes = (nodes: ProtocolNode[], parentKey: string | null) =>
+    nodes.map((node, idx) => {
+      const key = parentKey == null ? String(idx) : `${parentKey}/${idx}`;
+      return (
+        <ProtocolNodeItem
+          key={key}
+          nodeKey={key}
+          node={node}
+          words={words}
+          expanded={isExpanded(key, node, parentKey == null)}
+          active={activeKey === key}
+          onToggle={() => toggle(key, node, parentKey == null)}
+          onActivate={() => setActiveKey(key)}
+          onOpen={() => openProtocol(node)}
+          onNodeHelpClick={onNodeHelpClick}
+          renderChildren={(children) => renderNodes(children, key)}
+        />
+      );
+    });
 
   return (
     <div className={[styles.treeRoot, isDark ? styles.dark : ""].filter(Boolean).join(" ")}>
-      <div className={styles.treeScroll}>
-        {filteredData.map((node, idx) => (
-          <ProtocolNodeItem
-            key={idx}
-            node={node}
-            searchText={searchText}
-            isRoot
-            onNodeDoubleClick={onNodeDoubleClick}
-            onNodeHelpClick={onNodeHelpClick}
-          />
-        ))}
+      {searching && (
+        <div className={styles.searchSummary} role="status">
+          {found === 0 ? "Nothing found" : found === 1 ? "1 protocol" : `${found} protocols`}
+          {found > 0 && <span className={styles.searchHint}>Enter opens the first · ↑ ↓ to choose</span>}
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        className={styles.treeScroll}
+        role="tree"
+        aria-label="Protocols"
+        tabIndex={0}
+        onKeyDown={(event) => { handleKey(event); }}
+      >
+        {renderNodes(filteredData, null)}
       </div>
     </div>
   );
-};
+});
 
-// --- Recursive node component ---
+// --- One node and, when open, what it holds ---
 const ProtocolNodeItem: FC<{
+  nodeKey: string;
   node: ProtocolNode;
-  searchText?: string;
-  isRoot?: boolean;
-  onNodeDoubleClick?: (protocolId: string) => void;
+  words: string[];
+  expanded: boolean;
+  active: boolean;
+  onToggle: () => void;
+  onActivate: () => void;
+  onOpen: () => void;
   onNodeHelpClick?: (protocolId: string, protocolLabel?: string) => void;
-}> = ({ node, searchText, isRoot = false, onNodeDoubleClick, onNodeHelpClick }) => {
+  renderChildren: (children: ProtocolNode[]) => React.ReactNode;
+}> = ({ nodeKey, node, words, expanded, active, onToggle, onActivate, onOpen, onNodeHelpClick, renderChildren }) => {
   const hasChildren = !!(node.childs && node.childs.length > 0);
 
-  const [expanded, setExpanded] = useState<boolean>(
-    !!(node.openItem === true || node.openItem === "True")
-  );
-
-  useEffect(() => {
-    if (searchText && searchText.length > 0) {
-      setExpanded(
-        !!(
-          hasChildren &&
-          (node.tag === "section" || node.tag === "protocol_group" || node.tag === "package" || isRoot)
-        )
-      );
-    } else {
-      setExpanded(!!(node.openItem === true || node.openItem === "True"));
-    }
-  }, [searchText, hasChildren, node.openItem, node.tag, isRoot]);
-
   const tagIcon = () => {
-    if (node.tag?.startsWith("protocol") && node.tag != "protocol_group") {
-
-      if (!node.icon?.name) { return <DocsIcon className={styles.iconDoc} />; }
-
-      if (node.icon?.name) {
-        const key = node.icon.name.split(".")[0];
-        const IconComponent = ProtocolIcons[key];
-        return IconComponent ? (
-          <IconComponent className={styles.iconWideBadge} />
-        ) : (
-          <DocsIcon className={styles.iconDoc} />
-        );
-      }
+    if (node.tag?.startsWith("protocol") && node.tag !== "protocol_group") {
+      return <DocsIcon className={styles.iconDoc} />;
     }
-
-    if (node.tag === "protocol_group" || node.tag === "section" || node.tag === "package") {
+    if (GROUP_TAGS.has(node.tag ?? "")) {
       return expanded ? (
         <OpenFolderIcon className={styles.iconOpenFolder} />
       ) : (
         <FolderIcon className={styles.iconFolder} />
       );
     }
-
     return null;
   };
 
-  const handleDoubleClick = () => {
-    if (node.tag === "protocol" && node.value && onNodeDoubleClick) {
-      onNodeDoubleClick(node.value);
-    }
-  };
+  const badge = node.tag?.startsWith("protocol") && node.icon?.name ? BADGES[node.icon.name.split(".")[0]] : undefined;
 
   const handleHelpClick = (e: React.MouseEvent) => {
     // preventRowHandlersAndOpenHelp
@@ -254,29 +304,35 @@ const ProtocolNodeItem: FC<{
   return (
     <div className={styles.nodeItem}>
       <div
-        className={styles.nodeRow}
+        className={[styles.nodeRow, active ? styles.nodeRowActive : ""].filter(Boolean).join(" ")}
+        role="treeitem"
+        data-key={nodeKey}
+        aria-selected={active}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-level={nodeKey.split("/").length}
         onClick={() => {
-          if (hasChildren) setExpanded((v) => !v);
+          onActivate();
+          if (hasChildren) onToggle();
         }}
-        onDoubleClick={handleDoubleClick}
+        onDoubleClick={() => {
+          if (node.tag === "protocol") onOpen();
+        }}
       >
-        {hasChildren && (
-          <span className={styles.chevronWrap} aria-hidden="true">
-            {expanded ? (
-              <ChevronUpIcon className={styles.chevronIcon} />
-            ) : (
-              <ChevronDownIcon className={styles.chevronIcon} />
-            )}
-          </span>
-        )}
-
-        {!hasChildren && <span className={styles.chevronWrap} aria-hidden="true" />}
+        <span className={styles.chevronWrap} aria-hidden="true">
+          {hasChildren && (expanded ? (
+            <ChevronUpIcon className={styles.chevronIcon} />
+          ) : (
+            <ChevronDownIcon className={styles.chevronIcon} />
+          ))}
+        </span>
 
         {tagIcon()}
 
         <span className={styles.nodeText} style={{ flex: 1, minWidth: 0 }}>
-          {highlightText(node.text, searchText || "")}
+          {highlightText(node.text, words)}
         </span>
+
+        {badge && <span className={[styles.badge, badge.className].join(" ")}>{badge.label}</span>}
 
         {showHelp && (
           <button
@@ -298,20 +354,13 @@ const ProtocolNodeItem: FC<{
 
       {hasChildren && (
         <div
+          role="group"
           className={[
             styles.children,
             expanded ? styles.childrenOpen : styles.childrenClosed,
           ].join(" ")}
         >
-          {node.childs!.map((child, idx) => (
-            <ProtocolNodeItem
-              key={idx}
-              node={child}
-              searchText={searchText}
-              onNodeDoubleClick={onNodeDoubleClick}
-              onNodeHelpClick={onNodeHelpClick}
-            />
-          ))}
+          {renderChildren(node.childs!)}
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProtocolsTree } from "@/components/protocol/ProtocolTree";
+import { createRef } from "react";
+import { ProtocolsTree, type ProtocolsTreeHandle } from "@/components/protocol/ProtocolTree";
 
 vi.mock("@/icons", () => ({
     DocsIcon: (props: any) => <svg data-testid="docs-icon" {...props} />,
@@ -201,5 +202,79 @@ describe("ProtocolsTree", () => {
         );
 
         expect(screen.getAllByRole("button", { name: "Open protocol help" })).toHaveLength(1);
+    });
+
+    const bigTree = () => [{
+        text: "All", tag: "section", openItem: true, childs: [
+            { text: "Movies", tag: "protocol_group", childs: [
+                { text: "Import movies", tag: "protocol", value: "import" },
+                { text: "Movie alignment", tag: "protocol", value: "align", icon: { name: "new.png", top: 0, left: 0, bottom: 0, right: 0 } },
+            ] },
+            { text: "Tomography", tag: "package", childs: [
+                { text: "Tilt-series alignment", tag: "protocol", value: "ts-align" },
+                { text: "CTF estimation", tag: "protocol", value: "ctf" },
+            ] },
+        ],
+    }];
+
+    it("finds protocols by words in any order, without minding dashes, case or the folder they are in", () => {
+        render(<ProtocolsTree data={bigTree()} searchText="ALIGNMENT tilt" />);
+        expect(screen.getByText("1 protocol")).toBeInTheDocument();
+        // The words are highlighted inside the name, so it is read from the text
+        expect(screen.getAllByRole("treeitem").some((row) => row.textContent?.includes("Tilt-series alignment"))).toBe(true);
+        expect(screen.queryByText("Movie alignment")).not.toBeInTheDocument();
+    });
+
+    it("matches words against the folders above a protocol", () => {
+        render(<ProtocolsTree data={bigTree()} searchText="tomography ctf" />);
+        expect(screen.getByText("1 protocol")).toBeInTheDocument();
+        expect(screen.getByRole("treeitem", { name: /CTF estimation/ })).toBeInTheDocument();
+    });
+
+    it("says when nothing is found", () => {
+        render(<ProtocolsTree data={bigTree()} searchText="nonexistent" />);
+        expect(screen.getByText("Nothing found")).toBeInTheDocument();
+    });
+
+    it("shows the badges as words, and no count on the folders", () => {
+        render(<ProtocolsTree data={bigTree()} />);
+        expect(screen.getByRole("treeitem", { name: /Movies/ })).toHaveTextContent(/^Movies$/);
+        expect(screen.getByText("New")).toBeInTheDocument();
+    });
+
+    it("opens the first protocol found with Enter, and moves with the arrows", () => {
+        const onOpen = vi.fn();
+        const ref = createRef<ProtocolsTreeHandle>();
+        const { rerender } = render(<ProtocolsTree ref={ref} data={bigTree()} searchText="alignment" onNodeDoubleClick={onOpen} />);
+        const key = (k: string) => ({ key: k, preventDefault: vi.fn() }) as never;
+
+        act(() => { ref.current!.handleKey(key("Enter")); });
+        expect(onOpen).toHaveBeenLastCalledWith("align");
+
+        act(() => { ref.current!.handleKey(key("ArrowDown")); });
+        act(() => { ref.current!.handleKey(key("ArrowDown")); });
+        act(() => { ref.current!.handleKey(key("ArrowDown")); });
+        expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent("Tilt-series alignment");
+        act(() => { ref.current!.handleKey(key("Enter")); });
+        expect(onOpen).toHaveBeenLastCalledWith("ts-align");
+
+        // Keys the tree does not use are left to the search field
+        rerender(<ProtocolsTree ref={ref} data={bigTree()} searchText="alignment" onNodeDoubleClick={onOpen} />);
+        expect(ref.current!.handleKey(key("a"))).toBe(false);
+    });
+
+    it("opens and closes folders with the arrows", () => {
+        const ref = createRef<ProtocolsTreeHandle>();
+        render(<ProtocolsTree ref={ref} data={bigTree()} />);
+        const key = (k: string) => ({ key: k, preventDefault: vi.fn() }) as never;
+
+        act(() => { ref.current!.handleKey(key("ArrowDown")); });
+        act(() => { ref.current!.handleKey(key("ArrowDown")); });
+        const movies = screen.getByRole("treeitem", { name: /Movies/ });
+        expect(movies).toHaveAttribute("aria-expanded", "false");
+        act(() => { ref.current!.handleKey(key("ArrowRight")); });
+        expect(movies).toHaveAttribute("aria-expanded", "true");
+        act(() => { ref.current!.handleKey(key("ArrowLeft")); });
+        expect(movies).toHaveAttribute("aria-expanded", "false");
     });
 });
