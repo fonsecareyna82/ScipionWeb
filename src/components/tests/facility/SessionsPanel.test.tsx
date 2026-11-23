@@ -136,6 +136,33 @@ describe("The sessions of the facility", () => {
                                     ctfMinDefocus: 5000, ctfMaxDefocus: 40000, ctfMaxResolution: 8 });
   });
 
+  it("asks the status only when editing, finds the user by name and opens a grid's note when asked", async () => {
+    facilityMocks.updateSession.mockResolvedValue(session);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    let dialog = await screen.findByRole("dialog");
+    // A new session is planned
+    expect(within(dialog).queryByRole("group", { name: "Status" })).not.toBeInTheDocument();
+    const position = within(dialog).getByRole("group", { name: "Position 1" });
+    expect(within(position).queryByLabelText("Notes (staff only)")).not.toBeInTheDocument();
+    fireEvent.click(within(position).getByRole("button", { name: "Note for position 1" }));
+    expect(within(position).getByLabelText("Notes (staff only)")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("User"), { target: { value: "gaox" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Gaoxin Lu/ }));
+    // The X in the header closes it too
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(within(dialog).getByRole("group", { name: "Status" })).getByRole("button", { name: "Finished" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(facilityMocks.updateSession).toHaveBeenCalled());
+    expect(facilityMocks.updateSession.mock.calls[0][1]).toMatchObject({ status: "finished" });
+  });
+
   it("keeps the name of a session that acquires: the microscope writes its folders", async () => {
     facilityMocks.listSessions.mockResolvedValue([{ ...session, status: "acquiring" }]);
     render(<SessionsPanel {...styles} canEdit />);
@@ -215,6 +242,13 @@ describe("The sessions of the facility", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.mouseDown(within(dialog).getByLabelText("Processing template"));
     expect(await screen.findByRole("option", { name: /Workflow 2D cryosparc/ })).toHaveAttribute("aria-disabled", "true");
+    // The workflows hang from a branch per source, which closes and opens
+    const branch = screen.getByRole("button", { name: "WorkflowHub workflows" });
+    fireEvent.click(branch);
+    expect(branch).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Workflow 2D relion")).not.toBeVisible();
+    fireEvent.click(branch);
+    expect(screen.getByRole("option", { name: /Workflow 2D relion/ })).toBeVisible();
     fireEvent.click(screen.getByRole("option", { name: /Workflow 2D relion/ }));
     fireEvent.click(within(dialog).getByLabelText("All grids in one project"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));

@@ -5,16 +5,16 @@ import {
     Autocomplete,
     Box,
     Button,
-    Checkbox,
     CircularProgress,
     FormControl,
-    FormControlLabel,
     IconButton,
     InputAdornment,
     InputLabel,
+    ListSubheader,
     MenuItem,
     Select,
     Stack,
+    Switch,
     TextField,
     ToggleButton,
     ToggleButtonGroup,
@@ -22,8 +22,9 @@ import {
     Typography,
 } from "@mui/material";
 import {
-    Activity, AlertTriangle, CalendarClock, CalendarDays, Copy, FolderOpen, Info, Layers, Microscope as MicroscopeIcon, Pencil, Play, Plus,
-    RefreshCw, RotateCw, Search, Square, Ticket, Trash2, UserRound, UsersRound, Workflow, X,
+    Activity, AlertTriangle, Ban, CalendarClock, ChevronDown, ChevronRight, Folder, CalendarDays, Copy, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, MessageSquare,
+    Microscope as MicroscopeIcon, Pencil, Play, Plus, RefreshCw, RotateCw, Search, Square, StickyNote, Ticket, Trash2, UserRound,
+    UsersRound, Workflow,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -56,7 +57,7 @@ import {
     type SessionTechnique,
 } from "@/api/facility";
 import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
-import { SettingsSection, choiceButtonsSx } from "@/pages/Settings/SettingsSection";
+import { SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
 import { useIsDark } from "@/context/ThemeContext";
 import ImageStrip from "./ImageStrip";
 import NavigationReport from "./NavigationReport";
@@ -82,7 +83,7 @@ export const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
     archived: "Archived",
 };
 
-const SESSION_STATUS_COLORS: Record<SessionStatus, string> = {
+export const SESSION_STATUS_COLORS: Record<SessionStatus, string> = {
     planned: "#64748b",
     acquiring: "#16a34a",
     finished: "#2563eb",
@@ -244,6 +245,39 @@ function gridOptionsOf(samples: Sample[]): GridOption[] {
 }
 
 /** The folders of a session, each with a copy button: what the operator types into EPU. */
+/** A session's state as a coloured pill. */
+export function SessionStatusPill({ status }: { status: SessionStatus }) {
+    const color = SESSION_STATUS_COLORS[status];
+    return (
+        <Box component="span" sx={{ px: 1, borderRadius: 10, flexShrink: 0, lineHeight: 1.7, fontSize: FACILITY_TEXT.badge,
+                                    fontWeight: 700, color, bgcolor: `${color}1f` }}>
+            {SESSION_STATUS_LABELS[status]}
+        </Box>
+    );
+}
+
+export type SessionFact = { icon: ReactNode; text: string };
+
+/** What a session is (microscope, technique, day, people, booking…), each with its icon. */
+export function SessionFacts({ facts, colors }: { facts: SessionFact[]; colors: { muted: string; text: string } }) {
+    return (
+        <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} rowGap={0.5} aria-label="About the session">
+            {facts.filter((fact) => fact.text).map((fact) => (
+                <Stack key={fact.text} direction="row" spacing={0.6} alignItems="center" sx={{ color: colors.muted, minWidth: 0 }}>
+                    {fact.icon}
+                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>{fact.text}</Typography>
+                </Stack>
+            ))}
+        </Stack>
+    );
+}
+
+/** The card of a session: a band of its state's colour on the left, and its parts one under the other. */
+export function sessionCardSx(status: SessionStatus, colors: { border: string }, card: string) {
+    return { border: `1px solid ${colors.border}`, borderLeft: `4px solid ${SESSION_STATUS_COLORS[status]}`, borderRadius: 2.5,
+             bgcolor: card, overflow: "hidden" } as const;
+}
+
 function SessionFolders({ session, colors, onProcess, onReread }: {
     session: FacilitySession;
     colors: PanelStyles["colors"];
@@ -570,8 +604,7 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
                         </Box>
                     )}
                     {sessions.map((session) => {
-                        const statusColor = SESSION_STATUS_COLORS[session.status];
-                        const facts: { icon: ReactNode; text: string }[] = [
+                        const facts: SessionFact[] = [
                             { icon: <MicroscopeIcon size={15} />, text: session.microscopeName ?? "" },
                             { icon: <Layers size={15} />, text: TECHNIQUE_LABELS[session.technique] },
                             { icon: <CalendarDays size={15} />, text: formatDate(session.scheduledOn) },
@@ -584,11 +617,10 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
                                     ? `template ${session.templateId}${session.autoProcess ? "" : " (by hand)"}${session.oneProject ? ", one project" : ""}`
                                     : "no processing template",
                             },
-                        ].filter((fact) => fact.text);
+                        ];
                         return (
                             <Box key={session.id} data-testid={`session-${session.id}`}
-                                 sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${statusColor}`, borderRadius: 2.5,
-                                       bgcolor: sectionColors.card, overflow: "hidden" }}>
+                                 sx={sessionCardSx(session.status, colors, sectionColors.card)}>
                                 <Box sx={{ px: 2, pt: 1.5, pb: 1.25 }}>
                                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "flex-start" }}
                                            justifyContent="space-between">
@@ -598,24 +630,9 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
                                                                   fontFamily: "monospace", wordBreak: "break-all" }}>
                                                     {session.name}
                                                 </Typography>
-                                                <Box component="span" sx={{ px: 1, borderRadius: 10, flexShrink: 0, lineHeight: 1.7,
-                                                                            fontSize: FACILITY_TEXT.badge, fontWeight: 700,
-                                                                            color: statusColor, bgcolor: `${statusColor}1f` }}>
-                                                    {SESSION_STATUS_LABELS[session.status]}
-                                                </Box>
+                                                <SessionStatusPill status={session.status} />
                                             </Stack>
-                                            <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} rowGap={0.5}
-                                                   aria-label="About the session">
-                                                {facts.map((fact) => (
-                                                    <Stack key={fact.text} direction="row" spacing={0.6} alignItems="center"
-                                                           sx={{ color: colors.muted, minWidth: 0 }}>
-                                                        {fact.icon}
-                                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>
-                                                            {fact.text}
-                                                        </Typography>
-                                                    </Stack>
-                                                ))}
-                                            </Stack>
+                                            <SessionFacts facts={facts} colors={colors} />
                                             {(session.images?.length ?? 0) > 0 && (
                                                 <Box sx={{ pt: 0.25 }}><ImageStrip images={session.images ?? []} size={56} colors={colors} /></Box>
                                             )}
@@ -707,39 +724,54 @@ type DataRow = { key: number; id: number | null; number: number; gridId: number 
 let rowKey = 0;
 const nextKey = () => ++rowKey;
 
-/** A ⓘ next to a title: the long explanation, out of the way until asked for. */
-function InfoHint({ text }: { text: string }) {
+/** A part of the session dialog: an icon, its title and one line, and its fields under them. */
+function DialogPart({ icon, title, subtitle, action, tint, colors, children }: {
+    icon: ReactNode;
+    title: string;
+    subtitle?: string;
+    action?: ReactNode;
+    tint: string;
+    colors: PanelStyles["colors"];
+    children?: ReactNode;
+}) {
     return (
-        <Tooltip arrow placement="top" title={<Box sx={{ fontSize: FACILITY_TEXT.note, lineHeight: 1.5, p: 0.5 }}>{text}</Box>}>
-            <Box component="span" tabIndex={0} aria-label={text}
-                 sx={{ display: "inline-flex", verticalAlign: "-2px", ml: 0.75, cursor: "help", opacity: 0.6, "&:hover": { opacity: 1 } }}>
-                <Info size={15} />
-            </Box>
-        </Tooltip>
+        <Box component="section" aria-label={title} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2.5, p: 2 }}>
+            <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: children ? 2 : 0 }}>
+                <Box sx={{ width: 32, height: 32, borderRadius: 1.75, flexShrink: 0, display: "grid", placeItems: "center",
+                           bgcolor: tint, color: "primary.main" }}>
+                    {icon}
+                </Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle + 0.5, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>
+                        {title}
+                    </Typography>
+                    {subtitle && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, lineHeight: 1.4 }}>{subtitle}</Typography>
+                    )}
+                </Box>
+                {action && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
+            </Stack>
+            {children && <Stack spacing={2}>{children}</Stack>}
+        </Box>
     );
 }
 
-/** A part of the session dialog: its title, a line under it and room around its fields. */
-function DialogSection({ title, hint, action, colors, first, children }: {
+/** An on/off option: what it does on the left, its switch on the right. */
+function OptionRow({ title, description, checked, onChange, colors }: {
     title: string;
-    hint?: string;
-    action?: React.ReactNode;
+    description: string;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
     colors: PanelStyles["colors"];
-    first?: boolean;
-    children: React.ReactNode;
 }) {
     return (
-        <Box component="section" aria-label={title}
-             sx={first ? undefined : { borderTop: `1px solid ${colors.border}`, pt: 3 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 800, letterSpacing: 0.2 }}>
-                    {title}
-                    {hint && <InfoHint text={hint} />}
-                </Typography>
-                {action}
-            </Stack>
-            <Stack spacing={2.25}>{children}</Stack>
-        </Box>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ py: 1.25, "& + &": { borderTop: `1px solid ${colors.border}` } }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>{title}</Typography>
+                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{description}</Typography>
+            </Box>
+            <Switch checked={checked} onChange={(e) => onChange(e.target.checked)} slotProps={{ input: { "aria-label": title } }} />
+        </Stack>
     );
 }
 
@@ -790,6 +822,12 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     const [groups, setGroups] = useState<Named[]>([]);
     const [people, setPeople] = useState<Person[]>([]);
     const [saving, setSaving] = useState(false);
+    // The grids whose note field is open (a grid with a note always shows it)
+    const [notesOpen, setNotesOpen] = useState<Set<number>>(new Set());
+    // The branches of the template list closed by hand (all start open)
+    const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+    const isDark = useIsDark();
+    const primary = useFacilityStyles().colors.primary;
 
     useEffect(() => {
         let cancelled = false;
@@ -852,9 +890,19 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
 
     const microscope = microscopes.find((candidate) => candidate.id === microscopeId);
     const positions = positionsOf(microscope?.gridSlots);
+    // The workflows to choose from, by where they come from; "None" first, and the session's own if it is gone
+    const templateOptions = useMemo(() => {
+        const sourceName = (source?: string) => (source === "WH" ? "WorkflowHub" : source ? source : "This server");
+        const listed = templates.map((item) => ({ ...item, group: sourceName(item.source) }))
+            .sort((x, y) => x.group.localeCompare(y.group));
+        const missing = templateId && !templatesLoading && !templates.some((item) => item.id === templateId)
+            ? [{ id: templateId, name: templateId, group: "Chosen before", canLoad: true as boolean | undefined, disabledReason: undefined as string | undefined }]
+            : [];
+        return [{ id: "", name: "None: no project is made", group: "", canLoad: true as boolean | undefined, disabledReason: undefined as string | undefined },
+                ...missing, ...listed];
+    }, [templates, templateId, templatesLoading]);
     const nameFixed = !!session && session.status !== "planned";
     const gridLabel = useMemo(() => new Map(gridOptions.map((option) => [option.id, option])), [gridOptions]);
-    const userName = useMemo(() => new Map(people.map((person) => [person.id, personName(person)])), [people]);
     const datasetById = useMemo(() => new Map((current?.datasets ?? []).map((dataset) => [dataset.id, dataset])), [current]);
 
     const setRow = (key: number, change: Partial<DataRow>) =>
@@ -929,267 +977,353 @@ function SessionDialog({ session, colors, fieldSx, selectSx, menuPaperSx, action
     };
 
     const atlas = current?.datasets.find((dataset) => dataset.kind === "atlas");
+    const tint = sectionTint(isDark);
+    // The band behind each group's name in the template list, across the whole width
+    const groupBackground = isDark ? "rgba(255,255,255,0.07)" : "rgba(17,24,39,0.06)";
+    const toggleGroup = (group: string) => setClosedGroups((closed) => {
+        const next = new Set(closed);
+        if (next.has(group)) next.delete(group);
+        else next.add(group);
+        return next;
+    });
+    const person = userId === "" ? null : people.find((candidate) => candidate.id === userId)
+        ?? { id: userId, email: session?.userEmail ?? "", firstName: session?.userName ?? `#${userId}`, lastName: "" };
+    const toggleNote = (key: number) => setNotesOpen((open) => {
+        const next = new Set(open);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+    });
 
     return (
         <SettingsDialog
             title={session ? `Edit ${session.name}` : "New session"}
-            description="A stay on a microscope and the folders it writes: an ATLAS, and a DATA per grid (multigrid: up to 12)."
+            description="A stay on a microscope and the folders it writes: an ATLAS, and a DATA per grid."
             icon={<CalendarClock size={20} color="white" />}
             confirmLabel="Save"
             busyLabel="Saving…"
             busy={saving}
             confirmDisabled={microscopeId === "" || numbersRepeat}
             maxWidth="md"
+            closeButton
             actionButtonSx={actionButtonSx}
             saveButtonSx={saveButtonSx}
             onConfirm={() => void save()}
             onClose={onClose}
         >
-            <Stack spacing={3.5} sx={{ pt: 1 }}>
-                <DialogSection title="Session" colors={colors} first>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="session-microscope-label">Microscope</InputLabel>
-                        <Select labelId="session-microscope-label" label="Microscope" sx={selectSx} value={microscopeId}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} disabled={!!session}
-                                renderValue={(value) => microscopes.find((candidate) => candidate.id === value)?.name ?? session?.microscopeName ?? ""}
-                                onChange={(e) => setMicroscopeId(Number(e.target.value))}>
-                            {microscopes.map((candidate) => (
-                                <MenuItem key={candidate.id} value={candidate.id} disabled={!candidate.sessionsEnabled}>
-                                    {candidate.name}{candidate.sessionsEnabled ? "" : " (no sessions)"}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="session-technique-label">Technique</InputLabel>
-                        <Select labelId="session-technique-label" label="Technique" sx={selectSx} value={technique}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                onChange={(e) => setTechnique(e.target.value as SessionTechnique)}>
+            <Stack spacing={2}>
+                <DialogPart icon={<CalendarDays size={18} />} title="Who and when" tint={tint} colors={colors}
+                            subtitle="The microscope, the day and whom the session is for.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <FormControl size="small" fullWidth>
+                            <InputLabel id="session-microscope-label">Microscope</InputLabel>
+                            <Select labelId="session-microscope-label" label="Microscope" sx={selectSx} value={microscopeId}
+                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }} disabled={!!session}
+                                    renderValue={(value) => microscopes.find((candidate) => candidate.id === value)?.name ?? session?.microscopeName ?? ""}
+                                    onChange={(e) => setMicroscopeId(Number(e.target.value))}>
+                                {microscopes.map((candidate) => (
+                                    <MenuItem key={candidate.id} value={candidate.id} disabled={!candidate.sessionsEnabled}>
+                                        {candidate.name}{candidate.sessionsEnabled ? "" : " (no sessions)"}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <TextField sx={fieldSx} size="small" type="date" label="Day" value={scheduledOn} fullWidth
+                                   InputLabelProps={{ shrink: true }} onChange={(e) => setScheduledOn(e.target.value)} />
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, minWidth: 90 }}>Technique</Typography>
+                        <ToggleButtonGroup exclusive size="small" value={technique} aria-label="Technique"
+                                           onChange={(_, value) => value && setTechnique(value as SessionTechnique)}
+                                           sx={choiceButtonsSx({ ...colors, card: "", primary: primary }, isDark)}>
                             {(Object.keys(TECHNIQUE_LABELS) as SessionTechnique[]).map((value) => (
-                                <MenuItem key={value} value={value}>{TECHNIQUE_LABELS[value]}</MenuItem>
+                                <ToggleButton key={value} value={value}>{TECHNIQUE_LABELS[value]}</ToggleButton>
                             ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="session-status-label">Status</InputLabel>
-                        <Select labelId="session-status-label" label="Status" sx={selectSx} value={status}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                onChange={(e) => setStatus(e.target.value as SessionStatus)}>
-                            {(Object.keys(SESSION_STATUS_LABELS) as SessionStatus[]).map((value) => (
-                                <MenuItem key={value} value={value}>{SESSION_STATUS_LABELS[value]}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="session-user-label">User</InputLabel>
-                        <Select labelId="session-user-label" label="User" sx={selectSx} value={userId}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                renderValue={(value) => (String(value) === "" ? "None" : userName.get(Number(value)) ?? session?.userName ?? `#${value}`)}
-                                onChange={(e) => setUserId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                            <MenuItem value="">None</MenuItem>
-                            {people.map((person) => (
-                                <MenuItem key={person.id} value={person.id}>{personName(person)} ({person.email})</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="session-group-label">Group</InputLabel>
-                        <Select labelId="session-group-label" label="Group" sx={selectSx} value={groupId}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                onChange={(e) => setGroupId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                            <MenuItem value="">None</MenuItem>
-                            {groups.map((group) => <MenuItem key={group.id} value={group.id}>{group.name}</MenuItem>)}
-                        </Select>
-                    </FormControl>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                    <TextField sx={fieldSx} size="small" type="date" label="Day" value={scheduledOn} fullWidth
-                               InputLabelProps={{ shrink: true }} onChange={(e) => setScheduledOn(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" label="EMhub booking" value={bookingRef} fullWidth
-                               onChange={(e) => setBookingRef(e.target.value)} />
-                </Stack>
-                <TextField sx={fieldSx} size="small" label="Name" value={name} disabled={nameFixed}
-                           placeholder="Given by the facility's convention"
-                           helperText={nameFixed
-                               ? "The microscope writes its folders under this name: it stays."
-                               : "Left empty, the facility's pattern names it (Configuration → Naming)."}
-                           inputProps={{ style: { fontFamily: "monospace" } }}
-                           onChange={(e) => setName(e.target.value)} />
-                </DialogSection>
+                        </ToggleButtonGroup>
+                    </Stack>
+                    {session && (
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, minWidth: 90 }}>Status</Typography>
+                            <ToggleButtonGroup exclusive size="small" value={status} aria-label="Status"
+                                               onChange={(_, value) => value && setStatus(value as SessionStatus)}
+                                               sx={choiceButtonsSx({ ...colors, card: "", primary: primary }, isDark)}>
+                                {(Object.keys(SESSION_STATUS_LABELS) as SessionStatus[]).map((value) => (
+                                    <ToggleButton key={value} value={value}>{SESSION_STATUS_LABELS[value]}</ToggleButton>
+                                ))}
+                            </ToggleButtonGroup>
+                        </Stack>
+                    )}
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <Autocomplete
+                            size="small"
+                            fullWidth
+                            options={people}
+                            value={person}
+                            getOptionLabel={(option) => personName(option)}
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                            onChange={(_, option) => setUserId(option ? option.id : "")}
+                            slotProps={{ paper: { sx: menuPaperSx } }}
+                            renderOption={(props, option) => (
+                                <Box component="li" {...props} key={option.id}>
+                                    <Box>
+                                        <Box sx={{ fontSize: FACILITY_TEXT.itemLine }}>{personName(option)}</Box>
+                                        <Box sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{option.email}</Box>
+                                    </Box>
+                                </Box>
+                            )}
+                            renderInput={(params) => (
+                                <TextField {...params} sx={fieldSx} label="User" placeholder="Search by name or email" />
+                            )}
+                            filterOptions={(options, { inputValue }) => {
+                                const words = inputValue.trim().toLowerCase();
+                                return options.filter((option) => `${personName(option)} ${option.email}`.toLowerCase().includes(words));
+                            }}
+                        />
+                        <FormControl size="small" fullWidth>
+                            <InputLabel id="session-group-label">Group</InputLabel>
+                            <Select labelId="session-group-label" label="Group" sx={selectSx} value={groupId}
+                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                    onChange={(e) => setGroupId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
+                                <MenuItem value="">None</MenuItem>
+                                {groups.map((group) => <MenuItem key={group.id} value={group.id}>{group.name}</MenuItem>)}
+                            </Select>
+                        </FormControl>
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <TextField sx={fieldSx} size="small" label="EMhub booking" value={bookingRef} fullWidth
+                                   onChange={(e) => setBookingRef(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" label="Name" value={name} disabled={nameFixed} fullWidth
+                                   placeholder="Given by the facility's convention"
+                                   helperText={nameFixed
+                                       ? "The microscope writes its folders under this name: it stays."
+                                       : "Empty: the facility's pattern names it."}
+                                   inputProps={{ style: { fontFamily: "monospace" } }}
+                                   onChange={(e) => setName(e.target.value)} />
+                    </Stack>
+                </DialogPart>
 
-                <DialogSection title="Automatic processing" colors={colors}
-                               hint={"When a DATA's first movie has been read, a project is made for it from the template (its Import Movies "
-                                   + "reading the DATA folder with the calibrated pixel, voltage, Cs, dose and gain), shared with the group, "
-                                   + "and launched in streaming. Without \"by itself\", each DATA waits for \"Process now\". \"All grids in one "
-                                   + "project\" puts every DATA in the session's project, each in its own branch (the same sample at another "
-                                   + "concentration or sampling); otherwise each DATA has its project (different samples, tilted and not)."}>
-                <FormControl size="small" fullWidth>
+                <DialogPart icon={<LayoutGrid size={18} />} title="Grids" tint={tint} colors={colors}
+                            subtitle={`A DATA folder each, by its position in the autoloader · ${rows.length} of ${positions.length} positions used.`}
+                            action={
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
+                                        disabled={rows.length >= positions.length} onClick={addRow}>
+                                    Add grid
+                                </Button>
+                            }>
+                    {rows.length === 0 && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                            No grid yet: add one per grid that will be acquired.
+                        </Typography>
+                    )}
+                    {rows.map((row) => {
+                        const saved = row.id != null ? datasetById.get(row.id) : undefined;
+                        const showNote = notesOpen.has(row.key) || !!row.notes;
+                        return (
+                            <Box key={row.key} role="group" aria-label={`Position ${row.number}`}
+                                 sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.5, py: 1.25 }}>
+                                <Stack spacing={1.25}>
+                                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ md: "center" }}>
+                                        <FormControl size="small" sx={{ minWidth: 110 }}>
+                                            <InputLabel id={`data-number-${row.key}`}>Position</InputLabel>
+                                            <Select labelId={`data-number-${row.key}`} label="Position" sx={selectSx} value={row.number}
+                                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                                    onChange={(e) => setRow(row.key, { number: Number(e.target.value) })}>
+                                                {[...new Set([...positions, row.number])].map((number) => (
+                                                    <MenuItem key={number} value={number} disabled={number > positions.length}>{number}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        <Autocomplete
+                                            size="small"
+                                            sx={{ flex: 1, minWidth: 240 }}
+                                            options={gridOptions}
+                                            groupBy={(option) => option.sampleCode}
+                                            getOptionLabel={(option) => option.label}
+                                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                                            value={row.gridId != null ? gridLabel.get(row.gridId) ?? null : null}
+                                            onChange={(_, option) => setRow(row.key, { gridId: option?.id ?? null })}
+                                            slotProps={{ paper: { sx: menuPaperSx } }}
+                                            renderInput={(params) => (
+                                                <TextField {...params} sx={fieldSx} label="Grid"
+                                                           placeholder={saved?.grid ? describeDatasetGrid(saved) : "Sample, box and position"} />
+                                            )}
+                                        />
+                                        <FormControl size="small" sx={{ minWidth: 170 }}>
+                                            <InputLabel id={`data-detector-${row.key}`}>Detector</InputLabel>
+                                            <Select labelId={`data-detector-${row.key}`} label="Detector" sx={selectSx}
+                                                    value={row.detectorId ?? ""} MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                                    onChange={(e) => setRow(row.key, { detectorId: String(e.target.value) === "" ? null : Number(e.target.value) })}>
+                                                <MenuItem value="">From the movies</MenuItem>
+                                                {(microscope?.detectors ?? []).map((detector) => (
+                                                    <MenuItem key={detector.id} value={detector.id}>{detector.name}</MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
+                                            <Tooltip arrow title={showNote ? "" : "Add a note (staff only)"}>
+                                                <span>
+                                                    <IconButton size="small" aria-label={`Note for position ${row.number}`}
+                                                                disabled={!!row.notes} onClick={() => toggleNote(row.key)}
+                                                                sx={{ color: showNote ? primary : colors.muted }}>
+                                                        <StickyNote size={17} />
+                                                    </IconButton>
+                                                </span>
+                                            </Tooltip>
+                                            <Tooltip arrow title="Remove this grid">
+                                                <IconButton size="small" aria-label={`Remove position ${row.number}`} sx={{ color: "#dc2626" }}
+                                                            onClick={() => setRows((list) => list.filter((other) => other.key !== row.key))}>
+                                                    <Trash2 size={17} />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </Stack>
+                                    </Stack>
+                                    {saved?.folder && (
+                                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                            Folder{" "}
+                                            <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{saved.folder}</Box>
+                                        </Typography>
+                                    )}
+                                    {showNote && (
+                                        <TextField sx={fieldSx} size="small" label="Notes (staff only)" value={row.notes} autoFocus={!row.notes}
+                                                   onChange={(e) => setRow(row.key, { notes: e.target.value })} />
+                                    )}
+                                    {saved && (
+                                        <ImageStrip images={saved.images ?? []} size={44} colors={colors}
+                                                    onAdd={addImages("dataset", saved.id)} onRemove={removeImage}
+                                                    addLabel="Add images (grid squares…)" />
+                                    )}
+                                </Stack>
+                            </Box>
+                        );
+                    })}
+                    {numbersRepeat && <Alert severity="warning">Two grids share a position.</Alert>}
+                </DialogPart>
+
+                <DialogPart icon={<Workflow size={18} />} title="Automatic processing" tint={tint} colors={colors}
+                            subtitle="A project per DATA from a workflow template, made and launched in streaming as the movies arrive.">
+                    <FormControl size="small" fullWidth>
                         <InputLabel id="session-template-label">Processing template</InputLabel>
                         <Select labelId="session-template-label" label="Processing template" sx={selectSx} value={templateId}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                renderValue={(value) => (String(value) === "" ? "None"
-                                    : templates.find((item) => item.id === value)?.name ?? String(value))}
+                                // A list of its own size: as wide as the field, and scrolling past a few workflows
+                                MenuProps={{
+                                    PaperProps: { sx: { ...menuPaperSx, maxHeight: 360, maxWidth: 640 } },
+                                    anchorOrigin: { vertical: "bottom", horizontal: "left" },
+                                    transformOrigin: { vertical: "top", horizontal: "left" },
+                                }}
+                                renderValue={(value) => templateOptions.find((item) => item.id === value)?.name ?? String(value)}
                                 onChange={(e) => setTemplateId(String(e.target.value))}>
-                            <MenuItem value="">None: no project is made</MenuItem>
+                            {templateOptions.flatMap((item, index) => {
+                                const startsGroup = !!item.group && item.group !== templateOptions[index - 1]?.group;
+                                const closed = !!item.group && closedGroups.has(item.group);
+                                const inGroup = templateOptions.filter((other) => other.group === item.group).length;
+                                return [
+                                    ...(startsGroup
+                                        // A branch of the tree: a click opens or closes it; it scrolls away with its workflows
+                                        ? [<ListSubheader key={`group-${item.group}`} disableSticky
+                                                          sx={{ p: 0, lineHeight: "normal", bgcolor: groupBackground,
+                                                                borderTop: `1px solid ${colors.border}`, borderBottom: `1px solid ${colors.border}`,
+                                                                mt: index > 0 ? 0.5 : 0 }}>
+                                            {/* The Select keeps the clicks on its children: the branch listens on its own box */}
+                                            <Box role="button" tabIndex={-1} aria-expanded={!closed} aria-label={`${item.group} workflows`}
+                                                 onClick={(event) => {
+                                                     event.stopPropagation();
+                                                     toggleGroup(item.group);
+                                                 }}
+                                                 sx={{ display: "flex", alignItems: "center", gap: 1, cursor: "pointer", px: 2,
+                                                       fontSize: FACILITY_TEXT.note, fontWeight: 800, lineHeight: 2.4, color: colors.text,
+                                                       textTransform: "uppercase", letterSpacing: 0.5, userSelect: "none",
+                                                       "&:hover": { bgcolor: colors.hover } }}>
+                                                {closed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                                                {closed ? <Folder size={16} /> : <FolderOpen size={16} />}
+                                                <Box component="span" sx={{ flex: 1 }}>{item.group}</Box>
+                                                <Box component="span" sx={{ fontWeight: 600, color: colors.muted, textTransform: "none" }}>{inGroup}</Box>
+                                            </Box>
+                                        </ListSubheader>]
+                                        : []),
+                                    // A closed branch hides its workflows but keeps them, so the chosen one still shows in the field
+                                    <MenuItem key={item.id || "none"} value={item.id} disabled={item.canLoad === false}
+                                              sx={{ whiteSpace: "normal", pl: item.group ? 5 : 2, gap: 1.25, alignItems: "flex-start",
+                                                    display: closed ? "none" : "flex" }}>
+                                        <Box sx={{ pt: 0.25, display: "flex", flexShrink: 0,
+                                                   color: !item.id ? colors.muted : item.canLoad === false ? colors.muted : "primary.main" }}>
+                                            {item.id ? <Workflow size={16} /> : <Ban size={16} />}
+                                        </Box>
+                                        <Box sx={{ minWidth: 0 }}>
+                                            <Box sx={{ fontSize: FACILITY_TEXT.itemLine }}>{item.name}</Box>
+                                            {item.canLoad === false && item.disabledReason && (
+                                                <Box sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{item.disabledReason}</Box>
+                                            )}
+                                        </Box>
+                                    </MenuItem>,
+                                ];
+                            })}
                             {templatesLoading && <MenuItem disabled value="__loading">Loading the workflows…</MenuItem>}
-                            {templateId && !templatesLoading && !templates.some((item) => item.id === templateId) && (
-                                <MenuItem value={templateId}>{templateId}</MenuItem>
-                            )}
-                            {templates.map((item) => (
-                                <MenuItem key={item.id} value={item.id} disabled={item.canLoad === false}>
-                                    {item.name}{item.source ? ` (${item.source === "WH" ? "WorkflowHub" : item.source})` : ""}
-                                    {item.canLoad === false && item.disabledReason ? ` · ${item.disabledReason}` : ""}
-                                </MenuItem>
-                            ))}
                         </Select>
                     </FormControl>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={3} sx={{ mt: "8px !important" }}>
-                    <FormControlLabel
-                        sx={{ flexShrink: 0, mr: 0 }}
-                        control={<Checkbox checked={autoProcess} disabled={!templateId}
-                                           onChange={(e) => setAutoProcess(e.target.checked)} />}
-                        label="Launch it by itself"
-                    />
-                    <FormControlLabel
-                        sx={{ flexShrink: 0, mr: 0 }}
-                        control={<Checkbox checked={oneProject} disabled={!templateId}
-                                           onChange={(e) => setOneProject(e.target.checked)} />}
-                        label="All grids in one project"
-                    />
-                </Stack>
-                {/* The CTF consensus is SPA's: a tomography template has none to apply them to */}
-                {technique === "spa" && (<>
-                <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, pt: 1 }}>
-                    CTF limits
-                    <InfoHint text={"The CTF consensus of each DATA's project keeps the micrographs within these limits. Left "
-                        + "empty, the template's are used; a new session starts with the facility's (Configuration → Policies)."} />
-                </Typography>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={ctfMinDefocus}
-                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
-                               onChange={(e) => setCtfMinDefocus(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: maximum defocus (Å)" value={ctfMaxDefocus}
-                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
-                               onChange={(e) => setCtfMaxDefocus(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="CTF: resolution better than (Å)" value={ctfMaxResolution}
-                               inputProps={{ inputMode: "decimal" }} disabled={!templateId}
-                               onChange={(e) => setCtfMaxResolution(e.target.value)} />
-                </Stack>
-                </>)}
-                </DialogSection>
-
-                <DialogSection title="Notes" colors={colors}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Staff notes" value={notes} multiline minRows={2}
-                               helperText="Only the facility's staff see them"
-                               onChange={(e) => setNotes(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="Notes for the user" value={userNotes} multiline minRows={2}
-                               helperText="The session's user and the group's PI see them in My sessions"
-                               onChange={(e) => setUserNotes(e.target.value)} />
-                </Stack>
-                </DialogSection>
-
-                <DialogSection title="Grids" colors={colors} hint="A DATA folder each, by their position in the autoloader."
-                               action={
-                    <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
-                            disabled={rows.length >= positions.length} onClick={addRow}>
-                        Add grid
-                    </Button>}>
-                {rows.length === 0 && (
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>No grid yet.</Typography>
-                )}
-                {rows.map((row) => {
-                    const saved = row.id != null ? datasetById.get(row.id) : undefined;
-                    return (
-                        <Box key={row.key} role="group" aria-label={`Position ${row.number}`}
-                             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 2 }}>
-                            <Stack spacing={1.75}>
-                                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
-                                    <FormControl size="small" sx={{ minWidth: 118 }}>
-                                        <InputLabel id={`data-number-${row.key}`}>Position</InputLabel>
-                                        <Select labelId={`data-number-${row.key}`} label="Position" sx={selectSx} value={row.number}
-                                                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                                onChange={(e) => setRow(row.key, { number: Number(e.target.value) })}>
-                                            {[...new Set([...positions, row.number])].map((number) => (
-                                                <MenuItem key={number} value={number} disabled={number > positions.length}>{number}</MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-                                    <Autocomplete
-                                        size="small"
-                                        sx={{ flex: 1, minWidth: 260 }}
-                                        options={gridOptions}
-                                        groupBy={(option) => option.sampleCode}
-                                        getOptionLabel={(option) => option.label}
-                                        isOptionEqualToValue={(option, value) => option.id === value.id}
-                                        value={row.gridId != null ? gridLabel.get(row.gridId) ?? null : null}
-                                        onChange={(_, option) => setRow(row.key, { gridId: option?.id ?? null })}
-                                        slotProps={{ paper: { sx: menuPaperSx } }}
-                                        renderInput={(params) => (
-                                            <TextField {...params} sx={fieldSx} label="Grid"
-                                                       placeholder={saved?.grid ? describeDatasetGrid(saved) : "Sample, box and position"} />
-                                        )}
-                                    />
-                                    <FormControl size="small" sx={{ minWidth: 170 }}>
-                                        <InputLabel id={`data-detector-${row.key}`}>Detector</InputLabel>
-                                        <Select labelId={`data-detector-${row.key}`} label="Detector" sx={selectSx}
-                                                value={row.detectorId ?? ""} MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                                onChange={(e) => setRow(row.key, { detectorId: String(e.target.value) === "" ? null : Number(e.target.value) })}>
-                                            <MenuItem value="">From the movies</MenuItem>
-                                            {(microscope?.detectors ?? []).map((detector) => (
-                                                <MenuItem key={detector.id} value={detector.id}>{detector.name}</MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-                                    <IconButton size="small" aria-label={`Remove position ${row.number}`}
-                                                onClick={() => setRows((list) => list.filter((other) => other.key !== row.key))}>
-                                        <X size={16} />
-                                    </IconButton>
-                                </Stack>
-                                {saved?.folder && (
-                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                                        Folder{" "}
-                                        <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{saved.folder}</Box>
+                    {!templateId ? (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                            Without a template the folders are watched, but no project is made.
+                        </Typography>
+                    ) : (
+                        <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.75 }}>
+                            <OptionRow colors={colors} title="Launch it by itself" checked={autoProcess} onChange={setAutoProcess}
+                                       description="Each DATA's project starts as soon as its first movie is read. Off: it waits for Process now." />
+                            <OptionRow colors={colors} title="All grids in one project" checked={oneProject} onChange={setOneProject}
+                                       description="Every DATA in the session's project, each in its own branch: the same sample. Off: a project per DATA." />
+                            {/* The CTF consensus is SPA's: a tomography template has none to apply them to */}
+                            {technique === "spa" && (
+                                <Box sx={{ borderTop: `1px solid ${colors.border}`, py: 1.5 }}>
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700 }}>CTF limits</Typography>
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 1.25 }}>
+                                        Micrographs outside them are left out. Empty: the template's are used.
                                     </Typography>
-                                )}
-                                <TextField sx={fieldSx} size="small" label="Notes (staff only)" value={row.notes}
-                                           onChange={(e) => setRow(row.key, { notes: e.target.value })} />
-                                {saved && (
-                                    <ImageStrip images={saved.images ?? []} size={44} colors={colors}
-                                                onAdd={addImages("dataset", saved.id)} onRemove={removeImage}
-                                                addLabel="Add images (grid squares…)" />
-                                )}
-                            </Stack>
-                        </Box>
-                    );
-                })}
-                {numbersRepeat && <Alert severity="warning">Two grids share a position.</Alert>}
-                </DialogSection>
-
-                <DialogSection title="Images" colors={colors}>
-                    {current
-                        ? (
-                            <Stack spacing={1}>
-                                <ImageStrip images={current.images ?? []} size={56} colors={colors}
-                                            onAdd={addImages("session", current.id)} onRemove={removeImage}
-                                            addLabel="Add session images" />
-                                {atlas && (
-                                    <Stack spacing={0.5}>
-                                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>ATLAS</Typography>
-                                        <ImageStrip images={atlas.images ?? []} size={56} colors={colors}
-                                                    onAdd={addImages("dataset", atlas.id)} onRemove={removeImage}
-                                                    addLabel="Add atlas images" />
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={ctfMinDefocus}
+                                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setCtfMinDefocus(e.target.value)} />
+                                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: maximum defocus (Å)" value={ctfMaxDefocus}
+                                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setCtfMaxDefocus(e.target.value)} />
+                                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: resolution better than (Å)" value={ctfMaxResolution}
+                                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setCtfMaxResolution(e.target.value)} />
                                     </Stack>
-                                )}
-                            </Stack>
-                        )
-                        : <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>Save the session first to add its images.</Typography>}
-                </DialogSection>
+                                </Box>
+                            )}
+                        </Box>
+                    )}
+                </DialogPart>
+
+                <DialogPart icon={<MessageSquare size={18} />} title="Notes" tint={tint} colors={colors}
+                            subtitle="For the staff, and for the user, who reads them in My sessions.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Staff notes" value={notes} multiline minRows={2}
+                                   helperText="Only the facility's staff see them"
+                                   onChange={(e) => setNotes(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Notes for the user" value={userNotes} multiline minRows={2}
+                                   helperText="The user and the group's PI see them"
+                                   onChange={(e) => setUserNotes(e.target.value)} />
+                    </Stack>
+                </DialogPart>
+
+                <DialogPart icon={<ImageIcon size={18} />} title="Images" tint={tint} colors={colors}
+                            subtitle={current ? "Of the session and of its atlas; a grid's images go with its grid above." : "Save the session first to add its images."}>
+                    {current && (
+                        <Stack spacing={1}>
+                            <ImageStrip images={current.images ?? []} size={56} colors={colors}
+                                        onAdd={addImages("session", current.id)} onRemove={removeImage}
+                                        addLabel="Add session images" />
+                            {atlas && (
+                                <Stack spacing={0.5}>
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>ATLAS</Typography>
+                                    <ImageStrip images={atlas.images ?? []} size={56} colors={colors}
+                                                onAdd={addImages("dataset", atlas.id)} onRemove={removeImage}
+                                                addLabel="Add atlas images" />
+                                </Stack>
+                            )}
+                        </Stack>
+                    )}
+                </DialogPart>
+
                 {current && (
-                    <Box sx={{ borderTop: `1px solid ${colors.border}`, pt: 3 }}>
+                    <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2.5, overflow: "hidden" }}>
                         <SessionFolders session={current} colors={colors} />
                     </Box>
                 )}

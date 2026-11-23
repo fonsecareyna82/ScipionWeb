@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { within, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,7 +67,10 @@ describe("A user's own sessions", () => {
     facilityMocks.getMyFacility.mockResolvedValue({ ...mine, isPi: true, sessions: [{ ...session, asPi: true }] });
     renderPanel();
 
-    expect(await screen.findByText(/Titan Krios G5 · Tomography · 3 Nov 2026 · Gaoxin Lu · group Shannon lab/)).toBeInTheDocument();
+    const about = await screen.findByLabelText("About the session");
+    for (const fact of ["Titan Krios G5", "Tomography", "3 Nov 2026", "Gaoxin Lu", "group Shannon lab"]) {
+      expect(within(about).getByText(fact)).toBeInTheDocument();
+    }
     expect(screen.getByText("Samples of you and your groups")).toBeInTheDocument();
   });
 

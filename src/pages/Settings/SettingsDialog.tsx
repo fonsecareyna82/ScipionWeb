@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Box, Button, CircularProgress, Dialog, Stack, Typography } from "@mui/material";
+import { Box, Button, CircularProgress, Dialog, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import { X } from "lucide-react";
 
 // The look of the web's dialogs (see the protocol dialogs of the project page): a dark header with an icon,
 // a title and what the dialog does, then its content and its actions
@@ -33,13 +34,15 @@ type SettingsDialogProps = {
     // The settings page's button styles (actionButtonSx, saveButtonSx)
     actionButtonSx?: any;
     saveButtonSx?: any;
+    // An X in the header to close it (long dialogs, whose Cancel is far down)
+    closeButton?: boolean;
     onConfirm: () => void;
     onClose: () => void;
 };
 
 export default function SettingsDialog({
     title, description, icon, children, confirmLabel, busyLabel, busy = false, confirmDisabled = false,
-    destructive = false, maxWidth = "sm", footerNote, actionButtonSx, saveButtonSx, onConfirm, onClose,
+    destructive = false, maxWidth = "sm", footerNote, actionButtonSx, saveButtonSx, closeButton = false, onConfirm, onClose,
 }: SettingsDialogProps) {
     return (
         <Dialog
@@ -63,7 +66,7 @@ export default function SettingsDialog({
                             {icon}
                         </Box>
                     )}
-                    <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography id="settings-dialog-title" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>
                             {title}
                         </Typography>
@@ -73,6 +76,17 @@ export default function SettingsDialog({
                             </Typography>
                         )}
                     </Box>
+                    {closeButton && (
+                        <Tooltip arrow title="Close">
+                            <span>
+                                <IconButton aria-label="Close" disabled={busy} onClick={onClose}
+                                            sx={{ color: "rgb(229,231,235)", flexShrink: 0, mt: -0.25, mr: -0.5,
+                                                  "&:hover": { bgcolor: "rgba(255,255,255,0.1)" } }}>
+                                    <X size={20} />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
+                    )}
                 </Stack>
             </Box>
 
