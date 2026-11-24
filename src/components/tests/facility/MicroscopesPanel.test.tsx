@@ -113,6 +113,7 @@ describe("The microscopes of the facility", () => {
     expect(within(falconBox).getAllByLabelText("Magnification")).toHaveLength(2);
     fireEvent.click(within(falconBox).getAllByRole("button", { name: "Remove magnification" })[1]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove detector Ceta-D" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Remove Ceta-D?" })).getByRole("button", { name: "Remove the detector" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.updateMicroscope).toHaveBeenCalled());
@@ -120,6 +121,35 @@ describe("The microscopes of the facility", () => {
     expect(microscopeId).toBe(1);
     expect(payload).toMatchObject({ name: "Talos 200kV", csMm: 2.7, voltageKv: 200, sessionsEnabled: true });
     expect(payload.detectors).toEqual([{ ...falcon, pixelSizes: [{ magnification: 120000, pixelSize: 0.84 }] }]);
+  });
+
+  it("shows a microscope to look at, with each detector's calibration and gain", async () => {
+    render(<MicroscopesPanel {...styles} />);
+    await screen.findByText("Talos 200kV");
+
+    fireEvent.click(screen.getByRole("button", { name: "View Talos 200kV" }));
+    const dialog = await screen.findByRole("dialog", { name: "Talos 200kV" });
+    expect(within(dialog).getByText("/mnt/micros/talos_offload")).toBeInTheDocument();
+    const falconBox = within(dialog).getByRole("group", { name: "Detector Falcon 4i" });
+    expect(within(falconBox).getByText("92,000×")).toBeInTheDocument();
+    expect(within(falconBox).getByText("/data/gains/*Talos*gain*.mrc")).toBeInTheDocument();
+    const cetaBox = within(dialog).getByRole("group", { name: "Detector Ceta-D" });
+    expect(within(cetaBox).getByText("90° counter-clockwise")).toBeInTheDocument();
+    expect(within(cetaBox).getByText("Flip upside down")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("asks before removing a detector that has a calibration", async () => {
+    render(<MicroscopesPanel {...styles} />);
+    await screen.findByText("Talos 200kV");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Talos 200kV" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove detector Falcon 4i" }));
+    const confirm = await screen.findByRole("dialog", { name: "Remove Falcon 4i?" });
+    expect(within(confirm).getByText(/2 calibrated pixel sizes: 120000× → 0.84 Å, 92000× → 1.14 Å; a gain reference/)).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Remove the detector" }));
+    await waitFor(() => expect(within(dialog).queryByRole("group", { name: "Detector Falcon 4i" })).not.toBeInTheDocument());
   });
 
   it("deletes a microscope after confirming", async () => {

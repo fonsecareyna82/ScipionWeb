@@ -19,13 +19,14 @@ import {
     Typography,
 } from "@mui/material";
 import {
-    Aperture, Camera, FolderInput, ImagePlus, Layers, Microscope as MicroscopeIcon, MonitorCog, Pencil, Plus, RefreshCw,
+    Aperture, Camera, Eye, FileImage, FlipHorizontal, FolderInput, Hash, ImagePlus, Layers, LayoutGrid, Microscope as MicroscopeIcon,
+    MonitorCog, Pencil, Plus, RefreshCw, RotateCcw as RotateIcon,
     Trash2, X, Zap,
 } from "lucide-react";
 import { useIsDark } from "@/context/ThemeContext";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
-import { DialogPart, OptionRow } from "./DialogParts";
+import { DialogPart, FactGrid, OptionRow, ViewDialog } from "./DialogParts";
 import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
 import { SessionFacts, type SessionFact } from "./SessionsPanel";
 import { useConventionsPreview } from "./useConventionsPreview";
@@ -274,6 +275,7 @@ export default function MicroscopesPanel({ fieldSx, selectSx, menuPaperSx, color
     const [error, setError] = useState<string | null>(null);
     const [editing, setEditing] = useState<Microscope | "new" | null>(null);
     const [deleting, setDeleting] = useState<Microscope | null>(null);
+    const [viewing, setViewing] = useState<Microscope | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
 
     const load = useCallback(async () => {
@@ -381,6 +383,10 @@ export default function MicroscopesPanel({ fieldSx, selectSx, menuPaperSx, color
                                         )}
                                     </Stack>
                                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                                        <Button size="small" variant="outlined" sx={actionSx} startIcon={<Eye size={14} />}
+                                                aria-label={`View ${microscope.name}`} onClick={() => setViewing(microscope)}>
+                                            View
+                                        </Button>
                                         <Button size="small" variant="outlined" sx={actionSx} startIcon={<Pencil size={14} />}
                                                 onClick={() => setEditing(microscope)}>
                                             Edit
@@ -437,6 +443,10 @@ export default function MicroscopesPanel({ fieldSx, selectSx, menuPaperSx, color
                 </SettingsDialog>
             )}
 
+            {viewing !== null && (
+                <MicroscopeView microscope={viewing} colors={colors} onClose={() => setViewing(null)} />
+            )}
+
             {editing !== null && (
                 <MicroscopeDialog
                     microscope={editing === "new" ? null : editing}
@@ -454,6 +464,111 @@ export default function MicroscopesPanel({ fieldSx, selectSx, menuPaperSx, color
                 />
             )}
         </Stack>
+    );
+}
+
+/** A microscope to look at, not to change: what it is, where it writes, and each detector's calibration and gain. */
+function MicroscopeView({ microscope, colors, onClose }: {
+    microscope: Microscope;
+    colors: PanelStyles["colors"];
+    onClose: () => void;
+}) {
+    const tint = sectionTint(useIsDark());
+    return (
+        <ViewDialog icon={<MicroscopeIcon size={20} color="white" />} title={microscope.name}
+                    subtitle={microscope.model || undefined} onClose={onClose}>
+            <DialogPart icon={<MicroscopeIcon size={18} />} title="The microscope" tint={tint} colors={colors}
+                        action={
+                            <Stack direction="row" spacing={0.75}>
+                                <Pill color={STATUS_COLORS[microscope.status]}>{STATUS_LABELS[microscope.status]}</Pill>
+                                {microscope.sessionsEnabled && <Pill color="#2563eb">Runs sessions</Pill>}
+                            </Stack>
+                        }>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5} alignItems={{ sm: "flex-start" }}>
+                    <MicroscopePhoto microscope={microscope} width={220} height={165} colors={colors} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <FactGrid colors={colors} facts={[
+                            [<Zap size={15} />, "Voltage", microscope.voltageKv ? `${microscope.voltageKv} kV` : null],
+                            [<Aperture size={15} />, "Spherical aberration", microscope.csMm ? `Cs ${microscope.csMm} mm` : null],
+                            [<Layers size={15} />, "Energy filter", microscope.energyFilter || "None"],
+                            [<MonitorCog size={15} />, "Acquisition software", microscope.acquisitionSoftware],
+                        ]} />
+                        {microscope.notes && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, whiteSpace: "pre-wrap", mt: 1.5 }}>
+                                {microscope.notes}
+                            </Typography>
+                        )}
+                    </Box>
+                </Stack>
+            </DialogPart>
+
+            <DialogPart icon={<FolderInput size={18} />} title="Sessions and folders" tint={tint} colors={colors}>
+                <FactGrid colors={colors} facts={[
+                    [<FolderInput size={15} />, "Folder it writes to", microscope.offloadPath
+                        ? <Box component="span" sx={{ fontFamily: "monospace" }}>{microscope.offloadPath}</Box> : "Not set"],
+                    [<Hash size={15} />, "Code in names", microscope.code || microscope.name],
+                    [<LayoutGrid size={15} />, "Grids in the autoloader", String(microscope.gridSlots)],
+                    [<FolderInput size={15} />, "DATA folder", <Box component="span" sx={{ fontFamily: "monospace" }}>{microscope.dataFolderPattern}</Box>],
+                    [<FolderInput size={15} />, "ATLAS folder", microscope.atlasFolderPattern
+                        ? <Box component="span" sx={{ fontFamily: "monospace" }}>{microscope.atlasFolderPattern}</Box> : "No atlas folder"],
+                ]} />
+            </DialogPart>
+
+            <DialogPart icon={<Camera size={18} />} title="Detectors" tint={tint} colors={colors}
+                        subtitle={microscope.detectors.length ? undefined : "None: the nominal pixel size of each movie is used."}>
+                {microscope.detectors.map((detector) => (
+                    <Box key={detector.id} role="group" aria-label={`Detector ${detector.name}`}
+                         sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, overflow: "hidden" }}>
+                        <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"
+                               sx={{ bgcolor: colors.hover, px: 1.5, py: 1, borderBottom: `1px solid ${colors.border}` }}>
+                            <Camera size={16} style={{ color: colors.muted }} />
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 800, color: colors.text }}>{detector.name}</Typography>
+                            {detector.metadataName && (
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, fontFamily: "monospace", color: colors.muted }}>
+                                    {detector.metadataName}
+                                </Typography>
+                            )}
+                            {detector.energyFiltered && <Pill color="#7c3aed">energy filtered</Pill>}
+                        </Stack>
+                        <Stack spacing={1.5} sx={{ p: 1.5 }}>
+                            <FactGrid colors={colors} columns={3} facts={[
+                                [<FileImage size={15} />, "Gain reference", detector.gainPath
+                                    ? <Box component="span" sx={{ fontFamily: "monospace" }}>{detector.gainPath}</Box> : "None"],
+                                [<RotateIcon size={15} />, "Gain rotation", detector.gainRotation ? `${detector.gainRotation}° counter-clockwise` : "None"],
+                                [<FlipHorizontal size={15} />, "Gain flip", GAIN_FLIP_LABELS[detector.gainFlip]],
+                            ]} />
+                            <Box>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 0.75 }}>Calibrated pixel sizes</Typography>
+                                {detector.pixelSizes.length === 0 ? (
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>None: the nominal ones are used.</Typography>
+                                ) : (
+                                    <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 1.5, overflow: "hidden", maxWidth: 360 }}>
+                                        <Stack direction="row" sx={{ bgcolor: colors.hover, px: 1.25, py: 0.5 }}>
+                                            <Typography sx={{ flex: 1, fontSize: FACILITY_TEXT.note, fontWeight: 700, color: colors.muted }}>Magnification</Typography>
+                                            <Typography sx={{ flex: 1, fontSize: FACILITY_TEXT.note, fontWeight: 700, color: colors.muted }}>Pixel size</Typography>
+                                        </Stack>
+                                        {[...detector.pixelSizes].sort((a, b) => a.magnification - b.magnification).map((row) => (
+                                            <Stack key={row.magnification} direction="row"
+                                                   sx={{ px: 1.25, py: 0.5, borderTop: `1px solid ${colors.border}` }}>
+                                                <Typography sx={{ flex: 1, fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>
+                                                    {row.magnification.toLocaleString("en-US")}×
+                                                </Typography>
+                                                <Typography sx={{ flex: 1, fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>
+                                                    {row.pixelSize} Å
+                                                </Typography>
+                                            </Stack>
+                                        ))}
+                                    </Box>
+                                )}
+                            </Box>
+                            {detector.notes && (
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, whiteSpace: "pre-wrap" }}>{detector.notes}</Typography>
+                            )}
+                        </Stack>
+                    </Box>
+                ))}
+            </DialogPart>
+        </ViewDialog>
     );
 }
 
@@ -488,6 +603,8 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
     const [sessionsEnabled, setSessionsEnabled] = useState(microscope?.sessionsEnabled ?? false);
     const [notes, setNotes] = useState(microscope?.notes ?? "");
     const [saving, setSaving] = useState(false);
+    // A detector with what was set on it, waiting for its removal to be confirmed
+    const [removingDetector, setRemovingDetector] = useState<DetectorDraft | null>(null);
     // The photo is changed with the rest, on Save: a file chosen, or the stored one removed
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [photoRemoved, setPhotoRemoved] = useState(false);
@@ -708,10 +825,51 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
                         <DetectorEditor key={draft.key} draft={draft} colors={colors} fieldSx={fieldSx}
                                         selectSx={selectSx} menuPaperSx={menuPaperSx}
                                         onChange={(change) => setDetector(draft.key, change)}
-                                        onRemove={() => setDetectors((drafts) => drafts.filter((other) => other.key !== draft.key))} />
+                                        onRemove={() => (draft.id !== null || !isEmptyDraft(draft)
+                                            ? setRemovingDetector(draft)
+                                            : setDetectors((drafts) => drafts.filter((other) => other.key !== draft.key)))} />
                     ))}
                 </DialogPart>
             </Stack>
+            {removingDetector && (() => {
+                const rows = removingDetector.pixelRows.filter((row) => row.magnification.trim() || row.pixelSize.trim());
+                const label = removingDetector.name.trim() || "this detector";
+                return (
+                    <SettingsDialog
+                        title={`Remove ${label}?`}
+                        description="Its calibration and gain reference go with it when you save the microscope. Until then, Cancel keeps everything as it was."
+                        icon={<Trash2 size={20} color="#fca5a5" />}
+                        confirmLabel="Remove the detector"
+                        destructive
+                        maxWidth="xs"
+                        actionButtonSx={actionButtonSx}
+                        closeButton
+                        onConfirm={() => {
+                            setDetectors((drafts) => drafts.filter((other) => other.key !== removingDetector.key));
+                            setRemovingDetector(null);
+                        }}
+                        onClose={() => setRemovingDetector(null)}
+                    >
+                        <Stack spacing={1} sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, px: 1.5, py: 1.25 }}>
+                            <Stack direction="row" spacing={0.75} alignItems="center">
+                                <Camera size={16} style={{ color: colors.muted }} />
+                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 800 }}>{removingDetector.name || "No name"}</Typography>
+                                {removingDetector.metadataName && (
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, fontFamily: "monospace", color: colors.muted }}>
+                                        {removingDetector.metadataName}
+                                    </Typography>
+                                )}
+                            </Stack>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                {rows.length ? `${rows.length} calibrated pixel size${rows.length === 1 ? "" : "s"}: `
+                                    + rows.map((row) => `${row.magnification}× → ${row.pixelSize} Å`).join(", ")
+                                    : "No calibrated pixel sizes"}
+                                {removingDetector.gainPath.trim() ? "; a gain reference" : ""}
+                            </Typography>
+                        </Stack>
+                    </SettingsDialog>
+                );
+            })()}
         </SettingsDialog>
     );
 }
