@@ -111,7 +111,7 @@ const SEARCH_DELAY_MS = 300;
 // While a session acquires, the list follows its folders: the watcher looks at them every 30 s
 const ACQUIRING_REFRESH_MS = 30000;
 
-const WATCH_LABELS: Record<DatasetWatch, string> = {
+export const WATCH_LABELS: Record<DatasetWatch, string> = {
     receiving: "Receiving",
     stalled: "No new movies",
     acquired: "Acquired",
@@ -123,7 +123,7 @@ const WATCH_LABELS: Record<DatasetWatch, string> = {
     atlasFound: "Atlas there",
 };
 
-const WATCH_COLORS: Record<DatasetWatch, string> = {
+export const WATCH_COLORS: Record<DatasetWatch, string> = {
     receiving: "#16a34a",
     stalled: "#d97706",
     acquired: "#64748b",
@@ -135,7 +135,7 @@ const WATCH_COLORS: Record<DatasetWatch, string> = {
     atlasFound: "#16a34a",
 };
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
     if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
     if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
     return `${Math.round(bytes / 1024 ** 2)} MB`;

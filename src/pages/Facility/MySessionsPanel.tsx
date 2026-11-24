@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Box, Button, CircularProgress, Stack, Typography, type SxProps, type Theme } from "@mui/material";
+import { Alert, Box, Button, ButtonBase, CircularProgress, Stack, Typography, type SxProps, type Theme } from "@mui/material";
 import {
-    Archive, CalendarDays, Download, FlaskConical, Layers, MessageSquare, Microscope as MicroscopeIcon, RefreshCw, Ticket,
-    UserRound, UsersRound,
+    Archive, CalendarDays, ChevronRight, Download, FlaskConical, Info, Layers, MessageSquare, Microscope as MicroscopeIcon,
+    RefreshCw, Ticket, UserRound, UsersRound,
 } from "lucide-react";
 
 import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -14,6 +14,7 @@ import {
     DatasetProgress, DatasetProjectLinks, describeDatasetGrid, SessionFacts, SessionStatusPill, sessionCardSx, type SessionFact,
 } from "./SessionsPanel";
 import NavigationReport from "./NavigationReport";
+import { DatasetView, SampleView, type MyDataset, type MySample } from "./MyFacilityDialogs";
 
 type PanelStyles = {
     actionButtonSx?: SxProps<Theme>;
@@ -99,6 +100,7 @@ function SessionCard({ session, mine, colors, card }: {
     card: string;
 }) {
     const data = session.datasets.filter((dataset) => dataset.kind === "data");
+    const [opened, setOpened] = useState<MyDataset | null>(null);
     const facts: SessionFact[] = [
         { icon: <MicroscopeIcon size={15} />, text: session.microscopeName ?? "" },
         { icon: <Layers size={15} />, text: TECHNIQUE_LABELS[session.technique] },
@@ -149,11 +151,15 @@ function SessionCard({ session, mine, colors, card }: {
                                         {describeDatasetGrid(dataset) || "no grid given"}
                                         {dataset.detectorName ? ` · ${dataset.detectorName}` : ""}
                                     </Typography>
-                                    {dataset.projectId != null && (
-                                        <Box sx={{ ml: "auto !important", flexShrink: 0 }}>
-                                            <DatasetProjectLinks dataset={dataset} colors={colors} readOnly />
-                                        </Box>
-                                    )}
+                                    <Stack direction="row" spacing={0.75} sx={{ ml: "auto !important", flexShrink: 0 }}>
+                                        {dataset.projectId != null && <DatasetProjectLinks dataset={dataset} colors={colors} readOnly />}
+                                        <Button size="small" variant="outlined" startIcon={<Info size={14} />}
+                                                aria-label={`Details of ${dataset.folder}`} onClick={() => setOpened(dataset)}
+                                                sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note, borderRadius: 2, py: 0.1, px: 1,
+                                                      minWidth: 0, lineHeight: 1.6, color: colors.text, borderColor: colors.border }}>
+                                            Details
+                                        </Button>
+                                    </Stack>
                                 </Stack>
                                 <Box sx={{ pl: 1 }}>
                                     <DatasetProgress dataset={dataset as unknown as SessionDataset} colors={colors} />
@@ -164,6 +170,7 @@ function SessionCard({ session, mine, colors, card }: {
                     </Stack>
                 </Box>
             )}
+            {opened && <DatasetView dataset={opened} sessionName={session.name} colors={colors} onClose={() => setOpened(null)} />}
         </Box>
     );
 }
@@ -176,6 +183,7 @@ export default function MySessionsPanel({ colors, actionButtonSx }: PanelStyles)
     const [mine, setMine] = useState<MyFacility | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [sample, setSample] = useState<MySample | null>(null);
 
     const load = useCallback(async (quiet = false) => {
         if (!quiet) setLoading(true);
@@ -248,6 +256,10 @@ export default function MySessionsPanel({ colors, actionButtonSx }: PanelStyles)
                 </SettingsSection>
             )}
 
+            {sample && (
+                <SampleView sample={sample} colors={colors} showOwner={mine.isPi} onClose={() => setSample(null)} />
+            )}
+
             {mine.samples.length > 0 && (
                 <SettingsSection plain icon={<FlaskConical size={19} />} colors={sectionColors} isDarkMode={isDark}
                                  title={mine.isPi ? "Samples of you and your groups" : "My samples"}>
@@ -255,8 +267,11 @@ export default function MySessionsPanel({ colors, actionButtonSx }: PanelStyles)
                         {mine.samples.map((sample, index) => {
                             const grids = sample.boxes.reduce((count, box) => count + box.grids.length, 0);
                             return (
-                                <Stack key={sample.id} direction="row" spacing={1.5} alignItems="center"
-                                       sx={{ px: 2, py: 1, borderTop: index > 0 ? `1px solid ${colors.border}` : "none" }}>
+                                <ButtonBase key={sample.id} onClick={() => setSample(sample)} aria-label={`Open ${sample.code}`}
+                                            sx={{ width: "100%", display: "flex", gap: 1.5, alignItems: "center", textAlign: "left",
+                                                  justifyContent: "flex-start", px: 2, py: 1,
+                                                  borderTop: index > 0 ? `1px solid ${colors.border}` : "none",
+                                                  "&:hover": { bgcolor: colors.hover } }}>
                                     <Box sx={{ minWidth: 0, flex: 1 }}>
                                         <Typography sx={{ fontSize: FACILITY_TEXT.itemLine + 0.5, fontWeight: 700, color: colors.text }}>
                                             {sample.code}
@@ -273,7 +288,8 @@ export default function MySessionsPanel({ colors, actionButtonSx }: PanelStyles)
                                                                 bgcolor: colors.hover, whiteSpace: "nowrap" }}>
                                         {`${sample.boxes.length} box${sample.boxes.length === 1 ? "" : "es"} · ${grids} grid${grids === 1 ? "" : "s"}`}
                                     </Box>
-                                </Stack>
+                                    <ChevronRight size={17} style={{ color: colors.muted, flexShrink: 0 }} />
+                                </ButtonBase>
                             );
                         })}
                     </Box>

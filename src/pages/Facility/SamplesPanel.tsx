@@ -62,14 +62,14 @@ type PanelStyles = {
 type Person = { id: number; email: string; firstName?: string | null; lastName?: string | null };
 type Named = { id: number; name: string };
 
-const STATUS_LABELS: Record<GridStatus, string> = {
+export const GRID_STATUS_LABELS: Record<GridStatus, string> = {
     stored: "In storage",
     loaded: "Loaded",
     used: "Used",
     discarded: "Discarded",
 };
 
-const STATUS_COLORS: Record<GridStatus, string> = {
+export const GRID_STATUS_COLORS: Record<GridStatus, string> = {
     stored: "#64748b",
     loaded: "#2563eb",
     used: "#16a34a",
@@ -131,20 +131,20 @@ function GridSlots({ box, colors }: { box: GridBox; colors: PanelStyles["colors"
                     <Tooltip key={position} arrow
                              title={grid
                                  ? [`Position ${position}`, grid.gridNumber != null ? `grid ${grid.gridNumber}` : "", grid.gridType,
-                                    grid.concentration && `${grid.concentration} mg/ml`, grid.specimen, STATUS_LABELS[grid.status],
+                                    grid.concentration && `${grid.concentration} mg/ml`, grid.specimen, GRID_STATUS_LABELS[grid.status],
                                     grid.images?.length ? `${grid.images.length} image${grid.images.length === 1 ? "" : "s"}` : ""]
                                      .filter(Boolean).join(" · ")
                                  : `Position ${position}: empty`}>
                         <Box sx={{ minWidth: 62, px: 0.75, py: 0.4, borderRadius: 1.5, textAlign: "center",
-                                   border: `1px ${grid ? "solid" : "dashed"} ${grid ? STATUS_COLORS[grid.status] : colors.border}`,
-                                   bgcolor: grid ? `${STATUS_COLORS[grid.status]}14` : "transparent",
+                                   border: `1px ${grid ? "solid" : "dashed"} ${grid ? GRID_STATUS_COLORS[grid.status] : colors.border}`,
+                                   bgcolor: grid ? `${GRID_STATUS_COLORS[grid.status]}14` : "transparent",
                                    color: grid ? colors.text : colors.muted, opacity: grid ? 1 : 0.7 }}>
                             <Typography sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 700, lineHeight: 1.3 }}>
                                 {grid?.gridNumber != null ? `#${grid.gridNumber}` : position}
                                 {grid?.images?.length ? <Camera size={12} style={{ marginLeft: 4, verticalAlign: "-1px" }} /> : null}
                             </Typography>
-                            <Typography sx={{ fontSize: FACILITY_TEXT.badge, lineHeight: 1.2, color: grid ? STATUS_COLORS[grid.status] : colors.muted }}>
-                                {grid ? (grid.gridType || STATUS_LABELS[grid.status]) : "—"}
+                            <Typography sx={{ fontSize: FACILITY_TEXT.badge, lineHeight: 1.2, color: grid ? GRID_STATUS_COLORS[grid.status] : colors.muted }}>
+                                {grid ? (grid.gridType || GRID_STATUS_LABELS[grid.status]) : "—"}
                             </Typography>
                         </Box>
                     </Tooltip>
@@ -155,13 +155,13 @@ function GridSlots({ box, colors }: { box: GridBox; colors: PanelStyles["colors"
 }
 
 /** What each colour of a grid means, beside the list. */
-function StatusLegend({ colors }: { colors: PanelStyles["colors"] }) {
+export function StatusLegend({ colors }: { colors: { muted: string } }) {
     return (
         <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={1.75} rowGap={0.5} aria-label="Grid states">
-            {(Object.keys(STATUS_LABELS) as GridStatus[]).map((status) => (
+            {(Object.keys(GRID_STATUS_LABELS) as GridStatus[]).map((status) => (
                 <Stack key={status} direction="row" spacing={0.6} alignItems="center">
-                    <Box sx={{ width: 10, height: 10, borderRadius: 0.75, bgcolor: STATUS_COLORS[status] }} />
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{STATUS_LABELS[status]}</Typography>
+                    <Box sx={{ width: 10, height: 10, borderRadius: 0.75, bgcolor: GRID_STATUS_COLORS[status] }} />
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{GRID_STATUS_LABELS[status]}</Typography>
                 </Stack>
             ))}
         </Stack>
@@ -316,7 +316,7 @@ export default function SamplesPanel({ fieldSx, selectSx, menuPaperSx, colors, a
                                                         {sample.description}
                                                     </Typography>
                                                 )}
-                                                {loaded > 0 && <Pill color={STATUS_COLORS.loaded}>{`${loaded} loaded`}</Pill>}
+                                                {loaded > 0 && <Pill color={GRID_STATUS_COLORS.loaded}>{`${loaded} loaded`}</Pill>}
                                             </Stack>
                                             <SessionFacts facts={facts} colors={colors} label="About the sample" />
                                             {(sample.images?.length ?? 0) > 0 && (
@@ -584,7 +584,7 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
     const gridField = { ...fieldSx, "& .MuiInputBase-input": { ...(fieldSx?.["& .MuiInputBase-input"] ?? {}), py: 0.75 } };
     const statusDot = (status: GridStatus) => (
         <Box component="span" sx={{ display: "inline-block", width: 10, height: 10, borderRadius: 0.75, mr: 1, flexShrink: 0,
-                                    bgcolor: STATUS_COLORS[status] }} />
+                                    bgcolor: GRID_STATUS_COLORS[status] }} />
     );
 
     return (
@@ -712,7 +712,7 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
                                     <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>No grids in this box.</Typography>
                                 )}
                                 {box.grids.map((grid) => (
-                                    <Box key={grid.key} sx={{ borderLeft: `3px solid ${STATUS_COLORS[grid.status]}`, pl: 1.25 }}>
+                                    <Box key={grid.key} sx={{ borderLeft: `3px solid ${GRID_STATUS_COLORS[grid.status]}`, pl: 1.25 }}>
                                         <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "center" }}>
                                             <FormControl size="small" sx={{ minWidth: 92 }}>
                                                 <InputLabel id={`grid-position-${grid.key}`}>Place</InputLabel>
@@ -740,12 +740,12 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
                                                         MenuProps={{ PaperProps: { sx: menuPaperSx } }}
                                                         renderValue={(value) => (
                                                             <Box component="span" sx={{ display: "inline-flex", alignItems: "center" }}>
-                                                                {statusDot(value as GridStatus)}{STATUS_LABELS[value as GridStatus]}
+                                                                {statusDot(value as GridStatus)}{GRID_STATUS_LABELS[value as GridStatus]}
                                                             </Box>
                                                         )}
                                                         onChange={(e) => setGrid(box.key, grid.key, { status: e.target.value as GridStatus })}>
-                                                    {(Object.keys(STATUS_LABELS) as GridStatus[]).map((value) => (
-                                                        <MenuItem key={value} value={value}>{statusDot(value)}{STATUS_LABELS[value]}</MenuItem>
+                                                    {(Object.keys(GRID_STATUS_LABELS) as GridStatus[]).map((value) => (
+                                                        <MenuItem key={value} value={value}>{statusDot(value)}{GRID_STATUS_LABELS[value]}</MenuItem>
                                                     ))}
                                                 </Select>
                                             </FormControl>
