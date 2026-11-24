@@ -123,16 +123,29 @@ export default function NodeScratch({ hostname, scratch, canEdit, canClean = fal
           busyLabel="Saving…"
           busy={busy}
           maxWidth="sm"
+          actionButtonSx={actionButtonSx}
+          closeButton
           onConfirm={() => void save()}
           onClose={() => setEditing(false)}
         >
-          <Stack spacing={1.25}>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={1} alignItems="center"
+                   sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.5, py: 1 }}>
+              <HardDrive size={16} style={{ color: colors.muted, flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 13.5, color: colors.muted }}>Now</Typography>
+              <Typography sx={{ fontSize: 14, fontFamily: "monospace", color: colors.text, wordBreak: "break-all" }}>
+                {current || "no scratch"}
+              </Typography>
+            </Stack>
             <TextField size="small" fullWidth label="Folder" value={path} placeholder="/scratch/scipion"
+                       inputProps={{ style: { fontFamily: "monospace" } }}
+                       helperText="Empty: this machine has no scratch."
+                       FormHelperTextProps={{ sx: { fontSize: 13.5 } }}
                        onChange={(e) => setPath(e.target.value)} />
-            <Typography sx={{ fontSize: 13.5, color: "text.secondary" }}>
+            <Alert severity="info" sx={{ fontSize: 13.5 }}>
               The folder must exist on this machine and the protocols must be able to write in it. The change takes
               effect once this machine's protocol worker is restarted.
-            </Typography>
+            </Alert>
           </Stack>
         </SettingsDialog>
       )}

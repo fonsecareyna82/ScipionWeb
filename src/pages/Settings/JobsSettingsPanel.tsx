@@ -908,32 +908,47 @@ export default function JobsSettingsPanel() {
                 )}
             </SettingsSection>
 
-            {pendingWorkerAction !== null && (
-                <SettingsDialog
-                    title={`${pendingWorkerAction.action === "restart"
-                        ? "Restart"
-                        : "Stop"} the ${pendingWorkerAction.workerKind} worker?`}
-                    description={`It has ${pendingWorkerAction.activeTasks} active task(s). `
-                        + `${pendingWorkerAction.action === "restart"
-                            ? "Restarting"
-                            : "Stopping"} it may interrupt them.`}
-                    icon={<TriangleAlert size={20} color="#fca5a5" />}
-                    confirmLabel={pendingWorkerAction.action === "restart"
-                        ? "Restart"
-                        : "Stop"}
-                    destructive
-                    maxWidth="xs"
-                    onConfirm={() => {
-                        const { workerKind, action } = pendingWorkerAction;
-                        setPendingWorkerAction(null);
-                        void runWorkerAction(
-                            workerKind,
-                            action,
-                        );
-                    }}
-                    onClose={() => setPendingWorkerAction(null)}
-                />
-            )}
+            {pendingWorkerAction !== null && (() => {
+                const { workerKind, action, activeTasks } = pendingWorkerAction;
+                const restart = action === "restart";
+                return (
+                    <SettingsDialog
+                        title={`${restart ? "Restart" : "Stop"} the ${workerKind} worker?`}
+                        description={`${restart ? "Restarting" : "Stopping"} it now may interrupt what it is doing.`}
+                        icon={<TriangleAlert size={20} color="#fca5a5" />}
+                        confirmLabel={restart ? "Restart" : "Stop"}
+                        destructive
+                        maxWidth="xs"
+                        actionButtonSx={actionButtonSx}
+                        closeButton
+                        onConfirm={() => {
+                            setPendingWorkerAction(null);
+                            void runWorkerAction(workerKind, action);
+                        }}
+                        onClose={() => setPendingWorkerAction(null)}
+                    >
+                        <Stack spacing={1.25}>
+                            <Stack direction="row" spacing={1.25} alignItems="center"
+                                   sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #d97706", borderRadius: 2, px: 1.5, py: 1.25 }}>
+                                <Server size={18} style={{ color: colors.muted, flexShrink: 0 }} />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 800, color: colors.text }}>
+                                        The {workerKind} worker
+                                    </Typography>
+                                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: "#b45309", fontWeight: 700 }}>
+                                        {activeTasks} task{activeTasks === 1 ? "" : "s"} running now
+                                    </Typography>
+                                </Box>
+                            </Stack>
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>
+                                {restart
+                                    ? "It comes back by itself in a few seconds and takes new tasks again."
+                                    : "It stays stopped, and takes no task, until you start it again from this list."}
+                            </Typography>
+                        </Stack>
+                    </SettingsDialog>
+                );
+            })()}
         </Stack>
     );
 }

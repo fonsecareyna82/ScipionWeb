@@ -44,7 +44,8 @@ describe("JobsSettingsPanel worker actions", () => {
 
         const dialog = await screen.findByRole("dialog");
         expect(dialog).toHaveTextContent("Stop the protocols worker?");
-        expect(dialog).toHaveTextContent("It has 2 active task(s).");
+        expect(dialog).toHaveTextContent("2 tasks running now");
+        expect(dialog).toHaveTextContent("It stays stopped");
         expect(confirmSpy).not.toHaveBeenCalled();
         expect(controlJobWorker).not.toHaveBeenCalled();
 
