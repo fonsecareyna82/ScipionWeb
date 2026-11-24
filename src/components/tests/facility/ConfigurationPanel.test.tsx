@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -168,7 +168,28 @@ describe("The room screen's link", () => {
     expect(screen.getByRole("link", { name: /Open the screen/ })).toHaveAttribute("href", `${window.location.origin}/room?token=abc123`);
 
     fireEvent.click(screen.getByRole("button", { name: /Turn off/ }));
+    const confirm = await screen.findByRole("dialog", { name: "Turn the room screen off?" });
+    expect(facilityMocks.turnOffRoomScreen).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Turn off" }));
     expect(await screen.findByText(/The room screen is off/)).toBeInTheDocument();
     expect(facilityMocks.turnOffRoomScreen).toHaveBeenCalled();
+  }, 15000);
+
+  it("asks before making a new link, which stops the one in use", async () => {
+    facilityMocks.getRoomScreenLink.mockResolvedValue({ enabled: true, token: "abc123", createdAt: "2026-11-03T10:00:00Z" });
+    facilityMocks.makeRoomScreenLink.mockResolvedValue({ enabled: true, token: "xyz789", createdAt: "2026-11-24T10:00:00Z" });
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Room screen/ }, { timeout: 4000 }));
+    fireEvent.click(await screen.findByRole("button", { name: /New link/ }));
+    let confirm = await screen.findByRole("dialog", { name: "Make a new link?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(facilityMocks.makeRoomScreenLink).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /New link/ }));
+    confirm = await screen.findByRole("dialog", { name: "Make a new link?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Make a new link" }));
+    expect(await screen.findByText(`${window.location.origin}/room?token=xyz789`)).toBeInTheDocument();
   }, 15000);
 });

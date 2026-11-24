@@ -11,7 +11,7 @@ import toast from "react-hot-toast";
 import { Link as RouterLink } from "react-router";
 
 import { useIsDark } from "@/context/ThemeContext";
-import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
+import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { SettingRow, SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
 import {
     getFacilitySettings,
@@ -602,6 +602,8 @@ function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
     const [link, setLink] = useState<RoomScreenLink | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // A change that stops the screen now, waiting to be confirmed
+    const [asking, setAsking] = useState<"renew" | "off" | null>(null);
 
     useEffect(() => {
         getRoomScreenLink().then(setLink).catch((e: any) => setError(String(e?.message || "Failed to load the link")));
@@ -613,6 +615,7 @@ function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
         try {
             setLink(await action());
             toast.success(done);
+            setAsking(null);
         } catch (e: any) {
             toast.error(String(e?.message || "That did not work"));
         } finally {
@@ -634,7 +637,48 @@ function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
         [<CalendarClock size={15} />, "The sessions of the next days"],
     ];
 
+    const since = link.createdAt
+        ? new Date(link.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+        : "";
+
     return (
+        <>
+        {asking && (
+            <SettingsDialog
+                title={asking === "renew" ? "Make a new link?" : "Turn the room screen off?"}
+                description={asking === "renew"
+                    ? "The link in use stops working at once: the room's screen goes blank until the new link is opened on it."
+                    : "The link stops working at once and the room's screen goes blank. Make its link again to turn it on: it will be a new one."}
+                icon={asking === "renew" ? <RefreshCw size={20} color="white" /> : <Power size={20} color="#fca5a5" />}
+                confirmLabel={asking === "renew" ? "Make a new link" : "Turn off"}
+                busyLabel={asking === "renew" ? "Making…" : "Turning off…"}
+                busy={busy}
+                destructive={asking === "off"}
+                maxWidth="xs"
+                actionButtonSx={actionSx}
+                saveButtonSx={saveSx}
+                closeButton
+                onConfirm={() => void (asking === "renew"
+                    ? act(makeRoomScreenLink, "New link made: the old one no longer works.")
+                    : act(turnOffRoomScreen, "The room screen is off."))}
+                onClose={() => setAsking(null)}
+            >
+                <Stack spacing={1}>
+                    <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.5, py: 1, fontFamily: "monospace",
+                               fontSize: FACILITY_TEXT.note, wordBreak: "break-all", color: colors.text }}>
+                        {url}
+                    </Box>
+                    {since && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>In use since {since}.</Typography>
+                    )}
+                    {asking === "renew" && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                            Make one when the link went further than the room's screen.
+                        </Typography>
+                    )}
+                </Stack>
+            </SettingsDialog>
+        )}
         <SettingsSection
             plain
             icon={<MonitorPlay size={19} />}
@@ -645,11 +689,11 @@ function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
             actions={on ? (
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="flex-end">
                     <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
-                            disabled={busy} onClick={() => void act(makeRoomScreenLink, "New link made: the old one no longer works.")}>
+                            disabled={busy} onClick={() => setAsking("renew")}>
                         New link
                     </Button>
                     <Button size="small" variant="outlined" sx={{ ...actionSx, color: "#dc2626" }} startIcon={<Power size={15} />}
-                            disabled={busy} onClick={() => void act(turnOffRoomScreen, "The room screen is off.")}>
+                            disabled={busy} onClick={() => setAsking("off")}>
                         Turn off
                     </Button>
                 </Stack>
@@ -710,5 +754,6 @@ function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
                 </Box>
             </Box>
         </SettingsSection>
+        </>
     );
 }
