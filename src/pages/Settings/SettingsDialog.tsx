@@ -98,9 +98,10 @@ export default function SettingsDialog({
 
             <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center"
                    sx={{ px: 2.5, py: 1.75, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
-                {footerNote && (
-                    <Typography sx={{ mr: "auto", fontSize: 12.5, opacity: 0.75 }}>{footerNote}</Typography>
-                )}
+                {footerNote && (typeof footerNote === "string"
+                    ? <Typography sx={{ mr: "auto", fontSize: 12.5, opacity: 0.75 }}>{footerNote}</Typography>
+                    // Something to click (another way out) rather than a note
+                    : <Box sx={{ mr: "auto" }}>{footerNote}</Box>)}
                 <Button variant="outlined" onClick={onClose} disabled={busy} sx={actionButtonSx ?? ROUNDED_BUTTON_SX}>
                     Cancel
                 </Button>

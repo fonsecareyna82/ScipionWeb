@@ -54,4 +54,23 @@ describe("Facility resources", () => {
     expect(await screen.findByText("2 resources")).toBeInTheDocument();
     expect(facilityMocks.createResource).not.toHaveBeenCalled();
   });
+
+  it("asks before deleting a resource, and offers to set it out of use instead", async () => {
+    facilityMocks.deleteResource.mockResolvedValue(null);
+    render(<ResourcesDialog {...styles} onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Krios G5" }));
+    let confirm = await screen.findByRole("dialog", { name: "Delete Krios G5?" });
+    expect(facilityMocks.deleteResource).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Set out of use instead" }));
+    await waitFor(() => expect(facilityMocks.updateResource).toHaveBeenCalledWith(1, expect.objectContaining({ active: false })));
+    expect(facilityMocks.deleteResource).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Vitrobot" }));
+    confirm = await screen.findByRole("dialog", { name: "Delete Vitrobot?" });
+    // Already out of use: nothing to offer instead
+    expect(within(confirm).queryByRole("button", { name: "Set out of use instead" })).not.toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(facilityMocks.deleteResource).toHaveBeenCalledWith(2));
+  });
 });

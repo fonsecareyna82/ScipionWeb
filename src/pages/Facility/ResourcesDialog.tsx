@@ -4,7 +4,7 @@ import {
     ToggleButtonGroup, Tooltip, Typography,
 } from "@mui/material";
 import {
-    ArrowLeft, Boxes, Clock, Microscope as MicroscopeIcon, Pencil, Plus, Receipt, Settings2, ShieldCheck, Sunrise, Timer,
+    ArrowLeft, Ban, Boxes, Clock, Microscope as MicroscopeIcon, Pencil, Plus, Receipt, Settings2, ShieldCheck, Sunrise, Timer,
     Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -71,6 +71,9 @@ export default function ResourcesDialog({ fieldSx, selectSx, menuPaperSx, colors
     const [microscopes, setMicroscopes] = useState<Microscope[]>([]);
     const [editing, setEditing] = useState<{ id: number | null; draft: Draft } | null>(null);
     const [saving, setSaving] = useState(false);
+    // A resource waiting for its deletion to be confirmed
+    const [deleting, setDeleting] = useState<FacilityResource | null>(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const isDark = useIsDark();
     const tint = sectionTint(isDark);
@@ -105,12 +108,30 @@ export default function ResourcesDialog({ fieldSx, selectSx, menuPaperSx, colors
         }
     };
     const remove = async (resource: FacilityResource) => {
+        setDeleteBusy(true);
         try {
             await deleteResource(resource.id);
             toast.success(`${resource.name} deleted.`);
+            setDeleting(null);
             await load();
         } catch (e: any) {
             toast.error(String(e?.message || e));
+        } finally {
+            setDeleteBusy(false);
+        }
+    };
+    // One with bookings cannot go: out of use, it is kept with its history and nobody books it any more
+    const retire = async (resource: FacilityResource) => {
+        setDeleteBusy(true);
+        try {
+            await updateResource(resource.id, { ...resource, active: false } as ResourcePayload);
+            toast.success(`${resource.name} is out of use: nobody can book it.`);
+            setDeleting(null);
+            await load();
+        } catch (e: any) {
+            toast.error(String(e?.message || e));
+        } finally {
+            setDeleteBusy(false);
         }
     };
 
@@ -277,7 +298,7 @@ export default function ResourcesDialog({ fieldSx, selectSx, menuPaperSx, colors
                                 </Button>
                                 <Tooltip arrow title="Delete it (one with bookings stays: set it out of use)">
                                     <IconButton size="small" aria-label={`Delete ${resource.name}`} sx={{ color: "#dc2626" }}
-                                                onClick={() => void remove(resource)}>
+                                                onClick={() => setDeleting(resource)}>
                                         <Trash2 size={17} />
                                     </IconButton>
                                 </Tooltip>
@@ -285,6 +306,40 @@ export default function ResourcesDialog({ fieldSx, selectSx, menuPaperSx, colors
                         );
                     })}
                 </Stack>
+            )}
+            {deleting && (
+                <SettingsDialog
+                    title={`Delete ${deleting.name}?`}
+                    description="It goes for good. A resource with bookings cannot be deleted: set it out of use instead, and its bookings stay."
+                    icon={<Trash2 size={20} color="#fca5a5" />}
+                    confirmLabel="Delete"
+                    busyLabel="Deleting…"
+                    busy={deleteBusy}
+                    destructive
+                    maxWidth="xs"
+                    actionButtonSx={actionSx}
+                    closeButton
+                    footerNote={deleting.active ? (
+                        <Button size="small" variant="text" disabled={deleteBusy} startIcon={<Ban size={14} />}
+                                sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note }} onClick={() => void retire(deleting)}>
+                            Set out of use instead
+                        </Button>
+                    ) : undefined}
+                    onConfirm={() => void remove(deleting)}
+                    onClose={() => setDeleting(null)}
+                >
+                    <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${resourceColor(deleting)}`, borderRadius: 2,
+                               px: 1.5, py: 1.25 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800 }}>{deleting.name}</Typography>
+                            {!deleting.active && <Pill color="#64748b">Not in use</Pill>}
+                        </Stack>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.25 }}>
+                            {[UNIT_LABELS[deleting.unit], deleting.microscopeName && `the microscope ${deleting.microscopeName}`]
+                                .filter(Boolean).join(" · ")}
+                        </Typography>
+                    </Box>
+                </SettingsDialog>
             )}
         </SettingsDialog>
     );
