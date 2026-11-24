@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DateSelectArg, DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import {
-    Alert, Box, Button, Card, CardContent, CardHeader, Chip, Dialog, FormControl, InputLabel, MenuItem, Select, Stack,
-    TextField, Typography,
+    Alert, Autocomplete, Box, Button, Dialog, FormControl, InputLabel, MenuItem, Select, Stack, TextField, ToggleButton,
+    ToggleButtonGroup, Typography,
 } from "@mui/material";
-import { CalendarPlus, Check, Clock, Settings2, X } from "lucide-react";
+import {
+    Boxes, CalendarCheck, CalendarDays, CalendarPlus, Check, Clock, Inbox, Info, MessageSquare, Settings2, UsersRound, X,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
@@ -20,7 +22,10 @@ import {
     listResources, updateBooking,
     type BookingKind, type BookingPayload, type BookingStatus, type FacilityBooking, type FacilityResource, type MyBookings,
 } from "@/api/facility";
-import { FACILITY_TEXT } from "./facilityStyles";
+import { useIsDark } from "@/context/ThemeContext";
+import { SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
+import { DialogPart } from "./DialogParts";
+import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
 import ResourcesDialog, { resourceColor } from "./ResourcesDialog";
 
 type PanelStyles = {
@@ -136,18 +141,82 @@ function writeFilter(ids: number[]) {
     }
 }
 
+const STATUS_COLORS: Record<BookingStatus, string> = {
+    requested: "#b45309",
+    alternative: "#2563eb",
+    confirmed: "#16a34a",
+    rejected: "#64748b",
+    cancelled: "#64748b",
+};
+
 function StatusChip({ status }: { status: BookingStatus }) {
-    const color = status === "confirmed" ? "success" : status === "requested" ? "warning"
-        : status === "alternative" ? "info" : "default";
-    return <Chip size="small" color={color as any} variant={status === "confirmed" ? "filled" : "outlined"}
-                 label={BOOKING_STATUS_LABELS[status]} sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 600 }} />;
+    const color = STATUS_COLORS[status];
+    return (
+        <Box component="span" sx={{ px: 1, borderRadius: 10, flexShrink: 0, lineHeight: 1.7, fontSize: FACILITY_TEXT.badge,
+                                    fontWeight: 700, whiteSpace: "nowrap", color, bgcolor: `${color}1f` }}>
+            {BOOKING_STATUS_LABELS[status]}
+        </Box>
+    );
+}
+
+/** One booking in a list: the band of its resource's colour, what and when, and its actions. */
+function BookingRow({ color, colors, card, title, status, onOpen, children, actions, label }: {
+    color: string;
+    colors: PanelStyles["colors"];
+    card: string;
+    title: string;
+    status: BookingStatus;
+    onOpen: () => void;
+    children?: ReactNode;
+    actions?: ReactNode;
+    label?: string;
+}) {
+    return (
+        <Box role={label ? "group" : undefined} aria-label={label}
+             sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${color}`, borderRadius: 2.5, bgcolor: card,
+                   px: 2, py: 1.5 }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
+                <Box sx={{ minWidth: 0, flex: 1, cursor: "pointer" }} onClick={onOpen}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: children ? 0.5 : 0, flexWrap: "wrap", rowGap: 0.5 }}>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>{title}</Typography>
+                        <StatusChip status={status} />
+                    </Stack>
+                    {children}
+                </Box>
+                {actions && <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>{actions}</Stack>}
+            </Stack>
+        </Box>
+    );
 }
 
 /** The facility's calendar: who has which resource when, the requests waiting, and one's own bookings. */
 export default function CalendarPanel(props: PanelStyles & { isStaff: boolean; isManager: boolean }) {
-    const { cardSx, cardHeaderSx, colors, isStaff, isManager } = props;
+    const { colors, isStaff, isManager } = props;
     const actionSx = props.actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = props.saveButtonSx ?? ROUNDED_BUTTON_SX;
+    const isDark = useIsDark();
+    const sectionColors = { ...useFacilityStyles().colors, ...colors };
+    // The calendar in the look of the page: its buttons, lines, today and the hours
+    const calendarSx = {
+        "& .fc": { fontSize: 14, "--fc-border-color": colors.border, "--fc-page-bg-color": sectionColors.card,
+                   "--fc-today-bg-color": sectionTint(isDark), "--fc-now-indicator-color": "#dc2626",
+                   "--fc-neutral-bg-color": colors.hover, color: colors.text },
+        "& .fc .fc-toolbar-title": { fontSize: 18, fontWeight: 800 },
+        "& .fc .fc-button": { textTransform: "none", fontSize: 13.5, fontWeight: 600, borderRadius: "8px", boxShadow: "none",
+                              bgcolor: "transparent", color: colors.text, borderColor: colors.border, px: 1.5, py: 0.6 },
+        "& .fc .fc-button:hover": { bgcolor: colors.hover, color: colors.text, borderColor: colors.border },
+        "& .fc .fc-button:focus": { boxShadow: "none" },
+        "& .fc .fc-button-primary:not(:disabled).fc-button-active, & .fc .fc-button-primary:not(:disabled):active": {
+            bgcolor: sectionTint(isDark), color: sectionColors.primary, borderColor: sectionColors.primary },
+        "& .fc .fc-button:disabled": { opacity: 0.5 },
+        "& .fc .fc-button-group > .fc-button": { borderRadius: 0 },
+        "& .fc .fc-button-group > .fc-button:first-of-type": { borderTopLeftRadius: "8px", borderBottomLeftRadius: "8px" },
+        "& .fc .fc-button-group > .fc-button:last-of-type": { borderTopRightRadius: "8px", borderBottomRightRadius: "8px" },
+        "& .fc .fc-col-header-cell-cushion, & .fc .fc-daygrid-day-number": { color: colors.text, textDecoration: "none", fontWeight: 600 },
+        "& .fc .fc-timegrid-slot-label-cushion": { color: colors.muted, fontSize: 13 },
+        "& .fc .fc-scrollgrid": { borderRadius: "10px", overflow: "hidden" },
+        "& .fc-event": { cursor: "pointer", borderRadius: "6px", fontWeight: 600 },
+    } as const;
     const [resources, setResources] = useState<FacilityResource[]>([]);
     const [shown, setShown] = useState<number[]>(readFilter);
     const [range, setRange] = useState<{ start: string; end: string } | null>(null);
@@ -249,184 +318,177 @@ export default function CalendarPanel(props: PanelStyles & { isStaff: boolean; i
     return (
         <Stack spacing={2}>
             {isStaff && queue.length > 0 && (
-                <Card variant="outlined" sx={cardSx}>
-                    <CardHeader title={`Requests waiting (${queue.length})`}
-                                subheader="Highest priority first, then the oldest. Confirm, offer another time or reject: the user is told by mail when the facility's mail is on."
-                                sx={cardHeaderSx} />
-                    <CardContent sx={{ pt: 2 }}>
-                        <Stack spacing={1.5}>
-                            {queue.map((booking) => (
-                                <Box key={booking.id} role="group" aria-label={`Request ${booking.id}`}
-                                     sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.75 }}>
-                                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ md: "center" }}>
-                                        <Box sx={{ minWidth: 0, flex: 1, cursor: "pointer" }} onClick={() => setOpened(booking)}>
-                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                <Box sx={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-                                                           bgcolor: resourceColor(byId.get(booking.resourceId)) }} />
-                                                <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
-                                                    {booking.resourceName} · {formatWhen(booking.startsAt, booking.endsAt)}
-                                                </Typography>
-                                                <StatusChip status={booking.status} />
-                                            </Stack>
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                                {[booking.ownerName || booking.ownerEmail, booking.groupName && `group ${booking.groupName}`,
-                                                  booking.technique && TECHNIQUE_LABELS[booking.technique],
-                                                  booking.priority != null && `priority ${booking.priority}`].filter(Boolean).join(" · ")}
-                                            </Typography>
-                                            {booking.justification && (
-                                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, mt: 0.5 }}>
-                                                    “{booking.justification}”
-                                                </Typography>
-                                            )}
-                                        </Box>
-                                        {booking.status === "requested" ? (
-                                            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                <SettingsSection plain icon={<Inbox size={19} />} title={`Requests waiting (${queue.length})`}
+                                 subtitle="Highest priority first, then the oldest. The user is told by mail when the facility's mail is on."
+                                 colors={sectionColors} isDarkMode={isDark}>
+                    <Stack spacing={1.25}>
+                        {queue.map((booking) => (
+                            <BookingRow key={booking.id} label={`Request ${booking.id}`} colors={colors} card={sectionColors.card}
+                                        color={resourceColor(byId.get(booking.resourceId))} status={booking.status}
+                                        title={`${booking.resourceName} · ${formatWhen(booking.startsAt, booking.endsAt)}`}
+                                        onOpen={() => setOpened(booking)}
+                                        actions={booking.status === "requested" ? (
+                                            <>
                                                 <Button size="small" variant="contained" sx={saveSx} startIcon={<Check size={14} />}
                                                         onClick={() => setDeciding({ booking, action: "confirm" })}>Confirm</Button>
                                                 <Button size="small" variant="outlined" sx={actionSx} startIcon={<Clock size={14} />}
                                                         onClick={() => setDeciding({ booking, action: "propose" })}>Other time</Button>
-                                                <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }}
+                                                <Button size="small" variant="outlined" sx={{ ...actionSx, color: "#dc2626" }}
                                                         startIcon={<X size={14} />}
                                                         onClick={() => setDeciding({ booking, action: "reject" })}>Reject</Button>
-                                            </Stack>
+                                            </>
                                         ) : (
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, flexShrink: 0 }}>
+                                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
                                                 Waiting for the user's answer
                                             </Typography>
-                                        )}
-                                    </Stack>
-                                </Box>
-                            ))}
-                        </Stack>
-                    </CardContent>
-                </Card>
+                                        )}>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                                    {[booking.ownerName || booking.ownerEmail, booking.groupName && `group ${booking.groupName}`,
+                                      booking.technique && TECHNIQUE_LABELS[booking.technique],
+                                      booking.priority != null && `priority ${booking.priority}`].filter(Boolean).join(" · ")}
+                                </Typography>
+                                {booking.justification && (
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, mt: 0.75, px: 1.25, py: 0.5,
+                                                      borderLeft: `3px solid ${colors.border}`, fontStyle: "italic" }}>
+                                        “{booking.justification}”
+                                    </Typography>
+                                )}
+                            </BookingRow>
+                        ))}
+                    </Stack>
+                </SettingsSection>
             )}
 
             {/* A user always sees where their requests go, even before the first one; the staff only when they have some */}
             {mine !== null && (myOpen.length > 0 || !isStaff) && (
-                <Card variant="outlined" sx={cardSx}>
-                    <CardHeader title="My bookings" sx={cardHeaderSx} />
-                    <CardContent sx={{ pt: 2 }}>
-                        {myOpen.length === 0 && (
-                            <Typography data-testid="my-bookings-empty" sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                No bookings to come. Ask for time below: your requests wait here until the facility
-                                confirms them or offers another time.
+                <SettingsSection plain icon={<CalendarCheck size={19} />} title="My bookings" colors={sectionColors} isDarkMode={isDark}
+                                 subtitle="Your bookings to come and your requests, until the facility answers them.">
+                    {myOpen.length === 0 && (
+                        <Box data-testid="my-bookings-empty"
+                             sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 2.5, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
+                                No bookings to come.
                             </Typography>
-                        )}
-                        <Stack spacing={1.25}>
-                            {myOpen.map((booking) => (
-                                <Stack key={booking.id} direction={{ xs: "column", sm: "row" }} spacing={1.5}
-                                       alignItems={{ sm: "center" }}
-                                       sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                                    <Box sx={{ minWidth: 0, flex: 1, cursor: "pointer" }} onClick={() => setOpened(booking)}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
-                                                {booking.resourceName} · {formatWhen(booking.startsAt, booking.endsAt)}
-                                            </Typography>
-                                            <StatusChip status={booking.status} />
-                                        </Stack>
-                                        {booking.status === "alternative" && booking.proposedStartsAt && booking.proposedEndsAt && (
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, mt: 0.5 }}>
-                                                The facility offers {formatWhen(booking.proposedStartsAt, booking.proposedEndsAt)}
-                                                {booking.decisionReason ? `: ${booking.decisionReason}` : ""}
-                                            </Typography>
-                                        )}
-                                    </Box>
-                                    {booking.status === "alternative" && (
-                                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                            <Button size="small" variant="contained" sx={saveSx}
-                                                    onClick={() => void answerBooking(booking.id, true)
-                                                        .then(() => { toast.success("Booked at the time offered."); reload(); })
-                                                        .catch((e: any) => toast.error(String(e?.message || e)))}>
-                                                Take it
-                                            </Button>
-                                            <Button size="small" variant="outlined" sx={actionSx}
-                                                    onClick={() => void answerBooking(booking.id, false)
-                                                        .then(() => { toast.success("Declined."); reload(); })
-                                                        .catch((e: any) => toast.error(String(e?.message || e)))}>
-                                                Decline
-                                            </Button>
-                                        </Stack>
-                                    )}
-                                </Stack>
-                            ))}
-                        </Stack>
-                    </CardContent>
-                </Card>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.5 }}>
+                                Ask for time below: your requests wait here until the facility confirms them or offers another time.
+                            </Typography>
+                        </Box>
+                    )}
+                    <Stack spacing={1.25}>
+                        {myOpen.map((booking) => (
+                            <BookingRow key={booking.id} colors={colors} card={sectionColors.card}
+                                        color={resourceColor(byId.get(booking.resourceId))} status={booking.status}
+                                        title={`${booking.resourceName} · ${formatWhen(booking.startsAt, booking.endsAt)}`}
+                                        onOpen={() => setOpened(booking)}
+                                        actions={booking.status === "alternative" ? (
+                                            <>
+                                                <Button size="small" variant="contained" sx={saveSx}
+                                                        onClick={() => void answerBooking(booking.id, true)
+                                                            .then(() => { toast.success("Booked at the time offered."); reload(); })
+                                                            .catch((e: any) => toast.error(String(e?.message || e)))}>
+                                                    Take it
+                                                </Button>
+                                                <Button size="small" variant="outlined" sx={actionSx}
+                                                        onClick={() => void answerBooking(booking.id, false)
+                                                            .then(() => { toast.success("Declined."); reload(); })
+                                                            .catch((e: any) => toast.error(String(e?.message || e)))}>
+                                                    Decline
+                                                </Button>
+                                            </>
+                                        ) : undefined}>
+                                {booking.status === "alternative" && booking.proposedStartsAt && booking.proposedEndsAt && (
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>
+                                        The facility offers {formatWhen(booking.proposedStartsAt, booking.proposedEndsAt)}
+                                        {booking.decisionReason ? `: ${booking.decisionReason}` : ""}
+                                    </Typography>
+                                )}
+                            </BookingRow>
+                        ))}
+                    </Stack>
+                </SettingsSection>
             )}
 
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Calendar"
-                    subheader={isStaff
-                        ? "Every resource's bookings and blocks. Drag over a time to book it or block it; click a booking to see it, move it or cancel it."
-                        : "When each resource is taken. Drag over a free time (or pick days in the month) to ask for it: the facility confirms it or offers another."}
-                    sx={cardHeaderSx}
-                    action={
-                        <Stack direction="row" spacing={1}>
-                            {isManager && (
-                                <Button size="small" variant="outlined" sx={actionSx} startIcon={<Settings2 size={15} />}
-                                        onClick={() => setManaging(true)}>
-                                    Resources
+            <SettingsSection
+                plain
+                icon={<CalendarDays size={19} />}
+                title="Calendar"
+                subtitle={isStaff
+                    ? "Every resource's bookings and blocks. Drag over a time to book or block it; click a booking to see, move or cancel it."
+                    : "When each resource is taken. Drag over a free time (or pick days in the month) to ask for it."}
+                colors={sectionColors}
+                isDarkMode={isDark}
+                actions={
+                    <Stack direction="row" spacing={1}>
+                        {isManager && (
+                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<Settings2 size={15} />}
+                                    onClick={() => setManaging(true)}>
+                                Resources
+                            </Button>
+                        )}
+                        <Button size="small" variant="contained" sx={saveSx} startIcon={<CalendarPlus size={15} />}
+                                disabled={usable.length === 0}
+                                onClick={() => setEditing({ initial: { resourceId: shown.length === 1 ? shown[0] : usable[0]?.id } })}>
+                            {isStaff ? "New booking" : "Ask for time"}
+                        </Button>
+                    </Stack>
+                }
+            >
+                <Stack spacing={2}>
+                    {resources.length === 0 ? (
+                        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 2.5, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
+                                Nothing can be booked yet{isManager ? ": add the resources" : ""}.
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" aria-label="Resources shown">
+                            {usable.map((resource) => {
+                                const on = shown.length === 0 || shown.includes(resource.id);
+                                const color = resourceColor(resource);
+                                return (
+                                    <Box key={resource.id} component="button" type="button" onClick={() => toggle(resource.id)}
+                                         aria-pressed={shown.includes(resource.id)}
+                                         sx={{ display: "inline-flex", alignItems: "center", gap: 1, px: 1.5, py: 0.6, borderRadius: 10,
+                                               cursor: "pointer", font: "inherit", fontSize: FACILITY_TEXT.itemLine, fontWeight: 600,
+                                               color: on ? colors.text : colors.muted, opacity: on ? 1 : 0.65,
+                                               border: `1px solid ${on ? color : colors.border}`,
+                                               bgcolor: on ? `${color}1a` : "transparent", "&:hover": { bgcolor: `${color}26` } }}>
+                                        <Box component="span" sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: color }} />
+                                        {resource.name}
+                                    </Box>
+                                );
+                            })}
+                            {shown.length > 0 && (
+                                <Button size="small" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note }}
+                                        onClick={() => { setShown([]); writeFilter([]); }}>
+                                    Show all
                                 </Button>
                             )}
-                            <Button size="small" variant="contained" sx={saveSx} startIcon={<CalendarPlus size={15} />}
-                                    disabled={usable.length === 0}
-                                    onClick={() => setEditing({ initial: { resourceId: shown.length === 1 ? shown[0] : usable[0]?.id } })}>
-                                {isStaff ? "New booking" : "Ask for time"}
-                            </Button>
                         </Stack>
-                    }
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={2}>
-                        {resources.length === 0 ? (
-                            <Alert severity="info">Nothing can be booked yet{isManager ? ": add the resources" : ""}.</Alert>
-                        ) : (
-                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" aria-label="Resources shown">
-                                {usable.map((resource) => {
-                                    const on = shown.length === 0 || shown.includes(resource.id);
-                                    return (
-                                        <Chip key={resource.id} clickable onClick={() => toggle(resource.id)}
-                                              aria-pressed={shown.includes(resource.id)}
-                                              label={resource.name} variant={on ? "filled" : "outlined"}
-                                              icon={<Box component="span" sx={{ width: 10, height: 10, borderRadius: "50%", ml: "8px !important",
-                                                                                bgcolor: resourceColor(resource) }} />}
-                                              sx={{ fontSize: FACILITY_TEXT.itemLine, opacity: on ? 1 : 0.6 }} />
-                                    );
-                                })}
-                                {shown.length > 0 && (
-                                    <Button size="small" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note }}
-                                            onClick={() => { setShown([]); writeFilter([]); }}>
-                                        Show all
-                                    </Button>
-                                )}
-                            </Stack>
-                        )}
-                        <Box sx={{ "& .fc": { fontSize: 14 }, "& .fc-event": { cursor: "pointer" } }}>
-                            <FullCalendar
-                                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                                initialView="timeGridWeek"
-                                firstDay={1}
-                                headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
-                                buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
-                                nowIndicator
-                                selectable
-                                selectMirror
-                                allDaySlot={false}
-                                slotDuration="01:00:00"
-                                height="auto"
-                                eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-                                slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-                                events={events}
-                                select={onSelect}
-                                eventClick={onEventClick}
-                                datesSet={onDatesSet}
-                            />
-                        </Box>
-                    </Stack>
-                </CardContent>
-            </Card>
+                    )}
+                    <Box sx={calendarSx}>
+                        <FullCalendar
+                            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                            initialView="timeGridWeek"
+                            firstDay={1}
+                            headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay" }}
+                            buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
+                            nowIndicator
+                            selectable
+                            selectMirror
+                            allDaySlot={false}
+                            slotDuration="01:00:00"
+                            height="auto"
+                            eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+                            slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+                            events={events}
+                            select={onSelect}
+                            eventClick={onEventClick}
+                            datesSet={onDatesSet}
+                        />
+                    </Box>
+                </Stack>
+            </SettingsSection>
 
             {editing && (
                 <BookingDialog {...props} booking={editing.booking} initial={editing.initial} resources={resources}
@@ -445,6 +507,26 @@ export default function CalendarPanel(props: PanelStyles & { isStaff: boolean; i
             {managing && (
                 <ResourcesDialog {...props} onClose={() => { setManaging(false); loadResources(); reload(); }} />
             )}
+        </Stack>
+    );
+}
+
+/** A resource's name after its colour. */
+function Dot({ color, label }: { color: string; label: string }) {
+    return (
+        <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+            <Box component="span" sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: color, flexShrink: 0 }} />
+            {label}
+        </Box>
+    );
+}
+
+/** A choice with its name on the left. */
+function ChoiceRow({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, minWidth: 90 }}>{label}</Typography>
+            {children}
         </Stack>
     );
 }
@@ -490,6 +572,11 @@ function BookingDialog({ booking, initial, resources, isStaff, myGroups, fieldSx
 
     const resource = resources.find((candidate) => candidate.id === resourceId);
     const choices = resources.filter((candidate) => candidate.active || candidate.id === resourceId);
+    const isDark = useIsDark();
+    const tint = sectionTint(isDark);
+    const choiceSx = choiceButtonsSx({ ...colors, card: "", primary: useFacilityStyles().colors.primary }, isDark);
+    const owner = ownerId === "" ? null : people.find((person) => person.id === ownerId)
+        ?? { id: ownerId, email: "", firstName: booking?.ownerName || `#${ownerId}`, lastName: "" };
     const duration = start && end ? hoursBetween(fromLocalInput(start), fromLocalInput(end)) : 0;
     const isBooking = kind === "booking";
     // A user asks for a time to come; the dates are typed in the browser's own order, so say which were read
@@ -535,130 +622,163 @@ function BookingDialog({ booking, initial, resources, isStaff, myGroups, fieldSx
             busy={saving}
             confirmDisabled={!valid}
             maxWidth="md"
+            closeButton
             actionButtonSx={actionButtonSx}
             saveButtonSx={saveButtonSx}
             onConfirm={() => void save()}
             onClose={onClose}
         >
-            <Stack spacing={2.5} sx={{ pt: 1 }}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Stack spacing={2}>
+                <DialogPart icon={<Boxes size={18} />} title="What" tint={tint} colors={colors}
+                            subtitle={isStaff ? "The resource, and whether it is a user's booking or a block of it." : "The resource you need."}>
                     <FormControl size="small" fullWidth>
                         <InputLabel id="booking-resource-label">Resource</InputLabel>
                         <Select labelId="booking-resource-label" label="Resource" sx={selectSx} value={resourceId}
                                 MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                renderValue={(value) => {
+                                    const chosen = resources.find((candidate) => candidate.id === value);
+                                    return chosen ? <Dot color={resourceColor(chosen)} label={chosen.name} /> : "";
+                                }}
                                 onChange={(e) => setResourceId(Number(e.target.value))}>
                             {choices.map((candidate) => (
-                                <MenuItem key={candidate.id} value={candidate.id}>{candidate.name}</MenuItem>
+                                <MenuItem key={candidate.id} value={candidate.id}>
+                                    <Dot color={resourceColor(candidate)} label={candidate.name} />
+                                </MenuItem>
                             ))}
                         </Select>
                     </FormControl>
                     {isStaff && (
-                        <FormControl size="small" fullWidth>
-                            <InputLabel id="booking-kind-label">Kind</InputLabel>
-                            <Select labelId="booking-kind-label" label="Kind" sx={selectSx} value={kind}
-                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                    onChange={(e) => setKind(e.target.value as BookingKind)}>
+                        <ChoiceRow label="Kind">
+                            <ToggleButtonGroup exclusive size="small" value={kind} aria-label="Kind"
+                                               onChange={(_, value) => value && setKind(value as BookingKind)} sx={choiceSx}>
                                 {(Object.keys(KIND_LABELS) as BookingKind[]).map((value) => (
-                                    <MenuItem key={value} value={value}>{KIND_LABELS[value]}</MenuItem>
+                                    <ToggleButton key={value} value={value}>{KIND_LABELS[value]}</ToggleButton>
                                 ))}
-                            </Select>
-                        </FormControl>
+                            </ToggleButtonGroup>
+                        </ChoiceRow>
                     )}
                     {resource?.microscopeId != null && isBooking && (
-                        <FormControl size="small" fullWidth>
-                            <InputLabel id="booking-technique-label">Technique</InputLabel>
-                            <Select labelId="booking-technique-label" label="Technique" sx={selectSx} value={technique}
-                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                    onChange={(e) => setTechnique(e.target.value as "spa" | "tomo")}>
-                                <MenuItem value="spa">SPA</MenuItem>
-                                <MenuItem value="tomo">Tomography</MenuItem>
-                            </Select>
-                        </FormControl>
+                        <ChoiceRow label="Technique">
+                            <ToggleButtonGroup exclusive size="small" value={technique} aria-label="Technique"
+                                               onChange={(_, value) => value && setTechnique(value as "spa" | "tomo")} sx={choiceSx}>
+                                <ToggleButton value="spa">SPA</ToggleButton>
+                                <ToggleButton value="tomo">Tomography</ToggleButton>
+                            </ToggleButtonGroup>
+                        </ChoiceRow>
                     )}
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
-                    <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="From" value={start}
-                               InputLabelProps={{ shrink: true }} onChange={(e) => setStart(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="To" value={end}
-                               InputLabelProps={{ shrink: true }} onChange={(e) => setEnd(e.target.value)} />
-                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: duration > 0 ? colors.text : "error.main",
-                                      minWidth: 90, flexShrink: 0 }}>
-                        {start && end ? (duration > 0 ? describeHours(duration) : "Ends before it starts") : ""}
-                    </Typography>
-                </Stack>
-                {start && end && duration > 0 && (
-                    <Typography data-testid="booking-when" sx={{ fontSize: FACILITY_TEXT.note, mt: "-8px !important",
-                                                                 color: past ? "error.main" : colors.muted }}>
-                        {past ? "It starts in the past: " : "Read as "}
-                        {formatWhen(fromLocalInput(start), fromLocalInput(end))}
-                        {past ? ". Ask for a time still to come." : ""}
-                    </Typography>
-                )}
-                {resource && limitsOf(resource) && (
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: "-8px !important" }}>
-                        {limitsOf(resource)}{isStaff ? " The facility may book outside them." : ""}
-                    </Typography>
-                )}
-                {isBooking && (
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                        {isStaff && (
-                            <FormControl size="small" fullWidth>
-                                <InputLabel id="booking-owner-label">For</InputLabel>
-                                <Select labelId="booking-owner-label" label="For" sx={selectSx} value={ownerId}
-                                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                        renderValue={(value) => (String(value) === "" ? "Nobody"
-                                            : people.find((person) => person.id === value) ? personName(people.find((person) => person.id === value)!)
-                                            : booking?.ownerName || `#${value}`)}
-                                        onChange={(e) => setOwnerId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                                    <MenuItem value="">Nobody</MenuItem>
-                                    {people.map((person) => (
-                                        <MenuItem key={person.id} value={person.id}>{personName(person)} ({person.email})</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        )}
-                        <FormControl size="small" fullWidth>
-                            <InputLabel id="booking-group-label">Group</InputLabel>
-                            <Select labelId="booking-group-label" label="Group" sx={selectSx} value={groupId}
-                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                    renderValue={(value) => (String(value) === "" ? "None"
-                                        : [...groups, ...myGroups].find((group) => group.id === value)?.name ?? booking?.groupName ?? `#${value}`)}
-                                    onChange={(e) => setGroupId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                                <MenuItem value="">None</MenuItem>
-                                {(isStaff ? groups : myGroups).map((group) => (
-                                    <MenuItem key={group.id} value={group.id}>{group.name}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                        {isStaff && (
-                            <FormControl size="small" fullWidth>
-                                <InputLabel id="booking-priority-label">Priority</InputLabel>
-                                <Select labelId="booking-priority-label" label="Priority" sx={selectSx} value={priority}
-                                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                                        onChange={(e) => setPriority(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                                    <MenuItem value="">Not set</MenuItem>
-                                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                                        <MenuItem key={value} value={Number(value)}>{label}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+                </DialogPart>
+
+                <DialogPart icon={<CalendarDays size={18} />} title="When" tint={tint} colors={colors}
+                            subtitle={resource && limitsOf(resource) ? undefined : "From when to when."}>
+                    {resource && limitsOf(resource) && (
+                        <Stack direction="row" spacing={1} alignItems="flex-start"
+                               sx={{ mt: "-8px !important", px: 1.5, py: 1, borderRadius: 2, bgcolor: tint }}>
+                            <Box sx={{ pt: 0.2, display: "flex", color: "primary.main" }}><Info size={16} /></Box>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.text }}>
+                                {limitsOf(resource)}{isStaff ? " The facility may book outside them." : ""}
+                            </Typography>
+                        </Stack>
+                    )}
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                        <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="From" value={start}
+                                   InputLabelProps={{ shrink: true }} onChange={(e) => setStart(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="To" value={end}
+                                   InputLabelProps={{ shrink: true }} onChange={(e) => setEnd(e.target.value)} />
+                        {start && end && (
+                            <Box component="span" sx={{ px: 1.25, py: 0.4, borderRadius: 10, flexShrink: 0, whiteSpace: "nowrap",
+                                                        fontSize: FACILITY_TEXT.itemLine, fontWeight: 700,
+                                                        color: duration > 0 ? "primary.main" : "#dc2626",
+                                                        bgcolor: duration > 0 ? tint : "rgba(220,38,38,0.1)" }}>
+                                {duration > 0 ? describeHours(duration) : "Ends before it starts"}
+                            </Box>
                         )}
                     </Stack>
-                )}
-                {isStaff && (
-                    <TextField sx={fieldSx} size="small" label={isBooking ? "Title (optional)" : "What it is"} value={title}
-                               placeholder={isBooking ? "" : "Thermo engineer: column alignment"}
-                               onChange={(e) => setTitle(e.target.value)} />
-                )}
+                    {start && end && duration > 0 && (
+                        <Typography data-testid="booking-when" sx={{ fontSize: FACILITY_TEXT.note, mt: "-6px !important",
+                                                                     color: past ? "#dc2626" : colors.muted }}>
+                            {past ? "It starts in the past: " : "Read as "}
+                            {formatWhen(fromLocalInput(start), fromLocalInput(end))}
+                            {past ? ". Ask for a time still to come." : ""}
+                        </Typography>
+                    )}
+                </DialogPart>
+
                 {isBooking && (
-                    <TextField sx={fieldSx} size="small" multiline minRows={2} label={isStaff ? "The user's reason" : "What it is for"}
-                               value={justification} placeholder={isStaff ? "" : "Sample, grids, what you want to get"}
-                               onChange={(e) => setJustification(e.target.value)} />
+                    <DialogPart icon={<UsersRound size={18} />} title="Who" tint={tint} colors={colors}
+                                subtitle={isStaff ? "Whom it is for, their group and the request's priority." : "The group the time is for."}>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                            {isStaff && (
+                                <Autocomplete
+                                    size="small"
+                                    fullWidth
+                                    options={people}
+                                    value={owner}
+                                    getOptionLabel={(option) => personName(option)}
+                                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                                    onChange={(_, option) => setOwnerId(option ? option.id : "")}
+                                    slotProps={{ paper: { sx: menuPaperSx } }}
+                                    renderOption={(props, option) => (
+                                        <Box component="li" {...props} key={option.id}>
+                                            <Box>
+                                                <Box sx={{ fontSize: FACILITY_TEXT.itemLine }}>{personName(option)}</Box>
+                                                <Box sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{option.email}</Box>
+                                            </Box>
+                                        </Box>
+                                    )}
+                                    filterOptions={(options, { inputValue }) => {
+                                        const words = inputValue.trim().toLowerCase();
+                                        return options.filter((option) => `${personName(option)} ${option.email}`.toLowerCase().includes(words));
+                                    }}
+                                    renderInput={(params) => <TextField {...params} sx={fieldSx} label="For" placeholder="Search by name or email" />}
+                                />
+                            )}
+                            <FormControl size="small" fullWidth>
+                                <InputLabel id="booking-group-label">Group</InputLabel>
+                                <Select labelId="booking-group-label" label="Group" sx={selectSx} value={groupId}
+                                        MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                        renderValue={(value) => (String(value) === "" ? "None"
+                                            : [...groups, ...myGroups].find((group) => group.id === value)?.name ?? booking?.groupName ?? `#${value}`)}
+                                        onChange={(e) => setGroupId(String(e.target.value) === "" ? "" : Number(e.target.value))}>
+                                    <MenuItem value="">None</MenuItem>
+                                    {(isStaff ? groups : myGroups).map((group) => (
+                                        <MenuItem key={group.id} value={group.id}>{group.name}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            {isStaff && (
+                                <FormControl size="small" fullWidth>
+                                    <InputLabel id="booking-priority-label">Priority</InputLabel>
+                                    <Select labelId="booking-priority-label" label="Priority" sx={selectSx} value={priority}
+                                            MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                                            onChange={(e) => setPriority(String(e.target.value) === "" ? "" : Number(e.target.value))}>
+                                        <MenuItem value="">Not set</MenuItem>
+                                        {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                                            <MenuItem key={value} value={Number(value)}>{label}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            )}
+                        </Stack>
+                    </DialogPart>
                 )}
-                {isStaff && (
-                    <TextField sx={fieldSx} size="small" multiline minRows={2} label="Staff notes" value={notes}
-                               helperText="Only the facility's staff see them" onChange={(e) => setNotes(e.target.value)} />
-                )}
+
+                <DialogPart icon={<MessageSquare size={18} />} title="Details" tint={tint} colors={colors}
+                            subtitle={isStaff ? "What the user wants it for, and notes only the staff see." : "Tell the facility what you will do."}>
+                    {isStaff && (
+                        <TextField sx={fieldSx} size="small" label={isBooking ? "Title (optional)" : "What it is"} value={title}
+                                   placeholder={isBooking ? "" : "Thermo engineer: column alignment"}
+                                   onChange={(e) => setTitle(e.target.value)} />
+                    )}
+                    {isBooking && (
+                        <TextField sx={fieldSx} size="small" multiline minRows={2} label={isStaff ? "The user's reason" : "What it is for"}
+                                   value={justification} placeholder={isStaff ? "" : "Sample, grids, what you want to get"}
+                                   onChange={(e) => setJustification(e.target.value)} />
+                    )}
+                    {isStaff && (
+                        <TextField sx={fieldSx} size="small" multiline minRows={2} label="Staff notes" value={notes}
+                                   helperText="Only the facility's staff see them" onChange={(e) => setNotes(e.target.value)} />
+                    )}
+                </DialogPart>
             </Stack>
         </SettingsDialog>
     );

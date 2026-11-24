@@ -14,7 +14,6 @@ import {
     MenuItem,
     Select,
     Stack,
-    Switch,
     TextField,
     ToggleButton,
     ToggleButtonGroup,
@@ -60,6 +59,7 @@ import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
 import { SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
 import { useIsDark } from "@/context/ThemeContext";
 import ImageStrip from "./ImageStrip";
+import { DialogPart, OptionRow } from "./DialogParts";
 import NavigationReport from "./NavigationReport";
 
 type PanelStyles = {
@@ -723,57 +723,6 @@ type DataRow = { key: number; id: number | null; number: number; gridId: number 
 
 let rowKey = 0;
 const nextKey = () => ++rowKey;
-
-/** A part of the session dialog: an icon, its title and one line, and its fields under them. */
-function DialogPart({ icon, title, subtitle, action, tint, colors, children }: {
-    icon: ReactNode;
-    title: string;
-    subtitle?: string;
-    action?: ReactNode;
-    tint: string;
-    colors: PanelStyles["colors"];
-    children?: ReactNode;
-}) {
-    return (
-        <Box component="section" aria-label={title} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2.5, p: 2 }}>
-            <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: children ? 2 : 0 }}>
-                <Box sx={{ width: 32, height: 32, borderRadius: 1.75, flexShrink: 0, display: "grid", placeItems: "center",
-                           bgcolor: tint, color: "primary.main" }}>
-                    {icon}
-                </Box>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle + 0.5, fontWeight: 800, color: colors.text, lineHeight: 1.3 }}>
-                        {title}
-                    </Typography>
-                    {subtitle && (
-                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, lineHeight: 1.4 }}>{subtitle}</Typography>
-                    )}
-                </Box>
-                {action && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
-            </Stack>
-            {children && <Stack spacing={2}>{children}</Stack>}
-        </Box>
-    );
-}
-
-/** An on/off option: what it does on the left, its switch on the right. */
-function OptionRow({ title, description, checked, onChange, colors }: {
-    title: string;
-    description: string;
-    checked: boolean;
-    onChange: (checked: boolean) => void;
-    colors: PanelStyles["colors"];
-}) {
-    return (
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ py: 1.25, "& + &": { borderTop: `1px solid ${colors.border}` } }}>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>{title}</Typography>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{description}</Typography>
-            </Box>
-            <Switch checked={checked} onChange={(e) => onChange(e.target.checked)} slotProps={{ input: { "aria-label": title } }} />
-        </Stack>
-    );
-}
 
 function dataRowsOf(session: FacilitySession | null): DataRow[] {
     if (!session) return [{ key: nextKey(), id: null, number: 1, gridId: null, detectorId: null, notes: "" }];
