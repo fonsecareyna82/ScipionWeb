@@ -1,8 +1,16 @@
 // src/components/projects/ShareProjectModal.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useProjectService } from "@/ProjectServiceContext";
-import { Users, Search, ShieldCheck, UserMinus, X } from "lucide-react";
+import { Users, Search, ShieldCheck, UserMinus, UserRound, UsersRound } from "lucide-react";
+import {
+  Box, Button, Checkbox, InputAdornment, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
+} from "@mui/material";
+
+import { useIsDark } from "@/context/ThemeContext";
+import SettingsDialog from "@/pages/Settings/SettingsDialog";
+import { choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
+import { DialogPart } from "@/pages/Facility/DialogParts";
 import { listGroupNames } from "@/api/access";
 
 type AccessLevel = "view" | "work" | "manage";
@@ -43,11 +51,7 @@ interface ShareableUser {
   sharedLevel?: string;
 }
 
-function classNames(...xs: Array<string | false | null | undefined>): string {
-  return xs.filter(Boolean).join(" ");
-}
 
-const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
 export default function ShareProjectModal({
   open,
@@ -69,7 +73,12 @@ export default function ShareProjectModal({
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
   const [level, setLevel] = useState<AccessLevel>("work");
 
-  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [revokeGroup, setRevokeGroup] = useState<ShareableGroup | null>(null);
+  const isDark = useIsDark();
+  const tint = sectionTint(isDark);
+  const colors = isDark
+    ? { border: "rgba(255,255,255,0.14)", text: "#f1f5f9", muted: "#94a3b8", soft: "rgba(255,255,255,0.04)" }
+    : { border: "#e2e8f0", text: "#0f172a", muted: "#64748b", soft: "#f8fafc" };
 
   const resetState = useCallback(() => {
     setUsers([]);
@@ -79,6 +88,7 @@ export default function ShareProjectModal({
     setSubmitting(false);
     setErrorMsg("");
     setRevokeTarget(null);
+    setRevokeGroup(null);
     setGroups([]);
     setSelectedGroupIds([]);
     setLevel("work");
@@ -174,26 +184,6 @@ export default function ShareProjectModal({
     setSelectedIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        if (revokeTarget) setRevokeTarget(null);
-        else onClose();
-      }
-    },
-    [onClose, revokeTarget],
-  );
-
-  const onOverlayClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (dialogRef.current && !dialogRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    },
-    [onClose],
-  );
-
   const handleSubmit = useCallback(async () => {
     if (!projectId) return;
 
@@ -227,7 +217,7 @@ export default function ShareProjectModal({
     }
   }, [svc, projectId, selectedIds, onClose, users, selectedGroupIds, groups, level]);
 
-  const revokeGroup = useCallback(async (group: ShareableGroup) => {
+  const revokeGroupAccess = useCallback(async (group: ShareableGroup) => {
     if (!projectId || !svc.revokeProjectGroupShare) return;
     try {
       await svc.revokeProjectGroupShare(String(projectId), group.id);
@@ -271,348 +261,188 @@ export default function ShareProjectModal({
   }, [projectId, revokeTarget, svc]);
 
   if (!open) return null;
-
   const selectedCount = selectedIds.length;
+  const chosen = selectedCount + selectedGroupIds.length;
 
   return (
-    <div
-      className={classNames(
-        crispText,
-        "fixed inset-0 z-50 flex items-center justify-center",
-        "bg-black/[0.02] dark:bg-white/[0.02]",
-      )}
-      onMouseDown={onOverlayClick}
-      onKeyDown={handleKeyDown}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="share-project-title"
-      aria-describedby="share-project-desc"
-    >
-      <div
-        ref={dialogRef}
-        className={classNames(
-          crispText,
-          "relative flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border shadow-2xl",
-          "border-gray-300/90 bg-white",
-          "ring-1 ring-inset ring-black/[0.08]",
-          "dark:border-gray-700 dark:bg-gray-900",
-          "dark:ring-white/[0.08]",
-        )}
-        onMouseDown={(e) => e.stopPropagation()}
+    <>
+      <SettingsDialog
+        title="Share project"
+        description={`Who else may open ${projectName ? `“${projectName}”` : "this project"}, and what they may do in it. Whoever manages the project can change it.`}
+        icon={<Users size={20} color="white" />}
+        confirmLabel={chosen > 0 ? `Share (${chosen})` : "Share"}
+        busyLabel="Sharing…"
+        busy={submitting}
+        confirmDisabled={chosen === 0}
+        maxWidth="md"
+        footerNote={chosen > 0 ? `${chosen} selected.` : "No new users or groups selected."}
+        closeButton
+        onConfirm={() => void handleSubmit()}
+        onClose={onClose}
       >
-        <div className="relative flex h-full flex-col">
-          <div className="flex items-start justify-between border-b border-gray-300/80 px-5 pb-3 pt-4 dark:border-gray-700">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                <Users className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 id="share-project-title" className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
-                  Share project
-                </h3>
-                <p id="share-project-desc" className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-                  Share access to <span className="font-semibold">{projectName || "this project"}</span>.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-2 rounded-full border border-amber-300/80 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200 sm:inline-flex">
-                <ShieldCheck className="h-4 w-4" />
-                Managers only
-              </div>
-
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={submitting}
-                className={classNames(
-                  "inline-flex items-center justify-center rounded-xl border p-2 transition",
-                  "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                  "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
-                  submitting ? "opacity-60" : "",
-                )}
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="border-b border-gray-300/80 px-5 py-3 dark:border-gray-700">
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center">
-                  <Search className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                </span>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search users…"
-                  className={classNames(
-                    crispText,
-                    "w-full rounded-xl border px-8 py-2.5 text-sm font-medium outline-none transition",
-                    "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
-                    "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500",
-                  )}
-                />
-              </div>
-
-              <div className="hidden items-center gap-2 rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200 md:flex">
-                <ShieldCheck className="h-4 w-4" />
-                <span>Whoever manages the project can change access.</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-5 py-3">
-            <div className="rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              {loadingUsers && (
-                <div className="py-6 text-center text-sm leading-6 text-gray-700 dark:text-gray-300">
-                  Loading users...
-                </div>
-              )}
-
-              {!loadingUsers && !filteredUsers.length && (
-                <div className="py-6 text-center text-sm leading-6 text-gray-700 dark:text-gray-300">
-                  No users found.
-                </div>
-              )}
-
-              {!loadingUsers && filteredUsers.length > 0 && (
-                <ul className="divide-y divide-gray-200/90 dark:divide-gray-700">
-                  {filteredUsers.map((u) => {
-                    const checked = selectedIds.includes(u.id);
-                    const disabled = Boolean(u.isOwner || u.alreadyShared);
-
-                    const statusLabel = u.isOwner
-                      ? "Owner"
-                      : u.alreadyShared
-                        ? `Shared · ${LEVEL_LABELS[u.sharedLevel ?? ""] ?? "Work"}`
-                        : "Invite";
-
-                    const statusClasses = u.isOwner
-                      ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"
-                      : u.alreadyShared
-                        ? "border-sky-300/80 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200"
-                        : "border-gray-300/80 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200";
-
-                    const canRevoke = Boolean(u.alreadyShared && !u.isOwner);
-
-                    return (
-                      <li key={String(u.id)} className="flex items-center justify-between px-4 py-3 text-sm">
-                        <label
-                          className={classNames(
-                            "flex min-w-0 flex-1 items-center gap-3",
-                            disabled ? "cursor-default opacity-60" : "cursor-pointer",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            checked={checked}
-                            disabled={disabled || submitting}
-                            onChange={() => !disabled && !submitting && toggleUser(u.id)}
-                          />
-                          <div className="flex min-w-0 flex-1 flex-col">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-medium text-gray-950 dark:text-white">
-                                {u.name}
-                              </span>
-                              <span
-                                className={classNames(
-                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
-                                  statusClasses,
-                                )}
-                              >
-                                {statusLabel}
-                              </span>
-                            </div>
-                            <span className="mt-1 truncate text-sm leading-6 text-gray-700 dark:text-gray-300">
-                              {u.email}
-                            </span>
-                          </div>
-                        </label>
-
-                        {canRevoke && (
-                          <button
-                            type="button"
-                            onClick={() => openRevokeDialog(u)}
-                            disabled={submitting}
-                            className={classNames(
-                              "ml-3 shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60",
-                              "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
-                            )}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {groups.length > 0 && (
-              <div className="mt-3 rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
-                  Groups
-                </div>
-                <ul className="divide-y divide-gray-200/90 dark:divide-gray-700">
-                  {groups.map((g) => {
-                    const shared = Boolean(g.sharedLevel);
-                    return (
-                      <li key={g.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                        <label className={classNames("flex min-w-0 flex-1 items-center gap-3",
-                                                     shared ? "cursor-default opacity-60" : "cursor-pointer")}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Share with ${g.name}`}
-                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            checked={selectedGroupIds.includes(g.id)}
-                            disabled={shared || submitting}
-                            onChange={() => setSelectedGroupIds((prev) =>
-                              prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id])}
-                          />
-                          <span className="truncate font-medium text-gray-950 dark:text-white">{g.name}</span>
-                          {shared && (
-                            <span className="inline-flex items-center rounded-full border border-sky-300/80 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
-                              Shared · {LEVEL_LABELS[g.sharedLevel ?? ""] ?? "Work"}
-                            </span>
-                          )}
-                        </label>
-                        {shared && svc.revokeProjectGroupShare && (
-                          <button
-                            type="button"
-                            onClick={() => void revokeGroup(g)}
-                            disabled={submitting}
-                            className="ml-3 shrink-0 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-3 py-2 text-xs font-semibold text-white transition hover:shadow-md disabled:opacity-60"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+        <Stack spacing={2}>
+          <DialogPart icon={<UserRound size={18} />} title="People" tint={tint} colors={colors}
+                      subtitle="Tick those to share it with. Those who already have it can lose it with Remove.">
+            <TextField size="small" fullWidth value={search} placeholder="Search users…"
+                       inputProps={{ "aria-label": "Search users" }} onChange={(e) => setSearch(e.target.value)}
+                       InputProps={{ startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> }} />
+            {loadingUsers && <Typography sx={{ fontSize: 14, color: colors.muted, py: 1 }}>Loading users...</Typography>}
+            {!loadingUsers && !filteredUsers.length && (
+              <Typography sx={{ fontSize: 14, color: colors.muted, py: 1 }}>No users found.</Typography>
             )}
+            {!loadingUsers && filteredUsers.length > 0 && (
+              <Box component="ul" aria-label="People" sx={{ listStyle: "none", m: 0, p: 0, border: `1px solid ${colors.border}`,
+                                                          borderRadius: 2, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
+                {filteredUsers.map((u, index) => {
+                  const disabled = Boolean(u.isOwner || u.alreadyShared);
+                  const checked = selectedIds.includes(u.id);
+                  return (
+                    <ShareRow key={String(u.id)} first={index === 0} colors={colors}
+                              name={u.name} detail={u.email}
+                              pill={u.isOwner ? { text: "Owner", color: "#16a34a" }
+                                : u.alreadyShared ? { text: `Shared · ${LEVEL_LABELS[u.sharedLevel ?? ""] ?? "Work"}`, color: "#2563eb" }
+                                  : { text: "Invite", color: colors.muted }}
+                              checked={checked || disabled} disabled={disabled || submitting}
+                              onToggle={() => !disabled && !submitting && toggleUser(u.id)}
+                              onRemove={u.alreadyShared && !u.isOwner ? () => openRevokeDialog(u) : undefined} />
+                  );
+                })}
+              </Box>
+            )}
+          </DialogPart>
 
-            {errorMsg ? (
-              <div className="mt-2 text-sm leading-6 text-red-600 dark:text-red-300">{errorMsg}</div>
-            ) : null}
-          </div>
-
-          <div className="flex items-center justify-between border-t border-gray-300/80 px-5 py-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
-            <div className="flex items-center gap-3 leading-6">
-              <span>
-                {selectedCount + selectedGroupIds.length > 0
-                  ? `${selectedCount + selectedGroupIds.length} selected.`
-                  : "No new users or groups selected."}
-              </span>
-              <label className="flex items-center gap-2">
-                <span className="text-xs font-semibold">Access</span>
-                <select
-                  aria-label="Access level"
-                  value={level}
-                  onChange={(e) => setLevel(e.target.value as AccessLevel)}
-                  className="rounded-lg border border-gray-300/80 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
-                  title={ACCESS_LEVELS.find((l) => l.value === level)?.help}
-                >
-                  {ACCESS_LEVELS.map((l) => (
-                    <option key={l.value} value={l.value} title={l.help}>{l.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={submitting}
-                className={classNames(
-                  "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
-                  "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                  "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
-                )}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting || selectedCount + selectedGroupIds.length === 0}
-                className={classNames(
-                  "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
-                  "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 hover:brightness-[0.98] hover:shadow-md",
-                )}
-              >
-                {submitting
-                  ? "Sharing..."
-                  : selectedCount + selectedGroupIds.length > 0
-                    ? `Share (${selectedCount + selectedGroupIds.length})`
-                    : "Share"}
-              </button>
-            </div>
-          </div>
-
-          {revokeTarget && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35">
-              <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-red-300/80 bg-white px-5 py-4 text-sm shadow-2xl dark:border-red-800/70 dark:bg-gray-900">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200">
-                    <UserMinus className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-base font-semibold text-gray-950 dark:text-white">Remove access</h4>
-                    <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
-                      Remove access to <span className="font-semibold">{projectName || "this project"}</span> for:
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-gray-950 dark:text-white">{revokeTarget.name}</p>
-                    {revokeTarget.email ? (
-                      <span className="block text-sm leading-6 text-gray-700 dark:text-gray-300">
-                        {revokeTarget.email}
-                      </span>
-                    ) : null}
-                    <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
-                      The user will no longer see this project or its data.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={cancelRevoke}
-                    disabled={submitting}
-                    className={classNames(
-                      "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
-                      "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                      "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
-                    )}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmRevokeAccess}
-                    disabled={submitting}
-                    className={classNames(
-                      "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
-                      "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
-                    )}
-                  >
-                    {submitting ? "Removing..." : "Remove access"}
-                  </button>
-                </div>
-              </div>
-            </div>
+          {groups.length > 0 && (
+            <DialogPart icon={<UsersRound size={18} />} title="Groups" tint={tint} colors={colors}
+                        subtitle="Every member of a group gets it.">
+              <Box component="ul" aria-label="Groups" sx={{ listStyle: "none", m: 0, p: 0, border: `1px solid ${colors.border}`,
+                                                          borderRadius: 2, overflow: "hidden" }}>
+                {groups.map((g, index) => {
+                  const shared = Boolean(g.sharedLevel);
+                  return (
+                    <ShareRow key={g.id} first={index === 0} colors={colors} name={g.name} group
+                              checkboxLabel={`Share with ${g.name}`}
+                              pill={shared ? { text: `Shared · ${LEVEL_LABELS[g.sharedLevel ?? ""] ?? "Work"}`, color: "#2563eb" } : undefined}
+                              checked={selectedGroupIds.includes(g.id) || shared} disabled={shared || submitting}
+                              onToggle={() => setSelectedGroupIds((prev) =>
+                                prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id])}
+                              onRemove={shared && svc.revokeProjectGroupShare ? () => setRevokeGroup(g) : undefined} />
+                  );
+                })}
+              </Box>
+            </DialogPart>
           )}
-        </div>
-      </div>
-    </div>
+
+          <DialogPart icon={<ShieldCheck size={18} />} title="What they may do" tint={tint} colors={colors}
+                      subtitle="For those ticked now. Those who already have it keep theirs.">
+            <ToggleButtonGroup exclusive size="small" value={level} aria-label="Access level"
+                               onChange={(_, value) => value && setLevel(value as AccessLevel)}
+                               sx={choiceButtonsSx({ ...colors, card: "", primary: isDark ? "#60a5fa" : "#2563eb", hover: colors.soft }, isDark)}>
+              {ACCESS_LEVELS.map((l) => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
+            </ToggleButtonGroup>
+            <Typography sx={{ fontSize: 14, color: colors.text }}>
+              {ACCESS_LEVELS.find((l) => l.value === level)?.help}.
+            </Typography>
+          </DialogPart>
+
+          {errorMsg ? <Typography sx={{ fontSize: 14, color: "#dc2626" }}>{errorMsg}</Typography> : null}
+        </Stack>
+      </SettingsDialog>
+
+      {revokeTarget && (
+        <SettingsDialog
+          title="Remove access"
+          description={`${projectName ? `“${projectName}”` : "This project"} stops being shared with them.`}
+          icon={<UserMinus size={20} color="#fca5a5" />}
+          confirmLabel="Remove access"
+          busyLabel="Removing…"
+          busy={submitting}
+          destructive
+          maxWidth="xs"
+          closeButton
+          onConfirm={() => void confirmRevokeAccess()}
+          onClose={cancelRevoke}
+        >
+          <Stack spacing={1.25}>
+            <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, px: 1.5, py: 1.25 }}>
+              <Typography sx={{ fontSize: 15, fontWeight: 800, color: colors.text }}>{revokeTarget.name}</Typography>
+              {revokeTarget.email ? <Typography sx={{ fontSize: 13.5, color: colors.muted }}>{revokeTarget.email}</Typography> : null}
+            </Box>
+            <Typography sx={{ fontSize: 14, color: colors.muted }}>The user will no longer see this project or its data.</Typography>
+          </Stack>
+        </SettingsDialog>
+      )}
+
+      {revokeGroup && (
+        <SettingsDialog
+          title="Remove the group's access"
+          description={`${projectName ? `“${projectName}”` : "This project"} stops being shared with its members.`}
+          icon={<UserMinus size={20} color="#fca5a5" />}
+          confirmLabel="Remove access"
+          destructive
+          maxWidth="xs"
+          closeButton
+          onConfirm={() => { const group = revokeGroup; setRevokeGroup(null); void revokeGroupAccess(group); }}
+          onClose={() => setRevokeGroup(null)}
+        >
+          <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, px: 1.5, py: 1.25 }}>
+            <Typography sx={{ fontSize: 15, fontWeight: 800, color: colors.text }}>{revokeGroup.name}</Typography>
+            <Typography sx={{ fontSize: 13.5, color: colors.muted }}>
+              Its members keep it only if it is shared with them some other way.
+            </Typography>
+          </Box>
+        </SettingsDialog>
+      )}
+    </>
+  );
+}
+
+/** A person or a group in the share list: a tick, the name, how they have it, and Remove. */
+function ShareRow({ name, detail, pill, checked, disabled, onToggle, onRemove, first, colors, group = false, checkboxLabel }: {
+  name: string;
+  detail?: string;
+  pill?: { text: string; color: string };
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onRemove?: () => void;
+  first: boolean;
+  colors: { border: string; text: string; muted: string; soft: string };
+  group?: boolean;
+  checkboxLabel?: string;
+}) {
+  return (
+    <Box component="li" sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.6,
+                              borderTop: first ? "none" : `1px solid ${colors.border}`, "&:hover": { bgcolor: colors.soft } }}>
+      <Box component="label" sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0,
+                                   cursor: disabled ? "default" : "pointer" }}>
+        <Checkbox size="small" checked={checked} disabled={disabled} onChange={onToggle}
+                  inputProps={checkboxLabel ? { "aria-label": checkboxLabel } : undefined} />
+        <Box sx={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+                   bgcolor: "rgba(37,99,235,0.12)", color: "#2563eb", fontWeight: 800, fontSize: 13 }}>
+          {group ? <UsersRound size={15} /> : (name || "?").charAt(0).toUpperCase()}
+        </Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontSize: 14.5, fontWeight: 600, color: colors.text, overflow: "hidden", textOverflow: "ellipsis",
+                              whiteSpace: "nowrap" }}>
+              {name}
+            </Typography>
+            {pill && (
+              <Box component="span" sx={{ flexShrink: 0, px: 1, borderRadius: 10, fontSize: 13, fontWeight: 700, lineHeight: 1.7,
+                                          color: pill.color, bgcolor: `${pill.color}1f` }}>
+                {pill.text}
+              </Box>
+            )}
+          </Stack>
+          {detail && <Typography sx={{ fontSize: 13.5, color: colors.muted }}>{detail}</Typography>}
+        </Box>
+      </Box>
+      {onRemove && (
+        <Button size="small" startIcon={<UserMinus size={14} />} onClick={onRemove}
+                sx={{ textTransform: "none", fontSize: 13.5, color: "#dc2626", flexShrink: 0 }}>
+          Remove
+        </Button>
+      )}
+    </Box>
   );
 }

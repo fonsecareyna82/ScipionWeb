@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import ShareProjectModal from "../../projects/ShareProjectModal";
 import toast from "react-hot-toast";
@@ -243,7 +243,7 @@ describe("ShareProjectModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(
-      screen.getByRole("heading", { name: "Remove access" }),
+      screen.getByRole("dialog", { name: "Remove access" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("The user will no longer see this project or its data."),
@@ -277,7 +277,7 @@ describe("ShareProjectModal", () => {
 
     expect(await screen.findByText("Shared · Manage")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Share with Lab of X"));
-    fireEvent.change(screen.getByLabelText("Access level"), { target: { value: "view" } });
+    fireEvent.click(within(screen.getByRole("group", { name: "Access level" })).getByRole("button", { name: "View" }));
     fireEvent.click(screen.getByRole("button", { name: "Share (1)" }));
 
     await waitFor(() => {
@@ -285,6 +285,8 @@ describe("ShareProjectModal", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(service.revokeProjectGroupShare).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove the group's access" })).getByRole("button", { name: "Remove access" }));
     await waitFor(() => expect(service.revokeProjectGroupShare).toHaveBeenCalledWith("123", 8));
   });
 });
