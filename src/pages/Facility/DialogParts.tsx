@@ -60,7 +60,9 @@ export function OptionRow({ title, description, checked, onChange, colors }: {
 }
 
 /** A dialog to look at something, not to change it: the dark header with its X, what it shows, and Close. */
-export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", children }: {
+export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", container, children }: {
+    // Where it opens: a page's own layer (the project page, also in full screen); the document body otherwise
+    container?: HTMLElement | null;
     icon: ReactNode;
     title: string;
     subtitle?: string;
@@ -70,7 +72,7 @@ export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", ch
 }) {
     const titleId = `view-dialog-title-${useId()}`;
     return (
-        <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby={titleId}
+        <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby={titleId} container={container ?? undefined}
                 PaperProps={{ sx: { borderRadius: 3, overflow: "hidden", boxShadow: 12, display: "flex", flexDirection: "column",
                                     maxHeight: "calc(100% - 48px)" } }}>
             <Box sx={{ bgcolor: "#333d49", color: "white", px: 2, py: 1.75, flexShrink: 0 }}>

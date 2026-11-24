@@ -13,11 +13,13 @@ const dialogs = [
 describe("Protocol confirmation dialogs during pending actions", () => {
   for (const dialog of dialogs) {
     it(`${dialog.name} rejects accidental closing while busy`, () => {
-      const start = source.indexOf(`open={${dialog.open}}`);
+      const start = source.indexOf(`{${dialog.open} && `);
       expect(start).toBeGreaterThan(-1);
-      const section = source.slice(start, source.indexOf("<DialogContent", start));
-      expect(section).toContain(`if (!open && !${dialog.busy})`);
-      expect(section).not.toContain(dialog.reset);
+      const section = source.slice(start, source.indexOf("</ProtocolActionDialog>", start));
+      expect(section).toContain(`busy={${dialog.busy}}`);
+      const onClose = section.split("onClose={")[1]?.split("\n")[0] ?? "";
+      expect(onClose).toContain(`!${dialog.busy} && `);
+      expect(onClose).not.toContain(dialog.reset);
     });
   }
 });

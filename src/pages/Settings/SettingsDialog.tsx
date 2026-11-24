@@ -36,19 +36,22 @@ type SettingsDialogProps = {
     saveButtonSx?: any;
     // An X in the header to close it (long dialogs, whose Cancel is far down)
     closeButton?: boolean;
+    // Where it opens: the page's own layer (the project page, also in full screen); the document body otherwise
+    container?: HTMLElement | null;
     onConfirm: () => void;
     onClose: () => void;
 };
 
 export default function SettingsDialog({
     title, description, icon, children, confirmLabel, busyLabel, busy = false, confirmDisabled = false,
-    destructive = false, maxWidth = "sm", footerNote, actionButtonSx, saveButtonSx, closeButton = false, onConfirm, onClose,
+    destructive = false, maxWidth = "sm", footerNote, actionButtonSx, saveButtonSx, closeButton = false, container, onConfirm, onClose,
 }: SettingsDialogProps) {
     // Its own id: a dialog may open over another (a confirmation over a form)
     const titleId = `settings-dialog-title-${useId()}`;
     return (
         <Dialog
             open
+            container={container ?? undefined}
             onClose={() => !busy && onClose()}
             maxWidth={maxWidth}
             fullWidth

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(resolve(process.cwd(), "src/pages/Dashboard/projects/ProjectPage.tsx"), "utf8");
 const handler = source.split("  const submitRename = async () => {")[1]?.split("  /* ------------------------ Controls")[0];
-const dialog = source.split("          open={dlgRename.open}")[1]?.split("          open={dlgResetFrom.open}")[0];
+const dialog = source.split("{dlgRename.open && dlgRename.id && (")[1]?.split("</ProtocolActionDialog>")[0];
 
 describe("Protocol annotation in-flight contract", () => {
   it("keeps the dialog open until the API completes and preserves it on errors", () => {
@@ -16,9 +16,10 @@ describe("Protocol annotation in-flight contract", () => {
 
   it("disables dialog controls and shows Saving while a request is in flight", () => {
     expect(dialog).toBeDefined();
-    expect(dialog).toContain('if (!open && !renameBusy) setDlgRename(emptyRenameDialog);');
-    expect(dialog).toContain('disabled={renameBusy}');
-    expect(dialog).toContain('disabled={!dlgRename.id || renameBusy}');
-    expect(dialog).toContain('{renameBusy ? "Saving..." : "Save annotation"}');
+    expect(dialog).toContain("onClose={() => !renameBusy && setDlgRename(emptyRenameDialog)}");
+    expect(dialog).toContain("disabled={renameBusy}");
+    expect(dialog).toContain("busy={renameBusy}");
+    expect(dialog).toContain('busyLabel="Saving…"');
+    expect(dialog).toContain('confirmLabel="Save annotation"');
   });
 });
