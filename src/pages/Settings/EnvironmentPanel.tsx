@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import {
-    Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+    Box, Button, CircularProgress, InputAdornment, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Asterisk, List, PencilLine, Plus, RotateCcw, Search, SquareTerminal, Undo2 } from "lucide-react";
 
+import SettingsDialog from "./SettingsDialog";
 import { SETTINGS_TEXT, SettingsSection, choiceButtonsSx, sectionTint } from "./SettingsSection";
 import { useSettingsStyles } from "./useSettingsStyles";
 
@@ -216,37 +217,47 @@ export default function EnvironmentPanel({ rows, savedRows, loading, error, onCh
                 )}
             </SettingsSection>
 
-            <Dialog open={adding} onClose={closeAdd} maxWidth="sm" fullWidth aria-labelledby="add-variable-title"
-                    PaperProps={{ sx: { bgcolor: colors.menu, color: colors.text, borderRadius: 3 } }}>
-                <DialogTitle id="add-variable-title" sx={{ fontSize: SETTINGS_TEXT.sectionTitle, fontWeight: 800, pb: 0.5 }}>
-                    Add a variable
-                </DialogTitle>
-                <DialogContent>
-                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mb: 2 }}>
-                        One the list does not have. It joins the list as not saved: Save keeps it.
-                    </Typography>
-                    <Stack spacing={2} sx={{ pt: 0.5 }}>
+            {adding && (
+                <SettingsDialog
+                    title="Add a variable"
+                    description="One the list does not have. It joins the list as not saved: Save keeps it."
+                    icon={<SquareTerminal size={20} color="white" />}
+                    confirmLabel="Add"
+                    confirmDisabled={!canAdd}
+                    maxWidth="sm"
+                    actionButtonSx={actionButtonSx}
+                    saveButtonSx={saveButtonSx}
+                    closeButton
+                    onConfirm={add}
+                    onClose={closeAdd}
+                >
+                    <Stack spacing={2}>
                         <TextField size="small" label="Name" value={newName} sx={fieldSx} autoFocus fullWidth
                                    error={nameTaken || nameInvalid}
                                    helperText={nameTaken ? "It is already in the list."
                                        : nameInvalid ? "Letters, numbers and _ only, not starting with a number."
                                            : "For example SCIPION_HOME"}
+                                   FormHelperTextProps={{ sx: { fontSize: SETTINGS_TEXT.text } }}
                                    inputProps={{ style: { fontFamily: MONO } }}
                                    onChange={(e) => setNewName(e.target.value)}
                                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
                         <TextField size="small" label="Value" value={newValue} sx={fieldSx} fullWidth
                                    inputProps={{ style: { fontFamily: MONO } }}
+                                   helperText="A path, a number or any text; empty is allowed."
+                                   FormHelperTextProps={{ sx: { fontSize: SETTINGS_TEXT.text } }}
                                    onChange={(e) => setNewValue(e.target.value)}
                                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+                        <Box sx={{ borderRadius: 2, bgcolor: sectionTint(isDarkMode), px: 1.5, py: 1.1 }}>
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mb: 0.25 }}>
+                                The protocols will see
+                            </Typography>
+                            <Typography sx={{ fontFamily: MONO, fontSize: SETTINGS_TEXT.control, color: colors.text, wordBreak: "break-all" }}>
+                                {newName.trim() || "NAME"}={newValue}
+                            </Typography>
+                        </Box>
                     </Stack>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 2 }}>
-                    <Button variant="outlined" sx={actionButtonSx} onClick={closeAdd}>Cancel</Button>
-                    <Button variant="contained" sx={saveButtonSx} startIcon={<Plus size={15} />} disabled={!canAdd} onClick={add}>
-                        Add
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                </SettingsDialog>
+            )}
         </Stack>
     );
 }

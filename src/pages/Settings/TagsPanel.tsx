@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, TextField, Typography,
+    Autocomplete, Box, Button, Paper, Stack, TextField, Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FolderOpen, Plus, RefreshCw, Tag } from "lucide-react";
 
 import TagEditorDialog from "@/components/tags/TagEditorDialog";
 import TagList from "@/components/tags/TagList";
-import { deleteConfirmationText, useTagList } from "@/components/tags/useTagList";
+import TagDeleteDialog from "@/components/tags/TagDeleteDialog";
+import { useTagList } from "@/components/tags/useTagList";
 import { useProjectService } from "@/ProjectServiceContext";
 import { SETTINGS_TEXT, SettingRow, SettingsSection, sectionTint, settingLabelId } from "./SettingsSection";
 import { useSettingsStyles } from "./useSettingsStyles";
@@ -165,25 +166,8 @@ export default function TagsPanel() {
                 validationError={editor.validationError}
             />
 
-            <Dialog open={confirmDelete != null} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth
-                    aria-labelledby="settings-tag-delete-title"
-                    PaperProps={{ sx: { bgcolor: colors.menu, color: colors.text, borderRadius: 3 } }}>
-                <DialogTitle id="settings-tag-delete-title" sx={{ fontSize: SETTINGS_TEXT.sectionTitle, fontWeight: 800 }}>
-                    Delete tag “{confirmDelete?.title}”?
-                </DialogTitle>
-                <DialogContent>
-                    <Typography sx={{ fontSize: SETTINGS_TEXT.title, color: colors.muted }}>
-                        {deleteConfirmationText(undefined)}
-                    </Typography>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 2 }}>
-                    <Button sx={actionButtonSx} variant="outlined" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-                    <Button variant="contained" color="error" sx={{ textTransform: "none", boxShadow: "none" }}
-                            onClick={() => confirmDelete && void deleteTag(confirmDelete)}>
-                        Delete
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <TagDeleteDialog tag={confirmDelete} busy={!!(confirmDelete && deletingIds[confirmDelete.id])}
+                             onConfirm={(tag) => void deleteTag(tag)} onClose={() => setConfirmDelete(null)} />
         </Stack>
     );
 }

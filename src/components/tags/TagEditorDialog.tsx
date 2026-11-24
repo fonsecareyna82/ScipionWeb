@@ -1,20 +1,13 @@
 // src/components/tags/TagEditorDialog.tsx
-// Create or edit one tag: title, description and a hex colour.
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+// Create or edit one tag: title, description and a hex colour, with how the tag will look.
+import type { ChangeEvent, FormEvent } from "react";
+import { Alert, Box, Stack, TextField, Typography } from "@mui/material";
+import { Palette, Tag } from "lucide-react";
 
-import { CloseIcon, HelpIcon } from "../../icons";
+import { useIsDark } from "@/context/ThemeContext";
+import SettingsDialog from "@/pages/Settings/SettingsDialog";
+import { sectionTint } from "@/pages/Settings/SettingsSection";
+import { DialogPart } from "@/pages/Facility/DialogParts";
 import {
   TAG_COLOR_PRESETS,
   TAG_DESCRIPTION_MAX_LENGTH,
@@ -22,7 +15,6 @@ import {
   isHexColor,
   toColorInputValue,
 } from "@/utils/protocol_tags";
-import { tagDialogPaperSx, tagOutlinedButtonSx, tagPalette, tagTextFieldSx } from "./tagStyles";
 
 export type TagDraft = {
   id?: string;
@@ -44,6 +36,20 @@ type TagEditorDialogProps = {
   note?: string;
 };
 
+/** A tag as the protocols show it: its colour and its title. */
+export function TagChip({ title, color, size = "medium" }: { title: string; color: string; size?: "small" | "medium" }) {
+  const shown = isHexColor(color) ? color : "#94a3b8";
+  return (
+    <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, maxWidth: "100%",
+                                px: size === "small" ? 1 : 1.25, py: size === "small" ? 0.15 : 0.4, borderRadius: 10,
+                                fontSize: size === "small" ? 13 : 14.5, fontWeight: 700, color: shown,
+                                bgcolor: `${shown}1f`, border: `1px solid ${shown}55` }}>
+      <Box component="span" sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: shown, flexShrink: 0 }} />
+      <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</Box>
+    </Box>
+  );
+}
+
 export default function TagEditorDialog({
   open,
   mode,
@@ -55,57 +61,45 @@ export default function TagEditorDialog({
   validationError,
   note,
 }: TagEditorDialogProps) {
-  const dialogTitle = mode === "create" ? "Create tag" : "Edit tag";
-  const [helpOpen, setHelpOpen] = useState(false);
+  const isDark = useIsDark();
+  const tint = sectionTint(isDark);
+  const colors = isDark
+    ? { border: "rgba(255,255,255,0.14)", text: "#f1f5f9", muted: "#94a3b8" }
+    : { border: "#e2e8f0", text: "#0f172a", muted: "#64748b" };
   const titleLength = draft.title.trim().length;
   const colorIsValid = isHexColor(draft.color);
 
-  return (
-    <>
-      <Dialog
-        open={open}
-        onClose={isSaving ? undefined : onClose}
-        maxWidth="sm"
-        fullWidth
-        aria-labelledby="tag-editor-title"
-        slotProps={{ backdrop: { sx: { backgroundColor: tagPalette.backdrop, backdropFilter: "blur(2px)" } } }}
-        PaperProps={{ sx: tagDialogPaperSx }}
-      >
-        <DialogTitle
-          id="tag-editor-title"
-          component="div"
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            backgroundColor: tagPalette.header,
-            color: "white",
-            px: 2,
-            py: 1.5,
-          }}
-        >
-          <Typography component="h2" sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{dialogTitle}</Typography>
-          <IconButton
-            onClick={onClose}
-            aria-label="Close"
-            size="small"
-            disabled={!!isSaving}
-            sx={{ color: "white", backgroundColor: "rgba(255,255,255,0.12)", "&:hover": { backgroundColor: "rgba(255,255,255,0.20)" } }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
+  if (!open) return null;
 
-        <DialogContent sx={{ px: 2, py: 1.75, backgroundColor: tagPalette.panel, color: tagPalette.text }}>
-          <Box
-            component="form"
-            noValidate
-            onSubmit={(event: FormEvent) => {
-              event.preventDefault();
-              if (!isSaving) void onSave();
-            }}
-            sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 0.5 }}
-          >
+  return (
+    <SettingsDialog
+      title={mode === "create" ? "New tag" : `Edit tag ${draft.title.trim() ? `“${draft.title.trim()}”` : ""}`.trim()}
+      description="A label to group and filter the protocols of the project. Its title is unique in the project."
+      icon={<Tag size={20} color="white" />}
+      confirmLabel="Save"
+      busyLabel="Saving…"
+      busy={!!isSaving}
+      maxWidth="sm"
+      closeButton
+      onConfirm={() => void onSave()}
+      onClose={onClose}
+    >
+      <Box
+        component="form"
+        noValidate
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          if (!isSaving) void onSave();
+        }}
+      >
+        <Stack spacing={2}>
+          <Box sx={{ borderRadius: 2.5, bgcolor: tint, px: 2, py: 1.5, display: "flex", alignItems: "center", gap: 1.5,
+                     flexWrap: "wrap" }}>
+            <Typography sx={{ fontSize: 13.5, color: colors.muted }}>It will look like</Typography>
+            <TagChip title={draft.title.trim() || "New tag"} color={draft.color} />
+          </Box>
+
+          <DialogPart icon={<Tag size={18} />} title="The tag" tint={tint} colors={colors}>
             <TextField
               label="Title"
               value={draft.title}
@@ -114,11 +108,10 @@ export default function TagEditorDialog({
               size="small"
               required
               autoFocus
-              margin="dense"
               disabled={!!isSaving}
               error={titleLength > TAG_TITLE_MAX_LENGTH}
               helperText={`${titleLength}/${TAG_TITLE_MAX_LENGTH}`}
-              sx={tagTextFieldSx}
+              FormHelperTextProps={{ sx: { fontSize: 13, textAlign: "right", mr: 0 } }}
             />
             <TextField
               label="Description (optional)"
@@ -128,122 +121,74 @@ export default function TagEditorDialog({
               size="small"
               multiline
               minRows={2}
-              margin="dense"
               disabled={!!isSaving}
               error={draft.description.trim().length > TAG_DESCRIPTION_MAX_LENGTH}
-              sx={tagTextFieldSx}
+              placeholder="What the protocols with this tag have in common"
             />
+          </DialogPart>
 
-            <Box>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.75, color: tagPalette.text }}>Color</Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                {TAG_COLOR_PRESETS.map((c) => {
-                  const isSelected = c.toLowerCase() === String(draft.color).toLowerCase();
-                  return (
-                    <Box
-                      key={c}
-                      component="button"
-                      type="button"
-                      onClick={() => onChange({ color: c })}
-                      disabled={!!isSaving}
-                      aria-label={`Pick color ${c}`}
-                      aria-pressed={isSelected}
-                      sx={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        border: "2px solid",
-                        borderColor: isSelected ? tagPalette.text : tagPalette.border,
-                        backgroundColor: c,
-                        cursor: isSaving ? "default" : "pointer",
-                        opacity: isSaving ? 0.65 : 1,
-                        boxShadow: isSelected ? `0 0 0 3px ${tagPalette.border}` : "none",
-                      }}
-                    />
-                  );
-                })}
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, mt: 1 }}>
-                <Box
-                  component="input"
-                  type="color"
-                  value={toColorInputValue(draft.color)}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => onChange({ color: e.target.value })}
-                  disabled={!!isSaving}
-                  aria-label="Pick custom color"
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    border: `1px solid ${tagPalette.border}`,
-                    borderRadius: 1.5,
-                    backgroundColor: "transparent",
-                    padding: 0.25,
-                    cursor: "pointer",
-                  }}
-                />
-                <TextField
-                  size="small"
-                  value={draft.color}
-                  onChange={(e) => onChange({ color: e.target.value.trim() })}
-                  sx={{ ...tagTextFieldSx, width: 160 }}
-                  inputProps={{ "aria-label": "Hex color", spellCheck: false }}
-                  placeholder="#3b82f6"
-                  disabled={!!isSaving}
-                  error={!colorIsValid}
-                  helperText={colorIsValid ? " " : "Use #rgb or #rrggbb"}
-                />
-              </Box>
+          <DialogPart icon={<Palette size={18} />} title="Colour" tint={tint} colors={colors}
+                      subtitle="To recognise the tag at a glance in the lists and the graph.">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
+              {TAG_COLOR_PRESETS.map((c) => {
+                const isSelected = c.toLowerCase() === String(draft.color).toLowerCase();
+                return (
+                  <Box
+                    key={c}
+                    component="button"
+                    type="button"
+                    onClick={() => onChange({ color: c })}
+                    disabled={!!isSaving}
+                    aria-label={`Pick color ${c}`}
+                    aria-pressed={isSelected}
+                    sx={{
+                      width: 30, height: 30, p: 0, borderRadius: "50%", border: "3px solid",
+                      borderColor: isSelected ? colors.text : "transparent", backgroundColor: c,
+                      cursor: isSaving ? "default" : "pointer", opacity: isSaving ? 0.65 : 1,
+                      boxShadow: isSelected ? `0 0 0 2px ${c}` : "none", transition: "transform 120ms",
+                      "&:hover": { transform: "scale(1.1)" },
+                    }}
+                  />
+                );
+              })}
             </Box>
+            <Stack direction="row" spacing={1.25} alignItems="flex-start">
+              <Box
+                component="input"
+                type="color"
+                value={toColorInputValue(draft.color)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange({ color: e.target.value })}
+                disabled={!!isSaving}
+                aria-label="Pick custom color"
+                sx={{ width: 42, height: 40, border: `1px solid ${colors.border}`, borderRadius: 1.5, backgroundColor: "transparent",
+                      padding: 0.25, cursor: "pointer", flexShrink: 0 }}
+              />
+              <TextField
+                size="small"
+                label="Another colour"
+                value={draft.color}
+                onChange={(e) => onChange({ color: e.target.value.trim() })}
+                sx={{ width: 180 }}
+                inputProps={{ "aria-label": "Hex color", spellCheck: false, style: { fontFamily: "monospace" } }}
+                placeholder="#3b82f6"
+                disabled={!!isSaving}
+                error={!colorIsValid}
+                helperText={colorIsValid ? " " : "Use #rgb or #rrggbb"}
+                FormHelperTextProps={{ sx: { fontSize: 13 } }}
+              />
+            </Stack>
+          </DialogPart>
 
-            {note ? <Typography sx={{ fontSize: 12, color: tagPalette.textMuted }}>{note}</Typography> : null}
+          {note ? <Typography sx={{ fontSize: 13.5, color: colors.muted }}>{note}</Typography> : null}
 
-            {validationError ? (
-              <Typography role="alert" sx={{ color: tagPalette.danger, fontSize: 12, fontWeight: 600, whiteSpace: "pre-wrap" }}>
-                {validationError}
-              </Typography>
-            ) : null}
+          {validationError ? (
+            <Alert severity="error" role="alert" sx={{ fontSize: 13.5, whiteSpace: "pre-wrap" }}>{validationError}</Alert>
+          ) : null}
 
-            {/* Enter in the title saves. */}
-            <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
-          </Box>
-        </DialogContent>
-
-        <DialogActions sx={{ justifyContent: "center", gap: 1, px: 2, py: 1.5, borderTop: `1px solid ${tagPalette.borderSoft}`, backgroundColor: tagPalette.panelSubtle }}>
-          <Button variant="outlined" onClick={onClose} disabled={!!isSaving} sx={tagOutlinedButtonSx}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={() => void onSave()} disabled={!!isSaving} sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, boxShadow: "none" }}>
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
-          <Tooltip title="Help">
-            <IconButton size="small" aria-label="Help" onClick={() => setHelpOpen(true)} sx={{ color: tagPalette.accent }}>
-              <HelpIcon fontSize="1.1rem" />
-            </IconButton>
-          </Tooltip>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        slotProps={{ backdrop: { sx: { backgroundColor: tagPalette.backdrop, backdropFilter: "blur(2px)" } } }}
-        PaperProps={{ sx: tagDialogPaperSx }}
-      >
-        <DialogTitle sx={{ backgroundColor: tagPalette.header, color: "white", fontWeight: 700 }}>Help</DialogTitle>
-        <DialogContent sx={{ backgroundColor: tagPalette.panel, color: tagPalette.text, pt: 2 }}>
-          <Typography sx={{ fontSize: 13, lineHeight: 1.6, color: tagPalette.text, pt: 1.5 }}>
-            The tag title identifies and filters protocols; it must be unique in the project and at most {TAG_TITLE_MAX_LENGTH} characters.
-            The description is optional. Pick a color to recognize the tag quickly in chips and lists.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ backgroundColor: tagPalette.panelSubtle, borderTop: `1px solid ${tagPalette.borderSoft}` }}>
-          <Button onClick={() => setHelpOpen(false)} variant="outlined" sx={tagOutlinedButtonSx}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+          {/* Enter in the title saves. */}
+          <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+        </Stack>
+      </Box>
+    </SettingsDialog>
   );
 }

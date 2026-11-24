@@ -14,7 +14,8 @@ describe("TagsDialog", () => {
 
     expect(screen.getByText("Tags")).toBeInTheDocument();
     expect(screen.getByText("Dialog content")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    // The X of its header and the Close at its foot
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(2);
   });
 
   it("renders a custom title when provided", () => {
@@ -37,7 +38,7 @@ describe("TagsDialog", () => {
       </TagsDialog>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
