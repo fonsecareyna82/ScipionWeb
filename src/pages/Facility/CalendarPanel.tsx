@@ -5,11 +5,12 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DateSelectArg, DatesSetArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import {
-    Alert, Autocomplete, Box, Button, Dialog, FormControl, InputLabel, MenuItem, Select, Stack, TextField, ToggleButton,
-    ToggleButtonGroup, Typography,
+    Alert, Autocomplete, Box, Button, Dialog, FormControl, IconButton, InputLabel, MenuItem, Select, Stack, TextField,
+    ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from "@mui/material";
 import {
-    Boxes, CalendarCheck, CalendarDays, CalendarPlus, Check, Clock, Inbox, Info, MessageSquare, Settings2, UsersRound, X,
+    Boxes, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, Check, Clock, Flag, Hourglass, Inbox, Info, Layers,
+    MessageSquare, Microscope, Pencil, Settings2, Trash2, UserRound, UsersRound, X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -784,20 +785,117 @@ function BookingDialog({ booking, initial, resources, isStaff, myGroups, fieldSx
     );
 }
 
+const DECISIONS = {
+    confirm: { title: "Confirm the request", label: "Confirm", icon: Check, color: "#16a34a",
+               reasonHint: "Optional: anything the user should know." },
+    propose: { title: "Offer another time", label: "Offer it", icon: Clock, color: "#2563eb",
+               reasonHint: "Why this time instead: the user reads it before answering." },
+    reject: { title: "Reject the request", label: "Reject", icon: X, color: "#dc2626",
+              reasonHint: "Why it cannot be: the user reads it." },
+} as const;
+
+// A priority's short name, for its button (the whole label is its tooltip)
+const PRIORITY_SHORT: Record<number, string> = { 0: "Facility", 1: "Committed", 2: "Internal", 3: "Academic", 4: "External" };
+
+function bookingColor(booking: FacilityBooking): string {
+    return booking.resourceColor || resourceColor({ id: booking.resourceId, color: "" });
+}
+
+/** A booking at a glance: its resource's colour, what and when, for whom, and its state. */
+function BookingSummary({ booking, colors, showNotes }: {
+    booking: FacilityBooking;
+    colors: PanelStyles["colors"];
+    showNotes?: boolean;
+}) {
+    const hours = hoursBetween(booking.startsAt, booking.endsAt);
+    const facts: [ReactNode, string, string | null | undefined][] = [
+        [<CalendarDays size={15} />, "When", formatWhen(booking.startsAt, booking.endsAt)],
+        [<Clock size={15} />, "How long", hours > 0 ? describeHours(hours) : null],
+        [<UserRound size={15} />, "For", [booking.ownerName || booking.ownerEmail, booking.groupName && `group ${booking.groupName}`]
+            .filter(Boolean).join(" · ") || null],
+        [<Layers size={15} />, "Technique", booking.technique ? TECHNIQUE_LABELS[booking.technique] : null],
+        [<Settings2 size={15} />, "Kind", booking.kind !== "booking" ? KIND_LABELS[booking.kind] : null],
+        [<Flag size={15} />, "Priority", booking.priority != null ? PRIORITY_LABELS[booking.priority] : null],
+        [<Microscope size={15} />, "Session", booking.sessionName ? `${booking.sessionName} (${booking.sessionStatus})` : null],
+    ];
+    return (
+        <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${bookingColor(booking)}`, borderRadius: 2.5,
+                   overflow: "hidden" }}>
+            <Box sx={{ px: 2, pt: 1.5, pb: 1.25 }}>
+                <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap" sx={{ mb: 1.25 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle + 0.5, fontWeight: 800, color: colors.text }}>
+                        {booking.resourceName}
+                    </Typography>
+                    {booking.title && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>{booking.title}</Typography>
+                    )}
+                    <StatusChip status={booking.status} />
+                </Stack>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, columnGap: 2.5, rowGap: 1.25 }}>
+                    {facts.filter(([, , value]) => value).map(([icon, label, value]) => (
+                        <Stack key={label} direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                            <Box sx={{ color: colors.muted, mt: 0.25, flexShrink: 0, display: "flex" }}>{icon}</Box>
+                            <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, lineHeight: 1.3 }}>{label}</Typography>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, wordBreak: "break-word" }}>{value}</Typography>
+                            </Box>
+                        </Stack>
+                    ))}
+                </Box>
+            </Box>
+            {(booking.justification || (showNotes && booking.notes)) && (
+                <Stack spacing={1} sx={{ borderTop: `1px solid ${colors.border}`, bgcolor: colors.hover, px: 2, py: 1.25 }}>
+                    {booking.justification && (
+                        <Box>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>The user's reason</Typography>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, fontStyle: "italic", whiteSpace: "pre-wrap" }}>
+                                “{booking.justification}”
+                            </Typography>
+                        </Box>
+                    )}
+                    {showNotes && booking.notes && (
+                        <Box>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>Staff notes</Typography>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, whiteSpace: "pre-wrap" }}>{booking.notes}</Typography>
+                        </Box>
+                    )}
+                </Stack>
+            )}
+        </Box>
+    );
+}
+
+/** A coloured box saying where a booking stands, and what its user or the facility may do now. */
+function StandingBox({ color, icon, title, children }: { color: string; icon: ReactNode; title: string; children?: ReactNode }) {
+    return (
+        <Box sx={{ borderRadius: 2.5, border: `1px solid ${color}55`, bgcolor: `${color}12`, px: 2, py: 1.5 }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ color }}>
+                {icon}
+                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color }}>{title}</Typography>
+            </Stack>
+            {children && <Box sx={{ mt: 0.75 }}>{children}</Box>}
+        </Box>
+    );
+}
+
 /** The facility's answer to a request: confirm it, offer another time, or reject it, with a reason. */
-function DecisionDialog({ booking, action, fieldSx, selectSx, menuPaperSx, colors, actionButtonSx, saveButtonSx,
-                          onClose, onDone }: PanelStyles & {
+function DecisionDialog({ booking, action, fieldSx, colors, actionButtonSx, saveButtonSx, onClose, onDone }: PanelStyles & {
     booking: FacilityBooking;
     action: "confirm" | "propose" | "reject";
     onClose: () => void;
     onDone: () => void;
 }) {
+    const isDark = useIsDark();
+    const primary = useFacilityStyles().colors.primary;
+    const tint = sectionTint(isDark);
     const [reason, setReason] = useState("");
     const [start, setStart] = useState(toLocalInput(booking.startsAt));
     const [end, setEnd] = useState(toLocalInput(booking.endsAt));
     const [priority, setPriority] = useState<number | "">(booking.priority ?? "");
     const [saving, setSaving] = useState(false);
-    const titles = { confirm: "Confirm the request", propose: "Offer another time", reject: "Reject the request" };
+    const decision = DECISIONS[action];
+    const Icon = decision.icon;
+    const offered = start && end ? hoursBetween(fromLocalInput(start), fromLocalInput(end)) : 0;
 
     const send = async () => {
         setSaving(true);
@@ -817,45 +915,61 @@ function DecisionDialog({ booking, action, fieldSx, selectSx, menuPaperSx, color
 
     return (
         <SettingsDialog
-            title={titles[action]}
-            description={`${booking.resourceName}, ${formatWhen(booking.startsAt, booking.endsAt)}, for ${booking.ownerName || booking.ownerEmail || "nobody"}.`}
-            icon={<CalendarPlus size={20} color="white" />}
-            confirmLabel={action === "confirm" ? "Confirm" : action === "propose" ? "Offer it" : "Reject"}
+            title={decision.title}
+            description={`The user is told${action === "propose" ? " and chooses whether to take it" : ""}, by mail when the facility's mail is on.`}
+            icon={<Icon size={20} color={action === "confirm" ? "#86efac" : action === "propose" ? "#93c5fd" : "#fca5a5"} />}
+            confirmLabel={decision.label}
             destructive={action === "reject"}
             busy={saving}
-            confirmDisabled={action === "propose" && !(start && end && hoursBetween(fromLocalInput(start), fromLocalInput(end)) > 0)}
+            confirmDisabled={action === "propose" && !(offered > 0)}
             actionButtonSx={actionButtonSx}
             saveButtonSx={saveButtonSx}
+            closeButton
             onConfirm={() => void send()}
             onClose={onClose}
         >
-            <Stack spacing={2.5} sx={{ pt: 1 }}>
+            <Stack spacing={2}>
+                <BookingSummary booking={booking} colors={colors} />
                 {action === "propose" && (
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                        <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="From" value={start}
-                                   InputLabelProps={{ shrink: true }} onChange={(e) => setStart(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="To" value={end}
-                                   InputLabelProps={{ shrink: true }} onChange={(e) => setEnd(e.target.value)} />
-                    </Stack>
+                    <DialogPart icon={<CalendarClock size={18} />} title="The time offered" tint={tint} colors={colors}
+                                subtitle="It starts as the time asked: move it where it fits.">
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+                            <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="From" value={start}
+                                       InputLabelProps={{ shrink: true }} onChange={(e) => setStart(e.target.value)} />
+                            <TextField sx={fieldSx} size="small" fullWidth type="datetime-local" label="To" value={end}
+                                       InputLabelProps={{ shrink: true }} onChange={(e) => setEnd(e.target.value)} />
+                            <Box component="span" sx={{ px: 1.25, borderRadius: 10, flexShrink: 0, lineHeight: 1.9, fontSize: FACILITY_TEXT.badge,
+                                                        fontWeight: 700, whiteSpace: "nowrap",
+                                                        color: offered > 0 ? primary : "#dc2626",
+                                                        bgcolor: offered > 0 ? tint : "rgba(220,38,38,0.1)" }}>
+                                {offered > 0 ? describeHours(offered) : "Ends before it starts"}
+                            </Box>
+                        </Stack>
+                    </DialogPart>
                 )}
-                <TextField sx={fieldSx} size="small" multiline minRows={2} label="Reason (the user sees it)" value={reason}
-                           onChange={(e) => setReason(e.target.value)} />
-                <FormControl size="small" fullWidth>
-                    <InputLabel id="decision-priority-label">Priority</InputLabel>
-                    <Select labelId="decision-priority-label" label="Priority" sx={selectSx} value={priority}
-                            MenuProps={{ PaperProps: { sx: menuPaperSx } }}
-                            onChange={(e) => setPriority(String(e.target.value) === "" ? "" : Number(e.target.value))}>
-                        <MenuItem value="">Not set</MenuItem>
-                        {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                            <MenuItem key={value} value={Number(value)}>{label}</MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-                {booking.justification && (
-                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                        The user's reason: “{booking.justification}”
-                    </Typography>
-                )}
+                <DialogPart icon={<MessageSquare size={18} />} title="The answer" tint={tint} colors={colors}
+                            subtitle={decision.reasonHint}>
+                    <TextField sx={fieldSx} size="small" multiline minRows={2} label="Reason (the user sees it)" value={reason}
+                               onChange={(e) => setReason(e.target.value)} />
+                    <Box>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>Priority</Typography>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 1 }}>
+                            Kept with the booking: the queue of requests is ordered by it.
+                        </Typography>
+                        <ToggleButtonGroup exclusive size="small" value={priority} aria-label="Priority"
+                                           onChange={(_, value) => value !== null && setPriority(value)}
+                                           sx={choiceButtonsSx({ ...colors, card: "", primary }, isDark)}>
+                            <ToggleButton value="">Not set</ToggleButton>
+                            {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                                <Tooltip key={value} arrow title={label}>
+                                    <ToggleButton value={Number(value)} aria-label={label}>
+                                        {value} · {PRIORITY_SHORT[Number(value)]}
+                                    </ToggleButton>
+                                </Tooltip>
+                            ))}
+                        </ToggleButtonGroup>
+                    </Box>
+                </DialogPart>
             </Stack>
         </SettingsDialog>
     );
@@ -873,95 +987,168 @@ function BookingDetails({ booking, isStaff, fieldSx, colors, actionButtonSx, sav
 }) {
     const [cancelling, setCancelling] = useState(false);
     const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
     const over = booking.status === "rejected" || booking.status === "cancelled";
     const started = new Date(booking.startsAt).getTime() <= Date.now();
     const canCancel = !over && (isStaff || (booking.mine && !started));
     const canEdit = !over && (isStaff || (booking.mine && booking.status === "requested"));
-    const lines: [string, string | null | undefined][] = [
-        ["When", formatWhen(booking.startsAt, booking.endsAt)],
-        ["Kind", booking.kind !== "booking" ? KIND_LABELS[booking.kind] : null],
-        ["For", [booking.ownerName || booking.ownerEmail, booking.groupName && `group ${booking.groupName}`].filter(Boolean).join(" · ") || null],
-        ["Technique", booking.technique ? TECHNIQUE_LABELS[booking.technique] : null],
-        ["Priority", booking.priority != null ? PRIORITY_LABELS[booking.priority] : null],
-        ["Reason given", booking.justification || null],
-        ["Offered instead", booking.status === "alternative" && booking.proposedStartsAt && booking.proposedEndsAt
-            ? formatWhen(booking.proposedStartsAt, booking.proposedEndsAt) : null],
-        ["Decided by", booking.decidedByName ? `${booking.decidedByName}${booking.decisionReason ? `: ${booking.decisionReason}` : ""}` : null],
-        ["Session", booking.sessionName ? `${booking.sessionName} (${booking.sessionStatus})` : null],
-        ["Staff notes", isStaff ? booking.notes || null : null],
-    ];
+    const decided = booking.decidedByName
+        ? `${booking.decidedByName}${booking.decidedAt
+            ? `, ${new Date(booking.decidedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}`
+        : "";
 
-    const cancel = async () => {
+    const run = async (work: () => Promise<unknown>, done: string) => {
+        setBusy(true);
         try {
-            await cancelBooking(booking.id, reason);
-            toast.success("Cancelled.");
+            await work();
+            toast.success(done);
             onChanged();
         } catch (e: any) {
             toast.error(String(e?.message || e));
+        } finally {
+            setBusy(false);
         }
     };
-    const answer = async (accept: boolean) => {
-        try {
-            await answerBooking(booking.id, accept);
-            toast.success(accept ? "Booked at the time offered." : "Declined.");
-            onChanged();
-        } catch (e: any) {
-            toast.error(String(e?.message || e));
+
+    const standing = (() => {
+        switch (booking.status) {
+            case "requested":
+                return (
+                    <StandingBox color={STATUS_COLORS.requested} icon={<Hourglass size={16} />} title="Not answered yet">
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.text }}>
+                            {isStaff ? "Confirm it, offer another time, or reject it." : "You are told when the facility answers."}
+                        </Typography>
+                    </StandingBox>
+                );
+            case "alternative":
+                return (
+                    <StandingBox color={STATUS_COLORS.alternative} icon={<Clock size={16} />} title="The facility offers another time">
+                        {booking.proposedStartsAt && booking.proposedEndsAt && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>
+                                {formatWhen(booking.proposedStartsAt, booking.proposedEndsAt)}
+                            </Typography>
+                        )}
+                        {booking.decisionReason && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.text, fontStyle: "italic" }}>
+                                “{booking.decisionReason}”{decided ? ` · ${decided}` : ""}
+                            </Typography>
+                        )}
+                        {booking.mine && !cancelling && (
+                            <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
+                                <Button size="small" variant="contained" sx={saveSx} startIcon={<Check size={14} />} disabled={busy}
+                                        onClick={() => void run(() => answerBooking(booking.id, true), "Booked at the time offered.")}>
+                                    Take the time offered
+                                </Button>
+                                <Button size="small" variant="outlined" sx={actionSx} disabled={busy}
+                                        onClick={() => void run(() => answerBooking(booking.id, false), "Declined.")}>
+                                    Decline
+                                </Button>
+                            </Stack>
+                        )}
+                        {!booking.mine && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.5 }}>Waiting for the user's answer.</Typography>
+                        )}
+                    </StandingBox>
+                );
+            case "confirmed":
+                return decided ? (
+                    <StandingBox color={STATUS_COLORS.confirmed} icon={<CalendarCheck size={16} />} title={`Confirmed by ${decided}`}>
+                        {booking.decisionReason && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.text, fontStyle: "italic" }}>“{booking.decisionReason}”</Typography>
+                        )}
+                    </StandingBox>
+                ) : null;
+            default:
+                return (
+                    <StandingBox color={STATUS_COLORS[booking.status]} icon={<X size={16} />}
+                                 title={booking.status === "rejected" ? `Not accepted${decided ? ` · ${decided}` : ""}` : "Cancelled"}>
+                        {booking.decisionReason && (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.text, fontStyle: "italic" }}>“{booking.decisionReason}”</Typography>
+                        )}
+                    </StandingBox>
+                );
         }
-    };
+    })();
 
     return (
-        <Dialog open onClose={onClose} maxWidth="sm" fullWidth aria-labelledby="booking-details-title"
-                PaperProps={{ sx: { borderRadius: 3 } }}>
-            <Box sx={{ bgcolor: "#333d49", color: "white", px: 2.5, py: 2 }}>
+        <Dialog open onClose={() => !busy && onClose()} maxWidth="sm" fullWidth aria-labelledby="booking-details-title"
+                PaperProps={{ sx: { borderRadius: 3, overflow: "hidden", boxShadow: 12, display: "flex", flexDirection: "column",
+                                    maxHeight: "calc(100% - 48px)" } }}>
+            <Box sx={{ bgcolor: "#333d49", color: "white", px: 2, py: 1.75, flexShrink: 0 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center">
-                    <Typography id="booking-details-title" sx={{ fontSize: 17, fontWeight: 600, flex: 1 }}>
-                        {booking.resourceName}{booking.title ? ` · ${booking.title}` : ""}
-                    </Typography>
-                    <StatusChip status={booking.status} />
+                    <Box sx={{ width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                               borderRadius: 2, bgcolor: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                        <CalendarDays size={20} color="white" />
+                    </Box>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography id="booking-details-title" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>
+                            {booking.kind === "booking" ? "Booking" : KIND_LABELS[booking.kind]} of {booking.resourceName}
+                        </Typography>
+                        <Typography sx={{ fontSize: 14, color: "rgb(229,231,235)" }}>
+                            {booking.requestedByName ? `Asked by ${booking.requestedByName}` : formatWhen(booking.startsAt, booking.endsAt)}
+                        </Typography>
+                    </Box>
+                    <Tooltip arrow title="Close">
+                        <IconButton aria-label="Close" onClick={onClose}
+                                    sx={{ color: "rgb(229,231,235)", "&:hover": { bgcolor: "rgba(255,255,255,0.1)" } }}>
+                            <X size={20} />
+                        </IconButton>
+                    </Tooltip>
                 </Stack>
             </Box>
-            <Box sx={{ px: 2.5, py: 2.5 }}>
-                <Stack spacing={1.5}>
-                    {lines.filter(([, value]) => value).map(([label, value]) => (
-                        <Stack key={label} direction="row" spacing={2}>
-                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted, width: 120, flexShrink: 0 }}>{label}</Typography>
-                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, whiteSpace: "pre-wrap" }}>{value}</Typography>
-                        </Stack>
-                    ))}
+            <Box sx={{ px: 2.5, py: 2.5, flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+                <Stack spacing={2}>
+                    <BookingSummary booking={booking} colors={colors} showNotes={isStaff} />
+                    {standing}
                     {cancelling && (
-                        <TextField sx={fieldSx} size="small" multiline minRows={2} autoFocus
-                                   label={isStaff ? "Why (the user sees it)" : "Why (optional)"} value={reason}
-                                   onChange={(e) => setReason(e.target.value)} />
+                        <Box sx={{ borderRadius: 2.5, border: "1px solid rgba(220,38,38,0.35)", bgcolor: "rgba(220,38,38,0.05)", p: 2 }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: "#dc2626", mb: 1.25 }}>
+                                Cancel this booking?
+                            </Typography>
+                            <TextField sx={fieldSx} size="small" fullWidth multiline minRows={2} autoFocus
+                                       label={isStaff ? "Why (the user sees it)" : "Why (optional)"} value={reason}
+                                       onChange={(e) => setReason(e.target.value)} />
+                            <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.25 }}>
+                                <Button size="small" variant="outlined" sx={actionSx} disabled={busy} onClick={() => setCancelling(false)}>
+                                    Keep it
+                                </Button>
+                                <Button size="small" variant="contained" color="error" disabled={busy}
+                                        sx={{ ...actionSx, boxShadow: "none" }} startIcon={<Trash2 size={14} />}
+                                        onClick={() => void run(() => cancelBooking(booking.id, reason), "Cancelled.")}>
+                                    Cancel the booking
+                                </Button>
+                            </Stack>
+                        </Box>
                     )}
                 </Stack>
             </Box>
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="flex-end"
-                   sx={{ px: 2.5, py: 1.75, borderTop: 1, borderColor: "divider" }}>
-                {isStaff && booking.status === "requested" && !cancelling && (
-                    <>
-                        <Button variant="contained" sx={saveSx} onClick={() => onDecide("confirm")}>Confirm</Button>
-                        <Button variant="outlined" sx={actionSx} onClick={() => onDecide("propose")}>Other time</Button>
-                        <Button variant="outlined" sx={{ ...actionSx, color: "error.main" }} onClick={() => onDecide("reject")}>Reject</Button>
-                    </>
-                )}
-                {booking.mine && booking.status === "alternative" && !cancelling && (
-                    <>
-                        <Button variant="contained" sx={saveSx} onClick={() => void answer(true)}>Take the time offered</Button>
-                        <Button variant="outlined" sx={actionSx} onClick={() => void answer(false)}>Decline</Button>
-                    </>
-                )}
-                {canEdit && !cancelling && <Button variant="outlined" sx={actionSx} onClick={onEdit}>Change</Button>}
-                {canCancel && (cancelling ? (
-                    <Button variant="contained" color="error" sx={actionSx} onClick={() => void cancel()}>Cancel the booking</Button>
-                ) : (
-                    <Button variant="outlined" sx={{ ...actionSx, color: "error.main" }} onClick={() => setCancelling(true)}>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center"
+                   sx={{ px: 2.5, py: 1.75, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
+                {canCancel && !cancelling && (
+                    <Button variant="text" sx={{ ...actionSx, color: "#dc2626" }} startIcon={<Trash2 size={15} />}
+                            onClick={() => setCancelling(true)}>
                         Cancel booking…
                     </Button>
-                ))}
-                <Button variant="outlined" sx={actionSx} onClick={onClose}>Close</Button>
+                )}
+                <Box sx={{ flex: 1 }} />
+                {canEdit && !cancelling && (
+                    <Button variant="outlined" sx={actionSx} startIcon={<Pencil size={15} />} onClick={onEdit}>Change</Button>
+                )}
+                {isStaff && booking.status === "requested" && !cancelling && (
+                    <>
+                        <Button variant="outlined" sx={{ ...actionSx, color: "#dc2626" }} startIcon={<X size={15} />}
+                                onClick={() => onDecide("reject")}>Reject</Button>
+                        <Button variant="outlined" sx={actionSx} startIcon={<Clock size={15} />}
+                                onClick={() => onDecide("propose")}>Other time</Button>
+                        <Button variant="contained" sx={saveSx} startIcon={<Check size={15} />}
+                                onClick={() => onDecide("confirm")}>Confirm</Button>
+                    </>
+                )}
+                {!(isStaff && booking.status === "requested") && (
+                    <Button variant="outlined" sx={actionSx} onClick={onClose}>Close</Button>
+                )}
             </Stack>
         </Dialog>
     );

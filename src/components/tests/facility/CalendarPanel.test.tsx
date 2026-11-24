@@ -75,6 +75,43 @@ describe("The facility's calendar", () => {
     expect(screen.queryByRole("button", { name: "Resources" })).not.toBeInTheDocument();
   }, 15000);
 
+  it("opens a request with all it says, and offers another time from it at another priority", async () => {
+    facilityMocks.listOpenBookingRequests.mockResolvedValue([REQUEST]);
+    facilityMocks.decideBooking.mockResolvedValue({ ...REQUEST, status: "alternative" });
+    render(<CalendarPanel {...styles} isStaff isManager={false} />);
+
+    const request = await screen.findByRole("group", { name: "Request 11" }, { timeout: 4000 });
+    fireEvent.click(within(request).getByText(/^Krios G5 · /));
+    const details = await screen.findByRole("dialog", { name: "Booking of Krios G5" });
+    expect(within(details).getByText("Not answered yet")).toBeInTheDocument();
+    expect(within(details).getByText("1 day")).toBeInTheDocument();
+    expect(within(details).getByText("Gaoxin Lu · group Shannon lab")).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Other time" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Offer another time" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "1 · Committed (contract, Instruct)" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Offer it" }));
+    await waitFor(() => expect(facilityMocks.decideBooking).toHaveBeenCalledWith(11, expect.objectContaining({
+      action: "propose", priority: 1, proposedStartsAt: expect.any(String), proposedEndsAt: expect.any(String) })));
+  }, 15000);
+
+  it("lets a user cancel a booking of theirs after asking, or keep it", async () => {
+    facilityMocks.getMyBookings.mockResolvedValue({ groups: [], bookings: [{ ...REQUEST, mine: true }] });
+    facilityMocks.cancelBooking.mockResolvedValue({});
+    render(<CalendarPanel {...styles} isStaff={false} isManager={false} />);
+
+    fireEvent.click(await screen.findByText(/^Krios G5 · /, undefined, { timeout: 4000 }));
+    const details = await screen.findByRole("dialog", { name: "Booking of Krios G5" });
+    fireEvent.click(within(details).getByRole("button", { name: "Cancel booking…" }));
+    fireEvent.click(within(details).getByRole("button", { name: "Keep it" }));
+    expect(within(details).queryByText("Cancel this booking?")).not.toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Cancel booking…" }));
+    fireEvent.change(within(details).getByLabelText("Why (optional)"), { target: { value: "Grids not ready" } });
+    fireEvent.click(within(details).getByRole("button", { name: "Cancel the booking" }));
+
+    await waitFor(() => expect(facilityMocks.cancelBooking).toHaveBeenCalledWith(11, "Grids not ready"));
+  }, 15000);
+
   it("lets a user take the other time the facility offers", async () => {
     facilityMocks.getMyBookings.mockResolvedValue({
       groups: [], bookings: [{ ...REQUEST, mine: true, status: "alternative", proposedStartsAt: inDays(8),
