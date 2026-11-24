@@ -187,6 +187,36 @@ describe("The samples and grids of the facility", () => {
     expect(await within(viewer).findByRole("img", { name: "Gel" })).toHaveAttribute("src", "blob:image-8");
   });
 
+  it("shows a sample to look at, without editing it", async () => {
+    render(<SamplesPanel {...styles} canEdit={false} />);
+    await screen.findByText("NZ251");
+
+    fireEvent.click(screen.getByRole("button", { name: "View NZ251" }));
+    const dialog = await screen.findByRole("dialog", { name: "NZ251" });
+    const box = within(dialog).getByRole("group", { name: "Box 1" });
+    expect(within(box).getByText("CuRh 1.2 · 0.3 mg/ml · Dimer +5mM MnCl2")).toBeInTheDocument();
+    expect(within(box).getByText("Loaded")).toBeInTheDocument();
+    expect(within(dialog).getByText("Gao Xin")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("asks before removing a box with grids from a sample", async () => {
+    render(<SamplesPanel {...styles} canEdit />);
+    await screen.findByText("NZ251");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit NZ251" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove box 1" }));
+    const confirm = await screen.findByRole("dialog", { name: "Remove box 1?" });
+    expect(within(confirm).getByText("Grid #2")).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(within(dialog).getByLabelText("Vitrification")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove box 1" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Remove box 1?" })).getByRole("button", { name: "Remove the box" }));
+    await waitFor(() => expect(within(dialog).queryByLabelText("Vitrification")).not.toBeInTheDocument());
+  });
+
   it("asks to save a new sample before adding its images", async () => {
     render(<SamplesPanel {...styles} canEdit />);
     await screen.findByText("NZ251");

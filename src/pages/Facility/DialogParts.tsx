@@ -1,6 +1,6 @@
 // The parts of the facility's long dialogs (a session, a booking, a resource): a titled box per part, and on/off
 // options with what they do beside their switch.
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Box, Button, Dialog, IconButton, Stack, Switch, Tooltip, Typography } from "@mui/material";
 import { X } from "lucide-react";
 
@@ -68,8 +68,9 @@ export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", ch
     maxWidth?: "sm" | "md" | "lg";
     children: ReactNode;
 }) {
+    const titleId = `view-dialog-title-${useId()}`;
     return (
-        <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby="view-dialog-title"
+        <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby={titleId}
                 PaperProps={{ sx: { borderRadius: 3, overflow: "hidden", boxShadow: 12, display: "flex", flexDirection: "column",
                                     maxHeight: "calc(100% - 48px)" } }}>
             <Box sx={{ bgcolor: "#333d49", color: "white", px: 2, py: 1.75, flexShrink: 0 }}>
@@ -79,7 +80,7 @@ export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", ch
                         {icon}
                     </Box>
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography id="view-dialog-title" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5, wordBreak: "break-all" }}>
+                        <Typography id={titleId} sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5, wordBreak: "break-all" }}>
                             {title}
                         </Typography>
                         {subtitle && <Typography sx={{ fontSize: 14, color: "rgb(229,231,235)" }}>{subtitle}</Typography>}

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Box, Button, CircularProgress, Dialog, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { X } from "lucide-react";
 
@@ -44,13 +44,15 @@ export default function SettingsDialog({
     title, description, icon, children, confirmLabel, busyLabel, busy = false, confirmDisabled = false,
     destructive = false, maxWidth = "sm", footerNote, actionButtonSx, saveButtonSx, closeButton = false, onConfirm, onClose,
 }: SettingsDialogProps) {
+    // Its own id: a dialog may open over another (a confirmation over a form)
+    const titleId = `settings-dialog-title-${useId()}`;
     return (
         <Dialog
             open
             onClose={() => !busy && onClose()}
             maxWidth={maxWidth}
             fullWidth
-            aria-labelledby="settings-dialog-title"
+            aria-labelledby={titleId}
             // Header and actions always in view: only the content scrolls when it does not fit
             PaperProps={{ sx: { borderRadius: 3, overflow: "hidden", boxShadow: 12, display: "flex",
                                 flexDirection: "column", maxHeight: "calc(100% - 48px)" } }}
@@ -67,7 +69,7 @@ export default function SettingsDialog({
                         </Box>
                     )}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography id="settings-dialog-title" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>
+                        <Typography id={titleId} sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>
                             {title}
                         </Typography>
                         {description && (

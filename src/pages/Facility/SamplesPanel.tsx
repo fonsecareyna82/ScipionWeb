@@ -17,7 +17,7 @@ import {
     Typography,
 } from "@mui/material";
 import {
-    Boxes, Camera, FlaskConical, Images, LayoutGrid, MessageSquare, Package, Pencil, Plus, RefreshCw, Search, Ticket, Trash2,
+    Boxes, Camera, Eye, FlaskConical, Images, LayoutGrid, MessageSquare, Package, Pencil, Plus, RefreshCw, Search, Ticket, Trash2,
     UserRound, UsersRound, X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -46,6 +46,7 @@ import { SettingsSection, sectionTint } from "@/pages/Settings/SettingsSection";
 import { DialogPart } from "./DialogParts";
 import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
 import { SessionFacts, type SessionFact } from "./SessionsPanel";
+import { SampleView } from "./MyFacilityDialogs";
 import ImageStrip from "./ImageStrip";
 
 type PanelStyles = {
@@ -196,6 +197,7 @@ export default function SamplesPanel({ fieldSx, selectSx, menuPaperSx, colors, a
     const [appliedSearch, setAppliedSearch] = useState("");
     const [editing, setEditing] = useState<Sample | "new" | null>(null);
     const [deleting, setDeleting] = useState<Sample | null>(null);
+    const [viewing, setViewing] = useState<Sample | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
 
     useEffect(() => {
@@ -323,8 +325,13 @@ export default function SamplesPanel({ fieldSx, selectSx, menuPaperSx, colors, a
                                                 <Box sx={{ pt: 0.25 }}><ImageStrip images={sample.images ?? []} size={64} colors={colors} /></Box>
                                             )}
                                         </Stack>
+                                        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<Eye size={14} />}
+                                                    aria-label={`View ${sample.code}`} onClick={() => setViewing(sample)}>
+                                                View
+                                            </Button>
                                         {canEdit && (
-                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                                            <>
                                                 <Button size="small" variant="outlined" sx={actionSx} startIcon={<Pencil size={14} />}
                                                         onClick={() => setEditing(sample)}>
                                                     Edit
@@ -335,8 +342,9 @@ export default function SamplesPanel({ fieldSx, selectSx, menuPaperSx, colors, a
                                                         <Trash2 size={17} />
                                                     </IconButton>
                                                 </Tooltip>
-                                            </Stack>
+                                            </>
                                         )}
+                                        </Stack>
                                     </Stack>
                                 </Box>
                                 {sample.boxes.length > 0 && (
@@ -418,6 +426,10 @@ export default function SamplesPanel({ fieldSx, selectSx, menuPaperSx, colors, a
                 );
             })()}
 
+            {viewing !== null && (
+                <SampleView sample={viewing} colors={colors} showOwner onClose={() => setViewing(null)} />
+            )}
+
             {editing !== null && (
                 <SampleDialog
                     sample={editing === "new" ? null : editing}
@@ -466,6 +478,8 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
     const [groups, setGroups] = useState<Named[]>([]);
     const [people, setPeople] = useState<Person[]>([]);
     const [saving, setSaving] = useState(false);
+    // A box with grids in it, waiting for its removal to be confirmed
+    const [removingBox, setRemovingBox] = useState<BoxRow | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -695,7 +709,9 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
                                     <Box sx={{ flex: 1 }} />
                                     <Tooltip arrow title="Remove the box">
                                         <IconButton size="small" aria-label={`Remove box ${box.label}`} sx={{ color: "#dc2626" }}
-                                                    onClick={() => setBoxes((rows) => rows.filter((row) => row.key !== box.key))}>
+                                                    onClick={() => (box.grids.some((grid) => !isEmptyGrid(grid))
+                                                        ? setRemovingBox(box)
+                                                        : setBoxes((rows) => rows.filter((row) => row.key !== box.key)))}>
                                             <Trash2 size={17} />
                                         </IconButton>
                                     </Tooltip>
@@ -797,6 +813,44 @@ function SampleDialog({ sample, colors, fieldSx, selectSx, menuPaperSx, actionBu
                     ))}
                 </DialogPart>
             </Stack>
+            {removingBox && (() => {
+                const filled = removingBox.grids.filter((grid) => !isEmptyGrid(grid));
+                return (
+                    <SettingsDialog
+                        title={`Remove box ${removingBox.label || ""}?`.replace(" ?", "?")}
+                        description="Its grids go with it when you save the sample. Until then, Cancel keeps everything as it was."
+                        icon={<Trash2 size={20} color="#fca5a5" />}
+                        confirmLabel="Remove the box"
+                        destructive
+                        maxWidth="xs"
+                        actionButtonSx={actionButtonSx}
+                        closeButton
+                        onConfirm={() => {
+                            setBoxes((rows) => rows.filter((row) => row.key !== removingBox.key));
+                            setRemovingBox(null);
+                        }}
+                        onClose={() => setRemovingBox(null)}
+                    >
+                        <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, overflow: "hidden" }}>
+                            {filled.map((grid, index) => (
+                                <Stack key={grid.key} direction="row" spacing={1} alignItems="center"
+                                       sx={{ px: 1.5, py: 0.75, borderTop: index ? `1px solid ${colors.border}` : "none" }}>
+                                    <Box sx={{ width: 10, height: 10, borderRadius: 0.75, flexShrink: 0, bgcolor: GRID_STATUS_COLORS[grid.status] }} />
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text, flex: 1, minWidth: 0 }}>
+                                        {grid.gridNumber.trim() ? `Grid #${grid.gridNumber.trim()}` : `Place ${grid.position}`}
+                                        <Box component="span" sx={{ color: colors.muted, fontSize: FACILITY_TEXT.note }}>
+                                            {[grid.gridType, grid.specimen].filter(Boolean).map((part) => ` · ${part}`).join("")}
+                                        </Box>
+                                    </Typography>
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: GRID_STATUS_COLORS[grid.status], fontWeight: 700 }}>
+                                        {GRID_STATUS_LABELS[grid.status]}
+                                    </Typography>
+                                </Stack>
+                            ))}
+                        </Box>
+                    </SettingsDialog>
+                );
+            })()}
         </SettingsDialog>
     );
 }
