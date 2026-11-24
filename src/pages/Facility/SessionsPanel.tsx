@@ -220,7 +220,7 @@ async function copyText(text: string): Promise<void> {
     }
 }
 
-function copyFolders(text: string, what: string) {
+export function copyFolders(text: string, what: string) {
     copyText(text).then(() => toast.success(`${what} copied.`)).catch(() => toast.error("The browser did not let it copy."));
 }
 

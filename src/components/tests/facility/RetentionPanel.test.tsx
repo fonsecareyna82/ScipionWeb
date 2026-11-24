@@ -20,6 +20,12 @@ const expired = {
   groupName: "Shannon lab", userName: "Gaoxin Lu", userEmail: "gaoxin@example.org", finishedAt: "2026-08-01T12:00:00+00:00",
   finishedOn: "2026-08-01", movieCount: 4120, movieBytes: 3.5 * 1024 ** 4,
   projects: [{ id: 31, name: "20260801_KRIOS_0007_DATA_01", ownerId: 3, bytes: 200 * 1024 ** 3 }],
+  rawFolders: [
+    { folder: "20260801_KRIOS_0007_DATA_01", path: "/offload/krios/20260801_KRIOS_0007_DATA_01", present: true,
+      movieCount: 4000, movieBytes: 3.4 * 1024 ** 4 },
+    { folder: "20260801_KRIOS_0007_DATA_02", path: "/offload/krios/20260801_KRIOS_0007_DATA_02", present: false,
+      movieCount: 120, movieBytes: 0.1 * 1024 ** 4 },
+  ],
   raw: state({ state: "expired", until: "2026-10-30", daysLeft: -8, noticesSent: [30, 7, 1] }),
   processed: state({ state: "due", until: "2026-11-20", daysLeft: 13, own: true }),
 };
@@ -47,8 +53,12 @@ describe("The data retention of the finished sessions", () => {
     const row = await screen.findByTestId("retention-7");
     expect(screen.queryByTestId("retention-8")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "To delete or due (1)" })).toBeInTheDocument();
-    expect(screen.getByText(/raw movies 90 days, projects 30 days; its user and the group's PI are mailed 30, 7, 1 days before/))
-      .toBeInTheDocument();
+    const days = screen.getByLabelText("The facility's days");
+    expect(within(days).getByText("90 days")).toBeInTheDocument();
+    expect(within(days).getByText("30 days")).toBeInTheDocument();
+    expect(within(days).getByText("30, 7, 1 days before")).toBeInTheDocument();
+    // Past its date: the raw movies of one session
+    expect(within(days).getByText("1 session · 3.50 TB")).toBeInTheDocument();
     expect(within(row).getByText("Kept until 30 Oct 2026: 8 days past, to delete")).toBeInTheDocument();
     expect(within(row).getByText("Kept until 20 Nov 2026 · 13 days left")).toBeInTheDocument();
     expect(within(row).getByText("4120 movies, 3.50 TB")).toBeInTheDocument();
@@ -59,6 +69,20 @@ describe("The data retention of the finished sessions", () => {
     expect(within(screen.getByTestId("retention-9")).getByText("Deleted 1 Oct 2026 by Ana Staff")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All finished (3)" }));
     expect(screen.getByTestId("retention-8")).toBeInTheDocument();
+  });
+
+  it("shows where the raw movies are, to delete them there, and warns when a folder is still there", async () => {
+    renderPanel();
+    const row = await screen.findByTestId("retention-7");
+
+    const where = within(row).getByRole("group", { name: "Where the raw movies are" });
+    expect(within(where).getByText("/offload/krios/20260801_KRIOS_0007_DATA_01")).toBeInTheDocument();
+    expect(within(where).getByText("not there any more")).toBeInTheDocument();
+    expect(within(where).getByRole("button", { name: "Copy /offload/krios/20260801_KRIOS_0007_DATA_01" })).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: "Record as deleted" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("One of its folders is still there: delete it first.")).toBeInTheDocument();
   });
 
   it("records the raw movies as deleted, and can undo it", async () => {
@@ -100,12 +124,16 @@ describe("The data retention of the finished sessions", () => {
 
     fireEvent.click(within(row).getAllByRole("button", { name: "Keep longer" })[0]);
     let dialog = await screen.findByRole("dialog");
+    // Past its date: the quick moves start from today
+    fireEvent.click(within(dialog).getByRole("button", { name: "+3 months" }));
+    expect(within(dialog).getByLabelText("Kept until")).toHaveValue("2027-02-07");
     fireEvent.change(within(dialog).getByLabelText("Kept until"), { target: { value: "2027-02-01" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save the date" }));
     await waitFor(() => expect(facilityMocks.saveSessionRetention).toHaveBeenCalledWith(7, { rawKeepUntil: "2027-02-01" }));
 
     fireEvent.click(within(row).getByRole("button", { name: "Change date" }));
     dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("30 days after it finished: until 31 Aug 2026.")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Use the facility's days again" }));
     await waitFor(() => expect(facilityMocks.saveSessionRetention).toHaveBeenCalledWith(7, { processedKeepUntil: null }));
   });

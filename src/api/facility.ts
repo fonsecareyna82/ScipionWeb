@@ -523,6 +523,7 @@ export type RetentionState = {
   // The notices its user was mailed before this date (days before it)
   noticesSent: number[];
 };
+export type RawFolder = { folder: string; path: string | null; present: boolean; movieCount: number; movieBytes: number };
 export type RetentionSession = {
   id: number;
   name: string;
@@ -538,6 +539,8 @@ export type RetentionSession = {
   movieCount: number;
   movieBytes: number;
   projects: { id: number; name: string; ownerId: number; bytes: number | null }[];
+  // Where each DATA's raw movies are (path null: its microscope has no offload folder), and whether still there
+  rawFolders?: RawFolder[];
   raw: RetentionState;
   processed: RetentionState;
 };
