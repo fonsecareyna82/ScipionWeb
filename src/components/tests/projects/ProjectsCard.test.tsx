@@ -261,15 +261,15 @@ describe("ProjectsCard", () => {
 
     expect(screen.getByText("Rename project")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Project name"), {
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "  New Project  " },
     });
 
-    fireEvent.change(screen.getByPlaceholderText("Project description"), {
+    fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "  New description  " },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(service.renameProject).toHaveBeenCalledWith("5", "New Project", "New description");
@@ -298,13 +298,12 @@ describe("ProjectsCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action rename" }));
 
-    fireEvent.change(screen.getByPlaceholderText("Project name"), {
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "   " },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(screen.getByText("Project name cannot be empty.")).toBeInTheDocument();
+    // An empty name cannot be saved
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(service.renameProject).not.toHaveBeenCalled();
   });
 
@@ -327,15 +326,15 @@ describe("ProjectsCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action rename" }));
 
-    fireEvent.change(screen.getByPlaceholderText("Project name"), {
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Valid name" },
     });
 
-    fireEvent.change(screen.getByPlaceholderText("Project description"), {
+    fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "ab" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(
       screen.getByText("Description must be at least 3 characters."),

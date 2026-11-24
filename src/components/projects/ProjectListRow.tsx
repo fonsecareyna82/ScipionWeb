@@ -1,11 +1,10 @@
-import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { CalendarDays, Database, FolderOpen, Layers3 } from "lucide-react";
 
 import ProjectAction from "./ProjectActions";
+import { DeleteProjectDialog, RenameProjectDialog } from "./ProjectDialogs";
 import { useProjectService } from "@/ProjectServiceContext";
 import { projectAccessLabel } from "@/utils/project-access";
 import { Pin } from "lucide-react";
@@ -97,40 +96,6 @@ function getStatusToneClasses(raw?: string | null): string {
     "border-violet-300/80 bg-violet-50 text-violet-800",
     "dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-200",
   );
-}
-
-function DialogShell(props: { children: React.ReactNode; onClose: () => void }) {
-  const portalRoot = typeof document !== "undefined" ? document.body : null;
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [props]);
-
-  const dialog = (
-    <div
-      className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm"
-      onMouseDown={props.onClose}
-    >
-      <div
-        className={classNames(
-          crispText,
-          "w-full max-w-lg rounded-2xl border p-5 shadow-2xl",
-          "border-gray-300/90 bg-white text-gray-950",
-          "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
-        )}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        {props.children}
-      </div>
-    </div>
-  );
-
-  return portalRoot ? createPortal(dialog, portalRoot) : dialog;
 }
 
 export default function ProjectListRow(props: ProjectListRowProps) {
@@ -382,88 +347,13 @@ export default function ProjectListRow(props: ProjectListRowProps) {
         </div>
       </div>
 
-      {isRenaming ? (
-        <DialogShell onClose={() => setIsRenaming(false)}>
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-slate-950 dark:text-white">Rename project</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Update the project name and description.
-            </p>
-          </div>
+      <RenameProjectDialog open={isRenaming} name={newName} description={newDescription} error={errorMessage}
+                           onName={setNewName} onDescription={setNewDescription}
+                           onSave={() => void handleRenameSubmit()} onClose={() => setIsRenaming(false)} />
 
-          <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Name
-              </label>
-              <input
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-gray-950 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Description
-              </label>
-              <textarea
-                value={newDescription}
-                onChange={(event) => setNewDescription(event.target.value)}
-                rows={3}
-                className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-gray-950 dark:text-white"
-              />
-            </div>
-
-            {errorMessage ? <p className="text-sm font-medium text-red-600 dark:text-red-300">{errorMessage}</p> : null}
-          </div>
-
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsRenaming(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 dark:hover:bg-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleRenameSubmit}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-            >
-              Save changes
-            </button>
-          </div>
-        </DialogShell>
-      ) : null}
-
-      {showDeleteModal ? (
-        <DialogShell onClose={() => setShowDeleteModal(false)}>
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-slate-950 dark:text-white">Delete project</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-              This will delete <span className="font-semibold text-slate-950 dark:text-white">{name}</span>. This action cannot be undone.
-            </p>
-          </div>
-
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowDeleteModal(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-900 dark:text-slate-200 dark:hover:bg-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirmRemove}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
-            >
-              Delete
-            </button>
-          </div>
-        </DialogShell>
-      ) : null}
+      <DeleteProjectDialog open={showDeleteModal} name={name} protocols={protocolsCount} diskUsage={diskUsage}
+                           statusCounts={statusCounts} onConfirm={() => void confirmRemove()}
+                           onClose={() => setShowDeleteModal(false)} />
     </>
   );
 }

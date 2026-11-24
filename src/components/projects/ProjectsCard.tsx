@@ -1,10 +1,10 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
-import { Layers3, Pin, X, UserPlus2 } from "lucide-react";
+import { Layers3, Pin, UserPlus2 } from "lucide-react";
 import { RunningDot } from "./ProjectStatusSummary";
 import { ACTIVE_STATUSES, countIn, formatFullDate, formatRelativeDate } from "@/utils/project-list";
 
@@ -18,6 +18,7 @@ import {
 } from "@/icons";
 import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
+import { DeleteProjectDialog, RenameProjectDialog } from "./ProjectDialogs";
 import { projectAccessLabel } from "@/utils/project-access";
 import type {
   ProjectThumbnailGroup,
@@ -1338,131 +1339,6 @@ export default function ProjectCard(props: ProjectCardProps) {
             </div>
           </div>
 
-          <AnimatePresence>
-            {isRenaming && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className={classNames(
-                  crispText,
-                  "absolute inset-0 z-20 overflow-hidden rounded-[10px] border",
-                  "border-gray-300/90 bg-white",
-                  "dark:border-gray-700 dark:bg-gray-900",
-                )}
-                role="dialog"
-                aria-modal="true"
-                onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
-                onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
-                  if (e.key === "Escape") setIsRenaming(false);
-                  const tag = (e.target as HTMLElement)?.tagName;
-                  if (e.key === "Enter" && tag !== "TEXTAREA") {
-                    e.preventDefault();
-                    handleRenameSubmit();
-                  }
-                }}
-              >
-                <div className="flex h-full flex-col">
-                  <div className="flex items-center justify-between gap-3 border-b border-gray-300/80 px-4 py-3 dark:border-gray-700">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
-                        {icon}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-950 dark:text-white">
-                          Rename project
-                        </div>
-                        <div className="truncate text-sm text-gray-700 dark:text-gray-300">
-                          {label}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsRenaming(false)}
-                      className={classNames(
-                        "inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
-                        "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                        "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
-                      )}
-                      aria-label="Close"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-                    <div className="flex flex-col gap-3">
-                      <label className="text-sm font-medium text-gray-800 dark:text-gray-300">
-                        Name
-                        <input
-                          type="text"
-                          value={newLabel}
-                          onChange={(e) => setNewLabel(e.target.value)}
-                          placeholder="Project name"
-                          className={classNames(
-                            crispText,
-                            "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none",
-                            "border-gray-300/80 bg-white text-gray-950",
-                            "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
-                          )}
-                          autoFocus
-                        />
-                      </label>
-
-                      <label className="text-sm font-medium text-gray-800 dark:text-gray-300">
-                        Description
-                        <textarea
-                          value={newDescription}
-                          onChange={(e) => setNewDescription(e.target.value)}
-                          placeholder="Project description"
-                          rows={4}
-                          className={classNames(
-                            crispText,
-                            "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none",
-                            "border-gray-300/80 bg-white text-gray-950",
-                            "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-700 dark:bg-gray-900 dark:text-white",
-                          )}
-                        />
-                      </label>
-
-                      {errorMessage ? (
-                        <div className="rounded-xl border border-red-200/80 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-                          {errorMessage}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 border-t border-gray-300/80 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
-                    <button
-                      type="button"
-                      onClick={() => setIsRenaming(false)}
-                      className={classNames(
-                        "rounded-xl border px-4 py-2 text-sm font-semibold transition",
-                        "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
-                        "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
-                      )}
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleRenameSubmit}
-                      className="rounded-xl bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-[0.98] hover:shadow-md"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </motion.div>
 
@@ -1606,62 +1482,13 @@ export default function ProjectCard(props: ProjectCardProps) {
         )
         : null}
 
-      <AnimatePresence>
-        {showDeleteModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35"
-            role="dialog"
-            aria-modal="true"
-            aria-busy={deleting}
-            onClick={() => {
-              if (!deleting) setShowDeleteModal(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.96, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="w-full max-w-sm rounded-2xl border border-gray-300/90 bg-white p-6 shadow-2xl subpixel-antialiased dark:border-gray-700 dark:bg-gray-900"
-              onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
-            >
-              <h2 className="mb-4 text-lg font-semibold text-gray-950 dark:text-white">
-                Delete project?
-              </h2>
-              <p className="mb-6 text-sm leading-6 text-gray-800 dark:text-gray-200">
-                This action cannot be undone. Are you sure you want to delete <strong>{label}</strong>?
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteModal(false)}
-                  disabled={deleting}
-                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmRemove}
-                  disabled={deleting}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.98] hover:shadow-md disabled:cursor-wait disabled:opacity-80"
-                >
-                  {deleting && (
-                    <span
-                      aria-hidden="true"
-                      className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
-                    />
-                  )}
-                  {deleting ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <RenameProjectDialog open={isRenaming} name={newLabel} description={newDescription} error={errorMessage}
+                           onName={setNewLabel} onDescription={setNewDescription}
+                           onSave={() => void handleRenameSubmit()} onClose={() => setIsRenaming(false)} />
+
+      <DeleteProjectDialog open={showDeleteModal} name={label} protocols={value} diskUsage={diskUsage}
+                           statusCounts={statusCounts} busy={deleting} onConfirm={() => void confirmRemove()}
+                           onClose={() => !deleting && setShowDeleteModal(false)} />
     </>
   );
 }
