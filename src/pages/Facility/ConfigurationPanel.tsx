@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Box, Button, Card, CardContent, CardHeader, CircularProgress, MenuItem, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
-import { Copy, ExternalLink, Mail, MonitorPlay, Power, RefreshCw, RotateCcw, Save, Scale, Tag, UsersRound, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+    Alert, Autocomplete, Box, Button, CircularProgress, InputAdornment, Stack, Tab, Tabs, TextField, ToggleButton,
+    ToggleButtonGroup, Tooltip, Typography,
+} from "@mui/material";
+import {
+    BellRing, CalendarClock, Clock, Copy, Download, Eye, ExternalLink, FolderKanban, Globe2, Hammer, Mail, MonitorPlay,
+    Plus, Power, RefreshCw, RotateCcw, Save, Scale, ScanSearch, Tag, UserRound, UsersRound, Wand2,
+} from "lucide-react";
 import toast from "react-hot-toast";
-
-import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
 import { Link as RouterLink } from "react-router";
 
+import { useIsDark } from "@/context/ThemeContext";
+import { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
+import { SettingRow, SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
 import {
     getFacilitySettings,
     getRoomScreenLink,
@@ -15,7 +22,7 @@ import {
     type RoomScreenLink,
     type FacilitySettingsAnswer,
 } from "@/api/facility";
-import { FACILITY_TEXT } from "./facilityStyles";
+import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
 import { useConventionsPreview } from "./useConventionsPreview";
 
 type PanelStyles = {
@@ -26,6 +33,17 @@ type PanelStyles = {
     actionButtonSx?: any;
     saveButtonSx?: any;
     colors: { border: string; text: string; muted: string; surface: string; hover: string };
+};
+
+// What every section gets: the look of the Settings sections and the buttons
+type SectionProps = {
+    answer: FacilitySettingsAnswer;
+    onSaved: (answer: FacilitySettingsAnswer) => void;
+    fieldSx: any;
+    colors: PanelStyles["colors"] & { card: string; primary: string };
+    isDark: boolean;
+    actionSx: any;
+    saveSx: any;
 };
 
 // The sections of the configuration, a tab each
@@ -61,16 +79,73 @@ const NAME_PIECES: [string, string][] = [
     ["{id:06d}", "its number, with as many digits as wanted"],
 ];
 
-/** The facility's own conventions: how it names its sessions (each microscope names its folders). */
-export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabsSx, colors, actionButtonSx,
-                                            saveButtonSx }: PanelStyles) {
+// Every time zone the browser knows, to pick one rather than type it
+const TIME_ZONES: string[] = (() => {
+    try {
+        return (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+    } catch {
+        return [];
+    }
+})();
+
+/** Reset and Save of a section, at its top, with a dot while something is not saved. */
+function SaveActions({ changed, saving, canSave = true, onReset, onSave, actionSx, saveSx, colors }: {
+    changed: boolean;
+    saving: boolean;
+    canSave?: boolean;
+    onReset: () => void;
+    onSave: () => void;
+    actionSx: any;
+    saveSx: any;
+    colors: { muted: string };
+}) {
+    return (
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
+            {changed && (
+                <Stack direction="row" spacing={0.75} alignItems="center" role="status" sx={{ pr: 0.5 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#f59e0b" }} />
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: colors.muted }}>Unsaved changes</Typography>
+                </Stack>
+            )}
+            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RotateCcw size={15} />}
+                    disabled={saving || !changed} onClick={onReset}>
+                Reset
+            </Button>
+            <Button size="small" variant="contained" sx={saveSx} startIcon={<Save size={15} />}
+                    disabled={saving || !changed || !canSave} onClick={onSave}>
+                {saving ? "Saving…" : "Save"}
+            </Button>
+        </Stack>
+    );
+}
+
+/** A number field with its unit inside, for the right side of a row. */
+function NumberField({ id, value, onChange, unit, width = 170, fieldSx, decimal, label }: {
+    id?: string;
+    value: string;
+    onChange: (value: string) => void;
+    unit: string;
+    width?: number;
+    fieldSx: any;
+    decimal?: boolean;
+    label?: string;
+}) {
+    return (
+        <TextField id={id} sx={{ ...fieldSx, width }} size="small" value={value}
+                   inputProps={{ inputMode: decimal ? "decimal" : "numeric", ...(label ? { "aria-label": label } : {}) }}
+                   InputProps={{ endAdornment: <InputAdornment position="end">{unit}</InputAdornment> }}
+                   onChange={(e) => onChange(e.target.value)} />
+    );
+}
+
+/** The facility's own conventions and ways: how it names sessions, its policies, what its users see, its alerts. */
+export default function ConfigurationPanel({ fieldSx, tabsSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
+    const isDark = useIsDark();
+    const sectionColors = { ...useFacilityStyles().colors, ...colors };
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
     const [answer, setAnswer] = useState<FacilitySettingsAnswer | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [pattern, setPattern] = useState("");
-    const [saving, setSaving] = useState(false);
-    const preview = useConventionsPreview({ sessionNamePattern: pattern });
     const [section, setSection] = useState<SectionKey>(storedSection);
 
     const openSection = (key: SectionKey) => {
@@ -85,9 +160,7 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabs
     const load = useCallback(async () => {
         setError(null);
         try {
-            const loaded = await getFacilitySettings();
-            setAnswer(loaded);
-            setPattern(loaded.settings.sessionNamePattern);
+            setAnswer(await getFacilitySettings());
         } catch (e: any) {
             setError(String(e?.message || "Failed to load the facility's settings"));
         }
@@ -97,12 +170,47 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabs
         void load();
     }, [load]);
 
+    if (error) return <Alert severity="error">{error}</Alert>;
+    if (!answer) return <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>;
+
+    // Every section stays mounted (hidden when another is open), so what is typed in one is not lost by looking at another
+    const shown = (key: SectionKey) => ({ display: section === key ? "block" : "none" });
+    const common: SectionProps = { answer, onSaved: setAnswer, fieldSx, colors: sectionColors, isDark, actionSx, saveSx };
+
+    return (
+        <Stack spacing={2}>
+            <Tabs value={section} onChange={(_, value) => openSection(value as SectionKey)} variant="scrollable"
+                  scrollButtons="auto" sx={tabsSx} aria-label="Configuration sections">
+                {SECTIONS.map(({ key, label, icon: Icon }) => (
+                    <Tab key={key} value={key} label={label} icon={<Icon size={16} />} iconPosition="start" />
+                ))}
+            </Tabs>
+            <Box sx={shown("naming")} role="tabpanel" aria-label="Naming"><NamingSection {...common} /></Box>
+            <Box sx={shown("policies")} role="tabpanel" aria-label="Policies"><PoliciesSection {...common} /></Box>
+            <Box sx={shown("users")} role="tabpanel" aria-label="For the users"><UsersSection {...common} /></Box>
+            <Box sx={shown("mail")} role="tabpanel" aria-label="Alerts"><AlertsSection {...common} /></Box>
+            <Box sx={shown("room")} role="tabpanel" aria-label="Room screen">
+                <RoomScreenSection colors={sectionColors} isDark={isDark} actionSx={actionSx} saveSx={saveSx} />
+            </Box>
+        </Stack>
+    );
+}
+
+/** How the facility names its sessions (each microscope names its folders). */
+function NamingSection({ answer, onSaved, fieldSx, colors, isDark, actionSx, saveSx }: SectionProps) {
+    const saved = answer.settings.sessionNamePattern;
+    const [pattern, setPattern] = useState(saved);
+    const [saving, setSaving] = useState(false);
+    const preview = useConventionsPreview({ sessionNamePattern: pattern });
+    const changed = pattern.trim() !== saved;
+
+    useEffect(() => setPattern(saved), [saved]);
+
     const save = async () => {
         setSaving(true);
         try {
-            const saved = await saveFacilitySettings({ sessionNamePattern: pattern.trim() });
-            setAnswer(saved);
-            setPattern(saved.settings.sessionNamePattern);
+            const next = await saveFacilitySettings({ sessionNamePattern: pattern.trim() });
+            onSaved(next);
             toast.success("Settings saved: new sessions are named this way.");
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to save the settings"));
@@ -111,124 +219,124 @@ export default function ConfigurationPanel({ fieldSx, cardSx, cardHeaderSx, tabs
         }
     };
 
-    if (error) return <Alert severity="error">{error}</Alert>;
-    if (!answer) return <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>;
-    const changed = pattern.trim() !== answer.settings.sessionNamePattern;
-
-    // Every section stays mounted (hidden when another is open), so what is typed in one is not lost by looking at another
-    const shown = (key: SectionKey) => ({ display: section === key ? "block" : "none" });
+    const addPiece = (piece: string) =>
+        setPattern((current) => (!current ? piece : /[_\-.]$/.test(current) ? current + piece : `${current}_${piece}`));
 
     return (
-        <Stack spacing={1.75}>
-            <Tabs value={section} onChange={(_, value) => openSection(value as SectionKey)} variant="scrollable"
-                  scrollButtons="auto" sx={tabsSx} aria-label="Configuration sections">
-                {SECTIONS.map(({ key, label, icon: Icon }) => (
-                    <Tab key={key} value={key} label={label} icon={<Icon size={16} />} iconPosition="start" />
-                ))}
-            </Tabs>
-            <Box sx={shown("naming")} role="tabpanel" aria-label="Naming">
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Facility conventions"
-                    subheader="How this facility names its sessions. Each microscope names its DATA and ATLAS folders (Microscopes tab). A session keeps the name and folders it was given."
-                    sx={cardHeaderSx}
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1.5}>
-                        <TextField sx={fieldSx} size="small" label="Session name" value={pattern}
-                                   inputProps={{ style: { fontFamily: "monospace" } }}
+        <Stack spacing={2}>
+            <SettingsSection
+                plain
+                icon={<Tag size={19} />}
+                title="Session names"
+                subtitle="How this facility names its sessions. A session keeps the name it was given; each microscope names its folders."
+                colors={colors}
+                isDarkMode={isDark}
+                actions={<SaveActions changed={changed} saving={saving} canSave={!preview.error && !!pattern.trim()}
+                                      onReset={() => setPattern(saved)} onSave={() => void save()}
+                                      actionSx={actionSx} saveSx={saveSx} colors={colors} />}
+            >
+                <SettingRow
+                    colors={colors}
+                    title="Session name"
+                    labelFor="facility-session-name"
+                    description="Made of the pieces below; anything else is kept as written."
+                    control={
+                        <TextField id="facility-session-name" sx={{ ...fieldSx, width: { xs: "100%", md: 420 } }} size="small"
+                                   value={pattern} inputProps={{ style: { fontFamily: "monospace" } }}
                                    onChange={(e) => setPattern(e.target.value)} />
-                        {preview.error
-                            ? <Alert severity="warning">{preview.error}</Alert>
-                            : preview.examples && (
-                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                    A session of Gaoxin Lu (group Shannon lab, PI Ashleigh Shannon) on the KRIOS, number 123:{" "}
-                                    <Box component="span" sx={{ fontFamily: "monospace", color: colors.text, fontWeight: 700 }}>
-                                        {preview.examples.session}
-                                    </Box>
+                    }
+                />
+                <Box sx={{ py: 2 }}>
+                    {preview.error
+                        ? <Alert severity="warning">{preview.error}</Alert>
+                        : (
+                            <Box sx={{ borderRadius: 2, bgcolor: sectionTint(isDark), px: 2, py: 1.5 }}>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                    A session of Gaoxin Lu (group Shannon lab, PI Ashleigh Shannon) on the KRIOS, number 123, is named
                                 </Typography>
-                            )}
-                        <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.25 }}>
-                            <Typography sx={{ fontSize: FACILITY_TEXT.note, fontWeight: 700, mb: 0.5 }}>Pieces</Typography>
-                            <Stack spacing={0.25}>
-                                {NAME_PIECES.map(([piece, meaning]) => (
-                                    <Typography key={piece} sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                                        <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{piece}</Box> {meaning}
-                                    </Typography>
-                                ))}
-                            </Stack>
-                        </Box>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-                            {answer.presets.map((preset) => (
-                                <Button key={preset.id} size="small" variant="outlined" sx={actionSx} startIcon={<Wand2 size={14} />}
-                                        disabled={!preset.settings.sessionNamePattern}
-                                        onClick={() => setPattern(preset.settings.sessionNamePattern ?? pattern)}>
-                                    {preset.label}
+                                <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle + 2, fontWeight: 800, fontFamily: "monospace",
+                                                  color: colors.text, mt: 0.5, wordBreak: "break-all", minHeight: 28 }}>
+                                    {preview.examples?.session ?? ""}
+                                </Typography>
+                            </Box>
+                        )}
+                </Box>
+                <Box sx={{ py: 2 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, color: colors.text }}>Pieces</Typography>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 1.25 }}>
+                        Click one to add it to the end of the name.
+                    </Typography>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, columnGap: 3, rowGap: 0.75 }}>
+                        {NAME_PIECES.map(([piece, meaning]) => (
+                            <Stack key={piece} direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
+                                <Button size="small" variant="outlined" startIcon={<Plus size={13} />} aria-label={`Add ${piece}`}
+                                        onClick={() => addPiece(piece)}
+                                        sx={{ textTransform: "none", fontFamily: "monospace", fontSize: FACILITY_TEXT.note,
+                                              borderRadius: 2, py: 0.1, flexShrink: 0, color: colors.text, borderColor: colors.border }}>
+                                    {piece}
                                 </Button>
-                            ))}
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RotateCcw size={14} />}
-                                    onClick={() => setPattern(answer.defaults.sessionNamePattern)}>
-                                Neutral default
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, minWidth: 0 }}>{meaning}</Typography>
+                            </Stack>
+                        ))}
+                    </Box>
+                </Box>
+                <Box sx={{ py: 2 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, color: colors.text }}>Start from</Typography>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 1.25 }}>
+                        A ready-made way fills the name; nothing changes until Save. The folders of its microscopes are set
+                        on each microscope ({answer.presets
+                            .map((preset) => `${preset.label}: ${preset.microscope.dataFolderPattern}, ${preset.microscope.atlasFolderPattern}, ${preset.microscope.gridSlots} grids`)
+                            .join("; ")}).
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        {answer.presets.map((preset) => (
+                            <Button key={preset.id} size="small" variant="outlined" sx={actionSx} startIcon={<Wand2 size={14} />}
+                                    disabled={!preset.settings.sessionNamePattern}
+                                    onClick={() => setPattern(preset.settings.sessionNamePattern ?? pattern)}>
+                                {preset.label}
                             </Button>
-                            <Box sx={{ flex: 1 }} />
-                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Save size={14} />}
-                                    disabled={saving || !changed || !!preview.error || !pattern.trim()} onClick={() => void save()}>
-                                {saving ? "Saving…" : "Save"}
-                            </Button>
-                        </Stack>
-                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
-                            A preset fills the pattern; nothing changes until Save. Its microscopes' folders ({answer.presets
-                                .map((preset) => `${preset.microscope.dataFolderPattern}, ${preset.microscope.atlasFolderPattern}, ${preset.microscope.gridSlots} grids`)
-                                .join("; ")}) are set on each microscope.
-                        </Typography>
+                        ))}
+                        <Button size="small" variant="outlined" sx={actionSx} startIcon={<RotateCcw size={14} />}
+                                onClick={() => setPattern(answer.defaults.sessionNamePattern)}>
+                            Neutral default
+                        </Button>
                     </Stack>
-                </CardContent>
-            </Card>
-            </Box>
-            <Box sx={shown("policies")} role="tabpanel" aria-label="Policies">
-                <PoliciesCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
-                              cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
-            </Box>
-            <Box sx={shown("users")} role="tabpanel" aria-label="For the users">
-                <UsersSettingsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
-                                   cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
-            </Box>
-            <Box sx={shown("mail")} role="tabpanel" aria-label="Alerts">
-                <AlertRecipientsCard answer={answer} onSaved={setAnswer} fieldSx={fieldSx} cardSx={cardSx}
-                                     cardHeaderSx={cardHeaderSx} colors={colors} saveButtonSx={saveSx} />
-            </Box>
-            <Box sx={shown("room")} role="tabpanel" aria-label="Room screen">
-                <RoomScreenCard fieldSx={fieldSx} cardSx={cardSx} cardHeaderSx={cardHeaderSx} colors={colors}
-                                actionButtonSx={actionSx} saveButtonSx={saveSx} />
-            </Box>
+                </Box>
+            </SettingsSection>
         </Stack>
     );
 }
 
 /** How the facility works, where facilities differ: the CNB's way by default. */
-function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, saveButtonSx }: PanelStyles & {
-    answer: FacilitySettingsAnswer;
-    onSaved: (answer: FacilitySettingsAnswer) => void;
-}) {
+function PoliciesSection({ answer, onSaved, fieldSx, colors, isDark, actionSx, saveSx }: SectionProps) {
     const current = answer.settings;
-    const [owner, setOwner] = useState(current.projectOwner ?? "staff");
-    const [share, setShare] = useState(current.projectShareLevel ?? "view");
-    const [tolerance, setTolerance] = useState(String(current.calibrationTolerancePercent ?? 10));
-    const [stall, setStall] = useState(String(current.stallMinutes ?? 20));
-    const [watch, setWatch] = useState(String(current.watchSeconds ?? 30));
-    const [minDefocus, setMinDefocus] = useState(String(current.ctfMinDefocus ?? 5000));
-    const [maxDefocus, setMaxDefocus] = useState(String(current.ctfMaxDefocus ?? 40000));
-    const [resolution, setResolution] = useState(String(current.ctfMaxResolution ?? 8));
-    const [timezone, setTimezone] = useState(current.timezone ?? "Europe/Madrid");
+    const savedDraft = {
+        owner: current.projectOwner ?? "staff",
+        share: current.projectShareLevel ?? "view",
+        tolerance: String(current.calibrationTolerancePercent ?? 10),
+        stall: String(current.stallMinutes ?? 20),
+        watch: String(current.watchSeconds ?? 30),
+        minDefocus: String(current.ctfMinDefocus ?? 5000),
+        maxDefocus: String(current.ctfMaxDefocus ?? 40000),
+        resolution: String(current.ctfMaxResolution ?? 8),
+        timezone: current.timezone ?? "Europe/Madrid",
+    };
+    const savedKey = JSON.stringify(savedDraft);
+    const [draft, setDraft] = useState(savedDraft);
     const [saving, setSaving] = useState(false);
+    const set = (change: Partial<typeof draft>) => setDraft((old) => ({ ...old, ...change }));
+    const changed = JSON.stringify(draft) !== savedKey;
+    const choiceSx = choiceButtonsSx({ ...colors, hover: colors.hover }, isDark);
+
+    useEffect(() => setDraft(JSON.parse(savedKey)), [savedKey]);
 
     const save = async () => {
         setSaving(true);
         try {
             onSaved(await saveFacilitySettings({
-                projectOwner: owner, projectShareLevel: share, calibrationTolerancePercent: Number(tolerance),
-                stallMinutes: Number(stall), watchSeconds: Number(watch), ctfMinDefocus: Number(minDefocus),
-                ctfMaxDefocus: Number(maxDefocus), ctfMaxResolution: Number(resolution), timezone: timezone.trim(),
+                projectOwner: draft.owner, projectShareLevel: draft.share, calibrationTolerancePercent: Number(draft.tolerance),
+                stallMinutes: Number(draft.stall), watchSeconds: Number(draft.watch), ctfMinDefocus: Number(draft.minDefocus),
+                ctfMaxDefocus: Number(draft.maxDefocus), ctfMaxResolution: Number(draft.resolution), timezone: draft.timezone.trim(),
             }));
             toast.success("Policies saved: they apply from the watcher's next look.");
         } catch (e: any) {
@@ -238,98 +346,147 @@ function PoliciesCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, 
         }
     };
 
+    const zones = TIME_ZONES.includes(draft.timezone) || !draft.timezone ? TIME_ZONES : [draft.timezone, ...TIME_ZONES];
+
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
-                title="Policies"
-                subheader="How the facility works where facilities differ. The defaults are the CNB's: the staff own the processing, and its users only look."
-                sx={cardHeaderSx}
-            />
-            <CardContent sx={{ pt: 2 }}>
-                <Stack spacing={1.5}>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                        <TextField sx={fieldSx} size="small" fullWidth select label="Owner of a DATA's project" value={owner}
-                                   helperText={owner === "staff" ? "The staff who made the session; its user and group see it"
-                                       : "The session's user; the staff who made it manage it"}
-                                   onChange={(e) => setOwner(e.target.value as typeof owner)}>
-                            <MenuItem value="staff">The facility's staff</MenuItem>
-                            <MenuItem value="user">The session's user</MenuItem>
-                        </TextField>
-                        <TextField sx={fieldSx} size="small" fullWidth select label="The user and group may" value={share}
-                                   helperText="On the project, when they do not own it"
-                                   onChange={(e) => setShare(e.target.value as typeof share)}>
-                            <MenuItem value="view">Look at it (read only)</MenuItem>
-                            <MenuItem value="work">Work in it</MenuItem>
-                        </TextField>
-                    </Stack>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                        <TextField sx={fieldSx} size="small" fullWidth label="Calibration tolerance (%)" value={tolerance}
-                                   inputProps={{ inputMode: "decimal" }}
-                                   helperText="A detector's calibrated pixel further than this from EPU's is not used"
-                                   onChange={(e) => setTolerance(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth label="Stalled after (minutes)" value={stall}
-                                   inputProps={{ inputMode: "numeric" }}
-                                   helperText="A DATA acquiring without a new movie for this long raises an alert"
-                                   onChange={(e) => setStall(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth label="Look at the folders every (s)" value={watch}
-                                   inputProps={{ inputMode: "numeric" }} helperText="Slower network mounts may want more"
-                                   onChange={(e) => setWatch(e.target.value)} />
-                    </Stack>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: minimum defocus (Å)" value={minDefocus}
-                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setMinDefocus(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: maximum defocus (Å)" value={maxDefocus}
-                                   inputProps={{ inputMode: "decimal" }} onChange={(e) => setMaxDefocus(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth label="CTF: resolution better than (Å)" value={resolution}
-                                   inputProps={{ inputMode: "decimal" }} helperText="The limits a new session starts with"
-                                   onChange={(e) => setResolution(e.target.value)} />
-                    </Stack>
-                    <TextField sx={{ ...fieldSx, maxWidth: { sm: 360 } }} size="small" label="Time zone" value={timezone}
-                               placeholder="Europe/Madrid"
-                               helperText="Where the facility is: a booking's session is on the day it starts there"
-                               onChange={(e) => setTimezone(e.target.value)} />
-                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
-                                disabled={saving} onClick={() => void save()}>
-                            {saving ? "Saving…" : "Save the policies"}
-                        </Button>
-                    </Box>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                        The owner and the sharing apply to the projects made from now on; the others at once.
-                    </Typography>
-                </Stack>
-            </CardContent>
-        </Card>
+        <Stack spacing={2}>
+            <SaveActions changed={changed} saving={saving} onReset={() => setDraft(JSON.parse(savedKey))}
+                         onSave={() => void save()} actionSx={actionSx} saveSx={saveSx} colors={colors} />
+            <SettingsSection
+                plain
+                icon={<FolderKanban size={19} />}
+                title="The projects of the sessions"
+                subtitle="Whose a DATA's project is. The defaults are the CNB's: the staff own the processing, and its users only look. They apply to the projects made from now on."
+                colors={colors}
+                isDarkMode={isDark}
+            >
+                <SettingRow
+                    colors={colors}
+                    title="Owner of a DATA's project"
+                    description={draft.owner === "staff" ? "The staff who made the session; its user and group see it."
+                        : "The session's user; the staff who made it manage it."}
+                    control={
+                        <ToggleButtonGroup exclusive size="small" value={draft.owner} aria-label="Owner of a DATA's project"
+                                           onChange={(_, value) => value && set({ owner: value })} sx={choiceSx}>
+                            <ToggleButton value="staff"><Hammer size={15} style={{ marginRight: 6 }} />The facility's staff</ToggleButton>
+                            <ToggleButton value="user"><UserRound size={15} style={{ marginRight: 6 }} />The session's user</ToggleButton>
+                        </ToggleButtonGroup>
+                    }
+                />
+                <SettingRow
+                    colors={colors}
+                    title="The user and group may"
+                    description="On the project, when they do not own it."
+                    control={
+                        <ToggleButtonGroup exclusive size="small" value={draft.share} aria-label="The user and group may"
+                                           onChange={(_, value) => value && set({ share: value })} sx={choiceSx}>
+                            <ToggleButton value="view"><Eye size={15} style={{ marginRight: 6 }} />Look at it</ToggleButton>
+                            <ToggleButton value="work"><Wand2 size={15} style={{ marginRight: 6 }} />Work in it</ToggleButton>
+                        </ToggleButtonGroup>
+                    }
+                />
+            </SettingsSection>
+
+            <SettingsSection
+                plain
+                icon={<ScanSearch size={19} />}
+                title="Watching the microscopes"
+                subtitle="How the folders of the sessions that acquire are looked at. These apply at once."
+                colors={colors}
+                isDarkMode={isDark}
+            >
+                <SettingRow colors={colors} title="Stalled after" labelFor="facility-stall"
+                            description="A DATA acquiring without a new movie for this long raises an alert."
+                            control={<NumberField id="facility-stall" value={draft.stall} onChange={(stall) => set({ stall })}
+                                                  unit="minutes" fieldSx={fieldSx} />} />
+                <SettingRow colors={colors} title="Look at the folders every" labelFor="facility-watch"
+                            description="Slower network mounts may want more."
+                            control={<NumberField id="facility-watch" value={draft.watch} onChange={(watch) => set({ watch })}
+                                                  unit="seconds" fieldSx={fieldSx} />} />
+                <SettingRow colors={colors} title="Calibration tolerance" labelFor="facility-tolerance"
+                            description="A detector's calibrated pixel size further than this from the one in the movies is not used."
+                            control={<NumberField id="facility-tolerance" value={draft.tolerance} decimal
+                                                  onChange={(tolerance) => set({ tolerance })} unit="%" fieldSx={fieldSx} />} />
+            </SettingsSection>
+
+            <SettingsSection
+                plain
+                icon={<Clock size={19} />}
+                title="Processing and time"
+                subtitle="The limits a new session's processing starts with, and where the facility is."
+                colors={colors}
+                isDarkMode={isDark}
+            >
+                <SettingRow colors={colors} title="CTF limits"
+                            description="Defocus from and to, and the resolution the CTF fit must reach. Each session can change them."
+                            control={
+                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                                    <NumberField label="CTF: minimum defocus" value={draft.minDefocus} decimal width={140}
+                                                 onChange={(minDefocus) => set({ minDefocus })} unit="Å" fieldSx={fieldSx} />
+                                    <Typography sx={{ color: colors.muted, fontSize: FACILITY_TEXT.note }}>to</Typography>
+                                    <NumberField label="CTF: maximum defocus" value={draft.maxDefocus} decimal width={140}
+                                                 onChange={(maxDefocus) => set({ maxDefocus })} unit="Å" fieldSx={fieldSx} />
+                                    <Typography sx={{ color: colors.muted, fontSize: FACILITY_TEXT.note, pl: { sm: 1 } }}>better than</Typography>
+                                    <NumberField label="CTF: resolution better than" value={draft.resolution} decimal width={110}
+                                                 onChange={(resolution) => set({ resolution })} unit="Å" fieldSx={fieldSx} />
+                                </Stack>
+                            } />
+                <SettingRow colors={colors} title="Time zone" labelFor="facility-timezone"
+                            description="Where the facility is: a booking's session is on the day it starts there, and the data are kept counting from its days."
+                            control={zones.length ? (
+                                <Autocomplete
+                                    id="facility-timezone"
+                                    size="small"
+                                    sx={{ width: { xs: "100%", md: 300 } }}
+                                    options={zones}
+                                    value={draft.timezone}
+                                    disableClearable
+                                    onChange={(_, value) => value && set({ timezone: value })}
+                                    renderInput={(params) => (
+                                        <TextField {...params} sx={fieldSx} placeholder="Europe/Madrid"
+                                                   InputProps={{ ...params.InputProps,
+                                                                 startAdornment: <Globe2 size={16} style={{ color: colors.muted, marginLeft: 4 }} /> }} />
+                                    )}
+                                />
+                            ) : (
+                                <TextField id="facility-timezone" sx={{ ...fieldSx, width: 300 }} size="small" value={draft.timezone}
+                                           placeholder="Europe/Madrid" onChange={(e) => set({ timezone: e.target.value })} />
+                            )} />
+            </SettingsSection>
+        </Stack>
     );
 }
 
 /** What the facility tells its users in My sessions: how long it keeps their data, and how to take them home. */
-function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, saveButtonSx }: PanelStyles & {
-    answer: FacilitySettingsAnswer;
-    onSaved: (answer: FacilitySettingsAnswer) => void;
-}) {
-    const [raw, setRaw] = useState(String(answer.settings.rawRetentionDays ?? 0));
-    const [processed, setProcessed] = useState(String(answer.settings.processedRetentionDays ?? 0));
-    const [instructions, setInstructions] = useState(answer.settings.downloadInstructions ?? "");
-    const [notices, setNotices] = useState((answer.settings.retentionNoticeDays ?? []).join(", "));
+function UsersSection({ answer, onSaved, fieldSx, colors, isDark, actionSx, saveSx }: SectionProps) {
+    const savedDraft = {
+        raw: String(answer.settings.rawRetentionDays ?? 0),
+        processed: String(answer.settings.processedRetentionDays ?? 0),
+        notices: (answer.settings.retentionNoticeDays ?? []).join(", "),
+        instructions: answer.settings.downloadInstructions ?? "",
+    };
+    const savedKey = JSON.stringify(savedDraft);
+    const [draft, setDraft] = useState(savedDraft);
     const [saving, setSaving] = useState(false);
+    const set = (change: Partial<typeof draft>) => setDraft((old) => ({ ...old, ...change }));
+    const changed = JSON.stringify(draft) !== savedKey;
+
+    useEffect(() => setDraft(JSON.parse(savedKey)), [savedKey]);
 
     const save = async () => {
         // "30, 7, 1": the API checks each day and how many there are
-        const noticeDays = notices.split(/[\s,;]+/).filter(Boolean).map(Number);
+        const noticeDays = draft.notices.split(/[\s,;]+/).filter(Boolean).map(Number);
         if (noticeDays.some((day) => !Number.isInteger(day))) {
             toast.error("The notice days are whole numbers separated by commas, e.g. 30, 7, 1");
             return;
         }
         setSaving(true);
         try {
-            const saved = await saveFacilitySettings({
-                rawRetentionDays: Number(raw) || 0, processedRetentionDays: Number(processed) || 0,
-                downloadInstructions: instructions.trim(),
+            onSaved(await saveFacilitySettings({
+                rawRetentionDays: Number(draft.raw) || 0, processedRetentionDays: Number(draft.processed) || 0,
+                downloadInstructions: draft.instructions.trim(),
                 retentionNoticeDays: noticeDays,
-            });
-            setNotices((saved.settings.retentionNoticeDays ?? []).join(", "));
-            onSaved(saved);
+            }));
             toast.success("Saved: the users see it in My sessions.");
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to save the settings"));
@@ -339,58 +496,67 @@ function UsersSettingsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, col
     };
 
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
-                title="For the users"
-                subheader="What every user sees in My sessions: how long the facility keeps their data once a session finished, when they are told before it goes, and how to take it home."
-                sx={cardHeaderSx}
-            />
-            <CardContent sx={{ pt: 2 }}>
-                <Stack spacing={1.5}>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                        <TextField sx={fieldSx} size="small" fullWidth label="Raw data kept (days)" value={raw}
-                                   inputProps={{ inputMode: "numeric" }} helperText="0: not said"
-                                   onChange={(e) => setRaw(e.target.value)} />
-                        <TextField sx={fieldSx} size="small" fullWidth label="Processed data kept (days)" value={processed}
-                                   inputProps={{ inputMode: "numeric" }} helperText="0: not said"
-                                   onChange={(e) => setProcessed(e.target.value)} />
-                    </Stack>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Notices before the data go (days)" value={notices}
-                               placeholder="30, 7, 1"
-                               helperText="The session's user and the group's PI are told this many days before each date, in their bell and by mail. Empty: no notices."
-                               onChange={(e) => setNotices(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" label="Taking the data home" value={instructions} multiline minRows={4}
+        <Stack spacing={2}>
+            <SaveActions changed={changed} saving={saving} onReset={() => setDraft(JSON.parse(savedKey))}
+                         onSave={() => void save()} actionSx={actionSx} saveSx={saveSx} colors={colors} />
+            <SettingsSection
+                plain
+                icon={<CalendarClock size={19} />}
+                title="How long the data are kept"
+                subtitle="Counted from the day a session finished. Every user sees it in My sessions. Nothing is deleted by itself: the staff do it in Data retention."
+                colors={colors}
+                isDarkMode={isDark}
+            >
+                <SettingRow colors={colors} title="Raw movies kept" labelFor="facility-raw-days"
+                            description="0: no date is given."
+                            control={<NumberField id="facility-raw-days" value={draft.raw} onChange={(raw) => set({ raw })}
+                                                  unit="days" fieldSx={fieldSx} />} />
+                <SettingRow colors={colors} title="Projects kept" labelFor="facility-processed-days"
+                            description="The processing of each DATA. 0: no date is given."
+                            control={<NumberField id="facility-processed-days" value={draft.processed}
+                                                  onChange={(processed) => set({ processed })} unit="days" fieldSx={fieldSx} />} />
+                <SettingRow colors={colors} title="Notices before the data go" labelFor="facility-notices"
+                            description="The session's user and the group's PI are told this many days before each date, in their bell and by mail. Empty: no notices."
+                            control={
+                                <TextField id="facility-notices" sx={{ ...fieldSx, width: 220 }} size="small" value={draft.notices}
+                                           placeholder="30, 7, 1" onChange={(e) => set({ notices: e.target.value })}
+                                           InputProps={{ startAdornment: <InputAdornment position="start"><BellRing size={15} /></InputAdornment>,
+                                                         endAdornment: <InputAdornment position="end">days</InputAdornment> }} />
+                            } />
+            </SettingsSection>
+
+            <SettingsSection
+                plain
+                icon={<Download size={19} />}
+                title="Taking the data home"
+                subtitle="What every user reads in My sessions about downloading their data."
+                colors={colors}
+                isDarkMode={isDark}
+            >
+                <Box sx={{ py: 2 }}>
+                    <TextField sx={fieldSx} size="small" fullWidth multiline minRows={5} value={draft.instructions}
+                               inputProps={{ "aria-label": "Taking the data home" }}
                                placeholder="How to download the data: the iRODS ticket, rsync, a disk…"
-                               onChange={(e) => setInstructions(e.target.value)} />
-                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
-                                disabled={saving} onClick={() => void save()}>
-                            {saving ? "Saving…" : "Save for the users"}
-                        </Button>
-                    </Box>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                        A session can keep its data longer: give it its own dates in Data retention. Nothing is deleted by itself.
-                    </Typography>
-                </Stack>
-            </CardContent>
-        </Card>
+                               onChange={(e) => set({ instructions: e.target.value })} />
+                </Box>
+            </SettingsSection>
+        </Stack>
     );
 }
 
 /** Who is told of the facility's alerts: a list of addresses, else the users who run sessions (as each chose). */
-function AlertRecipientsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, colors, saveButtonSx }: PanelStyles & {
-    answer: FacilitySettingsAnswer;
-    onSaved: (answer: FacilitySettingsAnswer) => void;
-}) {
-    const [recipients, setRecipients] = useState(answer.settings.alertRecipients ?? "");
+function AlertsSection({ answer, onSaved, fieldSx, colors, isDark, actionSx, saveSx }: SectionProps) {
+    const saved = answer.settings.alertRecipients ?? "";
+    const [recipients, setRecipients] = useState(saved);
     const [saving, setSaving] = useState(false);
+    const changed = recipients.trim() !== saved;
+
+    useEffect(() => setRecipients(saved), [saved]);
 
     const save = async () => {
         setSaving(true);
         try {
-            const saved = await saveFacilitySettings({ alertRecipients: recipients.trim() });
-            onSaved(saved);
-            setRecipients(saved.settings.alertRecipients ?? "");
+            onSaved(await saveFacilitySettings({ alertRecipients: recipients.trim() }));
             toast.success("Saved.");
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to save the alert recipients"));
@@ -400,37 +566,39 @@ function AlertRecipientsCard({ answer, onSaved, fieldSx, cardSx, cardHeaderSx, c
     };
 
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
-                title="Alerts"
-                subheader="When a DATA stops receiving movies, or its processing or a protocol of its project fails, the operators are told at once (one notice for the alerts of each moment), besides the red banner of the web."
-                sx={cardHeaderSx}
-            />
-            <CardContent sx={{ pt: 2 }}>
-                <Stack spacing={1.5}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Mail the alerts to" value={recipients}
-                               placeholder="ops1@example.org, ops2@example.org"
-                               helperText="Empty: every user who runs sessions, in their bell and by mail as each of them chose"
-                               onChange={(e) => setRecipients(e.target.value)} />
-                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={14} />}
-                                disabled={saving} onClick={() => void save()}>
-                            {saving ? "Saving…" : "Save the recipients"}
-                        </Button>
-                    </Box>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                        The mail server is ScipionWeb's, set in{" "}
-                        <RouterLink to="/settings?tab=notifications" style={{ textDecoration: "underline" }}>Settings, Notifications</RouterLink>.
-                    </Typography>
-                </Stack>
-            </CardContent>
-        </Card>
+        <SettingsSection
+            plain
+            icon={<Mail size={19} />}
+            title="Alerts"
+            subtitle="When a DATA stops receiving movies, or its processing or a protocol of its project fails, the operators are told at once, besides the red banner of the web."
+            colors={colors}
+            isDarkMode={isDark}
+            actions={<SaveActions changed={changed} saving={saving} onReset={() => setRecipients(saved)}
+                                  onSave={() => void save()} actionSx={actionSx} saveSx={saveSx} colors={colors} />}
+        >
+            <SettingRow colors={colors} title="Mail the alerts to" labelFor="facility-alert-recipients"
+                        description="Addresses separated by commas. Empty: every user who runs sessions, in their bell and by mail as each of them chose."
+                        control={
+                            <TextField id="facility-alert-recipients" sx={{ ...fieldSx, width: { xs: "100%", md: 420 } }} size="small"
+                                       value={recipients} placeholder="ops1@example.org, ops2@example.org"
+                                       onChange={(e) => setRecipients(e.target.value)} />
+                        } />
+            <SettingRow colors={colors} title="Mail server"
+                        description={<>ScipionWeb's own, set in{" "}
+                            <RouterLink to="/settings?tab=notifications" style={{ textDecoration: "underline" }}>Settings, Notifications</RouterLink>.
+                            No mail goes out until an administrator turns mail on there.</>}
+                        control={null} />
+        </SettingsSection>
     );
 }
 
-
 /** The link of the microscopes' room screen: whoever has it sees the screen, so a new one stops the old one. */
-function RoomScreenCard({ cardSx, cardHeaderSx, colors, actionButtonSx, saveButtonSx }: PanelStyles) {
+function RoomScreenSection({ colors, isDark, actionSx, saveSx }: {
+    colors: SectionProps["colors"];
+    isDark: boolean;
+    actionSx: any;
+    saveSx: any;
+}) {
     const [link, setLink] = useState<RoomScreenLink | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -457,57 +625,90 @@ function RoomScreenCard({ cardSx, cardHeaderSx, colors, actionButtonSx, saveButt
 
     if (error) return <Alert severity="error">{error}</Alert>;
     if (!link) return null;
+    const on = link.enabled;
+    const stateColor = on ? "#16a34a" : "#64748b";
+    const shows: [ReactNode, string][] = [
+        [<MonitorPlay size={15} />, "Each microscope's state and session"],
+        [<ScanSearch size={15} />, "Its grids' progress"],
+        [<BellRing size={15} />, "The alerts"],
+        [<CalendarClock size={15} />, "The sessions of the next days"],
+    ];
+
     return (
-        <Card variant="outlined" sx={cardSx}>
-            <CardHeader
-                title="Room screen"
-                subheader="A screen beside the microscopes, readable from across the room: each microscope's state and session, its grids' progress, the alerts, and the sessions of the next days. It shows names and states only, and needs no one signed in: open its link on the room's screen."
-                sx={cardHeaderSx}
+        <SettingsSection
+            plain
+            icon={<MonitorPlay size={19} />}
+            title="Room screen"
+            subtitle="A screen beside the microscopes, readable from across the room. It shows names and states only, and needs no one signed in: open its link on the room's screen."
+            colors={colors}
+            isDarkMode={isDark}
+            actions={on ? (
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                    <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                            disabled={busy} onClick={() => void act(makeRoomScreenLink, "New link made: the old one no longer works.")}>
+                        New link
+                    </Button>
+                    <Button size="small" variant="outlined" sx={{ ...actionSx, color: "#dc2626" }} startIcon={<Power size={15} />}
+                            disabled={busy} onClick={() => void act(turnOffRoomScreen, "The room screen is off.")}>
+                        Turn off
+                    </Button>
+                </Stack>
+            ) : (
+                <Button size="small" variant="contained" sx={saveSx} startIcon={<MonitorPlay size={15} />}
+                        disabled={busy} onClick={() => void act(makeRoomScreenLink, "The room screen is on: open its link there.")}>
+                    Make its link
+                </Button>
+            )}
+        >
+            <SettingRow
+                colors={colors}
+                title="State"
+                description={on ? "On: its link opens the screen." : "The room screen is off: no link opens it."}
+                control={
+                    <Box component="span" sx={{ px: 1.25, borderRadius: 10, fontSize: FACILITY_TEXT.badge, fontWeight: 700,
+                                                lineHeight: 1.9, color: stateColor, bgcolor: `${stateColor}1f` }}>
+                        {on ? "On" : "Off"}
+                    </Box>
+                }
             />
-            <CardContent sx={{ pt: 2 }}>
-                <Stack spacing={1.5}>
-                    {link.enabled ? (
-                        <>
-                            <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 1.5, px: 1.5, py: 1, fontFamily: "monospace",
-                                       fontSize: FACILITY_TEXT.itemLine, wordBreak: "break-all", color: colors.text }}>
-                                {url}
-                            </Box>
-                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Copy size={14} />} onClick={copy}>
+            {on && (
+                <Box sx={{ py: 2 }}>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text, mb: 0.75 }}>Its link</Typography>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "center" }}>
+                        <Box sx={{ flex: 1, minWidth: 0, border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.5, py: 0.9,
+                                   bgcolor: sectionTint(isDark), fontFamily: "monospace", fontSize: FACILITY_TEXT.itemLine,
+                                   wordBreak: "break-all", color: colors.text }}>
+                            {url}
+                        </Box>
+                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                            <Tooltip arrow title="Copy the link">
+                                <Button size="small" variant="outlined" sx={actionSx} startIcon={<Copy size={15} />} onClick={copy}>
                                     Copy the link
                                 </Button>
-                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ExternalLink size={14} />}
-                                        component="a" href={url} target="_blank" rel="noreferrer">
-                                    Open the screen
-                                </Button>
-                                <Box sx={{ flex: 1 }} />
-                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<RefreshCw size={14} />}
-                                        disabled={busy} onClick={() => void act(makeRoomScreenLink, "New link made: the old one no longer works.")}>
-                                    New link
-                                </Button>
-                                <Button size="small" variant="outlined" sx={{ ...actionButtonSx, color: "error.main" }}
-                                        startIcon={<Power size={14} />} disabled={busy}
-                                        onClick={() => void act(turnOffRoomScreen, "The room screen is off.")}>
-                                    Turn off
-                                </Button>
-                            </Stack>
-                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                                Whoever has this link sees the screen: give it only to the room's screen. If it goes further, make a new one.
-                            </Typography>
-                        </>
-                    ) : (
-                        <Stack direction="row" spacing={1.5} alignItems="center">
-                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted, flex: 1 }}>
-                                The room screen is off: no link opens it.
-                            </Typography>
-                            <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<MonitorPlay size={14} />}
-                                    disabled={busy} onClick={() => void act(makeRoomScreenLink, "The room screen is on: open its link there.")}>
-                                Make its link
+                            </Tooltip>
+                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<ExternalLink size={15} />}
+                                    component="a" href={url} target="_blank" rel="noreferrer">
+                                Open the screen
                             </Button>
                         </Stack>
-                    )}
-                </Stack>
-            </CardContent>
-        </Card>
+                    </Stack>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.75 }}>
+                        Whoever has this link sees the screen: give it only to the room's screen. If it goes further, make a new one.
+                    </Typography>
+                </Box>
+            )}
+            <Box sx={{ py: 2 }}>
+                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text, mb: 1 }}>What it shows</Typography>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                    {shows.map(([icon, text]) => (
+                        <Stack key={text} direction="row" spacing={1} alignItems="center"
+                               sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, px: 1.25, py: 0.9, color: colors.muted }}>
+                            {icon}
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.text }}>{text}</Typography>
+                        </Stack>
+                    ))}
+                </Box>
+            </Box>
+        </SettingsSection>
     );
 }

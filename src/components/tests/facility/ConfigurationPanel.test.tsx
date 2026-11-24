@@ -55,6 +55,17 @@ describe("The facility's conventions", () => {
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({ sessionNamePattern: CNB }));
   });
 
+  it("adds a piece to the end of the name with a click, and puts back the saved one with Reset", async () => {
+    render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
+    await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add {user}" }));
+    expect(screen.getByLabelText("Session name")).toHaveValue(`${NEUTRAL}_{user}`);
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByLabelText("Session name")).toHaveValue(NEUTRAL);
+  });
+
   it("says why a pattern makes no name, and does not save it", async () => {
     render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
@@ -72,7 +83,7 @@ describe("The facility's conventions", () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: "Alerts" }));
     fireEvent.change(screen.getByLabelText("Mail the alerts to"), { target: { value: " ops1@cnb.csic.es; ops2@cnb.csic.es " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save the recipients" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
       alertRecipients: "ops1@cnb.csic.es; ops2@cnb.csic.es" }));
@@ -86,8 +97,8 @@ describe("The facility's conventions", () => {
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
     fireEvent.click(screen.getByRole("tab", { name: "Policies" }));
 
-    fireEvent.change(screen.getByLabelText("Stalled after (minutes)"), { target: { value: "45" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save the policies" }));
+    fireEvent.change(screen.getByLabelText("Stalled after"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
       projectOwner: "staff", projectShareLevel: "view", calibrationTolerancePercent: 10, stallMinutes: 45, watchSeconds: 30,
@@ -105,16 +116,16 @@ describe("The facility's conventions", () => {
     render(<MemoryRouter><ConfigurationPanel {...styles} /></MemoryRouter>);
     await screen.findByText("20261103_KRIOS_0123", undefined, { timeout: 4000 });
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
-    const notices = screen.getByLabelText("Notices before the data go (days)");
+    const notices = screen.getByLabelText("Notices before the data go");
     expect(notices).toHaveValue("30, 7, 1");
 
     fireEvent.change(notices, { target: { value: "a week" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save for the users" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(toast.error).toHaveBeenCalledWith("The notice days are whole numbers separated by commas, e.g. 30, 7, 1");
     expect(facilityMocks.saveFacilitySettings).not.toHaveBeenCalled();
 
     fireEvent.change(notices, { target: { value: "2, 14" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save for the users" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(facilityMocks.saveFacilitySettings).toHaveBeenCalledWith({
       rawRetentionDays: 90, processedRetentionDays: 30, downloadInstructions: "", retentionNoticeDays: [2, 14] }));
     // As the API keeps them: the furthest first
@@ -128,11 +139,11 @@ describe("The facility's conventions", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Naming", "Policies", "For the users", "Alerts", "Room screen"]);
     expect(screen.getByRole("tab", { name: "Naming", selected: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
-    fireEvent.change(screen.getByLabelText("Raw data kept (days)"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("Raw movies kept"), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("tab", { name: "Naming" }));
-    expect(screen.queryByLabelText("Raw data kept (days)")).not.toBeVisible();
+    expect(screen.queryByLabelText("Raw movies kept")).not.toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: "For the users" }));
-    expect(screen.getByLabelText("Raw data kept (days)")).toHaveValue("45");
+    expect(screen.getByLabelText("Raw movies kept")).toHaveValue("45");
     expect(localStorage.getItem("scipionweb.facility.configurationSection")).toBe("users");
   });
 });
