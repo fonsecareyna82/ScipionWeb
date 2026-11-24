@@ -41,13 +41,14 @@ describe("ExecErrorDialog", () => {
     expect(
       screen.getByText("Something went wrong while executing the protocol."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    // The X of its header and the Close at its foot
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(2);
   });
 
   it("calls onClose when clicking the close button", () => {
     const { onClose } = renderComponent();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

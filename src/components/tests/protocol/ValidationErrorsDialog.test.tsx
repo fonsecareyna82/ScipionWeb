@@ -38,13 +38,14 @@ describe("ValidationErrorsDialog", () => {
     expect(screen.getByText("Validation Errors")).toBeInTheDocument();
     expect(screen.getByText("First error")).toBeInTheDocument();
     expect(screen.getByText("Second error")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    // The X of its header and the Close at its foot
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(2);
   });
 
   it("calls onClose when clicking the close button", () => {
     const { onClose } = renderComponent();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

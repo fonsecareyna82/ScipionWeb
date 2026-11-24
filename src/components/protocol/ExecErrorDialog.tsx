@@ -1,13 +1,10 @@
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  Typography,
-} from "@mui/material";
+// Why a protocol could not be launched: the server's message, whole, and a way to copy it.
+import { Box, Button, Typography } from "@mui/material";
+import { Copy, OctagonX } from "lucide-react";
+import toast from "react-hot-toast";
+
+import { useIsDark } from "@/context/ThemeContext";
+import { ViewDialog } from "@/pages/Facility/DialogParts";
 
 type ExecErrorDialogProps = {
   open: boolean;
@@ -16,123 +13,33 @@ type ExecErrorDialogProps = {
   message: string;
 };
 
-export default function ExecErrorDialog({
-  open,
-  onClose,
-  title,
-  message,
-}: ExecErrorDialogProps) {
+export default function ExecErrorDialog({ open, onClose, title, message }: ExecErrorDialogProps) {
+  const isDark = useIsDark();
+  if (!open) return null;
+  const shown = message || "No error details were provided by the backend.";
+  const copy = () => {
+    navigator.clipboard?.writeText(shown).then(() => toast.success("Error copied."), () => toast.error("The browser did not let it copy."));
+  };
   return (
-    <Dialog
-      open={open}
+    <ViewDialog
+      icon={<OctagonX size={20} color="#fca5a5" />}
+      title={title || "Execution error"}
+      subtitle="The protocol could not be executed."
       onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: 2,
-          overflow: "hidden",
-          boxShadow: "0 22px 70px rgba(15, 23, 42, 0.35)",
-          border: "1px solid rgba(15, 23, 42, 0.12)",
-        },
-      }}
-    >
-      <DialogTitle
-        sx={{
-          px: 2.25,
-          py: 1.6,
-          bgcolor: "#333d49",
-          color: "#f8fafc",
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          fontWeight: 700,
-          fontSize: "1rem",
-        }}
-      >
-        <Box
-          component="span"
-          sx={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            bgcolor: "#ef4444",
-            boxShadow: "0 0 0 4px rgba(239, 68, 68, 0.18)",
-            flex: "0 0 auto",
-          }}
-        />
-        {title || "Execution error"}
-      </DialogTitle>
-
-      <DialogContent
-        sx={{
-          px: 2.5,
-          py: 2,
-          bgcolor: "var(--app-n-50)",
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            mb: 1.5,
-            mt:1.5,
-            color: "var(--app-n-600)",
-            fontWeight: 600,
-          }}
-        >
-          The protocol could not be executed.
-        </Typography>
-
-        <Box
-          sx={{
-            maxHeight: "52vh",
-            overflow: "auto",
-            bgcolor: "var(--app-n-0)",
-            border: "1px solid rgba(148, 163, 184, 0.45)",
-            borderRadius: 1.5,
-            px: 1.75,
-            py: 1.5,
-          }}
-        >
-          <Typography
-            variant="body2"
-            component="div"
-            sx={{
-              color: "var(--app-n-900)",
-              fontSize: "0.9rem",
-              lineHeight: 1.65,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
-            {message || "No error details were provided by the backend."}
-          </Typography>
-        </Box>
-      </DialogContent>
-
-      <Divider />
-
-      <DialogActions
-        sx={{
-          px: 2.25,
-          py: 1.25,
-          bgcolor: "var(--app-n-50)",
-        }}
-      >
-        <Button
-          onClick={onClose}
-          variant="contained"
-          sx={{
-            textTransform: "none",
-            bgcolor: "#333d49",
-            "&:hover": {
-              bgcolor: "#25303b",
-            },
-          }}
-        >
-          Close
+      footer={
+        <Button size="small" startIcon={<Copy size={15} />} sx={{ textTransform: "none", fontSize: 13.5 }} onClick={copy}>
+          Copy the error
         </Button>
-      </DialogActions>
-    </Dialog>
+      }
+    >
+      <Box sx={{ border: "1px solid rgba(220,38,38,0.3)", borderLeft: "4px solid #dc2626", borderRadius: 2,
+                 bgcolor: isDark ? "rgba(220,38,38,0.08)" : "#fef2f2", px: 1.75, py: 1.5, maxHeight: "52vh", overflow: "auto" }}>
+        <Typography component="div" sx={{ fontSize: 14, lineHeight: 1.65, color: isDark ? "#f1f5f9" : "#0f172a",
+                                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                                          whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {shown}
+        </Typography>
+      </Box>
+    </ViewDialog>
   );
 }

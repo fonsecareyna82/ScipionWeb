@@ -74,7 +74,7 @@ describe("ParamRow", () => {
 
         expect(screen.getByText("Select output")).toBeInTheDocument();
         expect(
-            screen.getByText("No selector implemented here. Use onOpenFind/onBrowsePath from the parent."),
+            screen.getByText("Inputs cannot be chosen here. Open the protocol from its project to choose them."),
         ).toBeInTheDocument();
     });
 

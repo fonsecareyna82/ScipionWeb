@@ -60,7 +60,9 @@ export function OptionRow({ title, description, checked, onChange, colors }: {
 }
 
 /** A dialog to look at something, not to change it: the dark header with its X, what it shows, and Close. */
-export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", container, children }: {
+export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", container, footer, children }: {
+    // Something to do besides closing (copy what it shows…), at the left of its foot
+    footer?: ReactNode;
     // Where it opens: a page's own layer (the project page, also in full screen); the document body otherwise
     container?: HTMLElement | null;
     icon: ReactNode;
@@ -98,7 +100,9 @@ export function ViewDialog({ icon, title, subtitle, onClose, maxWidth = "md", co
             <Box sx={{ px: 2.5, py: 2.5, flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
                 <Stack spacing={2}>{children}</Stack>
             </Box>
-            <Stack direction="row" justifyContent="flex-end" sx={{ px: 2.5, py: 1.5, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
+            <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={1}
+                   sx={{ px: 2.5, py: 1.5, borderTop: 1, borderColor: "divider", flexShrink: 0 }}>
+                {footer && <Box sx={{ mr: "auto" }}>{footer}</Box>}
                 <Button variant="outlined" sx={{ textTransform: "none", borderRadius: 3 }} onClick={onClose}>Close</Button>
             </Stack>
         </Dialog>

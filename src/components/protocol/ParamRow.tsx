@@ -520,8 +520,8 @@ const ParamRow = ({
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>
         <DialogTitle className={styles.formHeader}>Select output</DialogTitle>
         <DialogContent sx={{ p: 2, backgroundColor: "background.paper", color: "text.primary" }}>
-          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-            No selector implemented here. Use onOpenFind/onBrowsePath from the parent.
+          <Typography sx={{ fontSize: 14.5, lineHeight: 1.6 }}>
+            Inputs cannot be chosen here. Open the protocol from its project to choose them.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", backgroundColor: "background.paper" }}>

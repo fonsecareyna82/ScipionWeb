@@ -4485,7 +4485,7 @@ export default function ProtocolForm({
                 {pendingWorkflowExecution?.modeKey === "continue" ? "Continue workflow?" : "Restart workflow?"}
               </Typography>
 
-              <Typography sx={{ mt: 0.4, color: "rgba(255,255,255,0.75)", fontSize: "0.875rem", lineHeight: 1.45 }}>
+              <Typography sx={{ mt: 0.4, color: "rgba(255,255,255,0.75)", fontSize: "0.9rem", lineHeight: 1.45 }}>
                 This action affects protocols that depend on the selected protocol.
               </Typography>
             </Box>
@@ -4531,7 +4531,7 @@ export default function ProtocolForm({
                 }}
               />
 
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+              <Typography sx={{ fontSize: "0.9rem", fontWeight: 700 }}>
                 {pendingWorkflowExecution?.preflight?.affectedProtocols?.length === 1
                   ? "1 dependent protocol will be affected"
                   : `${pendingWorkflowExecution?.preflight?.affectedProtocols?.length ?? 0} dependent protocols will be affected`}
@@ -4563,7 +4563,7 @@ export default function ProtocolForm({
                       px: 1,
                       py: 0.35,
                       fontFamily: "monospace",
-                      fontSize: "0.72rem",
+                      fontSize: "0.85rem",
                       fontWeight: 700,
                       backgroundColor: theme.palette.mode === "dark" ? "rgba(51,65,85,0.90)" : "#f1f5f9",
                       color: theme.palette.mode === "dark" ? "#e2e8f0" : "#475569",
@@ -4574,7 +4574,7 @@ export default function ProtocolForm({
                     {protocol.protocolId}
                   </Box>
 
-                  <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.875rem", fontWeight: 600 }} noWrap>
+                  <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.9rem", fontWeight: 600 }} noWrap>
                     {protocol.runName}
                   </Typography>
 
@@ -4585,7 +4585,7 @@ export default function ProtocolForm({
                       borderRadius: "999px",
                       px: 1,
                       py: 0.35,
-                      fontSize: "0.72rem",
+                      fontSize: "0.85rem",
                       fontWeight: 700,
                       textTransform: "capitalize",
                       backgroundColor: protocol.active ? "#ffedd5" : "var(--app-n-100)",
@@ -4610,11 +4610,11 @@ export default function ProtocolForm({
               py: 1.5,
             })}
           >
-            <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+            <Typography sx={{ fontSize: "0.9rem", fontWeight: 700 }}>
               Do you really want to {String(pendingWorkflowExecution?.modeKey ?? "").toUpperCase()} the workflow?
             </Typography>
 
-            <Typography sx={(theme) => ({ mt: 0.5, fontSize: "0.82rem", color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b", lineHeight: 1.5 })}>
+            <Typography sx={(theme) => ({ mt: 0.5, fontSize: "0.85rem", color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b", lineHeight: 1.5 })}>
               Choose whether to execute only the selected protocol or the complete affected subworkflow.
             </Typography>
           </Box>
@@ -4630,11 +4630,11 @@ export default function ProtocolForm({
                 py: 1.5,
               })}
             >
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#2563eb" }}>
+              <Typography sx={{ fontSize: "0.9rem", fontWeight: 700, color: "#2563eb" }}>
                 Single
               </Typography>
 
-              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.85rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
                 Execute only this protocol. All listed descendants will be reset to Saved.
               </Typography>
             </Box>
@@ -4649,11 +4649,11 @@ export default function ProtocolForm({
                 py: 1.5,
               })}
             >
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#d97706" }}>
+              <Typography sx={{ fontSize: "0.9rem", fontWeight: 700, color: "#d97706" }}>
                 All
               </Typography>
 
-              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.85rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
                 Execute this protocol and every affected descendant in the subworkflow.
               </Typography>
             </Box>
@@ -4814,7 +4814,7 @@ export default function ProtocolForm({
                       backgroundColor: "rgba(255,255,255,0.12)",
                       border: "1px solid rgba(255,255,255,0.14)",
                       color: "#ffffff",
-                      fontSize: "0.76rem",
+                      fontSize: "0.85rem",
                       fontWeight: 700,
                       letterSpacing: "0.02em",
                     }}
