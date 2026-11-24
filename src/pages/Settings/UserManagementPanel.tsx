@@ -24,7 +24,7 @@ import {
     Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { CircleCheck, CircleDashed, RefreshCw, Search, Trash2, UserCheck, UserCog, UserX, Users } from "lucide-react";
+import { CircleCheck, CircleDashed, FolderKanban, RefreshCw, Search, Trash2, UserCheck, UserCog, UserX, Users } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -408,6 +408,7 @@ function DeleteUserDialog({ user, fieldSx, actionButtonSx, colors, onClose, onDe
     }, [user.id]);
 
     const blocked = !preview || preview.blockers.length > 0;
+    const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
     const confirmed = typed.trim().toLowerCase() === user.email.toLowerCase();
     const sharedCount = preview?.projects.filter((project) => project.shares > 0).length ?? 0;
     const facility = preview?.facility;
@@ -448,44 +449,66 @@ function DeleteUserDialog({ user, fieldSx, actionButtonSx, colors, onClose, onDe
             confirmDisabled={blocked || !confirmed}
             maxWidth="sm"
             actionButtonSx={actionButtonSx ?? ROUNDED_BUTTON_SX}
+            closeButton
             onConfirm={() => void remove()}
             onClose={onClose}
         >
-            <Stack spacing={1.25}>
-                <Typography sx={{ fontSize: 14 }}>
-                    <strong>{`${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email}</strong> · {user.email}
-                </Typography>
+            <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1.5} alignItems="center"
+                       sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, px: 1.5, py: 1.25 }}>
+                    <Box sx={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+                               bgcolor: "rgba(220,38,38,0.1)", color: "#dc2626", fontWeight: 800 }}>
+                        {(fullName || user.email).charAt(0).toUpperCase()}
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 800, color: colors.text }}>{fullName || user.email}</Typography>
+                        {fullName && <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>{user.email}</Typography>}
+                    </Box>
+                </Stack>
                 {error && <Alert severity="error">{error}</Alert>}
-                {!preview && !error && <Typography sx={{ fontSize: 14, color: colors.muted }}>Looking at what it owns…</Typography>}
+                {!preview && !error && <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>Looking at what it owns…</Typography>}
                 {preview && preview.blockers.map((blocker) => <Alert key={blocker} severity="warning">{blocker}</Alert>)}
                 {preview && (
                     <Box data-testid="deleted-projects">
-                        <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.control, fontWeight: 700, color: colors.text, mb: 0.75 }}>
                             {preview.projects.length
                                 ? `${preview.projects.length} project${preview.projects.length === 1 ? "" : "s"} will be deleted:`
                                 : "It owns no project."}
                         </Typography>
-                        {preview.projects.map((project) => (
-                            <Typography key={project.id} sx={{ fontSize: 13.5, fontFamily: "monospace", color: colors.text }}>
-                                {project.name}
-                                {[formatBytes(project.bytes), project.shares ? `shared with ${project.shares}` : "",
-                                  project.running ? `${project.running} running` : ""].filter(Boolean).map((part) => ` · ${part}`).join("")}
-                            </Typography>
-                        ))}
+                        {preview.projects.length > 0 && (
+                            <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, overflow: "hidden", maxHeight: 260, overflowY: "auto" }}>
+                                {preview.projects.map((project, index) => (
+                                    <Stack key={project.id} direction="row" spacing={1} alignItems="center"
+                                           sx={{ px: 1.5, py: 0.75, borderTop: index ? `1px solid ${colors.border}` : "none" }}>
+                                        <FolderKanban size={15} style={{ color: colors.muted, flexShrink: 0 }} />
+                                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, fontFamily: "monospace", color: colors.text, flex: 1,
+                                                          minWidth: 0, wordBreak: "break-all" }}>
+                                            {project.name}
+                                            {[formatBytes(project.bytes), project.shares ? `shared with ${project.shares}` : "",
+                                              project.running ? `${project.running} running` : ""].filter(Boolean).map((part) => ` · ${part}`).join("")}
+                                        </Typography>
+                                    </Stack>
+                                ))}
+                            </Box>
+                        )}
                         {sharedCount > 0 && (
-                            <Typography sx={{ fontSize: 13.5, color: "#b45309", mt: 0.5 }}>
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: "#b45309", mt: 0.75 }}>
                                 {sharedCount === 1 ? "One of them is" : `${sharedCount} of them are`} shared: the others lose {sharedCount === 1 ? "it" : "them"} too.
                             </Typography>
                         )}
                         {facilityParts.length > 0 && (
-                            <Typography sx={{ fontSize: 13.5, color: colors.muted, mt: 0.5 }}>
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mt: 0.5 }}>
                                 {facilityParts.join(", ")} stay in the facility, without their user.
                             </Typography>
                         )}
                     </Box>
                 )}
                 <TextField sx={fieldSx} size="small" fullWidth label="Type the account's address to confirm" value={typed}
-                           disabled={blocked} placeholder={user.email} onChange={(e) => setTyped(e.target.value)} />
+                           disabled={blocked} placeholder={user.email} onChange={(e) => setTyped(e.target.value)}
+                           helperText={confirmed ? "It matches." : " "}
+                           FormHelperTextProps={{ sx: { fontSize: 13.5, color: "#16a34a" } }}
+                           InputProps={{ endAdornment: confirmed
+                               ? <CircleCheck size={17} color="#16a34a" aria-hidden /> : undefined }} />
             </Stack>
         </SettingsDialog>
     );

@@ -6,13 +6,15 @@ import {
     Checkbox,
     CircularProgress,
     FormControlLabel,
+    InputAdornment,
     Stack,
-    Switch,
     TextField,
     Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { KeyRound, Lock, Plus, RefreshCw, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { KeyRound, ListChecks, Lock, Plus, RefreshCw, Search, ShieldCheck, Trash2, UserPlus, UsersRound } from "lucide-react";
+import { useIsDark } from "@/context/ThemeContext";
+import { DialogPart, OptionRow } from "@/pages/Facility/DialogParts";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "./SettingsDialog";
 import toast from "react-hot-toast";
 
@@ -200,6 +202,7 @@ export default function RolesPanel(_styles: PanelStyles = {}) {
                 <SettingsDialog
                     title="Delete role?"
                     description="This cannot be undone. Its people and groups lose its permissions."
+                    closeButton
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -210,10 +213,31 @@ export default function RolesPanel(_styles: PanelStyles = {}) {
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: SETTINGS_TEXT.control }}>
-                        <strong>{deleting.name}</strong> · {plural(deleting.usersCount, "person").replace("persons", "people")}
-                        {" · "}{plural(deleting.groupsCount, "group")}
-                    </Typography>
+                    <Box sx={{ border: "1px solid", borderColor: colors.border, borderLeft: "4px solid #dc2626", borderRadius: 2,
+                               px: 1.5, py: 1.25 }}>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 800, color: colors.text }}>{deleting.name}</Typography>
+                        {deleting.description && (
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>{deleting.description}</Typography>
+                        )}
+                        <Stack direction="row" spacing={2} sx={{ mt: 0.75, color: colors.muted }}>
+                            <Stack direction="row" spacing={0.6} alignItems="center">
+                                <UserPlus size={15} />
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text }}>
+                                    {plural(deleting.usersCount, "person").replace("persons", "people")}
+                                </Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.6} alignItems="center">
+                                <UsersRound size={15} />
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text }}>{plural(deleting.groupsCount, "group")}</Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.6} alignItems="center">
+                                <ShieldCheck size={15} />
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text }}>
+                                    {plural(deleting.permissions.length, "permission")}
+                                </Typography>
+                            </Stack>
+                        </Stack>
+                    </Box>
                 </SettingsDialog>
             )}
 
@@ -237,7 +261,7 @@ export default function RolesPanel(_styles: PanelStyles = {}) {
 }
 
 function RoleDialog({ role, permissions, fieldSx, colors, actionButtonSx, saveButtonSx, onClose, onSaved }: {
-    colors: { border: string; text: string; muted: string };
+    colors: { border: string; text: string; muted: string; hover: string };
     actionButtonSx: any;
     saveButtonSx: any;
     role: Role | null;
@@ -251,7 +275,20 @@ function RoleDialog({ role, permissions, fieldSx, colors, actionButtonSx, saveBu
     const [isDefault, setIsDefault] = useState(Boolean(role?.isDefault));
     const [chosen, setChosen] = useState<Set<string>>(new Set(role?.permissions ?? []));
     const [saving, setSaving] = useState(false);
+    const [search, setSearch] = useState("");
+    const tint = sectionTint(useIsDark());
     const areas = useMemo(() => permissionAreas(permissions), [permissions]);
+    // Words in any order, in what a permission does or in its name
+    const shownAreas = useMemo(() => {
+        const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (!words.length) return areas;
+        return areas
+            .map(([area, items]) => [area, items.filter((permission) => {
+                const text = `${area} ${permission.description} ${permission.name}`.toLowerCase();
+                return words.every((word) => text.includes(word));
+            })] as [string, Permission[]])
+            .filter(([, items]) => items.length > 0);
+    }, [areas, search]);
 
     const toggle = (permission: string) =>
         setChosen((current) => {
@@ -302,58 +339,76 @@ function RoleDialog({ role, permissions, fieldSx, colors, actionButtonSx, saveBu
             saveButtonSx={saveButtonSx}
             onConfirm={() => void save()}
             onClose={onClose}
+            closeButton
         >
             <Stack spacing={2}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={{ ...fieldSx, flex: 1 }} size="small" label="Name" value={name} autoFocus
-                               onChange={(e) => setName(e.target.value)} />
-                    <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Description" value={description}
-                               onChange={(e) => setDescription(e.target.value)} />
-                </Stack>
-                <FormControlLabel
-                    sx={{ m: 0 }}
-                    control={<Switch size="small" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />}
-                    label={<Typography sx={{ fontSize: SETTINGS_TEXT.control, ml: 1 }}>Give it to new accounts</Typography>}
-                />
-                {areas.map(([area, items]) => {
-                    const chosenHere = items.filter((permission) => chosen.has(permission.name)).length;
-                    return (
-                        <Box key={area} sx={{ border: "1px solid", borderColor: colors.border, borderRadius: 2 }}>
-                            <Stack direction="row" alignItems="center" justifyContent="space-between"
-                                   sx={{ px: 1.75, py: 0.9, borderBottom: "1px solid", borderColor: colors.border }}>
-                                <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>
-                                    {area} <Box component="span" sx={{ fontWeight: 500, opacity: 0.65 }}>
-                                        · {chosenHere}/{items.length}</Box>
-                                </Typography>
-                                <Button size="small" sx={{ ...(actionButtonSx ?? ROUNDED_BUTTON_SX), minWidth: 0 }}
-                                        onClick={() => setArea(items, chosenHere < items.length)}>
-                                    {chosenHere < items.length ? "Select all" : "Clear"}
-                                </Button>
-                            </Stack>
-                            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                                       columnGap: 1, px: 1, py: 0.5 }}>
-                                {items.map((permission) => (
-                                    <FormControlLabel
-                                        key={permission.name}
-                                        sx={{ m: 0, alignItems: "flex-start", py: 0.25 }}
-                                        control={<Checkbox size="small" sx={{ pt: 0.5 }} checked={chosen.has(permission.name)}
-                                                           onChange={() => toggle(permission.name)} />}
-                                        label={
-                                            <Box sx={{ pt: 0.6 }}>
-                                                <Typography sx={{ fontSize: SETTINGS_TEXT.control, lineHeight: 1.4, color: colors.text }}>
-                                                    {permission.description}
-                                                </Typography>
-                                                <Typography sx={{ fontSize: 13, color: colors.muted, fontFamily: "monospace" }}>
-                                                    {permission.name}
-                                                </Typography>
-                                            </Box>
-                                        }
-                                    />
-                                ))}
+                <DialogPart icon={<KeyRound size={18} />} title="The role" tint={tint} colors={colors}
+                            subtitle="A name people recognise, and what it is for.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={{ ...fieldSx, flex: 1 }} size="small" label="Name" value={name} autoFocus
+                                   placeholder="Plugin keeper" onChange={(e) => setName(e.target.value)} />
+                        <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Description" value={description}
+                                   placeholder="Who holds it, and why" onChange={(e) => setDescription(e.target.value)} />
+                    </Stack>
+                    <OptionRow title="Give it to new accounts" colors={colors} checked={isDefault} onChange={setIsDefault}
+                               description="Every account made from now on holds it, besides what an administrator gives." />
+                </DialogPart>
+
+                <DialogPart icon={<ListChecks size={18} />} title="Permissions" tint={tint} colors={colors}
+                            subtitle={`${chosen.size} of ${permissions.length} chosen. You can only give the ones you hold.`}>
+                    <TextField sx={fieldSx} size="small" value={search} placeholder="Search a permission"
+                               inputProps={{ "aria-label": "Search a permission" }} onChange={(e) => setSearch(e.target.value)}
+                               InputProps={{ startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> }} />
+                    {shownAreas.length === 0 && (
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>No permission matches.</Typography>
+                    )}
+                    {shownAreas.map(([area, items]) => {
+                        const all = areas.find(([name]) => name === area)?.[1] ?? items;
+                        const chosenHere = all.filter((permission) => chosen.has(permission.name)).length;
+                        return (
+                            <Box key={area} role="group" aria-label={`Permissions: ${area}`}
+                                 sx={{ border: "1px solid", borderColor: colors.border, borderRadius: 2, overflow: "hidden" }}>
+                                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}
+                                       sx={{ px: 1.75, py: 0.75, bgcolor: colors.hover, borderBottom: "1px solid", borderColor: colors.border }}>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 700, color: colors.text }}>{area}</Typography>
+                                        <Box component="span" sx={{ px: 1, borderRadius: 10, fontSize: 13, fontWeight: 700, lineHeight: 1.7,
+                                                                    color: chosenHere ? "#2563eb" : colors.muted,
+                                                                    bgcolor: chosenHere ? "rgba(37,99,235,0.12)" : "transparent",
+                                                                    border: chosenHere ? "none" : `1px solid ${colors.border}` }}>
+                                            {chosenHere}/{all.length}
+                                        </Box>
+                                    </Stack>
+                                    <Button size="small" sx={{ ...(actionButtonSx ?? ROUNDED_BUTTON_SX), minWidth: 0 }}
+                                            onClick={() => setArea(all, chosenHere < all.length)}>
+                                        {chosenHere < all.length ? "Select all" : "Clear"}
+                                    </Button>
+                                </Stack>
+                                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, columnGap: 1, px: 1, py: 0.5 }}>
+                                    {items.map((permission) => (
+                                        <FormControlLabel
+                                            key={permission.name}
+                                            sx={{ m: 0, alignItems: "flex-start", py: 0.25, borderRadius: 1.5,
+                                                  "&:hover": { bgcolor: colors.hover } }}
+                                            control={<Checkbox size="small" sx={{ pt: 0.5 }} checked={chosen.has(permission.name)}
+                                                               onChange={() => toggle(permission.name)} />}
+                                            label={
+                                                <Box sx={{ pt: 0.6, pr: 1 }}>
+                                                    <Typography sx={{ fontSize: SETTINGS_TEXT.control, lineHeight: 1.4, color: colors.text }}>
+                                                        {permission.description}
+                                                    </Typography>
+                                                    <Typography sx={{ fontSize: 13, color: colors.muted, fontFamily: "monospace" }}>
+                                                        {permission.name}
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                        />
+                                    ))}
+                                </Box>
                             </Box>
-                        </Box>
-                    );
-                })}
+                        );
+                    })}
+                </DialogPart>
             </Stack>
         </SettingsDialog>
     );

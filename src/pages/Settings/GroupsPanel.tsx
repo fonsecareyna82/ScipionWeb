@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
     Alert,
+    Autocomplete,
     Box,
     Button,
     CircularProgress,
-    FormControl,
-    InputLabel,
-    MenuItem,
-    Select,
+    IconButton,
     Stack,
+    Switch,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
+    Tooltip,
     Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { Crown, Eye, Plus, RefreshCw, Trash2, Users, UsersRound } from "lucide-react";
+import { Crown, Eye, KeyRound, Plus, RefreshCw, Trash2, UserPlus, Users, UsersRound, X } from "lucide-react";
+import { DialogPart } from "@/pages/Facility/DialogParts";
 import SettingsDialog from "./SettingsDialog";
 import toast from "react-hot-toast";
 
@@ -29,7 +32,7 @@ import {
     type Role,
 } from "@/api/access";
 import { listAdminUsers, type AdminUser } from "@/api/users";
-import { SETTINGS_TEXT, SettingsSection, sectionTint } from "./SettingsSection";
+import { SETTINGS_TEXT, SettingsSection, choiceButtonsSx, sectionTint } from "./SettingsSection";
 import { useSettingsStyles } from "./useSettingsStyles";
 
 // The page may still pass its own look; the panel uses the shared Settings one
@@ -224,6 +227,7 @@ export default function GroupsPanel(_styles: PanelStyles = {}) {
                 <SettingsDialog
                     title="Delete group?"
                     description="This cannot be undone. Its members lose its roles and the projects shared with it."
+                    closeButton
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -234,9 +238,22 @@ export default function GroupsPanel(_styles: PanelStyles = {}) {
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: SETTINGS_TEXT.control }}>
-                        <strong>{deleting.name}</strong> · {plural(deleting.members.length, "member")}
-                    </Typography>
+                    <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, px: 1.5, py: 1.25 }}>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.title, fontWeight: 800, color: colors.text }}>{deleting.name}</Typography>
+                        {deleting.description && (
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>{deleting.description}</Typography>
+                        )}
+                        <Stack direction="row" spacing={2} sx={{ mt: 0.75, color: colors.muted }}>
+                            <Stack direction="row" spacing={0.6} alignItems="center">
+                                <Users size={15} />
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text }}>{plural(deleting.members.length, "member")}</Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={0.6} alignItems="center">
+                                <KeyRound size={15} />
+                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text }}>{plural(deleting.roleIds.length, "role")}</Typography>
+                            </Stack>
+                        </Stack>
+                    </Box>
                 </SettingsDialog>
             )}
 
@@ -250,7 +267,8 @@ export default function GroupsPanel(_styles: PanelStyles = {}) {
                     fieldSx={fieldSx}
                     selectSx={selectSx}
                     menuPaperSx={menuPaperSx}
-                    muted={colors.muted}
+                    colors={colors}
+                    isDarkMode={isDarkMode}
                     onClose={() => setEditing(null)}
                     onSaved={() => {
                         setEditing(null);
@@ -262,16 +280,17 @@ export default function GroupsPanel(_styles: PanelStyles = {}) {
     );
 }
 
-function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, muted, actionButtonSx, saveButtonSx,
+function GroupDialog({ group, roles, users, fieldSx, menuPaperSx, colors, isDarkMode, actionButtonSx, saveButtonSx,
                        onClose, onSaved }: {
-    muted: string;
+    colors: { border: string; text: string; muted: string; hover: string; card: string; primary: string };
+    isDarkMode: boolean;
     actionButtonSx: any;
     saveButtonSx: any;
     group: Group | null;
     roles: Role[];
     users: AdminUser[];
     fieldSx: any;
-    selectSx: any;
+    selectSx?: any;
     menuPaperSx: any;
     onClose: () => void;
     onSaved: () => void;
@@ -284,7 +303,12 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, mute
         (group?.members ?? []).filter((member) => member.groupRole === "pi").map((member) => member.userId));
     const [piAccess, setPiAccess] = useState<PiAccess>(group?.piAccess ?? "view");
     const [saving, setSaving] = useState(false);
+    // The Add member field is emptied after each one added
+    const [adding, setAdding] = useState(0);
     const usersById = new Map(users.map((user) => [user.id, user]));
+    const tint = sectionTint(isDarkMode);
+    const choiceSx = choiceButtonsSx({ ...colors }, isDarkMode);
+    const others = users.filter((user) => !memberIds.includes(user.id));
 
     const save = async () => {
         const payload: GroupPayload = {
@@ -307,6 +331,13 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, mute
         }
     };
 
+    const removeMember = (userId: number) => {
+        setMemberIds((current) => current.filter((id) => id !== userId));
+        setPiIds((current) => current.filter((id) => id !== userId));
+    };
+    const togglePi = (userId: number, on: boolean) =>
+        setPiIds((current) => (on ? [...current, userId] : current.filter((id) => id !== userId)));
+
     return (
         <SettingsDialog
             title={group ? `Edit ${group.name}` : "New group"}
@@ -316,73 +347,137 @@ function GroupDialog({ group, roles, users, fieldSx, selectSx, menuPaperSx, mute
             busyLabel="Saving…"
             busy={saving}
             confirmDisabled={!name.trim()}
+            maxWidth="md"
+            footerNote={`${plural(memberIds.length, "member")} · ${plural(piIds.length, "PI")}`}
             actionButtonSx={actionButtonSx}
             saveButtonSx={saveButtonSx}
+            closeButton
             onConfirm={() => void save()}
             onClose={onClose}
         >
-                <Stack spacing={1.5} sx={{ pt: 0.5 }}>
-                    <TextField sx={fieldSx} size="small" label="Name" value={name}
-                               onChange={(e) => setName(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" label="Description" value={description}
-                               onChange={(e) => setDescription(e.target.value)} />
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="group-roles-label">Roles of its members</InputLabel>
-                        <Select labelId="group-roles-label" label="Roles of its members" multiple sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={roleIds}
-                                renderValue={(selected) => (selected as number[])
-                                    .map((id) => roles.find((role) => role.id === id)?.name ?? `#${id}`).join(", ")}
-                                onChange={(e) => setRoleIds((e.target.value as number[]).map(Number))}>
-                            {roles.map((role) => <MenuItem key={role.id} value={role.id}>{role.name}</MenuItem>)}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="group-members-label">Members</InputLabel>
-                        <Select labelId="group-members-label" label="Members" multiple sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={memberIds}
-                                renderValue={(selected) => (selected as number[])
-                                    .map((id) => userName(usersById.get(id) ?? { email: `#${id}` })).join(", ")}
-                                onChange={(e) => {
-                                    const next = (e.target.value as number[]).map(Number);
-                                    setMemberIds(next);
-                                    setPiIds((current) => current.filter((id) => next.includes(id)));
-                                }}>
-                            {users.map((user) => (
-                                <MenuItem key={user.id} value={user.id}>{userName(user)} ({user.email})</MenuItem>
+            <Stack spacing={2}>
+                <DialogPart icon={<UsersRound size={18} />} title="The group" tint={tint} colors={colors}
+                            subtitle="A lab, a team or a project: whoever works together.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={{ ...fieldSx, flex: 1 }} size="small" label="Name" value={name} placeholder="Lab of Ana"
+                                   onChange={(e) => setName(e.target.value)} />
+                        <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Description" value={description}
+                                   onChange={(e) => setDescription(e.target.value)} />
+                    </Stack>
+                </DialogPart>
+
+                <DialogPart icon={<Users size={18} />} title="Members" tint={tint} colors={colors}
+                            subtitle="Add people by name or email. A PI leads the group: see below what a PI may see.">
+                    <Autocomplete
+                        key={adding}
+                        size="small"
+                        options={others}
+                        value={null}
+                        getOptionLabel={(user) => `${userName(user)} (${user.email})`}
+                        onChange={(_, user) => {
+                            if (!user) return;
+                            setMemberIds((current) => [...current, user.id]);
+                            setAdding((count) => count + 1);
+                        }}
+                        slotProps={{ paper: { sx: menuPaperSx } }}
+                        filterOptions={(options, { inputValue }) => {
+                            const words = inputValue.trim().toLowerCase();
+                            return options.filter((user) => `${userName(user)} ${user.email}`.toLowerCase().includes(words));
+                        }}
+                        renderOption={(props, user) => (
+                            <Box component="li" {...props} key={user.id}>
+                                <Box>
+                                    <Box sx={{ fontSize: SETTINGS_TEXT.control }}>{userName(user)}</Box>
+                                    <Box sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>{user.email}</Box>
+                                </Box>
+                            </Box>
+                        )}
+                        renderInput={(params) => (
+                            <TextField {...params} sx={fieldSx} label="Add a member" placeholder="Search by name or email"
+                                       InputProps={{ ...params.InputProps,
+                                                     startAdornment: <UserPlus size={16} style={{ color: colors.muted, marginLeft: 4 }} /> }} />
+                        )}
+                    />
+                    {memberIds.length === 0 ? (
+                        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 1.75, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>No members yet.</Typography>
+                        </Box>
+                    ) : (
+                        <Box component="ul" aria-label="Members" sx={{ listStyle: "none", m: 0, p: 0, border: `1px solid ${colors.border}`,
+                                                                    borderRadius: 2, overflow: "hidden" }}>
+                            {memberIds.map((userId, index) => {
+                                const user = usersById.get(userId) ?? { email: `#${userId}` };
+                                const label = userName(user);
+                                const isPi = piIds.includes(userId);
+                                return (
+                                    <Box component="li" key={userId}
+                                         sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 1.5, py: 0.75,
+                                               borderTop: index ? `1px solid ${colors.border}` : "none" }}>
+                                        <Box sx={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+                                                   bgcolor: isPi ? "rgba(217,119,6,0.15)" : tint, color: isPi ? "#b45309" : colors.primary,
+                                                   fontWeight: 800, fontSize: 13 }}>
+                                            {isPi ? <Crown size={15} /> : label.charAt(0).toUpperCase()}
+                                        </Box>
+                                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                                            <Typography sx={{ fontSize: SETTINGS_TEXT.control, fontWeight: 600, color: colors.text }}>{label}</Typography>
+                                            {"email" in user && user.email && label !== user.email && (
+                                                <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>{user.email}</Typography>
+                                            )}
+                                        </Box>
+                                        <Stack direction="row" spacing={0.25} alignItems="center">
+                                            <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: isPi ? "#b45309" : colors.muted, fontWeight: 600 }}>PI</Typography>
+                                            <Switch size="small" checked={isPi} onChange={(e) => togglePi(userId, e.target.checked)}
+                                                    slotProps={{ input: { "aria-label": `${label} is a PI` } }} />
+                                        </Stack>
+                                        <Tooltip arrow title="Take out of the group">
+                                            <IconButton size="small" aria-label={`Remove ${label}`} onClick={() => removeMember(userId)}>
+                                                <X size={16} />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
+                </DialogPart>
+
+                <DialogPart icon={<KeyRound size={18} />} title="Roles of its members" tint={tint} colors={colors}
+                            subtitle="Every member holds these, besides their own. You can only give roles whose permissions you hold.">
+                    {roles.length === 0 ? (
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted }}>There are no roles yet.</Typography>
+                    ) : (
+                        <ToggleButtonGroup size="small" value={roleIds} aria-label="Roles of its members"
+                                           onChange={(_, value: number[]) => setRoleIds(value)} sx={choiceSx}>
+                            {roles.map((role) => (
+                                <Tooltip key={role.id} arrow title={role.description || ""}>
+                                    <ToggleButton value={role.id} aria-label={role.name}>
+                                        <KeyRound size={14} style={{ marginRight: 6 }} />{role.name}
+                                    </ToggleButton>
+                                </Tooltip>
                             ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth disabled={memberIds.length === 0}>
-                        <InputLabel id="group-pis-label">PI</InputLabel>
-                        <Select labelId="group-pis-label" label="PI" multiple sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={piIds}
-                                renderValue={(selected) => (selected as number[])
-                                    .map((id) => userName(usersById.get(id) ?? { email: `#${id}` })).join(", ")}
-                                onChange={(e) => setPiIds((e.target.value as number[]).map(Number))}>
-                            {memberIds.map((id) => (
-                                <MenuItem key={id} value={id}>{userName(usersById.get(id) ?? { email: `#${id}` })}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="group-pi-access-label">PI access to the members' projects</InputLabel>
-                        <Select labelId="group-pi-access-label" label="PI access to the members' projects"
-                                sx={selectSx} MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={piAccess}
-                                onChange={(e) => setPiAccess(e.target.value as PiAccess)}>
-                            {PI_ACCESS_OPTIONS.map((option) => (
-                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                            ))}
-                        </Select>
-                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: muted, mt: 0.75, ml: 0.25 }}>
+                        </ToggleButtonGroup>
+                    )}
+                </DialogPart>
+
+                <DialogPart icon={<Crown size={18} />} title="What its PIs see" tint={tint} colors={colors}
+                            subtitle="The PIs' access to their members' projects.">
+                    <ToggleButtonGroup exclusive size="small" value={piAccess} aria-label="PI access to the members' projects"
+                                       onChange={(_, value) => value && setPiAccess(value as PiAccess)} sx={choiceSx}>
+                        {PI_ACCESS_OPTIONS.map((option) => (
+                            <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
+                        ))}
+                    </ToggleButtonGroup>
+                    <Box sx={{ borderRadius: 2, bgcolor: tint, px: 1.5, py: 1 }}>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.control, color: colors.text }}>
                             {PI_ACCESS_OPTIONS.find((option) => option.value === piAccess)?.meaning}
                         </Typography>
-                    </FormControl>
-                    <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: muted }}>
-                        You can only give roles whose permissions you hold yourself. Raising the PI access
-                        needs as much over every project (view: projects.viewAll; work or manage:
-                        projects.manageAll).
-                    </Typography>
-                </Stack>
+                        <Typography sx={{ fontSize: SETTINGS_TEXT.text, color: colors.muted, mt: 0.5 }}>
+                            Raising it needs as much over every project yourself (view: projects.viewAll; work or manage:
+                            projects.manageAll).
+                        </Typography>
+                    </Box>
+                </DialogPart>
+            </Stack>
         </SettingsDialog>
     );
 }

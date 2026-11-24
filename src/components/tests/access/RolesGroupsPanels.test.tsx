@@ -74,24 +74,22 @@ describe("Roles and groups panels", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Lab of Ana" } });
 
-    fireEvent.mouseDown(within(dialog).getByLabelText("Roles of its members"));
-    fireEvent.click(await screen.findByRole("option", { name: "User" }));
-    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    fireEvent.click(within(within(dialog).getByRole("group", { name: "Roles of its members" })).getByRole("button", { name: "User" }));
 
-    fireEvent.mouseDown(within(dialog).getByLabelText("Members"));
+    const add = within(dialog).getByLabelText("Add a member");
+    fireEvent.change(add, { target: { value: "ana" } });
     fireEvent.click(await screen.findByRole("option", { name: /Ana Pi/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Bo Member/ }));
-    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    fireEvent.change(within(dialog).getByLabelText("Add a member"), { target: { value: "bo@" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Bo Member/ }));
+    expect(within(within(dialog).getByRole("list", { name: "Members" })).getAllByRole("listitem")).toHaveLength(2);
 
-    fireEvent.mouseDown(within(dialog).getByLabelText("PI"));
-    fireEvent.click(await screen.findByRole("option", { name: "Ana Pi" }));
-    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    fireEvent.click(within(dialog).getByLabelText("Ana Pi is a PI"));
 
     // The PIs see their members' projects; a new group starts at View
-    const piAccess = within(dialog).getByLabelText("PI access to the members' projects");
-    expect(piAccess).toHaveTextContent("View");
-    fireEvent.mouseDown(piAccess);
-    fireEvent.click(await screen.findByRole("option", { name: "Work" }));
+    const piAccess = within(dialog).getByRole("group", { name: "PI access to the members' projects" });
+    expect(within(piAccess).getByRole("button", { name: "View" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(piAccess).getByRole("button", { name: "Work" }));
+    expect(within(dialog).getByText("The PIs can also run protocols in their members' projects.")).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
@@ -116,6 +114,15 @@ describe("Roles and groups panels", () => {
     await waitFor(() => expect(accessMocks.deleteRole).toHaveBeenCalledWith(4));
   });
 
+  it("finds a permission by words in any order", async () => {
+    render(<RolesPanel {...styles} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New role" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Search a permission"), { target: { value: "plugins install" } });
+    expect(within(dialog).getByText(/Install and uninstall plugins/)).toBeInTheDocument();
+    expect(within(dialog).queryByText("Create and import projects")).not.toBeInTheDocument();
+  });
+
   it("chooses every permission of an area at once, and counts them", async () => {
     accessMocks.createRole.mockResolvedValue({ id: 9 });
     render(<RolesPanel {...styles} />);
@@ -126,7 +133,7 @@ describe("Roles and groups panels", () => {
     expect(within(dialog).getByText(/0 of 2 permissions/)).toBeInTheDocument();
 
     // The catalogue of this test has one System permission and one Projects permission
-    const systemArea = within(dialog).getByText("System").closest("div")!.parentElement!;
+    const systemArea = within(dialog).getByRole("group", { name: "Permissions: System" });
     fireEvent.click(within(systemArea).getByRole("button", { name: "Select all" }));
     expect(within(dialog).getByText(/1 of 2 permissions/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
