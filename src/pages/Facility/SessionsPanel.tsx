@@ -21,7 +21,7 @@ import {
     Typography,
 } from "@mui/material";
 import {
-    Activity, AlertTriangle, Ban, CalendarClock, ChevronDown, ChevronRight, Folder, CalendarDays, Copy, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, MessageSquare,
+    Activity, AlertTriangle, Ban, CalendarClock, Info, ChevronDown, ChevronRight, Folder, CalendarDays, Copy, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, MessageSquare,
     Microscope as MicroscopeIcon, Pencil, Play, Plus, RefreshCw, RotateCw, Search, Square, StickyNote, Ticket, Trash2, UserRound,
     UsersRound, Workflow,
 } from "lucide-react";
@@ -61,6 +61,7 @@ import { useIsDark } from "@/context/ThemeContext";
 import ImageStrip from "./ImageStrip";
 import { DialogPart, OptionRow } from "./DialogParts";
 import NavigationReport from "./NavigationReport";
+import { DatasetView } from "./MyFacilityDialogs";
 
 type PanelStyles = {
     fieldSx: any;
@@ -282,6 +283,28 @@ export function sessionCardSx(status: SessionStatus, colors: { border: string },
              bgcolor: card, overflow: "hidden" } as const;
 }
 
+/** A session in a confirmation: its band, name, state and what it is. */
+function SessionGlance({ session, colors, band }: { session: FacilitySession; colors: PanelStyles["colors"]; band: string }) {
+    const grids = session.datasets.filter((dataset) => dataset.kind === "data").length;
+    return (
+        <Box sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${band}`, borderRadius: 2, px: 1.5, py: 1.25 }}>
+            <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap" sx={{ mb: 0.75 }}>
+                <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800, fontFamily: "monospace", color: colors.text,
+                                  wordBreak: "break-all" }}>
+                    {session.name}
+                </Typography>
+                <SessionStatusPill status={session.status} />
+            </Stack>
+            <SessionFacts colors={colors} label="About the session" facts={[
+                { icon: <MicroscopeIcon size={15} />, text: session.microscopeName ?? "" },
+                { icon: <CalendarDays size={15} />, text: formatDate(session.scheduledOn) },
+                { icon: <UserRound size={15} />, text: session.userName || session.userEmail || "" },
+                { icon: <LayoutGrid size={15} />, text: `${grids} grid${grids === 1 ? "" : "s"}` },
+            ]} />
+        </Box>
+    );
+}
+
 function SessionFolders({ session, colors, onProcess, onReread }: {
     session: FacilitySession;
     colors: PanelStyles["colors"];
@@ -290,8 +313,10 @@ function SessionFolders({ session, colors, onProcess, onReread }: {
     // Read a DATA's first movie again (after fixing a detector); absent for those who only watch
     onReread?: (dataset: SessionDataset) => void;
 }) {
+    const [opened, setOpened] = useState<SessionDataset | null>(null);
     return (
         <Box sx={{ borderTop: `1px solid ${colors.border}`, bgcolor: colors.hover, px: 2, py: 1 }}>
+            {opened && <DatasetView dataset={opened} sessionName={session.name} colors={colors} onClose={() => setOpened(null)} />}
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
                 <Typography sx={{ fontSize: FACILITY_TEXT.note, fontWeight: 800, color: colors.muted, textTransform: "uppercase",
                                   letterSpacing: 0.5 }}>
@@ -336,6 +361,13 @@ function SessionFolders({ session, colors, onProcess, onReread }: {
                         )}
                         <DatasetProcessing session={session} dataset={dataset} colors={colors} onProcess={onProcess} />
                         {dataset.navigation && <NavigationReport dataset={dataset} canMake={!!onProcess} />}
+                        {dataset.kind === "data" && (
+                            <Button size="small" variant="outlined" startIcon={<Info size={13} />}
+                                    sx={{ ...DATASET_BUTTON_SX, color: colors.text, borderColor: colors.border }}
+                                    aria-label={`Details of ${dataset.folder}`} onClick={() => setOpened(dataset)}>
+                                Details
+                            </Button>
+                        )}
                     </Stack>
                     </Box>
                 ))}
@@ -471,6 +503,7 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
     const [appliedSearch, setAppliedSearch] = useState("");
     const [editing, setEditing] = useState<FacilitySession | "new" | null>(null);
     const [deleting, setDeleting] = useState<FacilitySession | null>(null);
+    const [finishing, setFinishing] = useState<FacilitySession | null>(null);
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -510,8 +543,10 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
             await updateSession(session.id, { ...sessionPayloadOf(session), status });
             toast.success(`${session.name}: ${SESSION_STATUS_LABELS[status].toLowerCase()}.`);
             await load();
+            return true;
         } catch (e: any) {
             toast.error(String(e?.message || "Failed to save the session"));
+            return false;
         } finally {
             setBusy(false);
         }
@@ -651,7 +686,7 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
                                                 )}
                                                 {session.status === "acquiring" && (
                                                     <Button size="small" variant="outlined" sx={actionSx} startIcon={<Square size={13} />}
-                                                            disabled={busy} onClick={() => void setStatus(session, "finished")}>
+                                                            disabled={busy} onClick={() => setFinishing(session)}>
                                                         Finish
                                                     </Button>
                                                 )}
@@ -661,7 +696,7 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
                                                 </Button>
                                                 {session.status === "planned" && (
                                                     <Tooltip arrow title="Delete">
-                                                        <IconButton size="small" aria-label="Delete" sx={{ color: "#dc2626" }}
+                                                        <IconButton size="small" aria-label={`Delete ${session.name}`} sx={{ color: "#dc2626" }}
                                                                     onClick={() => setDeleting(session)}>
                                                             <Trash2 size={17} />
                                                         </IconButton>
@@ -683,20 +718,84 @@ export default function SessionsPanel({ fieldSx, selectSx, menuPaperSx, colors, 
             {deleting !== null && (
                 <SettingsDialog
                     title="Delete session?"
-                    description="Only a planned session can be deleted; once it acquires, it is history: archive it instead."
+                    description="It was never acquired, so nothing of it is lost but the plan. This cannot be undone."
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
                     busy={busy}
                     destructive
-                    maxWidth="xs"
+                    maxWidth="sm"
                     actionButtonSx={actionSx}
+                    closeButton
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontFamily: "monospace" }}>{deleting.name}</Typography>
+                    <Stack spacing={1.25}>
+                        <SessionGlance session={deleting} colors={colors} band="#dc2626" />
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                            Only a planned session can be deleted. Once it acquires it is history: archive it instead.
+                        </Typography>
+                    </Stack>
                 </SettingsDialog>
             )}
+
+            {finishing !== null && (() => {
+                const data = finishing.datasets.filter((dataset) => dataset.kind === "data");
+                const receiving = data.filter((dataset) => dataset.watch === "receiving");
+                const empty = data.filter((dataset) => !dataset.movieCount);
+                return (
+                    <SettingsDialog
+                        title="Finish the session?"
+                        description="Its folders stop being watched, and the days its data are kept start counting from today."
+                        icon={<Square size={18} color="white" />}
+                        confirmLabel="Finish"
+                        busyLabel="Finishing…"
+                        busy={busy}
+                        maxWidth="sm"
+                        actionButtonSx={actionSx}
+                        saveButtonSx={saveSx}
+                        closeButton
+                        onConfirm={() => void setStatus(finishing, "finished").then((done) => done && setFinishing(null))}
+                        onClose={() => setFinishing(null)}
+                    >
+                        <Stack spacing={1.25}>
+                            <SessionGlance session={finishing} colors={colors} band={SESSION_STATUS_COLORS[finishing.status]} />
+                            <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, overflow: "hidden" }}>
+                                {data.map((dataset, index) => (
+                                    <Stack key={dataset.id} direction="row" spacing={1} alignItems="center"
+                                           sx={{ px: 1.5, py: 0.75, borderTop: index ? `1px solid ${colors.border}` : "none" }}>
+                                        <Typography sx={{ fontFamily: "monospace", fontSize: FACILITY_TEXT.note, color: colors.text, flex: 1,
+                                                          minWidth: 0, wordBreak: "break-all" }}>
+                                            {dataset.folder}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, whiteSpace: "nowrap" }}>
+                                            {dataset.movieCount ? `${dataset.movieCount} movies` : "no movies"}
+                                        </Typography>
+                                        {dataset.watch && WATCH_LABELS[dataset.watch] && (
+                                            <Box component="span" sx={{ px: 1, borderRadius: 10, fontSize: FACILITY_TEXT.badge, fontWeight: 700,
+                                                                        lineHeight: 1.7, whiteSpace: "nowrap", color: WATCH_COLORS[dataset.watch],
+                                                                        bgcolor: `${WATCH_COLORS[dataset.watch]}1f` }}>
+                                                {WATCH_LABELS[dataset.watch]}
+                                            </Box>
+                                        )}
+                                    </Stack>
+                                ))}
+                            </Box>
+                            {receiving.length > 0 && (
+                                <Alert severity="warning" sx={{ fontSize: FACILITY_TEXT.note }}>
+                                    {receiving.length === 1 ? `${receiving[0].folder} is` : `${receiving.length} DATA are`} still receiving movies:
+                                    finish once the microscope is done, or the last ones are not counted.
+                                </Alert>
+                            )}
+                            {empty.length > 0 && (
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                    {empty.length === 1 ? "One DATA has" : `${empty.length} DATA have`} no movies: {empty.length === 1 ? "it stays" : "they stay"} empty.
+                                </Typography>
+                            )}
+                        </Stack>
+                    </SettingsDialog>
+                );
+            })()}
 
             {editing !== null && (
                 <SessionDialog

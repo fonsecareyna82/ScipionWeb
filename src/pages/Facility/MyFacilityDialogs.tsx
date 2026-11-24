@@ -8,7 +8,7 @@ import {
 
 import { useIsDark } from "@/context/ThemeContext";
 import { sectionTint } from "@/pages/Settings/SettingsSection";
-import type { MyFacility, UserSession } from "@/api/facility";
+import type { MyFacility, SessionDataset, UserSession } from "@/api/facility";
 import { DialogPart, FactGrid, ViewDialog } from "./DialogParts";
 import { FACILITY_TEXT } from "./facilityStyles";
 import ImageStrip from "./ImageStrip";
@@ -136,7 +136,7 @@ export function SampleView({ sample, colors, showOwner, onClose }: {
 
 /** One DATA of a session: its grid, how its acquisition goes, what its movies say, and its processing. Read only. */
 export function DatasetView({ dataset, sessionName, colors, onClose }: {
-    dataset: MyDataset;
+    dataset: MyDataset | SessionDataset;
     sessionName: string;
     colors: Colors;
     onClose: () => void;

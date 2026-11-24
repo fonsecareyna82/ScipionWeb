@@ -168,7 +168,7 @@ describe("The sessions of the facility", () => {
     render(<SessionsPanel {...styles} canEdit />);
     await screen.findByText(NAME);
 
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `Delete ${NAME}` })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText("Name")).toBeDisabled();
@@ -202,6 +202,45 @@ describe("The sessions of the facility", () => {
     expect(screen.getByText("Receiving")).toBeInTheDocument();
     expect(screen.getByText("Folder not made yet")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
+  });
+
+  it("deletes a planned session after showing what it is", async () => {
+    facilityMocks.deleteSession.mockResolvedValue(null);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${NAME}` }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete session?" });
+    expect(within(within(dialog).getByLabelText("About the session")).getByText("Talos Arctica")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(facilityMocks.deleteSession).toHaveBeenCalledWith(12));
+  });
+
+  it("asks before finishing a session, warning of a DATA still receiving movies", async () => {
+    facilityMocks.listSessions.mockResolvedValue([{ ...session, status: "acquiring",
+      datasets: [session.datasets[0], { ...session.datasets[1], watch: "receiving", movieCount: 12 }] }]);
+    facilityMocks.updateSession.mockResolvedValue(session);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    const dialog = await screen.findByRole("dialog", { name: "Finish the session?" });
+    expect(within(dialog).getByText(/is still receiving movies/)).toBeInTheDocument();
+    expect(facilityMocks.updateSession).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(facilityMocks.updateSession.mock.calls[0][1]).toMatchObject({ status: "finished" }));
+  });
+
+  it("opens a DATA's details, with what its first movie says", async () => {
+    facilityMocks.listSessions.mockResolvedValue([{ ...session, status: "acquiring",
+      datasets: [session.datasets[0], { ...session.datasets[1], watch: "receiving", movieCount: 12,
+        acquisition: { detectorName: "Falcon 4i", pixelSize: 0.84, pixelCalibrated: true, warnings: [] } }] }]);
+    render(<SessionsPanel {...styles} canEdit />);
+    await screen.findByText(NAME);
+
+    fireEvent.click(screen.getByRole("button", { name: `Details of ${session.datasets[1].folder}` }));
+    const dialog = await screen.findByRole("dialog", { name: session.datasets[1].folder });
+    expect(within(dialog).getByText("0.84 Å (calibrated)")).toBeInTheDocument();
   });
 
   it("says the dose at the camera when the metadata does not give the one on the sample", async () => {
