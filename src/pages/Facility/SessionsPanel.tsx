@@ -259,9 +259,13 @@ export function SessionStatusPill({ status }: { status: SessionStatus }) {
 export type SessionFact = { icon: ReactNode; text: string };
 
 /** What a session is (microscope, technique, day, people, booking…), each with its icon. */
-export function SessionFacts({ facts, colors }: { facts: SessionFact[]; colors: { muted: string; text: string } }) {
+export function SessionFacts({ facts, colors, label = "About the session" }: {
+    facts: SessionFact[];
+    colors: { muted: string; text: string };
+    label?: string;
+}) {
     return (
-        <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} rowGap={0.5} aria-label="About the session">
+        <Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} rowGap={0.5} aria-label={label}>
             {facts.filter((fact) => fact.text).map((fact) => (
                 <Stack key={fact.text} direction="row" spacing={0.6} alignItems="center" sx={{ color: colors.muted, minWidth: 0 }}>
                     {fact.icon}

@@ -47,8 +47,12 @@ describe("The samples and grids of the facility", () => {
     render(<SamplesPanel {...styles} canEdit />);
 
     expect(await screen.findByText("NZ251")).toBeInTheDocument();
-    expect(screen.getByText(/Group Shannon lab · owner Gao Xin · Instruct PID 45466 · 1 box, 2 grids \(1 loaded\)/))
-      .toBeInTheDocument();
+    const about = screen.getByLabelText("About the sample");
+    for (const fact of ["group Shannon lab", "Gao Xin", "Instruct PID 45466", "1 box", "2 grids"]) {
+      expect(within(about).getByText(fact)).toBeInTheDocument();
+    }
+    expect(screen.getByText("1 loaded")).toBeInTheDocument();
+    expect(screen.getByText("1 sample")).toBeInTheDocument();
     expect(screen.getByText(/NZ251.2 · 28 Sept? 2026/)).toBeInTheDocument();
     expect(screen.getByText("#1")).toBeInTheDocument();
     expect(screen.getByText("CuRh 1.2")).toBeInTheDocument();
@@ -102,6 +106,7 @@ describe("The samples and grids of the facility", () => {
     expect(sampleId).toBe(1);
     expect(payload).toMatchObject({ code: "NZ251", groupId: 3, ownerId: 8, accessRoute: "Instruct PID 45466" });
     expect(payload.boxes[0].id).toBe(10);
+    expect(within(dialog).getByLabelText("Owner")).toHaveValue("Gao Xin");
     expect(payload.boxes[0].vitrifiedOn).toBe("2026-09-28");
     expect(payload.boxes[0].grids.map((row: { id: number; status: string }) => [row.id, row.status]))
       .toEqual([[101, "loaded"]]);
@@ -150,8 +155,36 @@ describe("The samples and grids of the facility", () => {
     await waitFor(() => expect(facilityMocks.addFacilityImage).toHaveBeenCalledWith("grid", 101, atlas));
     fireEvent.click(await within(dialog).findByRole("button", { name: "Image" }));
     fireEvent.click(await screen.findByRole("button", { name: "Remove image" }));
+    expect(facilityMocks.deleteFacilityImage).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
     await waitFor(() => expect(facilityMocks.deleteFacilityImage).toHaveBeenCalledWith(30));
     expect(facilityMocks.updateSample).not.toHaveBeenCalled();
+  });
+
+  it("asks before deleting a sample, warning when a grid is in a microscope", async () => {
+    facilityMocks.deleteSample.mockResolvedValue(undefined);
+    render(<SamplesPanel {...styles} canEdit />);
+    await screen.findByText("NZ251");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete NZ251" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("1 box, 2 grids")).toBeInTheDocument();
+    expect(within(dialog).getByText(/One of its grids is loaded/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(facilityMocks.deleteSample).toHaveBeenCalledWith(1));
+  });
+
+  it("goes through the images of a sample in the bigger view", async () => {
+    facilityMocks.listSamples.mockResolvedValue([{ ...nz251, images: [{ id: 7, caption: "Vitrobot sheet" }, { id: 8, caption: "Gel" }] }]);
+    render(<SamplesPanel {...styles} canEdit />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Image: Vitrobot sheet" }));
+    const viewer = await screen.findByRole("dialog");
+    expect(within(viewer).getByText("1 of 2")).toBeInTheDocument();
+    fireEvent.click(within(viewer).getByRole("button", { name: "Next image" }));
+    expect(await within(viewer).findByText("2 of 2")).toBeInTheDocument();
+    expect(await within(viewer).findByRole("img", { name: "Gel" })).toHaveAttribute("src", "blob:image-8");
   });
 
   it("asks to save a new sample before adding its images", async () => {
