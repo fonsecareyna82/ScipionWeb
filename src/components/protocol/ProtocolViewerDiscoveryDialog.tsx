@@ -1,10 +1,7 @@
 // Protocol viewers (desktop "Analyze results"): their runtime forms when the
 // server allows it, otherwise the static description of each viewer.
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, IconButton, Paper, Tooltip, Typography,
-} from "@mui/material";
+import { Box, Button, CircularProgress, Dialog, IconButton, Paper, Tooltip, Typography } from "@mui/material";
 import { AlertTriangle, BarChart3, ChevronRight, Eye, Info, LayoutList, X } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import ProtocolViewerRuntimePreviewPanel from "./ProtocolViewerRuntimePreviewPanel";
@@ -24,15 +21,19 @@ const HEADER_BG = "#333d49";
 const SURFACE_BG = "var(--app-n-50)";
 const BORDER = "rgba(148, 163, 184, 0.45)";
 
+/** The viewer's own name, as the desktop's menu shows it (its label), else its class. */
 function viewerDisplayName(viewer: ProtocolViewerCandidate): string {
+  const label = typeof viewer.label === "string" ? viewer.label.trim() : "";
+  if (label && label.length <= 160 && label !== viewer.name) return label.charAt(0).toUpperCase() + label.slice(1);
   if (typeof viewer.name === "string" && viewer.name.length > 0 && viewer.name.length <= 160) return viewer.name;
   if (typeof viewer.id === "string" && viewer.id.length <= 160) return viewer.id;
   return "Unnamed viewer";
 }
 
-/** The plugin package a viewer comes from, e.g. "xmipp3". */
-function viewerPlugin(viewer: ProtocolViewerCandidate): string {
-  return typeof viewer.id === "string" && viewer.id.includes(".") ? viewer.id.split(".")[0] : "";
+/** How the viewer is called in the buttons' names: its class, which does not change. */
+function viewerAccessibleName(viewer: ProtocolViewerCandidate): string {
+  if (typeof viewer.name === "string" && viewer.name.length > 0 && viewer.name.length <= 160) return viewer.name;
+  return viewerDisplayName(viewer);
 }
 
 export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId, protocolId, protocolLabel }: Props) {
@@ -85,15 +86,15 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
 
   let main: ReactNode;
   if (loading) {
-    main = <CenteredState icon={<CircularProgress size={28} />} title="Loading protocol viewers..." />;
+    main = <CenteredState icon={<CircularProgress size={28} />} title="Loading the viewers…" />;
   } else if (error) {
     main = (
       <CenteredState
         icon={<AlertTriangle size={30} color="#dc2626" />}
         title="Could not load protocol viewers."
         text="The server did not answer. Check the connection and try again."
-        action={<Button size="small" variant="outlined" onClick={() => setReloadKey(key => key + 1)}
-          sx={{ textTransform: "none" }}>Try again</Button>}
+        action={<Button variant="outlined" onClick={() => setReloadKey(key => key + 1)}
+          sx={{ textTransform: "none", borderRadius: 3 }}>Try again</Button>}
       />
     );
   } else if (viewers.length === 0) {
@@ -147,110 +148,111 @@ export default function ProtocolViewerDiscoveryDialog({ open, onClose, projectId
       aria-labelledby="protocol-analysis-title"
       PaperProps={{
         sx: {
-          borderRadius: 2,
+          borderRadius: 3,
           overflow: "hidden",
           height: "min(80vh, 760px)",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 22px 70px rgba(15, 23, 42, 0.35)",
-          border: "1px solid rgba(15, 23, 42, 0.12)",
+          boxShadow: 12,
         },
       }}
     >
-      <DialogTitle
-        component="div"
-        id="protocol-analysis-header"
-        sx={{ px: 2.25, py: 1.4, bgcolor: HEADER_BG, color: "#f8fafc", display: "flex", alignItems: "center", gap: 1.5 }}
-      >
+      <Box id="protocol-analysis-header" sx={{ bgcolor: HEADER_BG, color: "white", px: 2, py: 1.75, flexShrink: 0,
+        display: "flex", alignItems: "center", gap: 1.5 }}>
         <Box sx={{
-          width: 36, height: 36, borderRadius: 1.5, display: "grid", placeItems: "center", flex: "0 0 auto",
-          bgcolor: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.16)",
+          width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 2, bgcolor: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)",
         }}>
-          <BarChart3 size={19} />
+          <BarChart3 size={20} color="white" />
         </Box>
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography id="protocol-analysis-title" component="h2" sx={{ fontWeight: 700, fontSize: "1rem", lineHeight: 1.3 }}>
-            Analyze protocol results
+          <Typography id="protocol-analysis-title" component="h2" sx={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>
+            Analyze results
           </Typography>
           {subtitle && (
-            <Typography noWrap sx={{ fontSize: "0.78rem", color: "var(--app-n-300)" }}>{subtitle}</Typography>
+            <Typography noWrap sx={{ fontSize: 14, color: "rgb(229,231,235)" }}>{subtitle}</Typography>
           )}
         </Box>
-        <Tooltip title="Close">
-          <IconButton aria-label="Close dialog" onClick={onClose} size="small"
-            sx={{ color: "#e2e8f0", "&:hover": { bgcolor: "rgba(255, 255, 255, 0.12)" } }}>
-            <X size={18} />
+        <Tooltip arrow title="Close">
+          <IconButton aria-label="Close dialog" onClick={onClose}
+            sx={{ color: "rgb(229,231,235)", "&:hover": { bgcolor: "rgba(255,255,255,0.1)" } }}>
+            <X size={20} />
           </IconButton>
         </Tooltip>
-      </DialogTitle>
+      </Box>
 
-      <DialogContent sx={{ p: 0, bgcolor: SURFACE_BG, display: "flex", minHeight: 0, flex: 1 }}>
+      <Box sx={{ p: 0, display: "flex", minHeight: 0, flex: 1 }}>
         {showSidebar && (
           <Box component="nav" aria-label="Protocol viewers" sx={{
-            width: 248, flex: "0 0 auto", bgcolor: "var(--app-n-0)", borderRight: `1px solid ${BORDER}`,
-            overflowY: "auto", py: 1.25,
+            width: 264, flex: "0 0 auto", bgcolor: SURFACE_BG, borderRight: `1px solid ${BORDER}`,
+            overflowY: "auto", p: 1.25,
           }}>
-            <Typography sx={{ px: 2, pb: 1, fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6,
-              textTransform: "uppercase", color: "var(--app-n-500)" }}>
-              Viewers
+            <Typography sx={{ px: 1, pt: 0.5, pb: 1, fontSize: 13.5, fontWeight: 700, color: "var(--app-n-600)" }}>
+              {viewers.length === 1 ? "1 viewer" : `${viewers.length} viewers`}
             </Typography>
-            {viewers.map((viewer, index) => {
-              const displayName = viewerDisplayName(viewer);
-              const isExpanded = expanded === index;
-              const plugin = viewerPlugin(viewer);
-              return (
-                <Box
-                  key={`${viewer.id ?? viewer.name ?? "viewer"}-${index}`}
-                  component="button"
-                  type="button"
-                  aria-expanded={isExpanded}
-                  aria-label={`${isExpanded ? "Hide" : "Show"} details for ${displayName}`}
-                  onClick={() => setExpanded(isExpanded ? null : index)}
-                  sx={{
-                    all: "unset", boxSizing: "border-box", cursor: "pointer", width: "100%",
-                    display: "flex", alignItems: "center", gap: 1, px: 2, py: 1,
-                    borderLeft: "3px solid", borderColor: isExpanded ? HEADER_BG : "transparent",
-                    bgcolor: isExpanded ? "var(--app-n-150)" : "transparent",
-                    "&:hover": { bgcolor: isExpanded ? "var(--app-n-150)" : "var(--app-n-100)" },
-                    "&:focus-visible": { outline: `2px solid ${HEADER_BG}`, outlineOffset: -2 },
-                  }}
-                >
-                  <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: isExpanded ? 700 : 600, color: "var(--app-n-900)" }}>
-                      {displayName}
-                    </Typography>
-                    {plugin && <Typography noWrap sx={{ fontSize: "0.72rem", color: "var(--app-n-500)" }}>{plugin}</Typography>}
-                    {!runtimePreviewAvailable && (
-                      <Typography sx={{ fontSize: "0.72rem", color: "var(--app-amber-700)" }}>Web integration pending</Typography>
-                    )}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+              {viewers.map((viewer, index) => {
+                const displayName = viewerDisplayName(viewer);
+                const isExpanded = expanded === index;
+                return (
+                  <Box
+                    key={`${viewer.id ?? viewer.name ?? "viewer"}-${index}`}
+                    component="button"
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-label={`${isExpanded ? "Hide" : "Show"} details for ${viewerAccessibleName(viewer)}`}
+                    title={displayName}
+                    onClick={() => setExpanded(isExpanded ? null : index)}
+                    sx={{
+                      all: "unset", boxSizing: "border-box", cursor: "pointer", width: "100%",
+                      display: "flex", alignItems: "center", gap: 1.25, px: 1.25, py: 1, borderRadius: 2,
+                      border: "1px solid", borderColor: isExpanded ? HEADER_BG : "transparent",
+                      bgcolor: isExpanded ? "var(--app-n-0)" : "transparent",
+                      boxShadow: isExpanded ? "0 1px 3px rgba(15, 23, 42, 0.12)" : "none",
+                      "&:hover": { bgcolor: "var(--app-n-0)", borderColor: isExpanded ? HEADER_BG : BORDER },
+                      "&:focus-visible": { outline: `2px solid ${HEADER_BG}`, outlineOffset: 1 },
+                    }}
+                  >
+                    <Box sx={{
+                      width: 30, height: 30, flexShrink: 0, borderRadius: 1.5, display: "grid", placeItems: "center",
+                      bgcolor: isExpanded ? HEADER_BG : "var(--app-n-150)", color: isExpanded ? "white" : "var(--app-n-600)",
+                    }}>
+                      <BarChart3 size={16} />
+                    </Box>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography noWrap sx={{ fontSize: 15, fontWeight: isExpanded ? 700 : 600, color: "var(--app-n-900)" }}>
+                        {displayName}
+                      </Typography>
+                      {!runtimePreviewAvailable && (
+                        <Typography sx={{ fontSize: 13.5, color: "var(--app-amber-700)" }}>Web integration pending</Typography>
+                      )}
+                    </Box>
+                    <ChevronRight size={16} color={isExpanded ? HEADER_BG : "#94a3b8"} />
                   </Box>
-                  <ChevronRight size={15} color={isExpanded ? HEADER_BG : "#94a3b8"} />
-                </Box>
-              );
-            })}
+                );
+              })}
+            </Box>
           </Box>
         )}
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", bgcolor: "var(--app-n-0)" }}>
           {main}
         </Box>
-      </DialogContent>
+      </Box>
 
-      <Divider />
-
-      <DialogActions sx={{ px: 2.25, py: 1.25, bgcolor: SURFACE_BG, justifyContent: "space-between", gap: 2 }}>
+      <Box sx={{ px: 2.5, py: 1.5, borderTop: 1, borderColor: "divider", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "var(--app-n-600)", minWidth: 0 }}>
-          {runtimePreviewAvailable ? <Eye size={16} /> : <Info size={16} />}
-          <Typography sx={{ fontSize: "0.8rem" }}>
+          {runtimePreviewAvailable ? <Eye size={17} /> : <Info size={17} />}
+          <Typography sx={{ fontSize: 13.5 }}>
             {runtimePreviewAvailable
-              ? "Set the options and press the eye to open the result."
+              ? "Set the options, then press Show beside what you want to see."
               : "To analyze a specific output, use Analyze output in the Outputs tab."}
           </Typography>
         </Box>
-        <Button onClick={onClose} variant="contained"
-          sx={{ textTransform: "none", bgcolor: HEADER_BG, "&:hover": { bgcolor: "#25303b" } }}>
+        <Button onClick={onClose} variant="outlined" sx={{ textTransform: "none", borderRadius: 3, flexShrink: 0 }}>
           Close
         </Button>
-      </DialogActions>
+      </Box>
     </Dialog>
   );
 }
@@ -261,11 +263,11 @@ function CenteredState({ icon, title, text, action }: CenteredStateProps) {
   return (
     <Box role={title.startsWith("Loading") ? "status" : undefined} sx={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: 1, p: 4, textAlign: "center",
+      gap: 1.25, p: 4, textAlign: "center",
     }}>
       {icon}
-      <Typography sx={{ fontWeight: 600, color: "var(--app-n-800)" }}>{title}</Typography>
-      {text && <Typography variant="body2" sx={{ color: "var(--app-n-500)", maxWidth: 420 }}>{text}</Typography>}
+      <Typography sx={{ fontSize: 15.5, fontWeight: 600, color: "var(--app-n-800)" }}>{title}</Typography>
+      {text && <Typography sx={{ fontSize: 14, color: "var(--app-n-500)", maxWidth: 420 }}>{text}</Typography>}
       {action}
     </Box>
   );
@@ -274,7 +276,7 @@ function CenteredState({ icon, title, text, action }: CenteredStateProps) {
 function StaticViewerDetails({ viewer }: { viewer: ProtocolViewerCandidate }) {
   const preview = describeProtocolViewerPreview(viewer);
   return (
-    <Box sx={{ overflowY: "auto", p: 2.5 }}>
+    <Box sx={{ overflowY: "auto", p: 2.5, "& .MuiTypography-caption": { fontSize: 13.5 } }}>
       <Paper variant="outlined" sx={{ p: 2, borderColor: BORDER }} data-testid="protocol-viewer-details">
         <Typography sx={{ fontWeight: 700, color: "var(--app-n-900)" }}>{viewerDisplayName(viewer)}</Typography>
         <Typography variant="body2" sx={{ color: "var(--app-n-600)" }}>Contract: {preview.status}</Typography>

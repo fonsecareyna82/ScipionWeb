@@ -280,7 +280,7 @@ export function describeViewerActionItems(items: unknown, messages: unknown) {
 /** Human explanation for Views that have no web counterpart yet. */
 export function unsupportedViewReason(reason: string): string {
   switch (reason) {
-    case "desktop_command": return "Opens an external desktop program (e.g. ChimeraX), which needs ScipionAPI to run on a computer with a screen.";
+    case "desktop_command": return "Opens an external desktop program, which needs a screen on the server.";
     case "desktop_picker": return "Opens the interactive desktop particle picker.";
     case "file_outside_project": return "The file is outside the project folder.";
     case "invalid_link": return "The viewer tried to open a page that is not a web address.";

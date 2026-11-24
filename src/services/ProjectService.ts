@@ -2,6 +2,8 @@
 export type ProtocolViewerCandidate = {
   id: string;
   name: string;
+  /** The viewer's own name (its desktop label), when it has one. */
+  label?: string;
   /** "protocol-form" for desktop "Analyze results" viewers; others show single objects. */
   viewerKind?: string;
   webReady?: boolean;

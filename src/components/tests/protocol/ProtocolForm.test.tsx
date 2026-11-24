@@ -3028,7 +3028,7 @@ describe("Analyze results button of the protocol form", () => {
         });
         renderComponent({ data: dataWithOutputs() });
         fireEvent.click(await screen.findByRole("button", { name: "Analyze results" }));
-        const dialog = await screen.findByRole("dialog", { name: "Analyze protocol results" });
+        const dialog = await screen.findByRole("dialog", { name: "Analyze results" });
         expect(within(dialog).getByText("RelionViewer")).toBeInTheDocument();
         expect(within(dialog).queryByRole("button", { name: /launch|run|execute/i })).not.toBeInTheDocument();
     });

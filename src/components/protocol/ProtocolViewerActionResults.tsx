@@ -74,9 +74,10 @@ export function openVolumesTarget(item: ViewerActionVolumes, protocolId: string)
 /** Opens a page the viewer asked for, in a new browser tab. */
 export function ViewerLinkButton({ url }: { url: string }) {
   return (
-    <Button size="small" variant="contained" component="a" href={url} target="_blank"
-      rel="noopener noreferrer" startIcon={<ExternalLink size={14} />}
-      sx={{ textTransform: "none", flex: "0 0 auto", bgcolor: "#333d49", "&:hover": { bgcolor: "#25303b" } }}>
+    <Button variant="contained" component="a" href={url} target="_blank"
+      rel="noopener noreferrer" startIcon={<ExternalLink size={15} />}
+      sx={{ textTransform: "none", borderRadius: 3, boxShadow: "none", flex: "0 0 auto", bgcolor: "#333d49",
+        "&:hover": { bgcolor: "#25303b", boxShadow: "none" } }}>
       Open in a new tab
     </Button>
   );
@@ -157,11 +158,11 @@ export default function ProtocolViewerActionResults({
           minHeight={260}
         >
           <Box data-testid="protocol-viewer-action-results" sx={{
-            display: "flex", flexDirection: "column", gap: 1.25, p: 2, height: "100%",
+            display: "flex", flexDirection: "column", gap: 1.5, p: 2.5, height: "100%",
             overflowY: "auto", boxSizing: "border-box", bgcolor: "var(--app-n-50)",
           }}>
             {result.messages.map((message, index) => (
-              <Alert key={`message-${index}`} severity={message.level}>
+              <Alert key={`message-${index}`} severity={message.level} sx={{ fontSize: 14 }}>
                 {message.title && <strong>{message.title}: </strong>}{message.text}
               </Alert>
             ))}
@@ -172,7 +173,7 @@ export default function ProtocolViewerActionResults({
                 onOpenPlot={(plotTitle, src) => setImage({ title: plotTitle, path: plotTitle, loadImage: async () => ({ url: src, revoke: () => undefined }) })} />
             ))}
             {result.omittedItems > 0 && (
-              <Typography variant="caption">{result.omittedItems} more results were not shown.</Typography>
+              <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)" }}>{result.omittedItems} more results were not shown.</Typography>
             )}
           </Box>
         </FloatingWindow>
@@ -196,11 +197,11 @@ export default function ProtocolViewerActionResults({
 }
 
 const CARD_SX = {
-  p: 1.5, borderRadius: 1.5, borderColor: "rgba(148, 163, 184, 0.45)", bgcolor: "var(--app-n-0)",
+  p: 2, borderRadius: 2.5, borderColor: "rgba(148, 163, 184, 0.45)", bgcolor: "var(--app-n-0)",
 } as const;
 
 function CardTitle({ children }: { children: ReactNode }) {
-  return <Typography sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)", mb: 1 }}>{children}</Typography>;
+  return <Typography sx={{ fontSize: 15, fontWeight: 700, color: "var(--app-n-900)", mb: 1.25 }}>{children}</Typography>;
 }
 
 const FORMAT_ICONS = { metadata: Table2, image: ImageIcon, text: FileText, file: File } as const;
@@ -216,7 +217,7 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
   switch (item.kind) {
     case "message":
       return (
-        <Alert severity={item.level}>
+        <Alert severity={item.level} sx={{ fontSize: 14 }}>
           {item.title && <strong>{item.title}: </strong>}{item.text}
         </Alert>
       );
@@ -233,9 +234,10 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
       return (
         <Paper variant="outlined" sx={CARD_SX}>
           {item.title && <CardTitle>{item.title}</CardTitle>}
-          {item.message && <Typography variant="body2" sx={{ mb: 1 }}>{item.message}</Typography>}
+          {item.message && <Typography sx={{ mb: 1, fontSize: 14 }}>{item.message}</Typography>}
           <TableContainer sx={{ maxHeight: 360 }}>
-            <Table size="small" stickyHeader>
+            <Table size="small" stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: 14 },
+              "& .MuiTableCell-head": { fontWeight: 700, bgcolor: "var(--app-n-100)" } }}>
               <TableHead>
                 <TableRow>{item.header.map((h, i) => <TableCell key={i}>{h}</TableCell>)}</TableRow>
               </TableHead>
@@ -248,7 +250,7 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
               </TableBody>
             </Table>
           </TableContainer>
-          {item.truncated && <Typography variant="caption">Only the first rows are shown.</Typography>}
+          {item.truncated && <Typography sx={{ mt: 1, fontSize: 13.5, color: "var(--app-n-500)" }}>Only the first rows are shown.</Typography>}
         </Paper>
       );
     case "text":
@@ -257,16 +259,16 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
           {item.title && <CardTitle>{item.title}</CardTitle>}
           {item.files.map((file, i) => (
             <Box key={i} sx={{ mt: 1 }}>
-              <Typography variant="caption" sx={{ display: "block" }}>{file.path || file.name}</Typography>
+              <Typography sx={{ display: "block", mb: 0.5, fontSize: 13.5, color: "var(--app-n-500)", wordBreak: "break-all" }}>{file.path || file.name}</Typography>
               {file.missing ? (
-                <Typography variant="body2">This file does not exist yet.</Typography>
+                <Typography sx={{ fontSize: 14 }}>This file does not exist yet.</Typography>
               ) : (
-                <Box component="pre" sx={{ m: 0, p: 1, maxHeight: 400, overflow: "auto", fontSize: 12,
+                <Box component="pre" sx={{ m: 0, p: 1.5, maxHeight: 400, overflow: "auto", fontSize: 13.5, borderRadius: 2,
                   bgcolor: "action.hover", whiteSpace: "pre-wrap" }}>
                   {file.content}
                 </Box>
               )}
-              {file.truncated && <Typography variant="caption">Only the beginning of the file is shown.</Typography>}
+              {file.truncated && <Typography sx={{ mt: 0.5, fontSize: 13.5, color: "var(--app-n-500)" }}>Only the beginning of the file is shown.</Typography>}
             </Box>
           ))}
         </Paper>
@@ -276,8 +278,8 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={ImageIcon} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.path}</Typography>
+            <Typography noWrap sx={{ fontSize: 15, fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.path}</Typography>
           </Box>
           <OpenButton onClick={() => onOpenImage(item.title, item.path)} />
         </Paper>
@@ -292,12 +294,12 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={item.output ? Database : FORMAT_ICONS[item.format]} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{location}</Typography>
+            <Typography noWrap sx={{ fontSize: 15, fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)", wordBreak: "break-all" }}>{location}</Typography>
           </Box>
           {openable
             ? <OpenButton onClick={() => onOpen(item)} />
-            : <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)" }}>No web viewer for this file type yet.</Typography>}
+            : <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)", flexShrink: 0 }}>No web viewer for this file type yet.</Typography>}
         </Paper>
       );
     }
@@ -306,8 +308,8 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={Box3D} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography noWrap sx={{ fontSize: "0.86rem", fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
-            <Typography sx={{ fontSize: "0.75rem", color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.paths.join(", ")}</Typography>
+            <Typography noWrap sx={{ fontSize: 15, fontWeight: 700, color: "var(--app-n-900)" }}>{item.title}</Typography>
+            <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)", wordBreak: "break-all" }}>{item.paths.join(", ")}</Typography>
           </Box>
           <OpenButton onClick={() => onOpen(item)} />
         </Paper>
@@ -316,7 +318,7 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
       return (
         <Paper variant="outlined" sx={{ ...CARD_SX, display: "flex", alignItems: "center", gap: 1.5 }}>
           <FileIcon icon={ExternalLink} />
-          <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.8rem", color: "var(--app-n-700)", wordBreak: "break-all" }}>
+          <Typography sx={{ minWidth: 0, flex: 1, fontSize: 14, color: "var(--app-n-700)", wordBreak: "break-all" }}>
             {item.url}
           </Typography>
           <ViewerLinkButton url={item.url} />
@@ -324,8 +326,8 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
       );
     case "unsupported":
       return (
-        <Alert severity="info" variant="outlined">
-          {item.viewClass ? `${item.viewClass}: ` : ""}{unsupportedViewReason(item.reason)}
+        <Alert severity="info" variant="outlined" sx={{ fontSize: 14, bgcolor: "var(--app-n-0)" }}>
+          {unsupportedViewReason(item.reason)}
         </Alert>
       );
     default:
@@ -335,17 +337,18 @@ function ResultItem({ item, onOpen, onOpenImage, onOpenPlot }: ResultItemProps) 
 
 function FileIcon({ icon: Icon }: { icon: typeof File }) {
   return (
-    <Box sx={{ width: 36, height: 36, borderRadius: 1.5, display: "grid", placeItems: "center", flex: "0 0 auto",
+    <Box sx={{ width: 40, height: 40, borderRadius: 2, display: "grid", placeItems: "center", flex: "0 0 auto",
       bgcolor: "var(--app-n-150)", color: "#333d49" }}>
-      <Icon size={18} />
+      <Icon size={19} />
     </Box>
   );
 }
 
 function OpenButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button size="small" variant="contained" onClick={onClick} startIcon={<ExternalLink size={14} />}
-      sx={{ textTransform: "none", flex: "0 0 auto", bgcolor: "#333d49", "&:hover": { bgcolor: "#25303b" } }}>
+    <Button variant="contained" onClick={onClick} startIcon={<ExternalLink size={15} />}
+      sx={{ textTransform: "none", borderRadius: 3, boxShadow: "none", flex: "0 0 auto", bgcolor: "#333d49",
+        "&:hover": { bgcolor: "#25303b", boxShadow: "none" } }}>
       Open
     </Button>
   );

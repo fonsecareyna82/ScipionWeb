@@ -134,45 +134,45 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
     <Box component="section" aria-label="Viewer options" sx={{
       flex: 1, minHeight: 0, display: "flex", flexDirection: "column", bgcolor: "var(--app-n-0)",
     }}>
-      <ColumnHeader icon={<SlidersHorizontal size={15} />} title="Options" subtitle={viewerName} />
+      <ColumnHeader icon={<SlidersHorizontal size={18} />} title={viewerName || "Options"}
+        subtitle="Change what you need; nothing here changes the protocol." />
       <Box sx={{ height: 3 }}>{action.status === "running" && <LinearProgress aria-label="Preparing the result" />}</Box>
-      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2.5, pb: 2.5 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2.5, pb: 2.5, bgcolor: "var(--app-n-50)" }}>
         {action.status === "failed" && (
-          <Alert severity="error" sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+          <Alert severity="error" sx={{ mt: 1.5, fontSize: 14 }} onClose={() => setAction({ status: "idle" })}>
             <strong>{actionLabel(action.action)}: </strong>
             {action.messages.map((message, index) => <div key={index}>{message}</div>)}
           </Alert>
         )}
         {doneResult && doneResult.items.length === 0 && doneResult.messages.length === 0 && (
-          <Alert severity="info" sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+          <Alert severity="info" sx={{ mt: 1.5, fontSize: 14 }} onClose={() => setAction({ status: "idle" })}>
             {actionLabel(doneResult.action)}: the viewer returned nothing to show.
           </Alert>
         )}
         {inlineLinks.map((link, index) => (
-          <Alert key={`link-${index}`} severity="info" icon={<ExternalLink size={18} />} sx={{ mt: 1.5,
+          <Alert key={`link-${index}`} severity="info" icon={<ExternalLink size={18} />} sx={{ mt: 1.5, fontSize: 14,
             "& .MuiAlert-message": { flex: 1, minWidth: 0 } }} onClose={() => setAction({ status: "idle" })}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <strong>{actionLabel(doneResult!.action)}</strong>
-                <Box sx={{ fontSize: "0.78rem", wordBreak: "break-all", color: "var(--app-n-600)" }}>{link.url}</Box>
+                <Box sx={{ fontSize: 13.5, wordBreak: "break-all", color: "var(--app-n-600)" }}>{link.url}</Box>
               </Box>
               <ViewerLinkButton url={link.url} />
             </Box>
           </Alert>
         ))}
         {desktopItems.map((item, index) => {
-          const program = item.kind === "desktop" ? item.program : item.desktopProgram;
           return (
-            <Alert key={`desktop-${index}`} severity="success" icon={<Monitor size={18} />} sx={{ mt: 1.5,
+            <Alert key={`desktop-${index}`} severity="success" icon={<Monitor size={18} />} sx={{ mt: 1.5, fontSize: 14,
               "& .MuiAlert-message": { flex: 1, minWidth: 0 } }} onClose={() => setAction({ status: "idle" })}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <strong>{actionLabel(doneResult!.action)}</strong>
-                  <Box sx={{ fontSize: "0.8rem", color: "var(--app-n-600)" }}>Opened in {program} on this computer.</Box>
+                  <Box sx={{ fontSize: 13.5, color: "var(--app-n-600)" }}>Opened in its desktop program on the server's screen.</Box>
                 </Box>
                 {item.kind === "volumes" && (
-                  <Button size="small" variant="outlined" onClick={() => setWebVolumes(item)}
-                    sx={{ textTransform: "none", flex: "0 0 auto", color: "#333d49", borderColor: "var(--app-n-400)" }}>
+                  <Button variant="outlined" onClick={() => setWebVolumes(item)}
+                    sx={{ textTransform: "none", borderRadius: 3, flex: "0 0 auto", color: "#333d49", borderColor: "var(--app-n-400)" }}>
                     Show in the web volume viewer
                   </Button>
                 )}
@@ -181,21 +181,21 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
           );
         })}
         {inlineMessages.map((message, index) => (
-          <Alert key={index} severity={message.level} sx={{ mt: 1.5 }} onClose={() => setAction({ status: "idle" })}>
+          <Alert key={index} severity={message.level} sx={{ mt: 1.5, fontSize: 14 }} onClose={() => setAction({ status: "idle" })}>
             {message.title && <strong>{message.title}: </strong>}{message.text}
           </Alert>
         ))}
         {shown.status === "loading" && (
           <Box role="status" sx={{ display: "flex", gap: 1, alignItems: "center", py: 2 }}>
-            <CircularProgress size={16} /><Typography variant="body2">Loading viewer form...</Typography>
+            <CircularProgress size={18} /><Typography sx={{ fontSize: 14.5 }}>Loading the options…</Typography>
           </Box>
         )}
-        {shown.status === "error" && <Alert severity="error" sx={{ mt: 1 }}>The viewer form could not be loaded.</Alert>}
-        {shown.status === "invalid" && <Alert severity="error" sx={{ mt: 1 }}>The viewer form could not be read.</Alert>}
+        {shown.status === "error" && <Alert severity="error" sx={{ mt: 1.5, fontSize: 14 }}>The viewer form could not be loaded.</Alert>}
+        {shown.status === "invalid" && <Alert severity="error" sx={{ mt: 1.5, fontSize: 14 }}>The viewer form could not be read.</Alert>}
         {ready && (
           <Box data-testid="protocol-viewer-runtime-preview">
             {ready.sections.length === 0 && !ready.conditionalFields?.length && (
-              <Typography variant="body2" sx={{ py: 2, color: "var(--app-n-500)" }}>This viewer has no options to show.</Typography>
+              <Typography sx={{ py: 2, fontSize: 14.5, color: "var(--app-n-500)" }}>This viewer has no options to show.</Typography>
             )}
             <RuntimeLocalViewerForm
               preview={ready}
@@ -208,7 +208,7 @@ export default function ProtocolViewerRuntimePreviewPanel({ service, projectId, 
               protocolLabel={protocolLabel ?? ""}
             />
             {ready.omittedFields > 0 && (
-              <Typography variant="caption" sx={{ display: "block", mt: 1.5, color: "var(--app-n-500)" }}>
+              <Typography sx={{ display: "block", mt: 2, fontSize: 13.5, color: "var(--app-n-500)" }}>
                 {ready.omittedFields} options of this viewer cannot be shown on the web.
               </Typography>
             )}
@@ -242,13 +242,13 @@ type ColumnHeaderProps = { icon: ReactNode; title: string; subtitle?: string; ac
 
 function ColumnHeader({ icon, title, subtitle, action }: ColumnHeaderProps) {
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, pt: 1.5, pb: 1, minHeight: 48 }}>
-      <Box sx={{ color: "var(--app-n-600)", display: "flex" }}>{icon}</Box>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 2.5, pt: 2, pb: 1.5,
+      borderBottom: "1px solid rgba(148, 163, 184, 0.35)" }}>
+      <Box sx={{ width: 34, height: 34, flexShrink: 0, borderRadius: 2, display: "grid", placeItems: "center",
+        bgcolor: "var(--app-n-150)", color: "#333d49" }}>{icon}</Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "var(--app-n-500)" }}>
-          {title}
-        </Typography>
-        {subtitle && <Typography noWrap sx={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--app-n-900)" }}>{subtitle}</Typography>}
+        <Typography noWrap sx={{ fontSize: 16, fontWeight: 700, color: "var(--app-n-900)" }}>{title}</Typography>
+        {subtitle && <Typography sx={{ fontSize: 13.5, color: "var(--app-n-500)" }}>{subtitle}</Typography>}
       </Box>
       {action}
     </Box>
@@ -333,7 +333,7 @@ function RuntimeLocalViewerForm({
           disabled={wizard.run !== null}
           onClick={() => { setWizardError(null); void wizard.openWizard(field.name, field.label, preview.wizards[field.name]); }}
           sx={{
-            width: 34, height: 34, flex: "0 0 auto", border: "1px solid rgba(148, 163, 184, 0.6)",
+            width: 38, height: 38, flex: "0 0 auto", borderRadius: 2.5, border: "1px solid rgba(148, 163, 184, 0.6)",
             color: "#333d49", bgcolor: "var(--app-n-0)",
             "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
           }}>
@@ -344,21 +344,18 @@ function RuntimeLocalViewerForm({
   ) : null;
 
   const eye = (field: Field) => actions.has(field.name) && onAction ? (
-    <Tooltip title={`Show: ${field.label}`}>
-      <span>
-        <IconButton size="small" aria-label={`Show ${field.label}`}
-          disabled={runningAction !== null}
-          onClick={() => onAction(field.name, actionValues(values))}
-          sx={{
-            width: 34, height: 34, flex: "0 0 auto", border: "1px solid",
-            borderColor: runningAction === field.name ? "#333d49" : "rgba(148, 163, 184, 0.6)",
-            color: "#333d49", bgcolor: runningAction === field.name ? "var(--app-n-150)" : "var(--app-n-0)",
-            "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49" },
-          }}>
-          {runningAction === field.name ? <CircularProgress size={16} /> : <Eye size={17} />}
-        </IconButton>
-      </span>
-    </Tooltip>
+    <Button variant={runningAction === field.name ? "contained" : "outlined"} aria-label={`Show ${field.label}`}
+      disabled={runningAction !== null && runningAction !== field.name}
+      onClick={() => { if (runningAction === null) onAction(field.name, actionValues(values)); }}
+      startIcon={runningAction === field.name ? <CircularProgress size={15} color="inherit" /> : <Eye size={17} />}
+      sx={{
+        flex: "0 0 auto", height: 38, px: 1.75, borderRadius: 3, textTransform: "none", fontSize: 14, fontWeight: 600,
+        color: runningAction === field.name ? "white" : "#333d49", borderColor: "rgba(51, 61, 73, 0.45)",
+        bgcolor: runningAction === field.name ? "#333d49" : "var(--app-n-0)", boxShadow: "none",
+        "&:hover": { bgcolor: "#333d49", color: "#ffffff", borderColor: "#333d49", boxShadow: "none" },
+      }}>
+      {runningAction === field.name ? "Opening…" : "Show"}
+    </Button>
   ) : null;
 
   const renderField = (field: Field) => {
@@ -369,35 +366,36 @@ function RuntimeLocalViewerForm({
       (values[field.name] === undefined || values[field.name] === null ? "" : String(values[field.name]));
     let control;
     if (!EDITABLE.has(field.control)) {
-      control = <Typography sx={{ flex: 1, fontSize: "0.88rem", fontWeight: 500, color: "var(--app-n-800)" }}>{field.label}</Typography>;
+      control = <Typography sx={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--app-n-800)" }}>{field.label}</Typography>;
     } else if (field.control === "boolean") {
       control = (
         <FormControlLabel sx={{ flex: 1 }} control={<Checkbox checked={values[field.name] === true}
           onChange={(event: { target: { checked: boolean } }) => update(field, event.target.checked)} />}
-          label={field.label} />
+          label={field.label} slotProps={{ typography: { sx: { fontSize: 15 } } }} />
       );
     } else {
       control = (
-        <TextField size="small" fullWidth label={field.label} sx={{ flex: 1 }}
+        <TextField size="small" fullWidth label={field.label}
+          sx={{ flex: 1, "& .MuiInputBase-input": { fontSize: 15 }, "& .MuiInputLabel-root": { fontSize: 15 } }}
           value={rawValue} select={field.control === "select"}
           multiline={field.control === "multiline"}
           type={field.control === "integer" || field.control === "number" ? "number" : undefined}
           onChange={(event: { target: { value: string } }) => update(field, event.target.value)}
           inputProps={{ "data-testid": `viewer-local-${field.name}` }}>
           {field.control === "select" && field.choices?.map((choice, index) => (
-            <MenuItem key={index} value={String(index)}>{choice}</MenuItem>
+            <MenuItem key={index} value={String(index)} sx={{ fontSize: 15 }}>{choice}</MenuItem>
           ))}
         </TextField>
       );
     }
     return (
-      <Box key={field.name} sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 0.75 }}>
+      <Box key={field.name} sx={{ mt: 1.75, display: "flex", alignItems: "center", gap: 1 }}>
         {control}
         {field.help && (
-          <Tooltip title={<Box sx={{ whiteSpace: "pre-line" }}>{field.help}</Box>} placement="right">
+          <Tooltip arrow title={<Box sx={{ whiteSpace: "pre-line", fontSize: 13.5 }}>{field.help}</Box>} placement="right">
             <Box component="span" aria-label={`Help for ${field.label}`} tabIndex={0}
               sx={{ display: "flex", color: "var(--app-n-400)", cursor: "help", "&:hover": { color: "var(--app-n-600)" } }}>
-              <Info size={15} />
+              <Info size={17} />
             </Box>
           </Tooltip>
         )}
@@ -418,7 +416,7 @@ function RuntimeLocalViewerForm({
   return (
     <Box data-testid="protocol-viewer-local-form">
       {wizardError && (
-        <Alert severity="error" sx={{ mt: 1.5 }} onClose={() => setWizardError(null)}>
+        <Alert severity="error" sx={{ mt: 1.5, fontSize: 14 }} onClose={() => setWizardError(null)}>
           <Box sx={{ whiteSpace: "pre-line" }}>{wizardError}</Box>
         </Alert>
       )}
@@ -443,17 +441,17 @@ function RuntimeLocalViewerForm({
           ...deferred.filter(item => item.section === name && item.group !== null)
             .map(item => item.group as string)])];
         return (
-          <Box key={`${index}-${name}`} sx={{ mt: index === 0 ? 0.5 : 2 }}>
-            <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--app-n-700)", pb: 0.5,
-              borderBottom: "1px solid rgba(148, 163, 184, 0.35)" }}>{name}</Typography>
+          <Box key={`${index}-${name}`} sx={{ mt: 2, p: 2, pt: 1.5, borderRadius: 2.5,
+            border: "1px solid rgba(148, 163, 184, 0.4)", bgcolor: "var(--app-n-0)" }}>
+            <Typography sx={{ fontSize: 14.5, fontWeight: 700, color: "var(--app-n-800)", pb: 0.5 }}>{name}</Typography>
             {section?.fields.map(field => renderField(field))}
             {direct.map(entry => renderField(entry.field))}
             {groups.map((groupName, groupIndex) => {
               const group = section?.groups.find(item => item.label === groupName);
               const additional = deferred.filter(item => item.section === name && item.group === groupName);
               return (
-                <Box key={`${groupIndex}-${groupName}`} sx={{ pl: 1.5, mt: 1.5, borderLeft: "2px solid rgba(148, 163, 184, 0.45)" }}>
-                  <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--app-n-600)" }}>{groupName}</Typography>
+                <Box key={`${groupIndex}-${groupName}`} sx={{ pl: 1.75, mt: 2, borderLeft: "3px solid rgba(148, 163, 184, 0.45)" }}>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: "var(--app-n-600)" }}>{groupName}</Typography>
                   {group?.fields.map(field => renderField(field))}
                   {additional.map(entry => renderField(entry.field))}
                 </Box>

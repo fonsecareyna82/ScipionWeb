@@ -240,7 +240,7 @@ describe("protocol viewers built from the plugin's runtime form", () => {
     ]));
     const result = await form();
     fireEvent.click(within(result).getByRole("button", {name: "Show Visualize convergence"}));
-    expect(await screen.findByText("Opened in ChimeraX on this computer.")).toBeInTheDocument();
+    expect(await screen.findByText("Opened in its desktop program on the server's screen.")).toBeInTheDocument();
     expect(screen.queryByTestId("analyze-output-dialog")).not.toBeInTheDocument();
     expect(screen.queryByTestId("protocol-viewer-action-results")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", {name: "Show in the web volume viewer"}));
