@@ -3,9 +3,6 @@ import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     CircularProgress,
     FormControl,
     FormControlLabel,
@@ -16,11 +13,21 @@ import {
     Stack,
     Switch,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
+    Tooltip,
     Typography,
 } from "@mui/material";
-import { ImagePlus, Microscope as MicroscopeIcon, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import {
+    Aperture, Camera, FolderInput, ImagePlus, Layers, Microscope as MicroscopeIcon, MonitorCog, Pencil, Plus, RefreshCw,
+    Trash2, X, Zap,
+} from "lucide-react";
+import { useIsDark } from "@/context/ThemeContext";
 import SettingsDialog, { ROUNDED_BUTTON_SX } from "@/pages/Settings/SettingsDialog";
-import { FACILITY_TEXT } from "./facilityStyles";
+import { SettingsSection, choiceButtonsSx, sectionTint } from "@/pages/Settings/SettingsSection";
+import { DialogPart, OptionRow } from "./DialogParts";
+import { FACILITY_TEXT, useFacilityStyles } from "./facilityStyles";
+import { SessionFacts, type SessionFact } from "./SessionsPanel";
 import { useConventionsPreview } from "./useConventionsPreview";
 import toast from "react-hot-toast";
 
@@ -55,6 +62,12 @@ const STATUS_LABELS: Record<MicroscopeStatus, string> = {
     operational: "Operational",
     maintenance: "Maintenance",
     out_of_service: "Out of service",
+};
+
+const STATUS_COLORS: Record<MicroscopeStatus, string> = {
+    operational: "#16a34a",
+    maintenance: "#d97706",
+    out_of_service: "#dc2626",
 };
 
 const GAIN_FLIP_LABELS: Record<GainFlip, string> = {
@@ -137,6 +150,69 @@ function optionalNumber(text: string): number | null {
 
 const PHOTO_TYPES = "image/png,image/jpeg,image/webp";
 
+/** A small tinted label beside a name. */
+function Pill({ color, children }: { color: string; children: string }) {
+    return (
+        <Box component="span" sx={{ px: 1, borderRadius: 10, flexShrink: 0, lineHeight: 1.7, fontSize: FACILITY_TEXT.badge,
+                                    fontWeight: 700, color, bgcolor: `${color}1f`, whiteSpace: "nowrap" }}>
+            {children}
+        </Box>
+    );
+}
+
+/** A microscope's detectors: each with its name in the movies, and its pixel size at each magnification. */
+function DetectorList({ detectors, colors }: { detectors: Detector[]; colors: PanelStyles["colors"] }) {
+    if (detectors.length === 0) {
+        return (
+            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
+                No detectors: the nominal pixel sizes of the movies are used
+            </Typography>
+        );
+    }
+    return (
+        <Stack spacing={0.9}>
+            {detectors.map((detector) => (
+                <Stack key={detector.id} direction={{ xs: "column", md: "row" }} spacing={{ xs: 0.5, md: 1.25 }}
+                       alignItems={{ md: "center" }} aria-label={`Detector ${detector.name}`} role="group">
+                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 220 }}>
+                        <Camera size={15} style={{ color: colors.muted, flexShrink: 0 }} />
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>
+                            {detector.name}
+                        </Typography>
+                        {detector.metadataName && (
+                            <Tooltip arrow title="Its name in the movies' metadata">
+                                <Typography component="span" sx={{ fontSize: FACILITY_TEXT.note, fontFamily: "monospace", color: colors.muted }}>
+                                    {detector.metadataName}
+                                </Typography>
+                            </Tooltip>
+                        )}
+                        {detector.energyFiltered && <Pill color="#7c3aed">energy filtered</Pill>}
+                    </Stack>
+                    <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
+                        {detector.pixelSizes.length === 0 ? (
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>nominal pixel sizes</Typography>
+                        ) : detector.pixelSizes.map((row) => (
+                            <Box key={row.magnification} component="span"
+                                 sx={{ px: 1, borderRadius: 1.5, border: `1px solid ${colors.border}`, bgcolor: colors.surface,
+                                       fontSize: FACILITY_TEXT.note, color: colors.text, whiteSpace: "nowrap", lineHeight: 1.8 }}>
+                                {row.magnification.toLocaleString("en-US")}× <Box component="span" sx={{ color: colors.muted }}>→</Box>{" "}
+                                <strong>{row.pixelSize} Å</strong>
+                            </Box>
+                        ))}
+                        {detector.gainPath && (
+                            <Tooltip arrow title={detector.gainPath}>
+                                <Box component="span" sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, lineHeight: 1.8 }}>
+                                    · gain reference set
+                                </Box>
+                            </Tooltip>
+                        )}
+                    </Stack>
+                </Stack>
+            ))}
+        </Stack>
+    );
+}
+
 /** The photo of a microscope (read with the session), or its icon while it has none. */
 function MicroscopePhoto({ microscope, src, width, height, colors }: {
     microscope?: Microscope | null;
@@ -187,8 +263,10 @@ export function describeMicroscope(microscope: Microscope): string {
         .filter(Boolean).join(" · ") || "—";
 }
 
-export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, selectSx, menuPaperSx, colors,
+export default function MicroscopesPanel({ fieldSx, selectSx, menuPaperSx, colors,
                                            actionButtonSx, saveButtonSx }: PanelStyles) {
+    const isDark = useIsDark();
+    const sectionColors = { ...useFacilityStyles().colors, ...colors };
     const actionSx = actionButtonSx ?? ROUNDED_BUTTON_SX;
     const saveSx = saveButtonSx ?? ROUNDED_BUTTON_SX;
     const [microscopes, setMicroscopes] = useState<Microscope[]>([]);
@@ -228,86 +306,110 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
         }
     }, [load]);
 
-    if (loading && microscopes.length === 0 && !error) {
-        return (
-            <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
-                <CircularProgress size={30} />
-            </Box>
-        );
-    }
-
     return (
-        <Stack spacing={1.75}>
-            {error && <Alert severity="error">{error}</Alert>}
-            <Card variant="outlined" sx={cardSx}>
-                <CardHeader
-                    title="Microscopes"
-                    subheader="The facility's microscopes: what processing needs besides what their movies say (Cs, gain, where they write) and the calibrated pixel size at each magnification."
-                    sx={cardHeaderSx}
-                    action={
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
-                                    disabled={loading} onClick={() => void load()}>
-                                Reload
-                            </Button>
-                            <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
-                                    onClick={() => setEditing("new")}>
-                                New microscope
-                            </Button>
-                        </Stack>
-                    }
-                />
-                <CardContent sx={{ pt: 2 }}>
-                    <Stack spacing={1}>
-                        {microscopes.length === 0 && <Alert severity="info">No microscopes yet.</Alert>}
-                        {microscopes.map((microscope) => (
-                            <Box key={microscope.id} sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
-                                    <MicroscopePhoto microscope={microscope} width={96} height={72} colors={colors} />
-                                    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800, color: colors.text }}>
-                                            {microscope.name}
-                                            <Typography component="span" sx={{ fontSize: FACILITY_TEXT.badge, fontWeight: 600, color: colors.muted, ml: 1 }}>
-                                                {STATUS_LABELS[microscope.status]}
-                                                {microscope.sessionsEnabled ? " · sessions" : ""}
+        <Stack spacing={2}>
+            <SettingsSection
+                plain
+                icon={<MicroscopeIcon size={19} />}
+                title="Microscopes"
+                subtitle="What processing needs besides what the movies say (Cs, gain, where they are written) and the calibrated pixel size at each magnification."
+                colors={sectionColors}
+                isDarkMode={isDark}
+                actions={
+                    <Stack direction="row" spacing={1}>
+                        <Button size="small" variant="outlined" sx={actionSx} startIcon={<RefreshCw size={15} />}
+                                disabled={loading} onClick={() => void load()}>
+                            Reload
+                        </Button>
+                        <Button size="small" variant="contained" sx={saveSx} startIcon={<Plus size={15} />}
+                                onClick={() => setEditing("new")}>
+                            New microscope
+                        </Button>
+                    </Stack>
+                }
+            >
+                <Stack spacing={1.5}>
+                    {error && <Alert severity="error">{error}</Alert>}
+                    {loading && microscopes.length === 0 && !error && (
+                        <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}><CircularProgress size={28} /></Box>
+                    )}
+                    {!loading && microscopes.length === 0 && !error && (
+                        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 3, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 700, color: colors.text }}>No microscopes yet.</Typography>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.5 }}>
+                                Add one with New microscope: sessions, bookings and processing need it.
+                            </Typography>
+                        </Box>
+                    )}
+                    {microscopes.length > 0 && (
+                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, color: colors.text }}>
+                            {microscopes.length === 1 ? "1 microscope" : `${microscopes.length} microscopes`}
+                        </Typography>
+                    )}
+                    {microscopes.map((microscope) => {
+                        const facts: SessionFact[] = [
+                            { icon: <MicroscopeIcon size={15} />, text: microscope.model ?? "" },
+                            { icon: <Zap size={15} />, text: microscope.voltageKv ? `${microscope.voltageKv} kV` : "" },
+                            { icon: <Aperture size={15} />, text: microscope.csMm ? `Cs ${microscope.csMm} mm` : "" },
+                            { icon: <Layers size={15} />, text: microscope.energyFilter ? `filter ${microscope.energyFilter}` : "" },
+                            { icon: <MonitorCog size={15} />, text: microscope.acquisitionSoftware ?? "" },
+                        ];
+                        return (
+                            <Box key={microscope.id} data-testid={`microscope-${microscope.id}`}
+                                 sx={{ border: `1px solid ${colors.border}`, borderLeft: `4px solid ${STATUS_COLORS[microscope.status]}`,
+                                       borderRadius: 2.5, bgcolor: sectionColors.card, overflow: "hidden" }}>
+                                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ px: 2, py: 1.5 }}
+                                       alignItems={{ sm: "flex-start" }}>
+                                    <MicroscopePhoto microscope={microscope} width={128} height={96} colors={colors} />
+                                    <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
+                                        <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle + 1, fontWeight: 800, color: colors.text }}>
+                                                {microscope.name}
                                             </Typography>
-                                        </Typography>
-                                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                            {describeMicroscope(microscope)}
-                                        </Typography>
-                                        {microscope.detectors.length === 0 && (
-                                            <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                                No detectors: the nominal pixel sizes of the movies are used
-                                            </Typography>
+                                            <Pill color={STATUS_COLORS[microscope.status]}>{STATUS_LABELS[microscope.status]}</Pill>
+                                            {microscope.sessionsEnabled && <Pill color="#2563eb">Runs sessions</Pill>}
+                                        </Stack>
+                                        <SessionFacts facts={facts} colors={colors} label="About the microscope" />
+                                        {microscope.offloadPath && (
+                                            <Stack direction="row" spacing={0.6} alignItems="center" sx={{ color: colors.muted, minWidth: 0 }}>
+                                                <FolderInput size={15} style={{ flexShrink: 0 }} />
+                                                <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontFamily: "monospace", color: colors.text,
+                                                                  wordBreak: "break-all" }}>
+                                                    {microscope.offloadPath}
+                                                </Typography>
+                                            </Stack>
                                         )}
-                                        {microscope.detectors.map((detector) => (
-                                            <Typography key={detector.id} sx={{ fontSize: FACILITY_TEXT.itemLine, color: colors.muted }}>
-                                                {describeDetector(detector)}
-                                            </Typography>
-                                        ))}
                                     </Stack>
-                                    </Stack>
-                                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                                        <Button size="small" variant="outlined" sx={actionSx} onClick={() => setEditing(microscope)}>
+                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                                        <Button size="small" variant="outlined" sx={actionSx} startIcon={<Pencil size={14} />}
+                                                onClick={() => setEditing(microscope)}>
                                             Edit
                                         </Button>
-                                        <Button size="small" variant="outlined" sx={{ ...actionSx, color: "error.main" }}
-                                                onClick={() => setDeleting(microscope)}>
-                                            Delete
-                                        </Button>
+                                        <Tooltip arrow title="Delete">
+                                            <IconButton size="small" aria-label={`Delete ${microscope.name}`} sx={{ color: "#dc2626" }}
+                                                        onClick={() => setDeleting(microscope)}>
+                                                <Trash2 size={17} />
+                                            </IconButton>
+                                        </Tooltip>
                                     </Stack>
                                 </Stack>
+                                <Box sx={{ borderTop: `1px solid ${colors.border}`, bgcolor: colors.hover, px: 2, py: 1.25 }}>
+                                    <Typography sx={{ fontSize: FACILITY_TEXT.note, fontWeight: 800, color: colors.muted,
+                                                      textTransform: "uppercase", letterSpacing: 0.5, mb: 0.75 }}>
+                                        Detectors
+                                    </Typography>
+                                    <DetectorList detectors={microscope.detectors} colors={colors} />
+                                </Box>
                             </Box>
-                        ))}
-                    </Stack>
-                </CardContent>
-            </Card>
+                        );
+                    })}
+                </Stack>
+            </SettingsSection>
 
             {deleting !== null && (
                 <SettingsDialog
                     title="Delete microscope?"
-                    description="Its detectors and their calibrated pixel sizes go with it. Mark it out of service instead to keep its history."
+                    description="Its detectors and their calibrated pixel sizes go with it. This cannot be undone."
                     icon={<Trash2 size={20} color="#fca5a5" />}
                     confirmLabel="Delete"
                     busyLabel="Deleting…"
@@ -315,12 +417,23 @@ export default function MicroscopesPanel({ fieldSx, cardSx, cardHeaderSx, select
                     destructive
                     maxWidth="xs"
                     actionButtonSx={actionSx}
+                    closeButton
                     onConfirm={() => void remove(deleting)}
                     onClose={() => setDeleting(null)}
                 >
-                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine }}>
-                        <strong>{deleting.name}</strong> · {describeMicroscope(deleting)}
-                    </Typography>
+                    <Stack spacing={1.25}>
+                        <Stack direction="row" spacing={1.5} alignItems="center"
+                               sx={{ border: `1px solid ${colors.border}`, borderLeft: "4px solid #dc2626", borderRadius: 2, p: 1.25 }}>
+                            <MicroscopePhoto microscope={deleting} width={64} height={48} colors={colors} />
+                            <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.itemTitle, fontWeight: 800 }}>{deleting.name}</Typography>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>{describeMicroscope(deleting)}</Typography>
+                            </Box>
+                        </Stack>
+                        <Alert severity="info" sx={{ fontSize: FACILITY_TEXT.note }}>
+                            To keep its history, mark it Out of service instead: Edit, then Status.
+                        </Alert>
+                    </Stack>
                 </SettingsDialog>
             )}
 
@@ -429,10 +542,15 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
         }
     };
 
+    const isDark = useIsDark();
+    const tint = sectionTint(isDark);
+    const primary = useFacilityStyles().colors.primary;
+    const helper = { sx: { fontSize: 13.5 } };
+
     return (
         <SettingsDialog
             title={microscope ? `Edit ${microscope.name}` : "New microscope"}
-            description="Voltage, magnification and the nominal pixel size are read from each movie, which also names its detector; that detector's calibrated pixel size at the magnification replaces the nominal one."
+            description="Voltage, magnification and pixel size are read from each movie; what the movies do not say is kept here."
             icon={<MicroscopeIcon size={20} color="white" />}
             confirmLabel="Save"
             busyLabel="Saving…"
@@ -441,151 +559,170 @@ function MicroscopeDialog({ microscope, colors, fieldSx, selectSx, menuPaperSx, 
             maxWidth="md"
             actionButtonSx={actionButtonSx}
             saveButtonSx={saveButtonSx}
+            closeButton
             onConfirm={() => void save()}
             onClose={onClose}
         >
-            <Stack spacing={1.5} sx={{ pt: 0.5 }}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                    <MicroscopePhoto microscope={photoRemoved ? null : microscope}
-                                     src={photoFile ? photoPreview : photoRemoved ? null : undefined}
-                                     width={160} height={120} colors={colors} />
-                    <Stack spacing={1} alignItems="flex-start">
-                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
-                            A PNG, JPEG or WebP photo, up to 15 MB; it is kept reduced to 1600 px.
-                        </Typography>
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ImagePlus size={14} />}
-                                    onClick={() => photoInputRef.current?.click()}>
-                                {hasPhoto ? "Change photo" : "Add photo"}
-                            </Button>
-                            {hasPhoto && (
-                                <Button size="small" variant="outlined" sx={{ ...actionButtonSx, color: "error.main" }}
-                                        onClick={() => {
-                                            setPhotoFile(null);
-                                            setPhotoRemoved(true);
-                                        }}>
-                                    Remove photo
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+                <DialogPart icon={<MicroscopeIcon size={18} />} title="The microscope" tint={tint} colors={colors}
+                            subtitle="Its name, a photo, and whether it can be used now.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                        <MicroscopePhoto microscope={photoRemoved ? null : microscope}
+                                         src={photoFile ? photoPreview : photoRemoved ? null : undefined}
+                                         width={160} height={120} colors={colors} />
+                        <Stack spacing={1} alignItems="flex-start">
+                            <Stack direction="row" spacing={1}>
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ImagePlus size={14} />}
+                                        onClick={() => photoInputRef.current?.click()}>
+                                    {hasPhoto ? "Change photo" : "Add photo"}
                                 </Button>
-                            )}
+                                {hasPhoto && (
+                                    <Button size="small" variant="outlined" sx={{ ...actionButtonSx, color: "error.main" }}
+                                            startIcon={<Trash2 size={14} />}
+                                            onClick={() => {
+                                                setPhotoFile(null);
+                                                setPhotoRemoved(true);
+                                            }}>
+                                        Remove photo
+                                    </Button>
+                                )}
+                            </Stack>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                PNG, JPEG or WebP, up to 15 MB. Kept on Save.
+                            </Typography>
+                            <input ref={photoInputRef} type="file" accept={PHOTO_TYPES} hidden aria-label="Photo file"
+                                   onChange={(e) => {
+                                       const file = e.target.files?.[0];
+                                       e.target.value = "";
+                                       if (!file) return;
+                                       setPhotoFile(file);
+                                       setPhotoRemoved(false);
+                                   }} />
                         </Stack>
-                        <input ref={photoInputRef} type="file" accept={PHOTO_TYPES} hidden aria-label="Photo file"
-                               onChange={(e) => {
-                                   const file = e.target.files?.[0];
-                                   e.target.value = "";
-                                   if (!file) return;
-                                   setPhotoFile(file);
-                                   setPhotoRemoved(false);
-                               }} />
                     </Stack>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Name" value={name}
-                               onChange={(e) => setName(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="Model" value={model}
-                               onChange={(e) => setModel(e.target.value)} />
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="microscope-status-label">Status</InputLabel>
-                        <Select labelId="microscope-status-label" label="Status" sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={status}
-                                onChange={(e) => setStatus(e.target.value as MicroscopeStatus)}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Name" value={name} placeholder="Krios G5"
+                                   onChange={(e) => setName(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Model" value={model} placeholder="Titan Krios G4"
+                                   onChange={(e) => setModel(e.target.value)} />
+                    </Stack>
+                    <Box>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text, mb: 0.75 }}>Status</Typography>
+                        <ToggleButtonGroup exclusive size="small" value={status} aria-label="Status"
+                                           onChange={(_, value) => value && setStatus(value as MicroscopeStatus)}
+                                           sx={choiceButtonsSx({ ...colors, card: "", primary }, isDark)}>
                             {(Object.keys(STATUS_LABELS) as MicroscopeStatus[]).map((value) => (
-                                <MenuItem key={value} value={value}>{STATUS_LABELS[value]}</MenuItem>
+                                <ToggleButton key={value} value={value}>
+                                    <Box component="span" sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: STATUS_COLORS[value], mr: 1 }} />
+                                    {STATUS_LABELS[value]}
+                                </ToggleButton>
                             ))}
-                        </Select>
-                    </FormControl>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Energy filter" value={energyFilter}
-                               placeholder="None" onChange={(e) => setEnergyFilter(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="Acquisition software"
-                               value={acquisitionSoftware} placeholder="EPU, Tomo5, SerialEM"
-                               onChange={(e) => setAcquisitionSoftware(e.target.value)} />
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={fieldSx} size="small" fullWidth label="Voltage (kV)" value={voltageKv}
-                               helperText="Also read from each movie" inputProps={{ inputMode: "decimal" }}
-                               onChange={(e) => setVoltageKv(e.target.value)} />
-                    <TextField sx={fieldSx} size="small" fullWidth label="Spherical aberration, Cs (mm)" value={csMm}
-                               helperText="Not in the movies' metadata" inputProps={{ inputMode: "decimal" }}
-                               onChange={(e) => setCsMm(e.target.value)} />
-                </Stack>
-                <TextField sx={fieldSx} size="small" label="Folder the microscope writes to" value={offloadPath}
-                           placeholder="/mnt/micros/talos_offload" onChange={(e) => setOffloadPath(e.target.value)} />
-                <FormControlLabel
-                    control={<Switch checked={sessionsEnabled} onChange={(e) => setSessionsEnabled(e.target.checked)} />}
-                    label="Acquisition sessions on this microscope"
-                />
-                <Box sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-                    <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700, mb: 1 }}>Session folders</Typography>
-                    <Stack spacing={1.25}>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                            <TextField sx={fieldSx} size="small" fullWidth label="Code in names" value={code}
-                                       placeholder="KRIOS" helperText="{microscope} in session and folder names; empty: its name"
-                                       onChange={(e) => setCode(e.target.value)} />
-                            <TextField sx={fieldSx} size="small" fullWidth label="Grids in the autoloader" value={gridSlots}
-                                       inputProps={{ inputMode: "numeric" }} helperText="A session's DATA are positions 1 to this"
-                                       onChange={(e) => setGridSlots(e.target.value)} />
-                        </Stack>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                            <TextField sx={fieldSx} size="small" fullWidth label="DATA folder" value={dataFolderPattern}
-                                       inputProps={{ style: { fontFamily: "monospace" } }}
-                                       helperText="{session}, {n} (the grid's position, e.g. {n:02d}), {microscope}"
-                                       onChange={(e) => setDataFolderPattern(e.target.value)} />
-                            <TextField sx={fieldSx} size="small" fullWidth label="ATLAS folder" value={atlasFolderPattern}
-                                       inputProps={{ style: { fontFamily: "monospace" } }} helperText="Empty: no atlas folder"
-                                       onChange={(e) => setAtlasFolderPattern(e.target.value)} />
-                        </Stack>
-                        {folders.error
-                            ? <Alert severity="warning">{folders.error}</Alert>
-                            : folders.examples && (
-                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
-                                    For a session named {folders.examples.session}:{" "}
-                                    <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>
-                                        {[folders.examples.atlas, ...folders.examples.data].filter(Boolean).join(", ")}…
-                                    </Box>
+                        </ToggleButtonGroup>
+                    </Box>
+                    <TextField sx={fieldSx} size="small" label="Notes" value={notes} multiline minRows={2}
+                               onChange={(e) => setNotes(e.target.value)} />
+                </DialogPart>
+
+                <DialogPart icon={<Zap size={18} />} title="Optics" tint={tint} colors={colors}
+                            subtitle="What processing needs from the microscope itself.">
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Voltage (kV)" value={voltageKv} placeholder="300"
+                                   helperText="Also read from each movie" FormHelperTextProps={helper} inputProps={{ inputMode: "decimal" }}
+                                   onChange={(e) => setVoltageKv(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Spherical aberration, Cs (mm)" value={csMm} placeholder="2.7"
+                                   helperText="Not in the movies' metadata" FormHelperTextProps={helper} inputProps={{ inputMode: "decimal" }}
+                                   onChange={(e) => setCsMm(e.target.value)} />
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Energy filter" value={energyFilter}
+                                   placeholder="None" onChange={(e) => setEnergyFilter(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Acquisition software"
+                                   value={acquisitionSoftware} placeholder="EPU, Tomo5, SerialEM"
+                                   onChange={(e) => setAcquisitionSoftware(e.target.value)} />
+                    </Stack>
+                </DialogPart>
+
+                <DialogPart icon={<FolderInput size={18} />} title="Sessions and folders" tint={tint} colors={colors}
+                            subtitle="Where the microscope writes, and how a session's folders are named.">
+                    <OptionRow title="Acquisition sessions on this microscope"
+                               description="Sessions can be planned on it, and its folders are watched while they acquire."
+                               checked={sessionsEnabled} onChange={setSessionsEnabled} colors={colors} />
+                    <TextField sx={fieldSx} size="small" label="Folder the microscope writes to" value={offloadPath}
+                               placeholder="/mnt/micros/krios_offload" inputProps={{ style: { fontFamily: "monospace" } }}
+                               helperText="Its offload: each DATA's folder is made here" FormHelperTextProps={helper}
+                               onChange={(e) => setOffloadPath(e.target.value)} />
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="Code in names" value={code}
+                                   placeholder="KRIOS" helperText="{microscope} in session and folder names; empty: its name"
+                                   FormHelperTextProps={helper} onChange={(e) => setCode(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="Grids in the autoloader" value={gridSlots}
+                                   inputProps={{ inputMode: "numeric" }} helperText="A session's DATA are positions 1 to this"
+                                   FormHelperTextProps={helper} onChange={(e) => setGridSlots(e.target.value)} />
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={fieldSx} size="small" fullWidth label="DATA folder" value={dataFolderPattern}
+                                   inputProps={{ style: { fontFamily: "monospace" } }}
+                                   helperText="{session}, {n} (the grid's position, e.g. {n:02d}), {microscope}"
+                                   FormHelperTextProps={helper} onChange={(e) => setDataFolderPattern(e.target.value)} />
+                        <TextField sx={fieldSx} size="small" fullWidth label="ATLAS folder" value={atlasFolderPattern}
+                                   inputProps={{ style: { fontFamily: "monospace" } }} helperText="Empty: no atlas folder"
+                                   FormHelperTextProps={helper} onChange={(e) => setAtlasFolderPattern(e.target.value)} />
+                    </Stack>
+                    {folders.error
+                        ? <Alert severity="warning">{folders.error}</Alert>
+                        : folders.examples && (
+                            <Box sx={{ borderRadius: 2, bgcolor: tint, px: 1.5, py: 1.1 }}>
+                                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mb: 0.75 }}>
+                                    For a session named <Box component="span" sx={{ fontFamily: "monospace", color: colors.text }}>{folders.examples.session}</Box>, the folders are:
                                 </Typography>
-                            )}
-                    </Stack>
-                </Box>
+                                <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
+                                    {[folders.examples.atlas, ...folders.examples.data].filter(Boolean).map((folder) => (
+                                        <Box key={folder} component="span"
+                                             sx={{ px: 1, borderRadius: 1.5, border: `1px solid ${colors.border}`, bgcolor: colors.surface,
+                                                   fontFamily: "monospace", fontSize: FACILITY_TEXT.note, color: colors.text, lineHeight: 1.8 }}>
+                                            {folder}
+                                        </Box>
+                                    ))}
+                                    <Box component="span" sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, lineHeight: 1.8 }}>…</Box>
+                                </Stack>
+                            </Box>
+                        )}
+                </DialogPart>
 
-                <Box>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Detectors</Typography>
-                        <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
-                                onClick={() => setDetectors((drafts) => [...drafts, detectorDraftOf(null, nextKey(drafts))])}>
-                            Add detector
-                        </Button>
-                    </Stack>
+                <DialogPart icon={<Camera size={18} />} title="Detectors" tint={tint} colors={colors}
+                            subtitle="Each movie names its detector; its calibrated pixel size at the magnification replaces the nominal one."
+                            action={
+                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
+                                        onClick={() => setDetectors((drafts) => [...drafts, detectorDraftOf(null, nextKey(drafts))])}>
+                                    Add detector
+                                </Button>
+                            }>
                     {detectors.length === 0 && (
-                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
-                            None: the nominal pixel size of each movie is used.
-                        </Typography>
+                        <Box sx={{ border: `1px dashed ${colors.border}`, borderRadius: 2, px: 2, py: 2, textAlign: "center" }}>
+                            <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
+                                None: the nominal pixel size of each movie is used.
+                            </Typography>
+                        </Box>
                     )}
-                    <Stack spacing={1.5}>
-                        {detectors.map((draft) => (
-                            <DetectorEditor key={draft.key} draft={draft} colors={colors} fieldSx={fieldSx}
-                                            selectSx={selectSx} menuPaperSx={menuPaperSx} actionButtonSx={actionButtonSx}
-                                            onChange={(change) => setDetector(draft.key, change)}
-                                            onRemove={() => setDetectors((drafts) => drafts.filter((other) => other.key !== draft.key))} />
-                        ))}
-                    </Stack>
-                </Box>
-
-                <TextField sx={fieldSx} size="small" label="Notes" value={notes} multiline minRows={2}
-                           onChange={(e) => setNotes(e.target.value)} />
+                    {detectors.map((draft) => (
+                        <DetectorEditor key={draft.key} draft={draft} colors={colors} fieldSx={fieldSx}
+                                        selectSx={selectSx} menuPaperSx={menuPaperSx}
+                                        onChange={(change) => setDetector(draft.key, change)}
+                                        onRemove={() => setDetectors((drafts) => drafts.filter((other) => other.key !== draft.key))} />
+                    ))}
+                </DialogPart>
             </Stack>
         </SettingsDialog>
     );
 }
 
 
-function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, actionButtonSx, onChange, onRemove }: {
+function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, onChange, onRemove }: {
     draft: DetectorDraft;
     colors: PanelStyles["colors"];
     fieldSx: any;
     selectSx: any;
     menuPaperSx: any;
-    actionButtonSx: any;
     onChange: (change: Partial<DetectorDraft>) => void;
     onRemove: () => void;
 }) {
@@ -595,55 +732,65 @@ function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, actionB
 
     return (
         <Box role="group" aria-label={`Detector ${label}`}
-             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, p: 1.5 }}>
-            <Stack spacing={1.5}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
+             sx={{ border: `1px solid ${colors.border}`, borderRadius: 2, overflow: "hidden" }}>
+            <Box sx={{ bgcolor: colors.hover, px: 1.5, py: 1.25, borderBottom: `1px solid ${colors.border}` }}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ md: "center" }}>
+                    <Camera size={18} style={{ color: colors.muted, flexShrink: 0 }} />
                     <TextField sx={fieldSx} size="small" fullWidth label="Detector" value={draft.name}
                                placeholder="Falcon 4i" onChange={(e) => onChange({ name: e.target.value })} />
                     <TextField sx={fieldSx} size="small" fullWidth label="Name in the movies' metadata"
                                value={draft.metadataName} placeholder="BM-Falcon"
+                               inputProps={{ style: { fontFamily: "monospace" } }}
                                onChange={(e) => onChange({ metadataName: e.target.value })} />
                     <FormControlLabel
-                        sx={{ flexShrink: 0, mr: 0 }}
+                        sx={{ flexShrink: 0, mr: 0, "& .MuiFormControlLabel-label": { fontSize: FACILITY_TEXT.itemLine } }}
                         control={<Switch checked={draft.energyFiltered}
                                          onChange={(e) => onChange({ energyFiltered: e.target.checked })} />}
                         label="Behind the energy filter"
                     />
-                    <IconButton size="small" aria-label={`Remove detector ${label}`} onClick={onRemove}>
-                        <Trash2 size={16} />
-                    </IconButton>
+                    <Tooltip arrow title="Remove the detector">
+                        <IconButton size="small" aria-label={`Remove detector ${label}`} sx={{ color: "#dc2626" }} onClick={onRemove}>
+                            <Trash2 size={17} />
+                        </IconButton>
+                    </Tooltip>
                 </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Gain reference" value={draft.gainPath}
-                               placeholder="/data/gains/*Talos*gain*.mrc" onChange={(e) => onChange({ gainPath: e.target.value })} />
-                    <FormControl size="small" sx={{ flex: 1 }}>
-                        <InputLabel id={`detector-${draft.key}-gain-flip-label`}>Gain flip</InputLabel>
-                        <Select labelId={`detector-${draft.key}-gain-flip-label`} label="Gain flip" sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainFlip}
-                                onChange={(e) => onChange({ gainFlip: e.target.value as GainFlip })}>
-                            {(Object.keys(GAIN_FLIP_LABELS) as GainFlip[]).map((value) => (
-                                <MenuItem key={value} value={value}>{GAIN_FLIP_LABELS[value]}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ flex: 1 }}>
-                        <InputLabel id={`detector-${draft.key}-gain-rotation-label`}>Gain rotation</InputLabel>
-                        <Select labelId={`detector-${draft.key}-gain-rotation-label`} label="Gain rotation" sx={selectSx}
-                                MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainRotation}
-                                onChange={(e) => onChange({ gainRotation: Number(e.target.value) })}>
-                            {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value ? `${value}° counter-clockwise` : "None"}</MenuItem>)}
-                        </Select>
-                    </FormControl>
-                </Stack>
-                <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: "4px !important" }}>
-                    How the gain reference lies against the movies: the movie alignment of each DATA's processing
-                    rotates it counter-clockwise, then flips it (as MotionCor2's -RotGain and -FlipGain).
-                </Typography>
+            </Box>
+            <Stack spacing={2} sx={{ p: 1.5 }}>
+                <Box>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text, mb: 1 }}>Gain reference</Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <TextField sx={{ ...fieldSx, flex: 2 }} size="small" label="Gain reference" value={draft.gainPath}
+                                   placeholder="/data/gains/*Talos*gain*.mrc" inputProps={{ style: { fontFamily: "monospace" } }}
+                                   onChange={(e) => onChange({ gainPath: e.target.value })} />
+                        <FormControl size="small" sx={{ flex: 1 }}>
+                            <InputLabel id={`detector-${draft.key}-gain-flip-label`}>Gain flip</InputLabel>
+                            <Select labelId={`detector-${draft.key}-gain-flip-label`} label="Gain flip" sx={selectSx}
+                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainFlip}
+                                    onChange={(e) => onChange({ gainFlip: e.target.value as GainFlip })}>
+                                {(Object.keys(GAIN_FLIP_LABELS) as GainFlip[]).map((value) => (
+                                    <MenuItem key={value} value={value}>{GAIN_FLIP_LABELS[value]}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ flex: 1 }}>
+                            <InputLabel id={`detector-${draft.key}-gain-rotation-label`}>Gain rotation</InputLabel>
+                            <Select labelId={`detector-${draft.key}-gain-rotation-label`} label="Gain rotation" sx={selectSx}
+                                    MenuProps={{ PaperProps: { sx: menuPaperSx } }} value={draft.gainRotation}
+                                    onChange={(e) => onChange({ gainRotation: Number(e.target.value) })}>
+                                {GAIN_ROTATIONS.map((value) => <MenuItem key={value} value={value}>{value ? `${value}° counter-clockwise` : "None"}</MenuItem>)}
+                            </Select>
+                        </FormControl>
+                    </Stack>
+                    <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted, mt: 0.75 }}>
+                        How the gain reference lies against the movies: the movie alignment rotates it counter-clockwise, then flips it.
+                    </Typography>
+                </Box>
 
                 <Box>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                        <Typography sx={{ fontSize: FACILITY_TEXT.sectionTitle, fontWeight: 700 }}>Calibrated pixel sizes</Typography>
-                        <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Plus size={14} />}
+                        <Typography sx={{ fontSize: FACILITY_TEXT.itemLine, fontWeight: 700, color: colors.text }}>Calibrated pixel sizes</Typography>
+                        <Button size="small" variant="text" sx={{ textTransform: "none", fontSize: FACILITY_TEXT.note }}
+                                startIcon={<Plus size={14} />}
                                 onClick={() => onChange({ pixelRows: [...draft.pixelRows, {
                                     key: nextKey(draft.pixelRows), magnification: "", pixelSize: "",
                                 }] })}>
@@ -651,23 +798,28 @@ function DetectorEditor({ draft, colors, fieldSx, selectSx, menuPaperSx, actionB
                         </Button>
                     </Stack>
                     {draft.pixelRows.length === 0 && (
-                        <Typography sx={{ fontSize: FACILITY_TEXT.note, opacity: 0.75 }}>
+                        <Typography sx={{ fontSize: FACILITY_TEXT.note, color: colors.muted }}>
                             None: the nominal pixel size of each movie is used.
                         </Typography>
                     )}
                     <Stack spacing={1}>
                         {draft.pixelRows.map((row) => (
                             <Stack key={row.key} direction="row" spacing={1} alignItems="center">
-                                <TextField sx={fieldSx} size="small" label="Magnification (×)" value={row.magnification}
+                                <TextField sx={{ ...fieldSx, width: 200 }} size="small" label="Magnification (×)" value={row.magnification}
+                                           placeholder="105000"
                                            inputProps={{ inputMode: "numeric", "aria-label": "Magnification" }}
                                            onChange={(e) => setPixelRow(row.key, { magnification: e.target.value })} />
-                                <TextField sx={fieldSx} size="small" label="Pixel size (Å)" value={row.pixelSize}
+                                <Typography sx={{ color: colors.muted }}>→</Typography>
+                                <TextField sx={{ ...fieldSx, width: 170 }} size="small" label="Pixel size (Å)" value={row.pixelSize}
+                                           placeholder="0.83"
                                            inputProps={{ inputMode: "decimal", "aria-label": "Pixel size" }}
                                            onChange={(e) => setPixelRow(row.key, { pixelSize: e.target.value })} />
-                                <IconButton size="small" aria-label="Remove magnification"
-                                            onClick={() => onChange({ pixelRows: draft.pixelRows.filter((other) => other.key !== row.key) })}>
-                                    <X size={16} />
-                                </IconButton>
+                                <Tooltip arrow title="Remove the magnification">
+                                    <IconButton size="small" aria-label="Remove magnification"
+                                                onClick={() => onChange({ pixelRows: draft.pixelRows.filter((other) => other.key !== row.key) })}>
+                                        <X size={16} />
+                                    </IconButton>
+                                </Tooltip>
                             </Stack>
                         ))}
                     </Stack>

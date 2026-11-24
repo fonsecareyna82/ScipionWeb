@@ -48,9 +48,15 @@ describe("The microscopes of the facility", () => {
     render(<MicroscopesPanel {...styles} />);
 
     expect(await screen.findByText("Talos 200kV")).toBeInTheDocument();
-    expect(screen.getByText(/Talos Arctica · Falcon 4i, Ceta-D · 200 kV · Cs 2.7 mm/)).toBeInTheDocument();
-    expect(screen.getByText("Falcon 4i (BM-Falcon): 120,000× 0.84 Å, 92,000× 1.14 Å")).toBeInTheDocument();
-    expect(screen.getByText("Ceta-D: nominal pixel sizes")).toBeInTheDocument();
+    const about = screen.getByLabelText("About the microscope");
+    for (const fact of ["Talos Arctica", "200 kV", "Cs 2.7 mm", "EPU"]) expect(within(about).getByText(fact)).toBeInTheDocument();
+    expect(screen.getByText("Runs sessions")).toBeInTheDocument();
+    expect(screen.getByText("/mnt/micros/talos_offload")).toBeInTheDocument();
+    const falconRow = screen.getByRole("group", { name: "Detector Falcon 4i" });
+    expect(within(falconRow).getByText("BM-Falcon")).toBeInTheDocument();
+    expect(within(falconRow).getByText("0.84 Å")).toBeInTheDocument();
+    expect(within(falconRow).getByText("1.14 Å")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Detector Ceta-D" })).getByText("nominal pixel sizes")).toBeInTheDocument();
   });
 
   it("creates a microscope with a detector and its calibration table, leaving empty rows out", async () => {
@@ -121,7 +127,7 @@ describe("The microscopes of the facility", () => {
     render(<MicroscopesPanel {...styles} />);
     await screen.findByText("Talos 200kV");
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Talos 200kV" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
