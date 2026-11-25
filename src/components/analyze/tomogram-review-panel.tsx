@@ -6,10 +6,6 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   LinearProgress,
   Paper,
@@ -19,7 +15,8 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { CheckCircle2, ChevronDown, ClipboardCheck, Plus, SlidersHorizontal } from "lucide-react";
+import { CheckCircle2, ChevronDown, ClipboardCheck, Plus, SlidersHorizontal, Tags } from "lucide-react";
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import toast from "react-hot-toast";
 
 import { useProjectService } from "@/ProjectServiceContext";
@@ -846,36 +843,31 @@ export default function TomogramReviewPanel({
         ) : null}
       </Box>
 
-      <Dialog
+      <DialogFrame
         open={tagDialogOpen}
         onClose={() => setTagDialogOpen(false)}
-        transitionDuration={0}
-        fullWidth
+        busy={savingSchema}
+        icon={<Tags size={20} />}
+        title="Review tags"
+        subtitle="The tags you mark tomograms with while you review them."
         maxWidth="sm"
-        PaperProps={{ sx: { overflow: "hidden" } }}
+        dialogProps={{ transitionDuration: 0 }}
+        contentSx={{
+          "& .MuiTypography-body2": { fontSize: DIALOG_TEXT.body },
+          "& .MuiTypography-caption": { fontSize: DIALOG_TEXT.note },
+          "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: DIALOG_TEXT.body },
+          "& .MuiChip-label": { fontSize: 14 },
+          "& .MuiToggleButton-root": { fontSize: DIALOG_TEXT.note, textTransform: "none", px: 1.5 },
+        }}
+        actions={<>
+          <DialogButton onClick={() => setTagDialogOpen(false)} disabled={savingSchema}>Cancel</DialogButton>
+          <DialogButton kind="primary" onClick={saveTagConfiguration} disabled={savingSchema}>
+            {savingSchema ? "Saving…" : "Save tags"}
+          </DialogButton>
+        </>}
       >
-        <DialogTitle
-          sx={{
-            py: 1.25,
-            background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
-            color: "#e5e7eb",
-            borderBottom: "1px solid rgba(255,255,255,0.07)",
-            fontSize: "0.95rem",
-            fontWeight: 800,
-          }}
-        >
-          Configure review tags
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            pt: "20px !important",
-            "& .MuiTypography-body2": { fontSize: "0.78rem" },
-            "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
-            "& .MuiButton-root": { fontSize: "0.74rem", textTransform: "none" },
-          }}
-        >
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
-            Add review tags and choose whether each one is a simple presence flag or a counter.
+            Add a tag, then choose how it counts: Simple marks a tomogram with it or not; Counter counts how many times.
           </Typography>
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
             <TextField
@@ -897,7 +889,8 @@ export default function TomogramReviewPanel({
               startIcon={<Plus size={15} />}
               onClick={addTagToDraft}
               disabled={!newTagLabel.trim()}
-              sx={{ minWidth: 88, height: 40, textTransform: "none" }}
+              sx={{ minWidth: 88, height: 40, textTransform: "none", borderRadius: 3, boxShadow: "none", bgcolor: "#333d49",
+                "&:hover": { bgcolor: "#25303b", boxShadow: "none" } }}
             >
               Add
             </Button>
@@ -915,9 +908,9 @@ export default function TomogramReviewPanel({
               flexWrap: "wrap",
               gap: 0.75,
               border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1.5,
-              bgcolor: "action.hover",
+              borderColor: "rgba(148, 163, 184, 0.45)",
+              borderRadius: 2.5,
+              bgcolor: "var(--app-n-50)",
             }}
           >
             {tagDraft.length > 0 ? tagDraft.map((tag) => (
@@ -951,22 +944,7 @@ export default function TomogramReviewPanel({
               </Typography>
             )}
           </Box>
-        </DialogContent>
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 2,
-            "& .MuiButton-root": { fontSize: "0.74rem", textTransform: "none" },
-          }}
-        >
-          <Button onClick={() => setTagDialogOpen(false)} disabled={savingSchema}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={saveTagConfiguration} disabled={savingSchema}>
-            Save tag configuration
-          </Button>
-        </DialogActions>
-      </Dialog>
+      </DialogFrame>
     </Paper>
   );
 }

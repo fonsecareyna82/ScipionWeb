@@ -14,11 +14,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
   Button,
   Switch,
   FormControlLabel,
@@ -29,7 +24,8 @@ import {
   Chip,
   Alert,
 } from "@mui/material";
-import { HelpCircle, ImageMinus, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
+import { HelpCircle, Save, ImageMinus, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -4494,46 +4490,34 @@ export default function Coords3dViewer({
           </Box>
         </Box>
       </Box>
-      <Dialog
+      <DialogFrame
         open={saveDialogOpen}
         onClose={() => {
           if (saveBusy) return;
           setSaveDialogOpen(false);
         }}
+        busy={saveBusy}
+        icon={<Save size={20} />}
+        title="Save changes"
+        subtitle="Kept as a new output of this protocol."
         maxWidth="sm"
-        fullWidth
+        actions={<>
+          <DialogButton onClick={() => setSaveDialogOpen(false)} disabled={saveBusy}>Cancel</DialogButton>
+          <DialogButton kind="primary" onClick={saveChanges} disabled={saveBusy}
+            startIcon={saveBusy ? <CircularProgress size={14} color="inherit" /> : undefined}>
+            {saveBusy ? "Saving…" : "Save"}
+          </DialogButton>
+        </>}
       >
-        <DialogTitle>Save changes</DialogTitle>
-        <DialogContent sx={{ pt: 1.5 }}>
-          <DialogContentText sx={{ mb: 1.5 }}>
-            This will create a new coordinates output from your modified tomograms. Continue?
-          </DialogContentText>
-
-          {saveError && (
-            <Alert severity="error" sx={{ mt: 1.5 }}>
-              {saveError}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setSaveDialogOpen(false)}
-            disabled={saveBusy}
-            sx={{ textTransform: "none" }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={saveChanges}
-            disabled={saveBusy}
-            variant="contained"
-            sx={{ textTransform: "none" }}
-          >
-            {saveBusy ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Typography sx={{ fontSize: DIALOG_TEXT.body, lineHeight: 1.55, color: "var(--app-n-800)" }}>
+          A new set of coordinates is made from the tomograms you changed. The current output stays as it is.
+        </Typography>
+        {saveError && (
+          <Alert severity="error" sx={{ mt: 1.5, fontSize: 14 }}>
+            {saveError}
+          </Alert>
+        )}
+      </DialogFrame>
 
       <Coords3dParticleGallery
         open={particlesOpen}
@@ -4556,53 +4540,53 @@ export default function Coords3dViewer({
         onInteract={markViewerActive}
       />
 
-      <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          {helpKey === "sliceIndex"
-            ? "Slice index"
-            : helpKey === "sliceLayout"
-              ? "Slice layout"
-              : helpKey === "classFilter"
-                ? "Class filter"
-                : helpKey === "scoreFilter"
-                  ? "Score range"
-                  : helpKey === "maxPoints"
-                    ? "Max points"
-                    : helpKey === "brightness"
-                      ? "Brightness"
-                      : helpKey === "contrast"
-                        ? "Contrast"
-                        : helpKey === "pointColor"
-                          ? "Point color"
-                          : helpKey === "pointSize"
-                            ? "Point size"
-                            : helpKey === "pointColorMode3d"
-                              ? "3D color mode"
-                              : helpKey === "pointOpacity3d"
-                                ? "3D point opacity"
-                                : helpKey === "slicePlanes3d"
-                                  ? "Slice planes"
-                                  : helpKey === "slicePlanesOpacity3d"
-                                    ? "Slice plane opacity"
-                                    : helpKey === "showBox3d"
-                                      ? "Show box"
-                                      : helpKey === "showAxes3d"
-                                        ? "Show axes"
-                                        : helpKey === "syncPick3d"
-                                          ? "Sync 3D pick"
-                                          : helpKey === "pointSize3d"
-                                            ? "3D point size"
-                                            : "Help"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>{helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setHelpOpen(false)} autoFocus>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DialogFrame
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        icon={<HelpCircle size={20} />}
+        title={helpKey === "sliceIndex"
+              ? "Slice index"
+              : helpKey === "sliceLayout"
+                ? "Slice layout"
+                : helpKey === "classFilter"
+                  ? "Class filter"
+                  : helpKey === "scoreFilter"
+                    ? "Score range"
+                    : helpKey === "maxPoints"
+                      ? "Max points"
+                      : helpKey === "brightness"
+                        ? "Brightness"
+                        : helpKey === "contrast"
+                          ? "Contrast"
+                          : helpKey === "pointColor"
+                            ? "Point color"
+                            : helpKey === "pointSize"
+                              ? "Point size"
+                              : helpKey === "pointColorMode3d"
+                                ? "3D color mode"
+                                : helpKey === "pointOpacity3d"
+                                  ? "3D point opacity"
+                                  : helpKey === "slicePlanes3d"
+                                    ? "Slice planes"
+                                    : helpKey === "slicePlanesOpacity3d"
+                                      ? "Slice plane opacity"
+                                      : helpKey === "showBox3d"
+                                        ? "Show box"
+                                        : helpKey === "showAxes3d"
+                                          ? "Show axes"
+                                          : helpKey === "syncPick3d"
+                                            ? "Sync 3D pick"
+                                            : helpKey === "pointSize3d"
+                                              ? "3D point size"
+                                              : "Help"}
+        subtitle="What this control does"
+        maxWidth="xs"
+        actions={<DialogButton onClick={() => setHelpOpen(false)}>Close</DialogButton>}
+      >
+        <Typography sx={{ fontSize: DIALOG_TEXT.body, lineHeight: 1.55, color: "var(--app-n-800)" }}>
+          {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
+        </Typography>
+      </DialogFrame>
     </>
   );
 }

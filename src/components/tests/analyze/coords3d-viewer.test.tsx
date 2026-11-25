@@ -800,7 +800,7 @@ describe("Coords3dViewer", () => {
             ),
         ).toBeInTheDocument();
 
-        fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+        fireEvent.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
 
         await waitFor(() => {
             expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

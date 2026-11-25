@@ -16,11 +16,6 @@ import {
   Button,
   Checkbox,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   Divider,
   IconButton,
   ListItemIcon,
@@ -68,6 +63,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   Coords2dMicrograph,
@@ -2967,8 +2963,8 @@ function Coords2dViewer({
 
   const confirmationDescription =
     confirmationAction === "close"
-      ? "There are changes that could be saved. Do you really want to close the viewer?"
-      : "A new SetOfCoordinates output will be created in the protocol using the coordinates currently visible in the viewer.";
+      ? "There are changes that have not been saved as an output. Close the viewer anyway?"
+      : "A new set of coordinates is made with the coordinates the viewer shows now.";
 
   const confirmationConfirmLabel =
     confirmationAction === "close" ? "Close viewer" : "Create output";
@@ -3848,50 +3844,35 @@ function Coords2dViewer({
         </Paper>
       ) : null}
 
-      <Dialog
+      <DialogFrame
         open={confirmationAction !== null}
         onClose={() => {
           if (!creatingOutput) setConfirmationAction(null);
         }}
+        busy={creatingOutput}
+        icon={confirmationAction === "close" ? <AlertTriangle size={20} color="#fcd34d" /> : <Save size={20} />}
+        title={confirmationTitle}
+        subtitle={confirmationAction === "close" ? "What has changed is lost if it is not saved." : "Kept as a new output of this protocol."}
         maxWidth="xs"
-        fullWidth
+        actions={<>
+          <DialogButton onClick={() => setConfirmationAction(null)} disabled={creatingOutput}>Cancel</DialogButton>
+          <DialogButton kind={confirmationAction === "close" ? "danger" : "primary"} onClick={handleConfirmAction}
+            disabled={creatingOutput}
+            startIcon={creatingOutput ? <CircularProgress size={14} color="inherit" /> : undefined}>
+            {creatingOutput ? "Creating…" : confirmationConfirmLabel}
+          </DialogButton>
+        </>}
       >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <AlertTriangle size={19} />
-          {confirmationTitle}
-        </DialogTitle>
-
-        <DialogContent>
-          <DialogContentText>{confirmationDescription}</DialogContentText>
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setConfirmationAction(null)}
-            disabled={creatingOutput}
-            sx={{ textTransform: "none" }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={handleConfirmAction}
-            disabled={creatingOutput}
-            startIcon={creatingOutput ? <CircularProgress size={14} /> : undefined}
-            sx={{
-              textTransform: "none",
-              bgcolor: confirmationAction === "create-output" ? "#b22a2a" : undefined,
-              "&:hover": {
-                bgcolor: confirmationAction === "create-output" ? "#922020" : undefined,
-              },
-            }}
-          >
-            {creatingOutput ? "Creating..." : confirmationConfirmLabel}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Typography sx={{ fontSize: DIALOG_TEXT.body, lineHeight: 1.55, color: "var(--app-n-800)" }}>
+          {confirmationDescription}
+        </Typography>
+        {confirmationAction === "close" && updatedCount > 0 && (
+          <Box sx={{ mt: 1.5, px: 1.5, py: 1.25, borderRadius: 2, border: "1px solid rgba(148, 163, 184, 0.45)",
+            borderLeft: "4px solid #d97706", fontSize: DIALOG_TEXT.note, color: "var(--app-n-700)" }}>
+            {updatedCount === 1 ? "1 micrograph has" : `${updatedCount} micrographs have`} changed coordinates.
+          </Box>
+        )}
+      </DialogFrame>
     </Box >
   );
 }

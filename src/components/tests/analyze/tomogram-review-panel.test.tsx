@@ -465,7 +465,7 @@ describe("TomogramReviewPanel", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Configure tags" }));
     fireEvent.click(screen.getByRole("button", { name: "Counter" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tags" }));
 
     await waitFor(() => {
       expect(serviceMocks.saveTomogramReviewSchema).toHaveBeenCalledWith(
@@ -512,7 +512,7 @@ describe("TomogramReviewPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(screen.getByText("Feature A")).toBeInTheDocument();
     expect(screen.getByText("Needs follow-up")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tags" }));
 
     await waitFor(() => {
       expect(serviceMocks.saveTomogramReviewSchema).toHaveBeenCalledWith(
@@ -556,7 +556,7 @@ describe("TomogramReviewPanel", () => {
       target: { value: "Stale tag" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save tag configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tags" }));
 
     expect(
       await screen.findByText(
