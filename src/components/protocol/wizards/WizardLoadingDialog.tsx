@@ -1,11 +1,7 @@
-import {
-  Box,
-  CircularProgress,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Typography,
-} from "@mui/material";
+// While a wizard starts on the server: what it is preparing, in the wizards' own look.
+import { Box, CircularProgress, Typography } from "@mui/material";
+
+import WizardShell, { WIZARD_TEXT } from "./WizardShell";
 
 type WizardLoadingDialogProps = {
   open: boolean;
@@ -18,54 +14,18 @@ export default function WizardLoadingDialog({
   title = "Opening wizard",
   message = "Preparing preview...",
 }: WizardLoadingDialogProps) {
+  if (!open) return null;
   return (
-    <Dialog
-      open={open}
-      maxWidth="xs"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: "20px",
-          overflow: "hidden",
-          border: "1px solid rgba(51, 61, 73, 0.14)",
-          boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-          backgroundImage: "none",
-        },
-      }}
-    >
-      <DialogTitle
-        sx={{
-          m: 0,
-          px: 2.5,
-          py: 2,
-          background: "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-          color: "#ffffff",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        {title}
-      </DialogTitle>
-
-      <DialogContent
-        sx={{
-          px: 2.5,
-          py: 3,
-          display: "flex",
-          alignItems: "center",
-          gap: 1.5,
-          background: "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
-        }}
-      >
-        <CircularProgress size={22} />
+    <WizardShell title={title} subtitle="Wizard" maxWidth="xs" closable={false}>
+      <Box role="status" sx={{ display: "flex", alignItems: "center", gap: 2, py: 1 }}>
+        <CircularProgress size={26} sx={{ color: "#333d49", flexShrink: 0 }} />
         <Box>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {message}
-          </Typography>
-          <Typography variant="caption" sx={{ color: "text.secondary" }}>
+          <Typography sx={{ fontSize: WIZARD_TEXT.body, fontWeight: 600, color: "var(--app-n-900)" }}>{message}</Typography>
+          <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-500)" }}>
             This may take a few seconds the first time.
           </Typography>
         </Box>
-      </DialogContent>
-    </Dialog>
+      </Box>
+    </WizardShell>
   );
 }

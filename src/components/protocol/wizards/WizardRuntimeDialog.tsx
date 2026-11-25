@@ -3,11 +3,10 @@
 // (YesNo, list, preview with sliders, file browser, form, 3D point).
 import { useEffect, useMemo, useState } from "react";
 import {
-  Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, LinearProgress, List, ListItemButton, ListItemText, MenuItem, Radio, Slider, Table,
+  Alert, Box, Button, Checkbox, CircularProgress, List, ListItemButton, ListItemText, MenuItem, Radio, Slider, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
-import { Wand2, X } from "lucide-react";
+import { Search } from "lucide-react";
 
 import type { ViewerActionMessage } from "@/utils/protocol_viewer_action_result";
 import {
@@ -17,6 +16,7 @@ import {
   type WizardRing,
 } from "@/utils/protocol_wizard_runtime";
 import PointInVolumeWizardDialog from "./PointInVolumeWizardDialog";
+import WizardShell, { WizardButton, WIZARD_TEXT } from "./WizardShell";
 
 export type WizardAnswer = Record<string, unknown>;
 
@@ -33,51 +33,38 @@ type Props = {
   onPreview: (item: number, values: Record<string, number>) => void;
 };
 
-const headerSx = {
-  display: "flex", alignItems: "center", gap: 1.25, px: 2.5, py: 1.75,
-  background: "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)", color: "#fff",
-};
-
 function Shell({ title, subtitle, children, actions, onClose, busy, maxWidth = "sm" }: {
   title: string; subtitle: string; children: React.ReactNode; actions: React.ReactNode;
   onClose: () => void; busy: boolean; maxWidth?: "xs" | "sm" | "md" | "lg";
 }) {
   return (
-    <Dialog open onClose={onClose} maxWidth={maxWidth} fullWidth aria-labelledby="wizard-runtime-title"
-      className="sfw-launcher-dialog" PaperProps={{ sx: { borderRadius: "18px", overflow: "hidden" } }}>
-      {/* Its own id: MUI would give it the dialog's aria-labelledby, naming the dialog after the whole header. */}
-      <DialogTitle component="div" id="wizard-runtime-header" sx={headerSx}>
-        <Wand2 size={20} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography id="wizard-runtime-title" variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            {title}
-          </Typography>
-          <Typography variant="caption" sx={{ opacity: 0.8 }}>{subtitle}</Typography>
-        </Box>
-        <IconButton aria-label="Close" onClick={onClose} size="small" sx={{ color: "#fff" }}>
-          <X size={18} />
-        </IconButton>
-      </DialogTitle>
-      {busy && <LinearProgress />}
-      <DialogContent dividers sx={{ bgcolor: "var(--app-n-50)" }}>{children}</DialogContent>
-      <DialogActions sx={{ px: 2.5, py: 1.5 }}>{actions}</DialogActions>
-    </Dialog>
+    <WizardShell title={title} subtitle={subtitle} onClose={onClose} busy={busy} maxWidth={maxWidth}
+      actions={actions} inFrontOfResults>
+      {children}
+    </WizardShell>
   );
 }
+
+/** A box of the dialog's content: a list, a table, the files. */
+const PANEL_SX = { bgcolor: "var(--app-n-0)", border: "1px solid rgba(148, 163, 184, 0.45)", borderRadius: 2.5 } as const;
 
 function Messages({ messages }: { messages: ViewerActionMessage[] }) {
   if (!messages.length) return null;
   return (
     <Box sx={{ display: "grid", gap: 1, mb: 1.5 }}>
       {messages.map((message, index) => (
-        <Alert key={index} severity={message.level}>{message.title ? <b>{message.title}: </b> : null}{message.text}</Alert>
+        <Alert key={index} severity={message.level} sx={{ fontSize: 14 }}>{message.title ? <b>{message.title}: </b> : null}{message.text}</Alert>
       ))}
     </Box>
   );
 }
 
 function Message({ text }: { text: string }) {
-  return text ? <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mb: 1.5 }}>{text}</Typography> : null;
+  return text ? (
+    <Typography sx={{ whiteSpace: "pre-wrap", mb: 2, fontSize: WIZARD_TEXT.body, lineHeight: 1.55, color: "var(--app-n-800)" }}>
+      {text}
+    </Typography>
+  ) : null;
 }
 
 // --- Preview: items, images with their mask/frequency rings, controls --------
@@ -107,40 +94,41 @@ function PreviewBody({ dialog, images, previewBusy, values, item, onItem, onValu
 }) {
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "220px 1fr" }, gap: 2 }}>
-      <Box sx={{ border: "1px solid var(--app-n-200)", borderRadius: 2, bgcolor: "var(--app-n-0)", maxHeight: 420, overflow: "auto" }}>
+      <Box sx={{ ...PANEL_SX, maxHeight: 460, overflow: "auto", p: 0.5 }}>
         <List dense disablePadding aria-label="Items">
           {dialog.items.map(entry => (
-            <ListItemButton key={entry.index} selected={entry.index === item} onClick={() => onItem(entry.index)}>
-              <ListItemText primary={entry.text} primaryTypographyProps={{ noWrap: true, fontSize: 13 }} />
+            <ListItemButton key={entry.index} selected={entry.index === item} onClick={() => onItem(entry.index)}
+              sx={{ borderRadius: 1.5 }}>
+              <ListItemText primary={entry.text} primaryTypographyProps={{ noWrap: true, fontSize: 14 }} />
             </ListItemButton>
           ))}
         </List>
       </Box>
       <Box>
-        {dialog.previewError && <Alert severity="warning" sx={{ mb: 1 }}>{dialog.previewError}</Alert>}
+        {dialog.previewError && <Alert severity="warning" sx={{ mb: 1.5, fontSize: 14 }}>{dialog.previewError}</Alert>}
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center", position: "relative" }}>
           {images.map((image, index) => (
             <Box key={index} sx={{ textAlign: "center" }}>
               <Box sx={{ position: "relative", width: 256, height: 256 * image.height / Math.max(1, image.width),
-                bgcolor: "#111", borderRadius: 1, overflow: "hidden" }}>
+                bgcolor: "#111", borderRadius: 2, overflow: "hidden" }}>
                 <img src={image.src} alt={dialog.imageLabels[index] ?? "Preview"}
                   style={{ width: "100%", height: "100%", display: "block" }} />
                 <RingsOverlay rings={dialog.rings.filter(ring => ring.image === index)} values={values} />
               </Box>
-              <Typography variant="caption" color="text.secondary">{dialog.imageLabels[index] ?? ""}</Typography>
+              <Typography sx={{ mt: 0.5, fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)" }}>{dialog.imageLabels[index] ?? ""}</Typography>
             </Box>
           ))}
           {previewBusy && (
             <Box sx={{ position: "absolute", top: 8, right: 8 }}><CircularProgress size={20} /></Box>
           )}
         </Box>
-        <Box sx={{ display: "grid", gap: 1.5, mt: 2 }}>
+        <Box sx={{ ...PANEL_SX, display: "grid", gap: 1.25, mt: 2, px: 2, py: 1.5 }}>
           {dialog.controls.map(control => (
-            <Box key={control.name} sx={{ display: "grid", gridTemplateColumns: "120px 1fr 150px",
-              alignItems: "center", gap: 1.5 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{control.label}</Typography>
+            <Box key={control.name} sx={{ display: "grid", gridTemplateColumns: "140px 1fr 150px",
+              alignItems: "center", gap: 2 }}>
+              <Typography sx={{ fontSize: 14.5, fontWeight: 600, color: "var(--app-n-800)" }}>{control.label}</Typography>
               {control.kind === "slider" ? (
-                <Slider size="small" min={control.min} max={control.max} step={control.step}
+                <Slider size="small" min={control.min} sx={{ color: "#333d49" }} max={control.max} step={control.step}
                   value={values[control.name] ?? control.value}
                   onChange={(_, value) => onValue(control.name, Array.isArray(value) ? value[0] : value)}
                   onChangeCommitted={() => onCommit(control.name)}
@@ -152,7 +140,7 @@ function PreviewBody({ dialog, images, previewBusy, values, item, onItem, onValu
                   onBlur={() => onCommit(control.name)}
                   onKeyDown={event => { if (event.key === "Enter") onCommit(control.name); }} />
               )}
-              <Typography variant="caption" color="text.secondary">
+              <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)", fontVariantNumeric: "tabular-nums" }}>
                 {formatWizardControlValue(control, values[control.name] ?? control.value, dialog.samplingRate)}
               </Typography>
             </Box>
@@ -199,19 +187,15 @@ export default function WizardRuntimeDialog({
   }
 
   const selectButton = (label: string, answer: WizardAnswer, disabled = false) => (
-    <Button variant="contained" disabled={busy || disabled} onClick={() => onAnswer(answer)}
-      sx={{ textTransform: "none", bgcolor: "#333d49", "&:hover": { bgcolor: "#25303b" } }}>{label}</Button>
+    <WizardButton primary disabled={busy || disabled} onClick={() => onAnswer(answer)}>{label}</WizardButton>
   );
-  const cancelButton = (
-    <Button onClick={cancel} disabled={busy} sx={{ textTransform: "none" }}>Cancel</Button>
-  );
+  const cancelButton = <WizardButton onClick={cancel} disabled={busy}>Cancel</WizardButton>;
 
   if (dialog.type === "confirm") {
     return (
       <Shell title={dialog.title} subtitle={subtitle} onClose={cancel} busy={busy} maxWidth="xs" actions={<>
         {dialog.cancel && cancelButton}
-        <Button onClick={() => onAnswer({ accept: true, value: false })} disabled={busy}
-          sx={{ textTransform: "none" }}>No</Button>
+        <WizardButton onClick={() => onAnswer({ accept: true, value: false })} disabled={busy}>No</WizardButton>
         {selectButton("Yes", { accept: true, value: true })}
       </>}>
         <Messages messages={messages} />
@@ -224,8 +208,8 @@ export default function WizardRuntimeDialog({
     return (
       <Shell title={dialog.title} subtitle={subtitle} onClose={cancel} busy={busy} maxWidth="xs" actions={
         dialog.buttons.map(button => (
-          <Button key={button.value} variant="outlined" disabled={busy} sx={{ textTransform: "none" }}
-            onClick={() => onAnswer({ accept: true, value: button.value })}>{button.label}</Button>
+          <WizardButton key={button.value} disabled={busy}
+            onClick={() => onAnswer({ accept: true, value: button.value })}>{button.label}</WizardButton>
         ))}>
         <Messages messages={messages} />
         <Message text={dialog.message} />
@@ -244,18 +228,19 @@ export default function WizardRuntimeDialog({
           {dialog.fields.map(entry => (
             <Box key={entry.name}>
               <TextField fullWidth size="small" label={entry.label} value={fields[entry.name] ?? ""}
+                sx={{ "& .MuiInputBase-input": { fontSize: WIZARD_TEXT.body }, "& .MuiInputLabel-root": { fontSize: WIZARD_TEXT.body } }}
                 select={entry.kind === "select" && entry.options.length > 0}
                 type={entry.kind === "number" ? "number" : "text"}
                 onChange={event => setFields(current => ({ ...current, [entry.name]: event.target.value }))}>
                 {entry.kind === "select" && entry.options.map(option => (
-                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                  <MenuItem key={option} value={option} sx={{ fontSize: WIZARD_TEXT.body }}>{option}</MenuItem>
                 ))}
               </TextField>
               {entry.suggestions.length > 0 && (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 1 }}>
                   {entry.suggestions.map(suggestion => (
                     <Button key={suggestion} size="small" variant="outlined"
-                      sx={{ textTransform: "none", py: 0, minWidth: 0 }}
+                      sx={{ textTransform: "none", py: 0.25, px: 1.25, minWidth: 0, borderRadius: 10, fontSize: WIZARD_TEXT.note }}
                       onClick={() => setFields(current => ({
                         ...current, [entry.name]: `${current[entry.name] ?? ""}${suggestion}` }))}>
                       {suggestion}
@@ -282,8 +267,9 @@ export default function WizardRuntimeDialog({
       </>}>
         <Messages messages={messages} />
         <Message text={dialog.message} />
-        <TableContainer sx={{ maxHeight: 420, bgcolor: "var(--app-n-0)", border: "1px solid var(--app-n-200)", borderRadius: 2 }}>
-          <Table size="small" stickyHeader aria-label={dialog.title}>
+        <TableContainer sx={{ ...PANEL_SX, maxHeight: 440 }}>
+          <Table size="small" stickyHeader aria-label={dialog.title} sx={{ "& .MuiTableCell-root": { fontSize: 14 },
+            "& .MuiTableCell-head": { bgcolor: "var(--app-n-100)" } }}>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" />
@@ -308,7 +294,9 @@ export default function WizardRuntimeDialog({
             </TableBody>
           </Table>
         </TableContainer>
-        {dialog.truncated && <Typography variant="caption" color="text.secondary">Only the first rows are shown.</Typography>}
+        {dialog.truncated && (
+          <Typography sx={{ mt: 1, fontSize: WIZARD_TEXT.note, color: "var(--app-n-500)" }}>Only the first rows are shown.</Typography>
+        )}
       </Shell>
     );
   }
@@ -320,14 +308,15 @@ export default function WizardRuntimeDialog({
         {cancelButton}{selectButton("Select", { accept: true, path }, path === null)}
       </>}>
         <Messages messages={messages} />
-        <TextField fullWidth size="small" placeholder="Filter" value={filter} sx={{ mb: 1 }}
-          onChange={event => setFilter(event.target.value)} inputProps={{ "aria-label": "Filter files" }} />
-        <Box sx={{ maxHeight: 360, overflow: "auto", bgcolor: "var(--app-n-0)", border: "1px solid var(--app-n-200)", borderRadius: 2 }}>
+        <TextField fullWidth size="small" placeholder="Filter" value={filter} sx={{ mb: 1.25, "& .MuiInputBase-input": { fontSize: WIZARD_TEXT.body } }}
+          onChange={event => setFilter(event.target.value)} inputProps={{ "aria-label": "Filter files" }}
+          InputProps={{ startAdornment: <Search size={17} color="#64748b" style={{ marginRight: 8 }} /> }} />
+        <Box sx={{ ...PANEL_SX, maxHeight: 380, overflow: "auto", p: 0.5 }}>
           <List dense disablePadding aria-label={`Files in ${dialog.root}`}>
             {shown.map(entry => (
               <ListItemButton key={entry} selected={entry === path} onClick={() => setPath(entry)}
-                onDoubleClick={() => onAnswer({ accept: true, path: entry })}>
-                <ListItemText primary={entry} primaryTypographyProps={{ fontSize: 13 }} />
+                onDoubleClick={() => onAnswer({ accept: true, path: entry })} sx={{ borderRadius: 1.5 }}>
+                <ListItemText primary={entry} primaryTypographyProps={{ fontSize: 14, sx: { wordBreak: "break-all" } }} />
               </ListItemButton>
             ))}
           </List>

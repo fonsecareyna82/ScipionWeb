@@ -2,12 +2,7 @@ import * as React from "react";
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
-  IconButton,
   Radio,
   RadioGroup,
   Slider,
@@ -15,8 +10,8 @@ import {
   Typography,
 } from "@mui/material";
 import { Canvas, ThreeEvent, useThree } from "@react-three/fiber";
-import { CloseIcon } from "@/icons";
 import * as THREE from "three";
+import WizardShell, { WizardButton, WIZARD_TEXT } from "./WizardShell";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { ThreeElements } from "@react-three/fiber";
@@ -58,39 +53,6 @@ type PointInVolumeWizardDialogProps = {
 type PointCloudResult = {
   positions: Float32Array;
   count: number;
-};
-
-const wizardDialogPaperSx = {
-  borderRadius: "22px",
-  overflow: "hidden",
-  border: "1px solid rgba(51, 61, 73, 0.14)",
-  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-  backgroundImage: "none",
-};
-
-const wizardDialogTitleSx = {
-  m: 0,
-  px: 2.5,
-  py: 2,
-  background: "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-  color: "#ffffff",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
-};
-
-const wizardDialogContentSx = {
-  px: 2.5,
-  py: 2.5,
-  background: "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
-  borderColor: "rgba(15,23,42,0.08)",
-};
-
-const wizardDialogActionsSx = {
-  px: 2.5,
-  py: 2,
-  backgroundColor: "var(--app-n-0)",
-  borderTop: "1px solid rgba(15,23,42,0.08)",
-  justifyContent: "flex-end",
-  gap: 1.25,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -594,7 +556,7 @@ function SliderRow({
         gap: 1.25,
       }}
     >
-      <Typography variant="body2" sx={{ color: "var(--app-n-900)" }}>
+      <Typography sx={{ fontSize: 14.5, fontWeight: 600, color: "var(--app-n-800)" }}>
         {label}
       </Typography>
 
@@ -605,7 +567,7 @@ function SliderRow({
         value={value}
         onChange={(_, nextValue) => onChange(asNumber(nextValue))}
         sx={{
-          color: "#0b0b8f",
+          color: "#333d49",
           "& .MuiSlider-thumb": {
             width: 16,
             height: 16,
@@ -623,7 +585,7 @@ function SliderRow({
       />
 
       <Typography
-        variant="body2"
+        variant="body2" fontSize={14.5}
         sx={{
           color: "var(--app-n-900)",
           textAlign: "right",
@@ -758,82 +720,24 @@ export default function PointInVolumeWizardDialog({
     [point, pointVoxel, dims],
   );
 
+  if (!open) return null;
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="xl"
-      fullWidth
-      PaperProps={{
-        sx: {
-          ...wizardDialogPaperSx,
-          maxHeight: "92vh",
-        },
-      }}
-    >
-      <DialogTitle sx={wizardDialogTitleSx}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Typography
-            component="span"
-            sx={{
-              fontSize: "1rem",
-              fontWeight: 700,
-              color: "inherit",
-            }}
-          >
-            {title || "Wizard"}
-          </Typography>
-
-          <IconButton
-            onClick={onClose}
-            size="small"
-            sx={{
-              color: "#e5e7eb",
-              border: "1px solid rgba(255,255,255,0.14)",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              "&:hover": {
-                backgroundColor: "rgba(255,255,255,0.12)",
-                borderColor: "rgba(255,255,255,0.22)",
-              },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-
-      <DialogContent
-        dividers
-        sx={{
-          ...wizardDialogContentSx,
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-        }}
-      >
+    <WizardShell title={title || "Wizard"} subtitle="Choose a point in the volume" onClose={onClose} maxWidth="xl"
+      contentSx={{ display: "flex", flexDirection: "column", gap: 2, bgcolor: "var(--app-n-50)", pt: 2 }}
+      actions={<>
+        <WizardButton onClick={onClose}>Cancel</WizardButton>
+        <WizardButton primary onClick={onConfirm}>Select</WizardButton>
+      </>}>
         {hasText(message) && (
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              lineHeight: 1.6,
-            }}
-          >
+          <Typography sx={{ fontSize: WIZARD_TEXT.body, color: "var(--app-n-700)", lineHeight: 1.55 }}>
             {message}
           </Typography>
         )}
 
         <Box
           sx={{
-            borderRadius: "18px",
-            border: "1px solid rgba(15,23,42,0.10)",
+            borderRadius: 2.5,
+            border: "1px solid rgba(148, 163, 184, 0.45)",
             backgroundColor: "var(--app-n-0)",
             overflow: "hidden",
             display: "grid",
@@ -853,12 +757,12 @@ export default function PointInVolumeWizardDialog({
               flexWrap: "wrap",
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            <Typography sx={{ fontSize: 15, fontWeight: 700, color: "var(--app-n-900)" }}>
               Volume point picker
             </Typography>
 
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+              <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)" }}>
                 Drag to rotate. Hold Shift and drag the cyan point to move the center.
               </Typography>
               <Button
@@ -867,8 +771,9 @@ export default function PointInVolumeWizardDialog({
                 onClick={() => setResetToken((prev) => prev + 1)}
                 sx={{
                   textTransform: "none",
-                  borderRadius: "10px",
+                  borderRadius: 3,
                   fontWeight: 600,
+                  fontSize: WIZARD_TEXT.note,
                 }}
               >
                 Reset view
@@ -1030,57 +935,19 @@ export default function PointInVolumeWizardDialog({
               gap: 1.5,
             }}
           >
-            <Typography
-              variant="caption"
-              sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}
-            >
+            <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)", fontVariantNumeric: "tabular-nums" }}>
               Point: x={roundTo(point.x, 2)} · y={roundTo(point.y, 2)} · z={roundTo(point.z, 2)}
             </Typography>
 
-            <Typography
-              variant="caption"
-              sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}
-            >
+            <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)", fontVariantNumeric: "tabular-nums" }}>
               Voxel: x={roundTo(currentVoxel.x, 1)} · y={roundTo(currentVoxel.y, 1)} · z={roundTo(currentVoxel.z, 1)}
             </Typography>
 
-            <Typography
-              variant="caption"
-              sx={{ color: "text.secondary", textAlign: { xs: "left", md: "right" } }}
-            >
+            <Typography sx={{ fontSize: WIZARD_TEXT.note, color: "var(--app-n-600)", textAlign: { xs: "left", md: "right" } }}>
               Points visible: {pointCloud.count}
             </Typography>
           </Box>
         </Box>
-      </DialogContent>
-
-      <DialogActions sx={wizardDialogActionsSx}>
-        <Button
-          onClick={onClose}
-          variant="outlined"
-          sx={{
-            textTransform: "none",
-            borderRadius: "12px",
-            px: 2,
-            fontWeight: 600,
-          }}
-        >
-          Cancel
-        </Button>
-
-        <Button
-          variant="contained"
-          onClick={onConfirm}
-          sx={{
-            textTransform: "none",
-            borderRadius: "12px",
-            px: 2.25,
-            fontWeight: 700,
-          }}
-        >
-          Select
-        </Button>
-      </DialogActions>
-    </Dialog>
+    </WizardShell>
   );
 }
