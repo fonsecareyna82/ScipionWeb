@@ -15,10 +15,6 @@ import {
   Button,
   Checkbox,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
   FormControlLabel,
   InputAdornment,
@@ -59,7 +55,12 @@ import {
   Sigma,
   Bookmark,
   LineChart as PlotterIcon,
+  Columns3,
+  FolderPlus,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import type { MetadataContrastMode } from "@/services/ProjectService";
 import type {
   MetadataCell,
@@ -451,9 +452,6 @@ const METADATA_IMAGE_CACHE_VARIANT = "webp-png-fallback";
 
 const HEADER_BG = "var(--app-n-100)";
 
-const DIALOG_HEADER_BG = "var(--app-n-200)";
-const DIALOG_ROW_ODD_BG = "var(--app-n-50)";
-const DIALOG_ROW_EVEN_BG = "var(--app-n-0)";
 
 const DEFAULT_SUBSET_NAME = "create subset";
 
@@ -475,28 +473,6 @@ const headerCellSx = {
   position: "sticky" as const,
   top: 0,
   zIndex: 1,
-};
-
-const headerColumnDialogSx = {
-  px: 2,
-  py: 1.25,
-  display: "flex",
-  alignItems: "center",
-  gap: 1.5,
-  background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
-  color: "#e5e7eb",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
-};
-
-const closeBtnSx = {
-  ml: "auto",
-  color: "#e5e7eb",
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.06)",
-  "&:hover": {
-    background: "rgba(255,255,255,0.12)",
-    borderColor: "rgba(255,255,255,0.28)",
-  },
 };
 
 /* ======================= Global image queue ======================= */
@@ -3471,49 +3447,46 @@ function ColumnsDialog({
   }, [allColumns, query]);
 
   return (
-    <Dialog
+    <DialogFrame
       open={open}
       onClose={onClose}
+      closeLabel="Close columns dialog"
+      icon={<Columns3 size={20} />}
+      title="Columns"
+      subtitle="Which columns the table shows, and which it draws as images."
       maxWidth="sm"
-      fullWidth
-      BackdropProps={{
-        sx: { backgroundColor: "transparent" },
-      }}
+      dialogProps={{ BackdropProps: { sx: { backgroundColor: "transparent" } } }}
+      footerNote={`${filteredColumns.length} of ${allColumns.length} columns`}
+      actions={<>
+        <DialogButton onClick={onClose}>Cancel</DialogButton>
+        <DialogButton kind="primary" startIcon={<Check size={16} />} onClick={onApply}>Apply</DialogButton>
+      </>}
     >
-      <DialogTitle sx={headerColumnDialogSx}>
-        Columns
-        <IconButton
-          onClick={onClose}
-          aria-label="Close columns dialog"
-          size="small"
-          sx={closeBtnSx}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </DialogTitle>
-
-      <DialogContent dividers>
-        <TextField autoFocus fullWidth size="small" label="Find columns" value={query} onChange={event => setQuery(event.target.value)} sx={{ mb: 1.5 }} />
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{filteredColumns.length} of {allColumns.length} columns</Typography>
-          <Button size="small" onClick={() => onSetVisibility(filteredColumns.map(column => column.name), true)}>Show matching</Button>
-          <Button size="small" onClick={() => onSetVisibility(filteredColumns.map(column => column.name), false)}>Hide matching</Button>
-        </Box>
-        <Table size="small">
+      <TextField autoFocus fullWidth size="small" label="Find columns" value={query} onChange={event => setQuery(event.target.value)}
+        sx={{ mb: 1.5, "& .MuiInputBase-input, & .MuiInputLabel-root": { fontSize: DIALOG_TEXT.body } }} />
+      <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1.25 }}>
+        <Typography sx={{ flex: 1, fontSize: DIALOG_TEXT.note, color: "var(--app-n-600)" }}>
+          {query.trim() ? "The columns found:" : "All the columns:"}
+        </Typography>
+        <Button size="small" variant="outlined" startIcon={<Eye size={15} />}
+          sx={{ textTransform: "none", borderRadius: 3, fontSize: DIALOG_TEXT.note }}
+          onClick={() => onSetVisibility(filteredColumns.map(column => column.name), true)}>Show all</Button>
+        <Button size="small" variant="outlined" startIcon={<EyeOff size={15} />}
+          sx={{ textTransform: "none", borderRadius: 3, fontSize: DIALOG_TEXT.note }}
+          onClick={() => onSetVisibility(filteredColumns.map(column => column.name), false)}>Hide all</Button>
+      </Box>
+      <Box sx={{ border: "1px solid rgba(148, 163, 184, 0.45)", borderRadius: 2.5, overflow: "hidden" }}>
+        <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 14 } }}>
           <TableHead>
-            <TableRow sx={{ backgroundColor: DIALOG_HEADER_BG }}>
-              <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Label</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
-                Visible
-              </TableCell>
-              <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
-                Render
-              </TableCell>
+            <TableRow sx={{ backgroundColor: "var(--app-n-100)" }}>
+              <TableCell sx={{ fontWeight: 700 }}>Column</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 700, width: 96 }}>Visible</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 700, width: 120 }}>As image</TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {filteredColumns.map((column, index) => {
+            {filteredColumns.map((column) => {
               const draft = draftColumnSettings?.[column.name];
               const current = columnSettings[column.name];
 
@@ -3527,17 +3500,10 @@ function ColumnsDialog({
                 (column.rendererType === "image");
 
               return (
-                <TableRow
-                  key={column.name}
-                  sx={{
-                    backgroundColor: index % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
-                  }}
-                >
-                  <TableCell sx={{ fontSize: "0.8rem" }}>
-                    {column.alias || column.name}
-                  </TableCell>
+                <TableRow key={column.name} hover sx={{ "&:last-child td": { borderBottom: 0 } }}>
+                  <TableCell sx={{ wordBreak: "break-word" }}>{column.alias || column.name}</TableCell>
 
-                  <TableCell align="center">
+                  <TableCell align="center" sx={{ py: 0 }}>
                     <Checkbox
                       size="small"
                       inputProps={{ "aria-label": `Show ${column.alias || column.name}` }}
@@ -3550,7 +3516,7 @@ function ColumnsDialog({
                     />
                   </TableCell>
 
-                  <TableCell align="center">
+                  <TableCell align="center" sx={{ py: 0 }}>
                     <Checkbox
                       size="small"
                       inputProps={{ "aria-label": `Render ${column.alias || column.name} as image` }}
@@ -3566,31 +3532,17 @@ function ColumnsDialog({
                 </TableRow>
               );
             })}
+            {filteredColumns.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={3} sx={{ color: "var(--app-n-500)", textAlign: "center", py: 2 }}>
+                  No column matches.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
-      </DialogContent>
-
-      <DialogActions>
-        <Button
-          variant="contained"
-          startIcon={<CloseIcon />}
-          onClick={onClose}
-          sx={{ textTransform: "none" }}
-          color="error"
-        >
-          Close
-        </Button>
-
-        <Button
-          variant="contained"
-          startIcon={<Check size={16} />}
-          onClick={onApply}
-          sx={{ textTransform: "none" }}
-        >
-          Ok
-        </Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </DialogFrame>
   );
 }
 
@@ -6125,108 +6077,56 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
       </Menu>
 
       {/* Selection dialog */}
-      <Dialog
+      <DialogFrame
         open={selectionDialog.open}
-        onClose={(_event, reason) => {
-          if (selectionBusy) return;
-          if (reason === "backdropClick") return;
-          closeSelectionDialog();
-        }}
+        onClose={closeSelectionDialog}
+        busy={selectionBusy}
+        closeLabel="Close selection dialog"
+        icon={<Filter size={20} />}
+        title={selectionDialog.open ? selectionDialog.title : "Selection"}
+        subtitle="Choose rows by their values, a range or their position. The choice stays when the table is sorted."
         maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            overflow: "hidden",
-            border: "1px solid rgba(15,23,42,0.08)",
-            boxShadow: "0 24px 52px rgba(15,23,42,0.22), 0 10px 20px rgba(15,23,42,0.12)",
+        contentSx={{ bgcolor: "var(--app-n-50)", p: 0, "& .MuiTypography-caption": { fontSize: DIALOG_TEXT.note },
+          "& .MuiInputBase-input, & .MuiInputLabel-root": { fontSize: DIALOG_TEXT.body } }}
+        dialogProps={{
+          onClose: (_event, reason) => {
+            if (selectionBusy) return;
+            if (reason === "backdropClick") return;
+            closeSelectionDialog();
           },
         }}
+        actions={<>
+          <DialogButton onClick={selectionBusy ? cancelSelectionWork : closeSelectionDialog}>
+            {selectionBusy ? "Stop selection" : "Cancel"}
+          </DialogButton>
+          <DialogButton kind="primary" disabled={selectionBusy} onClick={async () => {
+                setSelectionDialogError(null);
+                if (selectionBusyRef.current) return;
+                if (!selectionDialog.open) return;
+  
+                if (selectionDialog.kind === "range") {
+                  const start = parsePositiveInt(selectionDialog.startValue);
+                  const end = parsePositiveInt(selectionDialog.endValue);
+                  if (start == null || end == null) {
+                    setSelectionDialogError("Start/end must be positive integers");
+                    return;
+                  }
+  
+                  setSelectionMode("index");
+                  clearIdSelection();
+                  selectRange(start - 1, end - 1);
+                  focusRowAfterSelection(start - 1);
+                  closeSelectionDialog();
+                  closeContextMenu();
+                  return;
+                }
+  
+                await runColumnCriteriaSelection();
+              }}>
+            {selectionBusy ? "Applying…" : "Apply"}
+          </DialogButton>
+        </>}
       >
-        <DialogTitle
-          sx={{
-            px: 2,
-            py: 1.45,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.25,
-            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
-            color: "#e2e8f0",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          <Box
-            sx={{
-              width: 34,
-              height: 34,
-              borderRadius: 2,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(255,255,255,0.10)",
-              border: "1px solid rgba(255,255,255,0.16)",
-              color: "#e0f2fe",
-              flexShrink: 0,
-            }}
-          >
-            <Filter size={18} />
-          </Box>
-
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 800,
-                lineHeight: 1.15,
-                color: "#f8fafc",
-              }}
-            >
-              {selectionDialog.open ? selectionDialog.title : "Selection"}
-            </Typography>
-
-            <Typography
-              variant="caption"
-              sx={{
-                color: "rgba(226,232,240,0.82)",
-                display: "block",
-                mt: 0.25,
-              }}
-            >
-              Build a stable row selection from metadata values, ranges, or row positions
-            </Typography>
-          </Box>
-
-          <IconButton
-            size="small"
-            onClick={closeSelectionDialog}
-            disabled={selectionBusy}
-            aria-label="Close selection dialog"
-            sx={{
-              color: "#e2e8f0",
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.06)",
-              "&:hover": {
-                background: "rgba(255,255,255,0.12)",
-                borderColor: "rgba(255,255,255,0.28)",
-              },
-              "&.Mui-disabled": {
-                color: "rgba(226,232,240,0.4)",
-                borderColor: "rgba(255,255,255,0.08)",
-              },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent
-          dividers
-          sx={{
-            p: 0,
-            background:
-              "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 98%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 92%, transparent) 100%)",
-          }}
-        >
           <Box
             sx={{
               p: 2.25,
@@ -6308,10 +6208,9 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                   <Typography
                     variant="caption"
                     sx={{
-                      color: "text.secondary",
+                      color: "var(--app-n-800)",
                       fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.4,
+                      fontSize: 14.5,
                       display: "block",
                       mb: 0.75,
                     }}
@@ -6328,8 +6227,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                         bgcolor: "rgba(14,165,233,0.10)",
                         color: "var(--app-sky-800)",
                         border: "1px solid rgba(14,165,233,0.20)",
-                        fontSize: "0.8rem",
-                        fontWeight: 800,
+                        fontSize: 14,
+                        fontWeight: 700,
                         maxWidth: "100%",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -6357,10 +6256,9 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                   <Typography
                     variant="caption"
                     sx={{
-                      color: "text.secondary",
+                      color: "var(--app-n-800)",
                       fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.4,
+                      fontSize: 14.5,
                       display: "block",
                       mb: 1.25,
                     }}
@@ -6476,10 +6374,9 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                   <Typography
                     variant="caption"
                     sx={{
-                      color: "text.secondary",
+                      color: "var(--app-n-800)",
                       fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.4,
+                      fontSize: 14.5,
                       display: "block",
                       mb: 1.25,
                     }}
@@ -6568,7 +6465,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
                         />
                       }
                       label={
-                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: 14.5 }}>
                           Negate criteria
                         </Typography>
                       }
@@ -6598,155 +6495,42 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
               </Box>
             )}
           </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: 2.25,
-            py: 1.5,
-            gap: 1,
-            background: "var(--app-n-50)",
-            borderTop: "1px solid rgba(15,23,42,0.08)",
-          }}
-        >
-          <Button
-            variant="outlined"
-            onClick={selectionBusy ? cancelSelectionWork : closeSelectionDialog}
-            sx={{
-              textTransform: "none",
-              fontWeight: 700,
-              borderRadius: 2,
-            }}
-          >
-            {selectionBusy ? "Stop selection" : "Cancel"}
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={async () => {
-              setSelectionDialogError(null);
-              if (selectionBusyRef.current) return;
-              if (!selectionDialog.open) return;
-
-              if (selectionDialog.kind === "range") {
-                const start = parsePositiveInt(selectionDialog.startValue);
-                const end = parsePositiveInt(selectionDialog.endValue);
-                if (start == null || end == null) {
-                  setSelectionDialogError("Start/end must be positive integers");
-                  return;
-                }
-
-                setSelectionMode("index");
-                clearIdSelection();
-                selectRange(start - 1, end - 1);
-                focusRowAfterSelection(start - 1);
-                closeSelectionDialog();
-                closeContextMenu();
-                return;
-              }
-
-              await runColumnCriteriaSelection();
-            }}
-            disabled={selectionBusy}
-            sx={{
-              textTransform: "none",
-              fontWeight: 800,
-              px: 2.25,
-              borderRadius: 2,
-              boxShadow: "0 8px 18px rgba(37,99,235,0.22)",
-            }}
-          >
-            {selectionBusy ? "Applying…" : "Apply"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      </DialogFrame>
 
       {/* Action dialog */}
-      <Dialog
+      <DialogFrame
         open={actionDialogState.open}
-        onClose={(_event, reason) => {
-          if (actionSubmitting) return;
-          if (reason === "backdropClick") return;
-          closeActionDialog();
-        }}
+        onClose={closeActionDialog}
+        busy={actionSubmitting}
+        closeLabel="Close action dialog"
+        icon={<FolderPlus size={20} />}
+        title={actionDialogState.actionLabel || "Action"}
+        subtitle="A new subset made of the selected rows."
         maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            overflow: "hidden",
-            border: "1px solid rgba(15,23,42,0.08)",
-            boxShadow: "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
+        contentSx={{ "& .MuiTypography-caption, & .MuiFormHelperText-root": { fontSize: DIALOG_TEXT.note },
+          "& .MuiInputBase-input, & .MuiInputLabel-root": { fontSize: DIALOG_TEXT.body } }}
+        dialogProps={{
+          onClose: (_event, reason) => {
+            if (actionSubmitting) return;
+            if (reason === "backdropClick") return;
+            closeActionDialog();
           },
         }}
+        footerNote={effectiveSelectedCount > 0
+          ? `${effectiveSelectedCount} row${effectiveSelectedCount === 1 ? "" : "s"} selected`
+          : "No rows selected"}
+        actions={<>
+          <DialogButton onClick={actionScanBusy ? cancelActionScan : closeActionDialog}
+            disabled={actionSubmitting && !actionScanBusy}>
+            {actionScanBusy ? "Stop" : "Cancel"}
+          </DialogButton>
+          <DialogButton kind="primary" onClick={handleAcceptAction}
+            disabled={actionSubmitting || effectiveSelectedCount <= 0}
+            startIcon={actionSubmitting ? <CircularProgress size={14} color="inherit" /> : <Check size={16} />}>
+            {actionSubmitting ? "Creating…" : "Create subset"}
+          </DialogButton>
+        </>}
       >
-        <DialogTitle
-          sx={{
-            px: 2,
-            py: 1.4,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.25,
-            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
-            color: "#e2e8f0",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 700,
-                lineHeight: 1.15,
-                color: "#f8fafc",
-              }}
-            >
-              {actionDialogState.actionLabel || "Action"}
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{
-                color: "rgba(226,232,240,0.82)",
-                display: "block",
-                mt: 0.25,
-              }}
-            >
-              Create subset from selected rows
-            </Typography>
-          </Box>
-
-          <IconButton
-            size="small"
-            onClick={closeActionDialog}
-            disabled={actionSubmitting}
-            aria-label="Close action dialog"
-            sx={{
-              color: "#e2e8f0",
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.06)",
-              "&:hover": {
-                background: "rgba(255,255,255,0.12)",
-                borderColor: "rgba(255,255,255,0.28)",
-              },
-              "&.Mui-disabled": {
-                color: "rgba(226,232,240,0.4)",
-                borderColor: "rgba(255,255,255,0.08)",
-              },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent
-          dividers
-          sx={{
-            px: 2,
-            py: 2,
-            background:
-              "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 96%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 96%, transparent) 100%)",
-          }}
-        >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <TextField
               autoFocus
@@ -6757,7 +6541,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
               size="small"
               disabled={actionSubmitting}
               placeholder={DEFAULT_SUBSET_NAME}
-              helperText="Name used to create the subset in the backend."
+              helperText="The name the new subset gets in the project."
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !actionSubmitting && effectiveSelectedCount > 0) {
                   event.preventDefault();
@@ -6794,77 +6578,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
               </Box>
             )}
           </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: 2,
-            py: 1.25,
-            justifyContent: "space-between",
-            gap: 1,
-            backgroundColor: "color-mix(in srgb, var(--app-n-50) 72%, transparent)",
-            borderTop: "1px solid rgba(148,163,184,0.18)",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            {effectiveSelectedCount > 0
-              ? `${effectiveSelectedCount} row${effectiveSelectedCount === 1 ? "" : "s"} selected`
-              : "No rows selected"}
-          </Typography>
-
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<CloseIcon />}
-              onClick={actionScanBusy ? cancelActionScan : closeActionDialog}
-              disabled={actionSubmitting && !actionScanBusy}
-              sx={{
-                textTransform: "none",
-                borderRadius: 2,
-                fontWeight: 600,
-                borderColor: "rgba(148,163,184,0.35)",
-                color: "var(--app-n-700)",
-                "&:hover": {
-                  borderColor: "rgba(100,116,139,0.55)",
-                  backgroundColor: "rgba(148,163,184,0.06)",
-                },
-              }}
-            >
-              {actionScanBusy ? "Stop" : "Cancel"}
-            </Button>
-
-            <Button
-              variant="contained"
-              startIcon={
-                actionSubmitting ? <CircularProgress size={14} color="inherit" /> : <Check size={16} />
-              }
-              onClick={handleAcceptAction}
-              disabled={actionSubmitting || effectiveSelectedCount <= 0}
-              sx={{
-                textTransform: "none",
-                borderRadius: 2,
-                fontWeight: 700,
-                minWidth: 118,
-                color: "#e2e8f0",
-                border: "1px solid rgba(255,255,255,0.06)",
-                background: "linear-gradient(180deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%)",
-                boxShadow: "0 8px 18px rgba(37,99,235,0.22), inset 0 1px 0 rgba(255,255,255,0.12)",
-                "&:hover": {
-                  background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%)",
-                  boxShadow: "0 10px 20px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
-                },
-                "&.Mui-disabled": {
-                  color: "rgba(226,232,240,0.55)",
-                  background: "rgba(30,64,175,0.35)",
-                  borderColor: "rgba(148,163,184,0.18)",
-                },
-              }}
-            >
-              {actionSubmitting ? "Creating..." : "Accept"}
-            </Button>
-          </Box>
-        </DialogActions>
-      </Dialog>
+      </DialogFrame>
 
       <MetadataImagePreviewDialog
         state={imagePreview}

@@ -1,4 +1,5 @@
 // src/components/analyze/MetadataPlotterDialog.tsx
+import DialogFrame, { DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import {
   useCallback,
   useEffect,
@@ -11,10 +12,6 @@ import {
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   FormControlLabel,
@@ -277,9 +274,9 @@ function formatNumberCompact(v: number) {
 }
 
 function PlotTypeIcon({ plotType }: { plotType: PlotType }) {
-  if (plotType === "histogram") return <BarChart3 size={16} />;
-  if (plotType === "scatter") return <ScatterChartIcon size={16} />;
-  return <LineChartIcon size={16} />;
+  if (plotType === "histogram") return <BarChart3 size={20} />;
+  if (plotType === "scatter") return <ScatterChartIcon size={20} />;
+  return <LineChartIcon size={20} />;
 }
 
 function padDomain(domain: Domain, ratio: number): Domain {
@@ -1379,71 +1376,25 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
   }, [plotType, selectedSeriesArray]);
 
   return (
-    <Dialog
+    <DialogFrame
       open={open}
-      onClose={(_event, reason) => {
-        if (reason === "backdropClick") return;
-        closeDialog();
-      }}
+      onClose={closeDialog}
+      icon={<PlotTypeIcon plotType={plotType} />}
+      title="Plotter"
+      subtitle="Plot the table's columns: lines, points or a histogram."
       maxWidth={false}
-      BackdropProps={plotterBackdropProps as any}
-      PaperProps={{
-        sx: {
-          width: 1200,
-          maxWidth: "calc(100vw - 56px)",
-          height: 760,
-          maxHeight: "calc(100vh - 56px)",
-          borderRadius: 3,
-          overflow: "hidden",
-          border: "1px solid rgba(15,23,42,0.10)",
-          boxShadow: "0 24px 60px rgba(15,23,42,0.22), 0 10px 22px rgba(15,23,42,0.14)",
+      paperSx={{ width: 1200, maxWidth: "calc(100vw - 56px)", height: 760, maxHeight: "calc(100vh - 56px)" }}
+      contentSx={{ p: 0, bgcolor: "var(--app-n-50)", overflow: "hidden",
+        "& .MuiTypography-caption": { fontSize: DIALOG_TEXT.note },
+        "& .MuiInputBase-input, & .MuiInputLabel-root": { fontSize: 14.5 } }}
+      dialogProps={{
+        BackdropProps: plotterBackdropProps as any,
+        onClose: (_event, reason) => {
+          if (reason === "backdropClick") return;
+          closeDialog();
         },
       }}
     >
-      <DialogTitle
-        sx={{
-          px: 2,
-          py: 1.25,
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
-          color: "#e2e8f0",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <PlotTypeIcon plotType={plotType} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#f8fafc" }}>
-            Plotter
-          </Typography>
-        </Box>
-
-        <Box sx={{ flex: 1, minWidth: 0 }} />
-
-        <Tooltip title="Close">
-          <IconButton
-            size="small"
-            onClick={closeDialog}
-            sx={{
-              color: "#e2e8f0",
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.06)",
-              "&:hover": { background: "rgba(255,255,255,0.12)" },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </DialogTitle>
-
-      <DialogContent
-        dividers
-        sx={{
-          p: 0,
-          background: "linear-gradient(180deg, color-mix(in srgb, var(--app-n-50) 96%, transparent) 0%, color-mix(in srgb, var(--app-n-100) 96%, transparent) 100%)",
-        }}
-      >
         <Box sx={{ display: "flex", height: "100%" }}>
           {/* Left panel */}
           <Box
@@ -2263,9 +2214,6 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
             </Paper>
           </Box>
         </Box>
-      </DialogContent>
-
-      <DialogActions sx={{ display: "none" }} />
-    </Dialog>
+    </DialogFrame>
   );
 }

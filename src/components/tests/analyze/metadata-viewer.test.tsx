@@ -455,8 +455,8 @@ describe("MetadataViewer", () => {
         fireEvent.change(within(dialog).getByLabelText("Find columns"), { target: { value: "score" } });
         expect(within(dialog).getByText("1 of 2 columns")).toBeInTheDocument();
         expect(within(dialog).queryByLabelText("Show Id")).not.toBeInTheDocument();
-        fireEvent.click(within(dialog).getByRole("button", { name: "Hide matching" }));
-        fireEvent.click(within(dialog).getByRole("button", { name: "Ok" }));
+        fireEvent.click(within(dialog).getByRole("button", { name: "Hide all" }));
+        fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
         await waitFor(() => expect(screen.queryByText("Score")).not.toBeInTheDocument());
         expect(screen.getByText("Id")).toBeInTheDocument();
         expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledTimes(calls);
@@ -649,7 +649,7 @@ describe("MetadataViewer", () => {
         const visibleCheckbox = within(scoreRow as HTMLElement).getAllByRole("checkbox")[0];
         fireEvent.click(visibleCheckbox);
 
-        fireEvent.click(screen.getByRole("button", { name: "Ok" }));
+        fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
         await waitFor(() => {
             expect(screen.queryByText("Columns")).not.toBeInTheDocument();
@@ -1832,12 +1832,12 @@ describe("MetadataViewer", () => {
         fireEvent.click(await screen.findByText("All"));
 
         fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
-        expect(await screen.findByText("Create subset from selected rows")).toBeInTheDocument();
+        expect(await screen.findByText("A new subset made of the selected rows.")).toBeInTheDocument();
 
         const pending = createDeferred<ReturnType<typeof makeWindowRows>>();
         serviceMocks.fetchMetadataTableWindow.mockImplementationOnce(() => pending.promise);
 
-        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Accept" }));
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create subset" }));
         const signal = serviceMocks.fetchMetadataTableWindow.mock.calls[serviceMocks.fetchMetadataTableWindow.mock.calls.length - 1]?.[4].signal;
 
         fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Stop" }));
@@ -1847,7 +1847,7 @@ describe("MetadataViewer", () => {
 
         expect(serviceMocks.runMetadataTableAction).not.toHaveBeenCalled();
         expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" })).toBeEnabled();
-        expect(screen.getByText("Create subset from selected rows")).toBeInTheDocument();
+        expect(screen.getByText("A new subset made of the selected rows.")).toBeInTheDocument();
     });
 
     it("creates a subset of a Select all with the ids the API resolves, without reading the table", async () => {
@@ -1865,10 +1865,10 @@ describe("MetadataViewer", () => {
             fireEvent.contextMenu(screen.getByText("0.91").closest("tr")!);
             fireEvent.click(await screen.findByText("All"));
             fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
-            await screen.findByText("Create subset from selected rows");
+            await screen.findByText("A new subset made of the selected rows.");
             const windowCallsBefore = serviceMocks.fetchMetadataTableWindow.mock.calls.length;
 
-            fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Accept" }));
+            fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create subset" }));
 
             await waitFor(() => expect(serviceMocks.runMetadataTableAction).toHaveBeenCalled());
             expect(resolveIds).toHaveBeenCalledTimes(1);

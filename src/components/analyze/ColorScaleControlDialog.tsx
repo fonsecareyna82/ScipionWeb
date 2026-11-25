@@ -2,19 +2,16 @@ import * as React from "react";
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
-  IconButton,
   Slider,
   Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
-import { CloseIcon } from "@/icons";
+import { Palette, RotateCcw } from "lucide-react";
+
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 
 export type ColorScaleState = {
   auto: boolean;
@@ -43,39 +40,6 @@ type ColorScaleControlDialogProps = {
   onApply?: () => void;
 
   paletteOptions?: ColorScalePaletteOption[];
-};
-
-const wizardDialogPaperSx = {
-  borderRadius: "22px",
-  overflow: "hidden",
-  border: "1px solid rgba(51, 61, 73, 0.14)",
-  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-  backgroundImage: "none",
-};
-
-const wizardDialogTitleSx = {
-  m: 0,
-  px: 2.5,
-  py: 2,
-  background: "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-  color: "#ffffff",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
-};
-
-const wizardDialogContentSx = {
-  px: 2.5,
-  py: 2.5,
-  background: "linear-gradient(180deg, var(--app-n-50) 0%, var(--app-n-100) 100%)",
-  borderColor: "rgba(15,23,42,0.08)",
-};
-
-const wizardDialogActionsSx = {
-  px: 2.5,
-  py: 2,
-  backgroundColor: "var(--app-n-0)",
-  borderTop: "1px solid rgba(15,23,42,0.08)",
-  justifyContent: "flex-end",
-  gap: 1.25,
 };
 
 const defaultPaletteOptions: ColorScalePaletteOption[] = [
@@ -269,69 +233,27 @@ export default function ColorScaleControlDialog({
   }, [onApply, onClose]);
 
   return (
-    <Dialog
+    <DialogFrame
       open={open}
       onClose={onClose}
+      icon={<Palette size={20} />}
+      title={title}
+      subtitle="The colours of the view and the range of values they cover."
       maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: {
-          ...wizardDialogPaperSx,
-          maxHeight: "92vh",
-        },
-      }}
+      contentSx={{ display: "flex", flexDirection: "column", gap: 2.25, bgcolor: "var(--app-n-50)", pt: 2,
+        "& .MuiTypography-caption": { fontSize: DIALOG_TEXT.note },
+        "& .MuiInputBase-input, & .MuiInputLabel-root": { fontSize: 14.5 } }}
+      footerNote={<Button onClick={handleReset} startIcon={<RotateCcw size={15} />}
+        sx={{ textTransform: "none", borderRadius: 3, fontWeight: 600 }}>Reset to the data's range</Button>}
+      actions={<>
+        <DialogButton onClick={onClose}>Cancel</DialogButton>
+        <DialogButton kind="primary" onClick={handleApply}>Apply</DialogButton>
+      </>}
     >
-      <DialogTitle sx={wizardDialogTitleSx}>
         <Box
           sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Typography
-            component="span"
-            sx={{
-              fontSize: "1rem",
-              fontWeight: 700,
-              color: "inherit",
-            }}
-          >
-            {title}
-          </Typography>
-
-          <IconButton
-            onClick={onClose}
-            size="small"
-            sx={{
-              color: "#e5e7eb",
-              border: "1px solid rgba(255,255,255,0.14)",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              "&:hover": {
-                backgroundColor: "rgba(255,255,255,0.12)",
-                borderColor: "rgba(255,255,255,0.22)",
-              },
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-
-      <DialogContent
-        dividers
-        sx={{
-          ...wizardDialogContentSx,
-          display: "flex",
-          flexDirection: "column",
-          gap: 2.25,
-        }}
-      >
-        <Box
-          sx={{
-            borderRadius: "18px",
-            border: "1px solid rgba(15,23,42,0.10)",
+            borderRadius: 2.5,
+            border: "1px solid rgba(148, 163, 184, 0.45)",
             backgroundColor: "var(--app-n-0)",
             overflow: "hidden",
           }}
@@ -541,48 +463,6 @@ export default function ColorScaleControlDialog({
             </Box>
           </Box>
         </Box>
-      </DialogContent>
-
-      <DialogActions sx={wizardDialogActionsSx}>
-        <Button
-          onClick={handleReset}
-          variant="outlined"
-          sx={{
-            textTransform: "none",
-            borderRadius: "12px",
-            px: 2,
-            fontWeight: 600,
-          }}
-        >
-          Reset
-        </Button>
-
-        <Button
-          onClick={onClose}
-          variant="outlined"
-          sx={{
-            textTransform: "none",
-            borderRadius: "12px",
-            px: 2,
-            fontWeight: 600,
-          }}
-        >
-          Cancel
-        </Button>
-
-        <Button
-          variant="contained"
-          onClick={handleApply}
-          sx={{
-            textTransform: "none",
-            borderRadius: "12px",
-            px: 2.25,
-            fontWeight: 700,
-          }}
-        >
-          Apply
-        </Button>
-      </DialogActions>
-    </Dialog>
+    </DialogFrame>
   );
 }
