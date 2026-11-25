@@ -363,7 +363,7 @@ describe("TiltSeriesViewer", () => {
         );
     });
 
-    it("uses compact analyze-output styling in the column exclusion dialog", async () => {
+    it("uses the web dialog look in the column exclusion dialog", async () => {
         renderViewer();
 
         await expandFirstTiltSeries();
@@ -377,19 +377,16 @@ describe("TiltSeriesViewer", () => {
             name: "Exclude tilt images by Dose",
         });
 
-        expect(dialog).toHaveStyle({ borderRadius: "16px", overflow: "hidden" });
-        expect(title).toHaveStyle({
-            background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
-            fontSize: "0.95rem",
-        });
+        expect(dialog).toHaveStyle({ overflow: "hidden" });
+        expect(title).toHaveStyle({ fontSize: "16px" });
 
         const criterion = within(dialog).getByRole("combobox", { name: "Criterion" });
-        expect(criterion).toHaveStyle({ fontSize: "0.76rem" });
+        expect(criterion).toHaveStyle({ fontSize: "15px" });
 
         fireEvent.mouseDown(criterion);
 
         const firstOption = await screen.findByRole("option", { name: "Greater than" });
-        expect(firstOption).toHaveStyle({ fontSize: "0.76rem", minHeight: "34px" });
+        expect(firstOption).toHaveStyle({ fontSize: "14.5px", minHeight: "36px" });
     });
 
     it("excludes current-series tilt images matching a text column criterion", async () => {

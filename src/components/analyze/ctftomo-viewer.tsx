@@ -14,10 +14,6 @@ import {
   TextField,
   Checkbox,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -34,6 +30,8 @@ import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import toast from "react-hot-toast";
+import { Filter } from "lucide-react";
+import DialogFrame, { DialogButton, DIALOG_TEXT } from "@/components/ui/DialogFrame";
 import { MetadataViewer } from "./metadata-viewer";
 
 type CTFTomoViewerProps = {
@@ -2124,54 +2122,31 @@ export default function CTFTomoViewer({
       </Box>
 
       {criterionColumn && (
-        <Dialog
-          open
+        <DialogFrame
           onClose={handleCloseCriterionDialog}
-          fullWidth
+          busy={criterionBusy}
+          icon={<Filter size={20} />}
+          title={`Exclude CTF views by ${criterionColumn.label}`}
+          subtitle="Matching CTF views are added to the exclusions you are preparing."
           maxWidth="sm"
-          aria-labelledby="ctf-column-exclusion-title"
-          PaperProps={{
-            sx: {
-              width: "min(520px, calc(100vw - 32px))",
-              overflow: "hidden",
-              borderRadius: "16px",
-              border: "1px solid",
-              borderColor: "divider",
-              backgroundImage: "none",
-              boxShadow: "0 24px 64px rgba(15, 23, 42, 0.26), 0 8px 20px rgba(15, 23, 42, 0.12)",
-            },
+          paperSx={{ width: "min(560px, calc(100vw - 32px))" }}
+          contentSx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            pt: 2.25,
+            "& .MuiTypography-body2": { fontSize: DIALOG_TEXT.body, lineHeight: 1.55 },
+            "& .MuiTypography-caption": { fontSize: DIALOG_TEXT.note },
+            "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: DIALOG_TEXT.body },
+            "& .MuiFormControlLabel-label": { fontSize: 14.5 },
           }}
+          actions={<>
+            <DialogButton onClick={handleCloseCriterionDialog} disabled={criterionBusy}>Cancel</DialogButton>
+            <DialogButton kind="primary" onClick={handleApplyColumnCriterion} disabled={criterionBusy || !criterionCanApply}>
+              {criterionBusy ? "Excluding…" : "Exclude"}
+            </DialogButton>
+          </>}
         >
-          <DialogTitle
-            id="ctf-column-exclusion-title"
-            sx={{
-              px: 2.5,
-              py: 1.35,
-              background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
-              color: "#e5e7eb",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-              fontSize: "0.95rem",
-              fontWeight: 800,
-              letterSpacing: 0.15,
-            }}
-          >
-            Exclude CTF views by {criterionColumn.label}
-          </DialogTitle>
-
-          <DialogContent
-            sx={{
-              px: 2.5,
-              pt: "20px !important",
-              pb: 2.25,
-              display: "flex",
-              flexDirection: "column",
-              gap: 1.75,
-              "& .MuiTypography-body2": { fontSize: "0.78rem", lineHeight: 1.55 },
-              "& .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.76rem" },
-              "& .MuiOutlinedInput-root": { borderRadius: "10px" },
-              "& .MuiFormControlLabel-label": { fontSize: "0.76rem" },
-            }}
-          >
             <Typography variant="body2" color="text.secondary">
               Matching CTF views will be added to the current exclusion draft. Changes are only
               used when you generate the subsets.
@@ -2184,8 +2159,8 @@ export default function CTFTomoViewer({
                 label="Criterion"
                 value={criterionOperator}
                 onChange={(event) => setCriterionOperator(event.target.value)}
-                sx={{ fontSize: "0.76rem", borderRadius: "10px" }}
-                SelectDisplayProps={{ style: { fontSize: "0.76rem" } }}
+                sx={{ fontSize: DIALOG_TEXT.body }}
+                SelectDisplayProps={{ style: { fontSize: DIALOG_TEXT.body } }}
                 MenuProps={{
                   PaperProps: {
                     sx: {
@@ -2204,7 +2179,7 @@ export default function CTFTomoViewer({
                         mx: 0.5,
                         minHeight: "34px",
                         borderRadius: "8px",
-                        fontSize: "0.76rem",
+                        fontSize: 14.5,
                       },
                     },
                   },
@@ -2214,7 +2189,7 @@ export default function CTFTomoViewer({
                   <MenuItem
                     key={option.value}
                     value={option.value}
-                    style={{ minHeight: "34px", fontSize: "0.76rem" }}
+                    style={{ minHeight: "36px", fontSize: 14.5 }}
                     sx={{ mx: 0.5, borderRadius: "8px" }}
                   >
                     {option.label}
@@ -2249,7 +2224,7 @@ export default function CTFTomoViewer({
             )}
 
             <FormControl component="fieldset">
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+              <Typography sx={{ mb: 0.25, fontSize: 14, fontWeight: 600, color: "var(--app-n-700)" }}>
                 Apply to
               </Typography>
               <RadioGroup
@@ -2269,38 +2244,7 @@ export default function CTFTomoViewer({
                 />
               </RadioGroup>
             </FormControl>
-          </DialogContent>
-
-          <DialogActions
-            sx={{
-              px: 2.5,
-              py: 1.5,
-              gap: 0.75,
-              borderTop: "1px solid",
-              borderColor: "divider",
-              bgcolor: "action.hover",
-              "& .MuiButton-root": {
-                minWidth: 92,
-                height: 34,
-                borderRadius: "10px",
-                fontSize: "0.74rem",
-                fontWeight: 700,
-                textTransform: "none",
-              },
-            }}
-          >
-            <Button onClick={handleCloseCriterionDialog} disabled={criterionBusy}>
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleApplyColumnCriterion}
-              disabled={criterionBusy || !criterionCanApply}
-            >
-              {criterionBusy ? "Excluding…" : "Exclude"}
-            </Button>
-          </DialogActions>
-        </Dialog>
+        </DialogFrame>
       )}
 
       <Menu
