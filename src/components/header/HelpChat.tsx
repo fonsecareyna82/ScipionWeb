@@ -291,6 +291,7 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState("");
+  const [launching, setLaunching] = useState(true);
   const blocked = card.missing.length > 0;
 
   const toggle = (id: string) => setStops((current) => {
@@ -299,19 +300,21 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
     return next;
   });
 
-  const apply = async () => {
+  const apply = async (launch: boolean) => {
+    setLaunching(launch);
     setState("applying");
     setError(null);
     try {
       const result = await applyHelpAction({
-        action: "template", projectId: card.projectId, protocolId: card.source?.protocolId ?? "",
+        action: "template", projectId: card.projectId, protocolId: card.source?.protocolId ?? "", launch,
         templateId: card.templateId, fromOutput: card.source?.output, anchor: card.anchor ?? undefined,
         links: Object.fromEntries(card.links.filter((link) => link.projectRef).map((link) => [link.templateRef, link.projectRef as string])),
         stops: card.steps.filter((step) => stops.has(step.id)).map((step) => step.id),
         ...(card.fields.length ? { fields } : {}),
       });
       requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
-      setDone(chainResult(result));
+      setDone(launch ? chainResult(result)
+        : `${chainResult({ created: result.created })} Ask me to start it when you want, or launch them from the graph.`);
       setState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The template could not be added");
@@ -386,7 +389,8 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
           ))}
         </ul>
         <div className="mt-1 text-gray-600 dark:text-gray-400">
-          Apply adds them all and launches up to the stops; ask me to go on when you have looked.
+          Add and launch: adds them all and launches up to the stops; ask me to go on when you have looked.
+          Add without launching: adds them, and nothing runs until you ask.
         </div>
       </div>
 
@@ -397,8 +401,12 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
       ) : (
         <div className="mt-2.5 flex flex-wrap gap-2">
-          <button type="button" onClick={() => void apply()} disabled={state === "applying" || blocked} className={PRIMARY_BUTTON}>
-            {state === "applying" ? "Adding…" : "Add and launch"}
+          <button type="button" onClick={() => void apply(true)} disabled={state === "applying" || blocked} className={PRIMARY_BUTTON}>
+            {state === "applying" && launching ? "Adding…" : "Add and launch"}
+          </button>
+          <button type="button" onClick={() => void apply(false)} disabled={state === "applying" || blocked}
+                  className="rounded-full border border-blue-300 px-3.5 py-1.5 text-[14px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
+            {state === "applying" && !launching ? "Adding…" : "Add without launching"}
           </button>
           <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"} className={QUIET_BUTTON}>
             Cancel
@@ -433,7 +441,9 @@ function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "conti
   return (
     <div className={CARD_BOX} data-testid="help-action">
       <div className={CARD_EYEBROW}>Needs your confirmation</div>
-      <div className="mt-0.5 font-semibold">Go on after #{card.protocolId} {card.label}</div>
+      <div className="mt-0.5 font-semibold">
+        {card.protocolId ? `Go on after #${card.protocolId} ${card.label}` : "Start the chain"}
+      </div>
       <div className="text-gray-600 dark:text-gray-400">{card.title}</div>
       {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
       <div className="mt-2 font-medium">Launches now:</div>

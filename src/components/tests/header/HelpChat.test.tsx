@@ -299,7 +299,7 @@ describe("HelpChat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add and launch" }));
     await screen.findByText(/Added 3 protocols \(#150…#152\)\. Launched now: #150, #151/);
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
-      action: "template", projectId: 7, protocolId: "22", templateId: "WH:Workflow 3D cryosparc",
+      action: "template", projectId: 7, protocolId: "22", launch: true, templateId: "WH:Workflow 3D cryosparc",
       fromOutput: "outputParticles", anchor: "8178.outputParticles",
       links: { "8178.outputParticles": "22.outputParticles", "7510.outputCTF": "6.outputCTF" }, stops: ["8268"],
     });
@@ -359,5 +359,20 @@ describe("HelpChat", () => {
     expect(helpMocks.askHelp).toHaveBeenLastCalledWith(
       'Apply the template "Workflow 3D cryosparc" (WH:Workflow 3D cryosparc) from protocol #105 (outputParticles)',
       { projectId: null, protocolId: null }, expect.any(Array));
+  });
+
+  it("adds a template without launching it, and starts it later", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, chainId: 1, created: ["150", "151"], launched: [] });
+    await proposal(TEMPLATE_CARD);
+    fireEvent.click(screen.getByRole("button", { name: "Add without launching" }));
+    await screen.findByText(/Added 2 protocols .*Nothing launched now\. Ask me to start it/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith(expect.objectContaining({ action: "template", launch: false }));
+  });
+
+  it("starts a chain that was only added", async () => {
+    await proposal({ kind: "action", action: "continue", projectId: 7, chainId: 1, protocolId: "", label: "",
+                     title: "Workflow 3D cryosparc from #22", reason: "",
+                     next: [{ protocolId: "150", label: "2D", className: "P", stop: true }] });
+    expect(screen.getByText("Start the chain")).toBeInTheDocument();
   });
 });

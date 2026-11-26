@@ -154,6 +154,8 @@ export type HelpActionApply = {
   links?: Record<string, string>;
   stops?: string[];
   fields?: Record<string, string>;
+  // false: a template only added, to start later
+  launch?: boolean;
   chainId?: number;
 };
 
