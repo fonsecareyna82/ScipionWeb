@@ -70,6 +70,8 @@ export type HelpTemplateCard = {
   templateName: string; source: { protocolId: string; label: string; output: string } | null; anchor: string | null;
   alternatives: string[]; links: HelpTemplateLink[]; missing: string[]; steps: HelpTemplateStep[];
   fields: { alias: string; title: string; value: unknown }[]; reason: string;
+  // Cut so that it adds very little (one or two protocols)
+  few?: boolean;
 };
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)

@@ -326,6 +326,12 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
         Add {card.templateName}{card.source ? ` from #${card.source.protocolId} ${card.source.label}` : ""}
       </div>
       {card.source && <div className="text-gray-600 dark:text-gray-400">Starting from its {card.source.output}.</div>}
+      {card.few && (
+        <div className="mt-1.5 rounded-lg bg-amber-100 px-2.5 py-1.5 font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+          From here this template adds only {card.steps.length === 1 ? "1 protocol" : `${card.steps.length} protocols`}.
+          Ask for the other templates if you expected more.
+        </div>
+      )}
       {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
 
       {card.links.length > 0 && (

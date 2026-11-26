@@ -334,4 +334,9 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "continue", projectId: 7, protocolId: "151",
                                                              chainId: 1 });
   });
+
+  it("warns when a template adds very little from there", async () => {
+    await proposal({ ...TEMPLATE_CARD, few: true, steps: [TEMPLATE_CARD.steps[0]] });
+    expect(screen.getByText(/From here this template adds only 1 protocol/)).toBeInTheDocument();
+  });
 });
