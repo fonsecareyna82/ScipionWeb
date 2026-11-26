@@ -83,7 +83,7 @@ export default function AssistantPanel() {
         setSettings(loaded);
         setDraft({ enabled: loaded.enabled, provider: loaded.provider, baseUrl: loaded.baseUrl, model: loaded.model,
                    mode: loaded.mode || "answer", allowDelete: Boolean(loaded.allowDelete),
-                   dailyLimit: String(loaded.dailyLimit) });
+                   dailyLimit: loaded.dailyLimit > 0 ? String(loaded.dailyLimit) : "" });
         setKey("");
         setRemoveKey(false);
     };
@@ -282,9 +282,11 @@ export default function AssistantPanel() {
                 <SettingsSection icon={<Gauge size={19} />} title="Limit and usage" colors={colors} isDarkMode={isDarkMode}
                                  subtitle="How much each person may ask, and how much has been asked.">
                     <SettingRow colors={colors} title="Questions per person and day" labelFor="assistant-limit"
-                                description="Each question costs money with a paid provider. When someone reaches the limit, the assistant answers them again the next day."
+                                description="With a paid provider each question costs money; with a free one, every person shares the key's own daily quota. When someone reaches the limit, the assistant answers them again the next day. 0 or empty: no limit (for a model your centre runs)."
                                 control={
                                     <TextField id="assistant-limit" sx={{ ...fieldSx, width: 140 }} size="small" value={draft.dailyLimit}
+                                               placeholder="No limit"
+                                               helperText={(Number(draft.dailyLimit) || 0) <= 0 ? "No limit" : undefined}
                                                inputProps={{ inputMode: "numeric" }} onChange={(e) => set({ dailyLimit: e.target.value })} />
                                 } />
                     {settings.usage && (

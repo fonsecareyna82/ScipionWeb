@@ -260,4 +260,11 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "delete", projectId: 7, protocolId: "37",
                                                              confirm: "37" });
   });
+
+  it("says nothing about questions left when there is no limit", async () => {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, dailyLimit: 0 });
+    openChat();
+    await screen.findByText("Answers with AI");
+    expect(screen.queryByText(/left today/)).not.toBeInTheDocument();
+  });
 });

@@ -86,4 +86,15 @@ describe("AssistantPanel", () => {
         await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
         expect(api.saveAssistantSettings.mock.calls[0][0]).toMatchObject({ mode: "propose", allowDelete: true });
     });
+
+    it("shows no limit for 0 and sends 0 when the field is empty", async () => {
+        api.getAssistantSettings.mockResolvedValue({ ...SETTINGS, dailyLimit: 0 });
+        render(<AssistantPanel />);
+        fireEvent.click(await screen.findByRole("button", { name: "Limit and usage" }));
+        expect(screen.getByLabelText("Questions per person and day")).toHaveValue("");
+        expect(screen.getAllByText("No limit").length).toBeGreaterThan(0);
+        fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
+        await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
+        expect(api.saveAssistantSettings.mock.calls[0][0].dailyLimit).toBe(0);
+    });
 });
