@@ -55,7 +55,22 @@ export type HelpActionCard =
       status: string; changes: HelpChange[]; reason: string }
   | { kind: "action"; action: "delete"; projectId: number; protocolId: string; label: string; className: string;
       status: string; outputs: { name: string; type: string; size: number | null }[];
-      children: { protocolId: string; label: string; status: string }[]; reason: string };
+      children: { protocolId: string; label: string; status: string }[]; reason: string }
+  | HelpTemplateCard
+  | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
+      title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
+      reason: string };
+
+// A template to add: whole (fields to fill) or cut from an output of protocolId, linked to the project
+export type HelpTemplateLink = { templateRef: string; templateClass: string; projectRef: string | null; how: string;
+  projectLabel: string };
+export type HelpTemplateStep = { id: string; className: string; label: string; keyStep: string | null; stop: boolean };
+export type HelpTemplateCard = {
+  kind: "action"; action: "template"; projectId: number; protocolId: string; label: string; templateId: string;
+  templateName: string; source: { protocolId: string; label: string; output: string } | null; anchor: string | null;
+  alternatives: string[]; links: HelpTemplateLink[]; missing: string[]; steps: HelpTemplateStep[];
+  fields: { alias: string; title: string; value: unknown }[]; reason: string;
+};
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
 export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number };
@@ -115,7 +130,7 @@ export type AssistantSettings = {
 
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
-  action: "relaunch" | "stop" | "duplicate" | "delete";
+  action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -123,11 +138,20 @@ export type HelpActionApply = {
   changes?: Record<string, unknown>;
   // A delete is confirmed by writing the protocol's number
   confirm?: string;
+  // A template: which, from which output, its links, the template ids it stops after and its fields
+  templateId?: string;
+  fromOutput?: string;
+  anchor?: string;
+  links?: Record<string, string>;
+  stops?: string[];
+  fields?: Record<string, string>;
+  chainId?: number;
 };
 
 // Runs what the user confirmed; checked again on the server with the user's permissions
 export const applyHelpAction = (payload: HelpActionApply) =>
-  request<{ ok: boolean; newProtocolId?: string }>("/help-chat/actions/apply", "The action could not be applied",
+  request<{ ok: boolean; newProtocolId?: string; chainId?: number; created?: string[]; launched?: string[];
+            errors?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"

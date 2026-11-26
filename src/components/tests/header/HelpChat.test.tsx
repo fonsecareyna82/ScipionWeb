@@ -267,4 +267,71 @@ describe("HelpChat", () => {
     await screen.findByText("Answers with AI");
     expect(screen.queryByText(/left today/)).not.toBeInTheDocument();
   });
+
+  const TEMPLATE_CARD = {
+    kind: "action", action: "template", projectId: 7, protocolId: "22", label: "extract",
+    templateId: "WH:Workflow 3D cryosparc", templateName: "Workflow 3D cryosparc",
+    source: { protocolId: "22", label: "extract", output: "outputParticles" }, anchor: "8178.outputParticles",
+    alternatives: ["8178.outputParticles"], reason: "",
+    links: [
+      { templateRef: "8178.outputParticles", templateClass: "XmippProtExtractParticles", projectRef: "22.outputParticles",
+        how: "the source", projectLabel: "extract" },
+      { templateRef: "7510.outputCTF", templateClass: "XmippProtCTFConsensus", projectRef: "6.outputCTF",
+        how: "an earlier step of the source", projectLabel: "ctf consensus" },
+    ],
+    missing: [], fields: [],
+    steps: [
+      { id: "8268", className: "ProtCryo2D", label: "cryosparc 2D", keyStep: "2D classes", stop: true },
+      { id: "8550", className: "ProtCryoSparcInitialModel", label: "initial model", keyStep: "initial model", stop: true },
+      { id: "9265", className: "ProtCryoSparcNewNonUniformRefine3D", label: "NU refine", keyStep: null, stop: false },
+    ],
+  };
+
+  it("adds a template from the project's particles, with the stops chosen", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, chainId: 1, created: ["150", "151", "152"],
+                                                  launched: ["150", "151"], errors: [] });
+    await proposal(TEMPLATE_CARD);
+    expect(screen.getByText("Add Workflow 3D cryosparc from #22 extract")).toBeInTheDocument();
+    expect(screen.getByText("#6")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Stop after cryosparc 2D" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Stop after NU refine" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Stop after initial model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add and launch" }));
+    await screen.findByText(/Added 3 protocols \(#150…#152\)\. Launched now: #150, #151/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
+      action: "template", projectId: 7, protocolId: "22", templateId: "WH:Workflow 3D cryosparc",
+      fromOutput: "outputParticles", anchor: "8178.outputParticles",
+      links: { "8178.outputParticles": "22.outputParticles", "7510.outputCTF": "6.outputCTF" }, stops: ["8268"],
+    });
+  });
+
+  it("does not add a template while something it needs is missing", async () => {
+    await proposal({ ...TEMPLATE_CARD, missing: ["7510.outputCTF"],
+                     links: [{ ...TEMPLATE_CARD.links[1], projectRef: null, projectLabel: "" }] });
+    expect(screen.getByText("nothing found")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add and launch" })).toBeDisabled();
+  });
+
+  it("sends a whole template's values", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, created: ["150"], launched: ["150"] });
+    await proposal({ ...TEMPLATE_CARD, source: null, protocolId: "", label: "", anchor: null, links: [],
+                     fields: [{ alias: "moviesPath", title: "Movies folder", value: "/data" }] });
+    fireEvent.change(screen.getByLabelText("Movies folder"), { target: { value: "/data/session7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add and launch" }));
+    await waitFor(() => expect(helpMocks.applyHelpAction).toHaveBeenCalledWith(expect.objectContaining({
+      protocolId: "", fields: { moviesPath: "/data/session7" } })));
+  });
+
+  it("goes on with a chain after a stop", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, launched: ["152"], errors: [] });
+    await proposal({ kind: "action", action: "continue", projectId: 7, chainId: 1, protocolId: "151",
+                     label: "initial model", title: "Workflow 3D cryosparc from #22", reason: "",
+                     next: [{ protocolId: "152", label: "3D classes", className: "P", stop: true }] });
+    expect(screen.getByText("Go on after #151 initial model")).toBeInTheDocument();
+    expect(screen.getByText("stops after it")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch them" }));
+    await screen.findByText(/Launched now: #152/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "continue", projectId: 7, protocolId: "151",
+                                                             chainId: 1 });
+  });
 });

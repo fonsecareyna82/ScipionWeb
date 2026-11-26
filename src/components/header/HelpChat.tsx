@@ -4,7 +4,7 @@ import { BookOpen, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestion
 
 import {
   applyHelpAction, askHelp, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
-  type HelpLogPlace, type HelpRelaunchMode, type HelpTurn,
+  type HelpLogPlace, type HelpRelaunchMode, type HelpTemplateCard, type HelpTurn,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
@@ -263,7 +263,202 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 };
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
-function ActionCard({ card }: { card: HelpActionCard }) {
+type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" }>;
+
+const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
+const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
+const PRIMARY_BUTTON = "rounded-full bg-blue-600 px-3.5 py-1.5 text-[14px] font-medium text-white hover:bg-blue-700 disabled:opacity-50";
+const QUIET_BUTTON = "rounded-full px-3.5 py-1.5 text-[14px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800";
+
+function shortClass(className: string) {
+  return className.replace(/^Prot/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/** What applying a chain did: the protocols added and the ones launched now. */
+function chainResult(result: { created?: string[]; launched?: string[]; errors?: string[] }) {
+  const parts = [];
+  if (result.created?.length) parts.push(`Added ${result.created.length} protocols (#${result.created[0]}…#${result.created[result.created.length - 1]}).`);
+  parts.push(result.launched?.length ? `Launched now: ${result.launched.map((id) => `#${id}`).join(", ")}; they run as their inputs are ready.` : "Nothing launched now.");
+  if (result.errors?.length) parts.push(`Could not launch: ${result.errors.join("; ")}`);
+  return parts.join(" ");
+}
+
+/** A template to add, whole or from an output of the project: what it links to, where it stops, and its fields. */
+function TemplateCard({ card }: { card: HelpTemplateCard }) {
+  const [stops, setStops] = useState<Set<string>>(() => new Set(card.steps.filter((step) => step.stop).map((step) => step.id)));
+  const [fields, setFields] = useState<Record<string, string>>(
+    () => Object.fromEntries(card.fields.map((field) => [field.alias, String(field.value ?? "")])));
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState("");
+  const blocked = card.missing.length > 0;
+
+  const toggle = (id: string) => setStops((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({
+        action: "template", projectId: card.projectId, protocolId: card.source?.protocolId ?? "",
+        templateId: card.templateId, fromOutput: card.source?.output, anchor: card.anchor ?? undefined,
+        links: Object.fromEntries(card.links.filter((link) => link.projectRef).map((link) => [link.templateRef, link.projectRef as string])),
+        stops: card.steps.filter((step) => stops.has(step.id)).map((step) => step.id),
+        ...(card.fields.length ? { fields } : {}),
+      });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setDone(chainResult(result));
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The template could not be added");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">
+        Add {card.templateName}{card.source ? ` from #${card.source.protocolId} ${card.source.label}` : ""}
+      </div>
+      {card.source && <div className="text-gray-600 dark:text-gray-400">Starting from its {card.source.output}.</div>}
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+
+      {card.links.length > 0 && (
+        <div className="mt-2">
+          <div className="font-medium">Takes from your project</div>
+          <ul className="mt-0.5 space-y-0.5">
+            {card.links.map((link) => (
+              <li key={link.templateRef} className={link.projectRef ? "" : "text-red-700 dark:text-red-300"}>
+                {shortClass(link.templateClass)} {link.templateRef.split(".").slice(1).join(".")}:{" "}
+                {link.projectRef
+                  ? <><strong>#{link.projectRef.split(".")[0]}</strong> {link.projectLabel}</>
+                  : <strong>nothing found</strong>}
+              </li>
+            ))}
+          </ul>
+          {blocked && (
+            <div className="mt-1 text-red-700 dark:text-red-300">
+              Ask the assistant which protocol to use for what is missing.
+            </div>
+          )}
+        </div>
+      )}
+
+      {card.fields.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          <div className="font-medium">Its values</div>
+          {card.fields.map((field) => (
+            <label key={field.alias} className="block">
+              <span className="text-gray-700 dark:text-gray-300">{field.title}</span>
+              <input value={fields[field.alias] ?? ""} disabled={state !== "open"}
+                     onChange={(event) => setFields((current) => ({ ...current, [field.alias]: event.target.value }))}
+                     className="mt-0.5 block w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-[14.5px] outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950" />
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-2">
+        <div className="font-medium">{card.steps.length} protocols. It stops after the ticked ones for you to look:</div>
+        <ul className="mt-1 max-h-60 space-y-0.5 overflow-y-auto rounded-lg border border-amber-200 bg-white/70 p-1.5 dark:border-amber-900 dark:bg-gray-950/40">
+          {card.steps.map((step) => (
+            <li key={step.id}>
+              <label className="flex items-start gap-2">
+                <input type="checkbox" className="mt-1" checked={stops.has(step.id)} disabled={state !== "open"}
+                       onChange={() => toggle(step.id)} aria-label={`Stop after ${step.label || step.className}`} />
+                <span className="min-w-0">
+                  {step.label || shortClass(step.className)}
+                  {step.keyStep && <span className="ml-1.5 text-[13.5px] text-amber-700 dark:text-amber-300">{step.keyStep}</span>}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-1 text-gray-600 dark:text-gray-400">
+          Apply adds them all and launches up to the stops; ask me to go on when you have looked.
+        </div>
+      </div>
+
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void apply()} disabled={state === "applying" || blocked} className={PRIMARY_BUTTON}>
+            {state === "applying" ? "Adding…" : "Add and launch"}
+          </button>
+          <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"} className={QUIET_BUTTON}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Going on with a chain after a stop: what runs now. */
+function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "continue" }> }) {
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState("");
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({ action: "continue", projectId: card.projectId, protocolId: card.protocolId,
+                                             chainId: card.chainId });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setDone(chainResult(result));
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The chain could not go on");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">Go on after #{card.protocolId} {card.label}</div>
+      <div className="text-gray-600 dark:text-gray-400">{card.title}</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <div className="mt-2 font-medium">Launches now:</div>
+      <ul className="mt-0.5 list-disc space-y-0.5 pl-5">
+        {card.next.map((item) => (
+          <li key={item.protocolId}>
+            #{item.protocolId} {item.label || shortClass(item.className)}
+            {item.stop && <span className="ml-1.5 text-[13.5px] text-amber-700 dark:text-amber-300">stops after it</span>}
+          </li>
+        ))}
+      </ul>
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void apply()} disabled={state === "applying"} className={PRIMARY_BUTTON}>
+            {state === "applying" ? "Launching…" : "Launch them"}
+          </button>
+          <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"} className={QUIET_BUTTON}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionCard({ card }: { card: SimpleActionCard }) {
   const [mode, setMode] = useState<HelpRelaunchMode>(card.action === "relaunch" ? card.mode : "restart");
   const [scope, setScope] = useState<"single" | "all" | null>(null);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
@@ -488,7 +683,10 @@ function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: strin
             </div>
           </>
         )}
-        {answer.cards.map((card, index) => card.kind === "action" ? <ActionCard key={index} card={card} /> : null)}
+        {answer.cards.map((card, index) => card.kind !== "action" ? null
+          : card.action === "template" ? <TemplateCard key={index} card={card} />
+            : card.action === "continue" ? <ContinueCard key={index} card={card} />
+              : <ActionCard key={index} card={card} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
     );
