@@ -2280,6 +2280,88 @@ describe("MetadataViewer", () => {
             });
         });
 
+        function mockClassesWithSize() {
+            mockClassImages(2);
+            serviceMocks.fetchMetadataTableSchema.mockResolvedValue({
+                name: "objects",
+                alias: "Class2D",
+                hasColumnId: true,
+                columns: [
+                    { name: "id", alias: "Id", index: 0, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                    { name: "preview", alias: "Preview", index: 1, sortable: false, visible: true, rendererType: "image", decimals: 0, hasTransformation: false },
+                    { name: "_size", alias: "Size", index: 2, sortable: true, visible: true, rendererType: "int", decimals: 0, hasTransformation: false },
+                ],
+                actions: [],
+            });
+        }
+
+        it("opens 2D classes as a gallery, the biggest classes first", async () => {
+            mockClassesWithSize();
+            renderClassViewer("SetOfClasses2D");
+
+            await waitFor(() => {
+                expect(screen.getByRole("button", { name: "Gallery view" })).toHaveAttribute("aria-pressed", "true");
+            });
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects", expect.objectContaining({ sortBy: "_size", asc: false }),
+                );
+            });
+
+            // Not remembered: the user's choice holds while the viewer is open
+            serviceMocks.fetchMetadataTableWindow.mockClear();
+            fireEvent.click(screen.getByRole("button", { name: "Table view" }));
+            expect(screen.getByRole("button", { name: "Table view" })).toHaveAttribute("aria-pressed", "true");
+            // The table keeps the order
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledWith(
+                    1, 2, "outputClasses", "objects", expect.objectContaining({ sortBy: "_size", asc: false }),
+                );
+            });
+        });
+
+        it("keeps 3D classes in the table, in their own order", async () => {
+            mockClassesWithSize();
+            renderClassViewer("SetOfClasses3D");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: "Table view" })).toHaveAttribute("aria-pressed", "true");
+            expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalledWith(
+                1, 2, "outputClasses", "objects", expect.objectContaining({ sortBy: undefined }),
+            );
+            expect(serviceMocks.fetchMetadataTableWindow).not.toHaveBeenCalledWith(
+                1, 2, "outputClasses", "objects", expect.objectContaining({ sortBy: "_size" }),
+            );
+        });
+
+        it("asks for no rows once closed while switching to the table", async () => {
+            mockClassesWithSize();
+            const view = renderClassViewer("SetOfClasses2D");
+            await waitFor(() => {
+                expect(screen.getByRole("button", { name: "Gallery view" })).toHaveAttribute("aria-pressed", "true");
+            });
+
+            serviceMocks.fetchMetadataTableWindow.mockClear();
+            fireEvent.click(screen.getByRole("button", { name: "Table view" }));
+            await waitFor(() => {
+                expect(serviceMocks.fetchMetadataTableWindow).toHaveBeenCalled();
+            });
+            view.unmount();
+            serviceMocks.fetchMetadataTableWindow.mockClear();
+            // The table waits two frames before going back to its first row
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            expect(serviceMocks.fetchMetadataTableWindow).not.toHaveBeenCalled();
+        });
+
+        it("lets the images be zoomed without picking one first", async () => {
+            mockClassImages(2);
+            renderClassViewer("SetOfParticles");
+
+            expect(await screen.findByAltText("/classes/class-1.mrcs")).toBeInTheDocument();
+            expect(screen.getByLabelText("Zoom")).toBeEnabled();
+        });
+
         it("uses automatic Enhanced for the high-resolution class preview", async () => {
             mockClassImages();
             renderClassViewer("SetOfClasses2D");

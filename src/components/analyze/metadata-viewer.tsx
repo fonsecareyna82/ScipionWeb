@@ -1468,6 +1468,7 @@ function useIsMountedRef() {
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
@@ -3565,6 +3566,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     direction: "asc",
   });
 
+  // 2D classes (and averages) open as a gallery, the biggest classes first: what is looked at
+  // and picked there are the images, not their numbers. Not remembered once changed.
+  const outputClass = String(outputClassName ?? "").trim();
+  const opensAsGallery = /^(SetOfClasses2D|SetOfAverages)$/i.test(outputClass);
+  const opensBySize = /^SetOfClasses2D$/i.test(outputClass);
+  const openingDefaultsAppliedRef = useRef<string | null>(null);
+
   const sortBy = sortState.columnName;
   const sortAsc = sortState.direction === "asc";
 
@@ -3731,10 +3739,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
 
   const imageColMinWidth = useMemo(() => imageThumbSize + IMAGE_COL_PADDING, [imageThumbSize]);
 
-  const zoomEnabled = useMemo(() => {
-    if (!hasImageColumns) return false;
-    return selectedImageCell != null;
-  }, [hasImageColumns, selectedImageCell]);
+  // With no image picked, the zoom keeps what is in the middle of the gallery in view
+  const zoomEnabled = hasImageColumns;
 
   const applyZoomPercent = useCallback((value: number, immediate = false) => {
     const nextZoomPercent = clampZoomPercent(value);
@@ -3846,6 +3852,26 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     }
   }, [viewMode, hasImageColumns]);
 
+  useEffect(() => {
+    // openingDefaults: once the classes' table is known, each time it is opened
+    if (!schema || selectedTable !== "objects" || (!opensAsGallery && !opensBySize)) return;
+    const key = [projectId, protocolId, outputName, selectedTable].join("|");
+    if (openingDefaultsAppliedRef.current === key) return;
+    openingDefaultsAppliedRef.current = key;
+    if (opensBySize && allColumns.some((column) => column.name === "_size" && column.sortable)) {
+      setSortState({ columnName: "_size", direction: "desc" });
+    }
+    if (opensAsGallery && hasImageColumns) {
+      setViewMode("gallery");
+    }
+  }, [schema, selectedTable, opensAsGallery, opensBySize, projectId, protocolId, outputName, allColumns, hasImageColumns]);
+
+  useEffect(() => {
+    // A table opened again gets its opening defaults again
+    if (openingDefaultsAppliedRef.current?.endsWith(`|${selectedTable}`)) return;
+    openingDefaultsAppliedRef.current = null;
+  }, [selectedTable]);
+
   const desiredWindowSize = useMemo(() => {
     if (!rowHeight || viewportHeight <= 0) {
       return MIN_TABLE_WINDOW_ROWS;
@@ -3911,16 +3937,27 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
   });
 
   const lastImageThumbSizeRef = useRef(imageThumbSize);
+  // The gallery card in the middle of the view before a zoom, to keep it there after it
+  const galleryMiddleIndexRef = useRef<number | null>(null);
+  if (imageThumbSize === lastImageThumbSizeRef.current && galleryLayout.height > 0) {
+    const middleRow = Math.floor((galleryLayout.logicalTop + galleryLayout.height / 2) / galleryLayout.cardHeight);
+    galleryMiddleIndexRef.current = Math.min(Math.max(0, totalRows - 1), middleRow * galleryLayout.columns);
+  }
 
   useEffect(() => {
     if (lastImageThumbSizeRef.current === imageThumbSize) return;
     lastImageThumbSizeRef.current = imageThumbSize;
 
-    if (focusedRowIndex == null) return;
+    if (focusedRowIndex == null) {
+      if (viewMode === "gallery" && galleryMiddleIndexRef.current != null) {
+        setGalleryAnchorRowIndex(galleryMiddleIndexRef.current);
+      }
+      return;
+    }
 
     if (viewMode === "table") {
       window.requestAnimationFrame(() => {
-        jumpToRowIndex(focusedRowIndex);
+        if (isMountedRef.current) jumpToRowIndex(focusedRowIndex);
       });
       return;
     }
@@ -3928,7 +3965,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     if (viewMode === "gallery") {
       setGalleryAnchorRowIndex(focusedRowIndex);
     }
-  }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode]);
+  }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode, isMountedRef]);
 
 
   useEffect(() => {
@@ -4359,6 +4396,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
     if (viewMode === "table") {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
+          // A viewer closed in between must not ask for rows any more
+          if (!isMountedRef.current) return;
           if (focusedRowIndex != null) {
             jumpToRowIndex(focusedRowIndex);
             return;
@@ -4373,7 +4412,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
         });
       });
     }
-  }, [viewMode, focusedRowIndex, jumpToRowIndex]);
+  }, [viewMode, focusedRowIndex, jumpToRowIndex, isMountedRef]);
 
 
   const focusRowAfterSelection = useCallback(
@@ -5337,6 +5376,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             <span>
               <IconButton
                 size="small"
+                aria-label="Table view"
+                aria-pressed={viewMode === "table"}
                 color={viewMode === "table" ? "primary" : "default"}
                 onClick={() => setViewMode("table")}
               >
@@ -5355,6 +5396,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, outputClassN
             <span>
               <IconButton
                 size="small"
+                aria-label="Gallery view"
+                aria-pressed={viewMode === "gallery"}
                 color={viewMode === "gallery" ? "primary" : "default"}
                 disabled={!hasImageColumns}
                 onClick={() => {
