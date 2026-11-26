@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookOpen, Bot, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
+import { BookOpen, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
   SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
 
 import {
@@ -51,10 +51,15 @@ function whereOf(card: SearchCard) {
   return "Protocol";
 }
 
+// Scipion's helmet, the web's own logo (as in the sidebar)
+const LOGO = "/images/logo/scipion_icon.png";
+const LOGO_WHITE = "/images/logo/scipion_icon_white.png";
+
 function Avatar() {
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
-      <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <img src={LOGO} alt="" aria-hidden="true" className="h-5 w-5 object-contain dark:hidden" />
+      <img src={LOGO_WHITE} alt="" aria-hidden="true" className="hidden h-5 w-5 object-contain dark:block" />
     </div>
   );
 }
@@ -604,7 +609,7 @@ export default function HelpChat() {
           {/* The header of the web's dialogs and forms (DialogFrame) */}
           <header className="flex items-center gap-3 bg-[#333d49] px-4 py-3.5 text-white">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10">
-              <Bot className="h-5 w-5" aria-hidden="true" />
+              <img src={LOGO_WHITE} alt="" aria-hidden="true" className="h-6 w-6 object-contain" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-[16px] font-semibold">
