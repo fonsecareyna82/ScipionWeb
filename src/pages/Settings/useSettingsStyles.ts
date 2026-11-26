@@ -120,6 +120,8 @@ export function useSettingsStyles(isDarkMode: boolean, fontSizes: SettingsFontSi
       bgcolor: "transparent",
       "& .MuiTab-root": {
         minHeight: 46,
+        minWidth: 0,
+        px: 1.75,
         fontSize: 14,
         textTransform: "none",
         fontWeight: 800,

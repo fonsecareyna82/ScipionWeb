@@ -136,7 +136,7 @@ const defaultInstanceSettings:
 };
 
 // Wide enough for every tab in one row (and the wide tables of Users, Audit and Disk usage)
-const wrapperMaxWidth = 1400;
+const wrapperMaxWidth = 1640;
 
 function clampNumber(value: unknown, fallback: number, min?: number, max?: number): number {
   // clampNumber
