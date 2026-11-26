@@ -404,4 +404,36 @@ describe("HelpChat", () => {
     expect(helpMocks.downloadReport).toHaveBeenCalledWith({ projectId: 7, format: "pdf", protocolId: "37" });
     click.mockRestore();
   });
+
+  it("shows protocols side by side", async () => {
+    await proposal({ kind: "comparison", projectId: 7, same: 9, inputs: {},
+      protocols: [{ protocolId: "10", label: "cryolo", protocol: "cryolo picking", className: "P", status: "finished", minutes: 4.5 },
+                  { protocolId: "16", label: "cryolo", protocol: "cryolo picking", className: "P", status: "finished", minutes: null }],
+      parameters: [{ name: "conservPickVar", label: "Confidence threshold", section: "Input", values: { "10": "0.3", "16": "0.4" } }],
+      outputs: [{ output: "outputCoordinates (SetOfCoordinates)", sizes: { "10": 3487, "16": 3885 } },
+                { output: "boxsize (Integer)", sizes: { "10": null, "16": null } }] });
+    const table = screen.getByTestId("help-comparison");
+    expect(table).toHaveTextContent("Confidence threshold");
+    expect(table).toHaveTextContent("0.3");
+    expect(table).toHaveTextContent(/3[,.]?885/);
+    expect(table).toHaveTextContent("finished · 4.5 min");
+    expect(table).not.toHaveTextContent("boxsize");
+    expect(table).toHaveTextContent("9 other parameters are the same");
+  });
+
+  it("makes a subset by values with the name chosen", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, kept: 9, total: 12 });
+    await proposal({ kind: "action", action: "subset", projectId: 7, protocolId: "5", label: "ctffind",
+                     outputName: "outputCTF", table: "objects", makes: "CTFModel", actions: ["CTFModel"],
+                     conditions: [{ column: "_resolution", op: "<", value: "3.4" }], total: 12, kept: 9, removed: 3,
+                     examples: [], name: "subset of outputCTF", reason: "" });
+    expect(screen.getByText("Keeps 9 of 12")).toBeInTheDocument();
+    expect(screen.getByText("_resolution < 3.4")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Name of the subset"), { target: { value: "good CTFs" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create subset" }));
+    await screen.findByText("Subset made: it keeps 9 of 12.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
+      action: "subset", projectId: 7, protocolId: "5", outputName: "outputCTF", table: "objects",
+      conditions: [{ column: "_resolution", op: "<", value: "3.4" }], makes: "CTFModel", name: "good CTFs" });
+  });
 });

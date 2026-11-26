@@ -39,7 +39,19 @@ export type HelpCard =
   | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] }
   | HelpTemplateOptions
   | HelpReportCard
+  | HelpComparisonCard
   | HelpActionCard;
+
+// Protocols side by side: the parameters that differ, the outputs' sizes, how long each ran
+export type HelpComparisonCard = {
+  kind: "comparison"; projectId: number;
+  protocols: { protocolId: string; label: string; protocol: string; className: string; status: string;
+               minutes: number | null }[];
+  parameters: { name: string; label: string; section: string; values: Record<string, string> }[];
+  same: number;
+  inputs: Record<string, string[]>;
+  outputs: { output: string; sizes: Record<string, number | null> }[];
+};
 
 // The processing report of a project (or of what led to one protocol), to download
 export type HelpReportCard = { kind: "report"; projectId: number; protocolId: string; project: string; protocols: number };
@@ -68,9 +80,18 @@ export type HelpActionCard =
       status: string; outputs: { name: string; type: string; size: number | null }[];
       children: { protocolId: string; label: string; status: string }[]; reason: string }
   | HelpTemplateCard
+  | HelpSubsetCard
   | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
       title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
       reason: string };
+
+// A subset of an output kept by its values, made with the viewer's own action when applied
+export type HelpSubsetCondition = { column: string; op: string; value: unknown };
+export type HelpSubsetCard = {
+  kind: "action"; action: "subset"; projectId: number; protocolId: string; label: string; outputName: string;
+  table: string; conditions: HelpSubsetCondition[]; makes: string; actions: string[]; total: number; kept: number;
+  removed: number; examples: Record<string, unknown>[]; name: string; reason: string;
+};
 
 // A template to add: whole (fields to fill) or cut from an output of protocolId, linked to the project
 export type HelpTemplateLink = { templateRef: string; templateClass: string; projectRef: string | null; how: string;
@@ -147,7 +168,7 @@ export type AssistantSettings = {
 
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
-  action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue";
+  action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -164,13 +185,19 @@ export type HelpActionApply = {
   fields?: Record<string, string>;
   // false: a template only added, to start later
   launch?: boolean;
+  // A subset: the output, its table, what to keep, what it makes and its name
+  outputName?: string;
+  table?: string;
+  conditions?: HelpSubsetCondition[];
+  makes?: string;
+  name?: string;
   chainId?: number;
 };
 
 // Runs what the user confirmed; checked again on the server with the user's permissions
 export const applyHelpAction = (payload: HelpActionApply) =>
   request<{ ok: boolean; newProtocolId?: string; chainId?: number; created?: string[]; launched?: string[];
-            errors?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
+            errors?: string[]; kept?: number; total?: number }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"

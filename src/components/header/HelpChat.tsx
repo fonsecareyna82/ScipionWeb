@@ -4,7 +4,8 @@ import { BookOpen, ChevronDown, FileText, CircleAlert, ExternalLink, MessageCirc
 
 import {
   applyHelpAction, askHelp, downloadReport, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
-  type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpTemplateCard, type HelpTemplateOptions,
+  type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
+  type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions,
   type HelpTurn,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -270,7 +271,7 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 };
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
-type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" }>;
+type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -420,6 +421,116 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+const conditionText = (condition: HelpSubsetCondition) => `${condition.column} ${condition.op} ${valueText(condition.value)}`;
+
+/** A subset of an output kept by its values: how many stay, and the name of the new subset. */
+function SubsetCard({ card }: { card: HelpSubsetCard }) {
+  const [name, setName] = useState(card.name);
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState("");
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({
+        action: "subset", projectId: card.projectId, protocolId: card.protocolId, outputName: card.outputName,
+        table: card.table, conditions: card.conditions, makes: card.makes, name: name.trim() || card.name,
+      });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setDone(`Subset made: it keeps ${result.kept ?? card.kept} of ${result.total ?? card.total}.`);
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The subset could not be made");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">Subset of #{card.protocolId} {card.label}, {card.outputName}</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <div className="mt-2">
+        <span className="font-medium">Keeps the ones with </span>
+        {card.conditions.map((condition, index) => (
+          <span key={index}>{index > 0 && " and "}<code className="rounded bg-white/70 px-1 font-mono text-[13.5px] dark:bg-gray-900">{conditionText(condition)}</code></span>
+        ))}
+      </div>
+      <div className="mt-1.5 text-[15px] font-semibold">
+        Keeps {card.kept.toLocaleString()} of {card.total.toLocaleString()}
+        <span className="font-normal text-gray-600 dark:text-gray-400"> ({card.removed.toLocaleString()} left out)</span>
+      </div>
+      <div className="mt-0.5 text-gray-600 dark:text-gray-400">
+        It makes a new subset of {card.makes}; the output it comes from stays as it is.
+      </div>
+      <label className="mt-2 block">
+        <span className="text-gray-700 dark:text-gray-300">Name of the subset</span>
+        <input value={name} disabled={state !== "open"} onChange={(event) => setName(event.target.value)}
+               className="mt-0.5 block w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-[14.5px] outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950" />
+      </label>
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void apply()} disabled={state === "applying"} className={PRIMARY_BUTTON}>
+            {state === "applying" ? "Making it…" : "Create subset"}
+          </button>
+          <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"} className={QUIET_BUTTON}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Protocols side by side: the parameters that differ, their outputs and how long they ran. */
+function ComparisonCard({ card }: { card: HelpComparisonCard }) {
+  const ids = card.protocols.map((protocol) => protocol.protocolId);
+  const cell = "border-t border-gray-200 px-2 py-1 align-top dark:border-gray-700";
+  return (
+    <div className="mt-2 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700" data-testid="help-comparison">
+      <table className="w-full border-collapse text-left text-[13.5px]">
+        <thead className="bg-gray-50 dark:bg-gray-800/60">
+          <tr>
+            <th className="px-2 py-1.5 font-medium text-gray-500 dark:text-gray-400"> </th>
+            {card.protocols.map((protocol) => (
+              <th key={protocol.protocolId} className="px-2 py-1.5 font-semibold text-gray-900 dark:text-gray-100">
+                #{protocol.protocolId}
+                <span className="block font-normal text-gray-500 dark:text-gray-400">{protocol.status}
+                  {protocol.minutes != null ? ` · ${protocol.minutes} min` : ""}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {card.parameters.map((parameter) => (
+            <tr key={parameter.name}>
+              <td className={`${cell} text-gray-600 dark:text-gray-400`}>{parameter.label}</td>
+              {ids.map((pid) => <td key={pid} className={`${cell} font-medium`}>{parameter.values[pid] || "–"}</td>)}
+            </tr>
+          ))}
+          {card.outputs.filter((output) => ids.some((pid) => output.sizes[pid] != null)).map((output) => (
+            <tr key={output.output}>
+              <td className={`${cell} text-gray-600 dark:text-gray-400`}>{output.output}</td>
+              {ids.map((pid) => <td key={pid} className={`${cell} tabular-nums`}>
+                {output.sizes[pid] != null ? output.sizes[pid]!.toLocaleString() : "–"}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="border-t border-gray-200 px-2 py-1.5 text-[13.5px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        {card.parameters.length === 0 ? "Every parameter is the same" : `${card.same} other parameters are the same`}
+      </div>
     </div>
   );
 }
@@ -791,9 +902,12 @@ function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: strin
         {answer.cards.map((card, index) => card.kind === "templates"
           ? <TemplateOptions key={`t${index}`} card={card} onAsk={onAsk} /> : null)}
         {answer.cards.map((card, index) => card.kind === "report" ? <ReportCard key={`r${index}`} card={card} /> : null)}
+        {answer.cards.map((card, index) => card.kind === "comparison"
+          ? <ComparisonCard key={`c${index}`} card={card} /> : null)}
         {answer.cards.map((card, index) => card.kind !== "action" ? null
           : card.action === "template" ? <TemplateCard key={index} card={card} />
             : card.action === "continue" ? <ContinueCard key={index} card={card} />
+            : card.action === "subset" ? <SubsetCard key={index} card={card} />
               : <ActionCard key={index} card={card} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
