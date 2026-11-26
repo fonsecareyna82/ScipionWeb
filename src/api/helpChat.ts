@@ -50,7 +50,12 @@ export type HelpActionCard =
   | { kind: "action"; action: "stop"; projectId: number; protocolId: string; label: string; className: string;
       status: string; reason: string }
   | { kind: "action"; action: "next"; projectId: number; protocolId: string; label: string; nextClassName: string;
-      nextLabel: string; reason: string };
+      nextLabel: string; reason: string }
+  | { kind: "action"; action: "duplicate"; projectId: number; protocolId: string; label: string; className: string;
+      status: string; changes: HelpChange[]; reason: string }
+  | { kind: "action"; action: "delete"; projectId: number; protocolId: string; label: string; className: string;
+      status: string; outputs: { name: string; type: string; size: number | null }[];
+      children: { protocolId: string; label: string; status: string }[]; reason: string };
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
 export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number };
@@ -100,6 +105,7 @@ export type AssistantSettings = {
   model: string;
   mode: string;
   modes?: string[];
+  allowDelete?: boolean;
   dailyLimit: number;
   keySet: boolean;
   ready: boolean;
@@ -109,21 +115,23 @@ export type AssistantSettings = {
 
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
-  action: "relaunch" | "stop";
+  action: "relaunch" | "stop" | "duplicate" | "delete";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
   scope?: "single" | "all";
   changes?: Record<string, unknown>;
+  // A delete is confirmed by writing the protocol's number
+  confirm?: string;
 };
 
 // Runs what the user confirmed; checked again on the server with the user's permissions
 export const applyHelpAction = (payload: HelpActionApply) =>
-  request<{ ok: boolean }>("/help-chat/actions/apply", "The action could not be applied",
+  request<{ ok: boolean; newProtocolId?: string }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"
-  | "mode" | "dailyLimit">> & { key?: string };
+  | "mode" | "allowDelete" | "dailyLimit">> & { key?: string };
 
 export const getAssistantSettings = () =>
   request<AssistantSettings>("/help-chat/settings", "Failed to load the assistant settings");

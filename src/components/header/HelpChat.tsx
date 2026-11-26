@@ -263,6 +263,10 @@ function ActionCard({ card }: { card: HelpActionCard }) {
   const [scope, setScope] = useState<"single" | "all" | null>(null);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
   const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState("");
+  const [copyId, setCopyId] = useState<string | null>(null);
+  const danger = card.action === "delete";
+  const confirmed = !danger || confirm.trim().replace(/^#/, "") === card.protocolId;
   const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
   const children = card.action === "relaunch" ? card.children : [];
   const needsScope = children.length > 0;
@@ -281,12 +285,19 @@ function ActionCard({ card }: { card: HelpActionCard }) {
     setState("applying");
     setError(null);
     try {
-      await applyHelpAction(card.action === "stop"
-        ? { action: "stop", projectId: card.projectId, protocolId: card.protocolId }
-        : { action: "relaunch", projectId: card.projectId, protocolId: card.protocolId, mode,
-            scope: scope ?? undefined,
-            changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) });
+      const base = { projectId: card.projectId, protocolId: card.protocolId };
+      const result = await applyHelpAction(card.action === "stop" ? { ...base, action: "stop" }
+        : card.action === "delete" ? { ...base, action: "delete", confirm: confirm.trim() }
+          : card.action === "duplicate"
+            ? { ...base, action: "duplicate",
+                changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) }
+            : { ...base, action: "relaunch", mode, scope: scope ?? undefined,
+                changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) });
       requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      if (card.action === "duplicate" && result.newProtocolId) {
+        setCopyId(result.newProtocolId);
+        requestFromHelpChat({ kind: "openProtocol", projectId: card.projectId, protocolId: result.newProtocolId });
+      }
       setState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The action could not be applied");
@@ -302,20 +313,65 @@ function ActionCard({ card }: { card: HelpActionCard }) {
 
   const title = card.action === "stop" ? `Stop ${where}`
     : card.action === "next" ? `Add ${card.nextLabel} after ${where}`
-      : `${MODE_TEXT[mode].title} ${where}`;
-  const doneText = card.action === "stop" ? "Stopping it." : card.action === "next" ? "Its form is open: choose the input and launch it."
-    : `${MODE_TEXT[mode].title} sent.`;
+      : card.action === "duplicate" ? `Copy ${where}`
+        : card.action === "delete" ? `Delete ${where}`
+          : `${MODE_TEXT[mode].title} ${where}`;
+  const doneText = card.action === "stop" ? "Stopping it."
+    : card.action === "next" ? "Its form is open: choose the input and launch it."
+      : card.action === "duplicate" ? `Copy${copyId ? ` #${copyId}` : ""} made, not launched: check it in its form and launch it.`
+        : card.action === "delete" ? "Deleted."
+          : `${MODE_TEXT[mode].title} sent.`;
+  const applyText = card.action === "next" ? "Open its form" : card.action === "delete" ? "Delete"
+    : card.action === "duplicate" ? "Make the copy" : "Apply";
 
   return (
-    <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100"
+    <div className={`mt-2 rounded-xl border p-3 text-[14.5px] text-gray-900 dark:text-gray-100 ${danger
+      ? "border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/25"
+      : "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20"}`}
          data-testid="help-action">
-      <div className="text-[13px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-        Needs your confirmation
+      <div className={`text-[13.5px] font-semibold uppercase tracking-wide ${danger
+        ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
+        {danger ? "Cannot be undone" : "Needs your confirmation"}
       </div>
       <div className="mt-0.5 font-semibold">{title}</div>
       {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
 
-      {card.action === "relaunch" && card.changes.length > 0 && (
+      {card.action === "duplicate" && (
+        <div className="mt-2 text-gray-600 dark:text-gray-400">
+          A new protocol, not launched. The original and what depends on it stay as they are.
+        </div>
+      )}
+
+      {card.action === "delete" && (
+        <div className="mt-2 space-y-1">
+          <div>
+            <strong>It is deleted with its folder and results.</strong> They cannot be recovered.
+          </div>
+          {card.outputs.length > 0 && (
+            <ul className="list-disc pl-5">
+              {card.outputs.map((output) => (
+                <li key={output.name}>
+                  {output.name}{output.size != null ? `: ${output.size.toLocaleString()} items` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+          {card.children.length > 0 && (
+            <div>
+              Protocols that use it lose their input:{" "}
+              {card.children.map((child) => `#${child.protocolId}`).join(", ")}.
+            </div>
+          )}
+          <label className="mt-1.5 block">
+            <span className="text-gray-700 dark:text-gray-300">Write <strong>{card.protocolId}</strong> to confirm</span>
+            <input value={confirm} onChange={(event) => setConfirm(event.target.value)} disabled={state !== "open"}
+                   aria-label={`Write ${card.protocolId} to confirm`} inputMode="numeric"
+                   className="mt-1 block w-32 rounded-lg border border-red-300 bg-white px-2.5 py-1.5 text-[14.5px] outline-none focus:border-red-500 dark:border-red-800 dark:bg-gray-950" />
+          </label>
+        </div>
+      )}
+
+      {(card.action === "relaunch" || card.action === "duplicate") && card.changes.length > 0 && (
         <ul className="mt-2 space-y-0.5">
           {card.changes.map((change) => (
             <li key={change.name}>
@@ -375,9 +431,10 @@ function ActionCard({ card }: { card: HelpActionCard }) {
       ) : (
         <div className="mt-2.5 flex flex-wrap gap-2">
           <button type="button" onClick={() => void apply()}
-                  disabled={state === "applying" || (needsScope && scope === null)}
-                  className="rounded-full bg-blue-600 px-3.5 py-1.5 text-[14px] font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {state === "applying" ? "Applying…" : card.action === "next" ? "Open its form" : "Apply"}
+                  disabled={state === "applying" || (needsScope && scope === null) || !confirmed}
+                  className={`rounded-full px-3.5 py-1.5 text-[14px] font-medium text-white disabled:opacity-50 ${danger
+                    ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {state === "applying" ? "Applying…" : applyText}
           </button>
           {card.action === "relaunch" && (
             <button type="button" onClick={openForm} disabled={state === "applying"}

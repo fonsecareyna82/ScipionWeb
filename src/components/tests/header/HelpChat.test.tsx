@@ -223,4 +223,42 @@ describe("HelpChat", () => {
     expect(screen.getByText(/Its form is open/)).toBeInTheDocument();
     off();
   });
+
+  it("makes a copy with the changes and opens its form", async () => {
+    const requests: HelpChatRequest[] = [];
+    const off = onHelpChatRequest((request) => requests.push(request));
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, newProtocolId: "200" });
+    await proposal({ kind: "action", action: "duplicate", projectId: 7, protocolId: "37", label: "alignPCA-2D",
+                     className: "P", status: "finished", reason: "",
+                     changes: [{ name: "numberOfClasses", label: "Number of classes", from: 50, to: 30 }] });
+    expect(screen.getByText("Copy #37 alignPCA-2D")).toBeInTheDocument();
+    expect(screen.getByText(/The original and what depends on it stay as they are/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Make the copy" }));
+    await screen.findByText(/Copy #200 made, not launched/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "duplicate", projectId: 7, protocolId: "37",
+                                                             changes: { numberOfClasses: 30 } });
+    expect(requests).toEqual([{ kind: "refresh", projectId: 7 },
+                              { kind: "openProtocol", projectId: 7, protocolId: "200" }]);
+    off();
+  });
+
+  it("deletes only after the protocol's number is written", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true });
+    await proposal({ kind: "action", action: "delete", projectId: 7, protocolId: "37", label: "alignPCA-2D",
+                     className: "P", status: "finished", reason: "",
+                     outputs: [{ name: "outputClasses", type: "SetOfClasses2D", size: 42 }],
+                     children: [{ protocolId: "105", label: "subset", status: "new" }] });
+    expect(screen.getByText("Cannot be undone")).toBeInTheDocument();
+    expect(screen.getByText("outputClasses: 42 items")).toBeInTheDocument();
+    expect(screen.getByText(/lose their input/)).toHaveTextContent("#105");
+    const remove = screen.getByRole("button", { name: "Delete" });
+    expect(remove).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Write 37 to confirm"), { target: { value: "3" } });
+    expect(remove).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Write 37 to confirm"), { target: { value: "37" } });
+    fireEvent.click(remove);
+    await screen.findByText("Deleted.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "delete", projectId: 7, protocolId: "37",
+                                                             confirm: "37" });
+  });
 });

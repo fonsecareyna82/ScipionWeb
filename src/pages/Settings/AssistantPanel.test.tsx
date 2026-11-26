@@ -63,4 +63,21 @@ describe("AssistantPanel", () => {
         expect(await screen.findByLabelText("Address")).toBeInTheDocument();
         expect(screen.queryByText(/are sent to that provider/)).not.toBeInTheDocument();
     });
+
+    it("offers deleting only when proposing, off by default", async () => {
+        render(<AssistantPanel />);
+        await screen.findByText("Set: leave it empty to keep it");
+        expect(screen.queryByRole("checkbox", { name: "Propose deleting protocols" })).not.toBeInTheDocument();
+    });
+
+    it("shows the delete switch off when proposing", async () => {
+        api.getAssistantSettings.mockResolvedValue({ ...SETTINGS, mode: "propose", modes: ["answer", "propose"] });
+        render(<AssistantPanel />);
+        const toggle = await screen.findByRole("checkbox", { name: "Propose deleting protocols" });
+        expect(toggle).not.toBeChecked();
+        fireEvent.click(toggle);
+        fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
+        await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
+        expect(api.saveAssistantSettings.mock.calls[0][0]).toMatchObject({ mode: "propose", allowDelete: true });
+    });
 });

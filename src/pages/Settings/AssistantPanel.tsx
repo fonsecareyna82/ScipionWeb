@@ -55,7 +55,7 @@ function UsageLine({ label, totals }: { label: string; totals: AssistantUsageTot
 }
 
 type Draft = { enabled: boolean; provider: AssistantProviderKey; baseUrl: string; model: string; mode: string;
-                dailyLimit: string };
+                allowDelete: boolean; dailyLimit: string };
 
 const MODE_LABELS: Record<string, string> = {
     answer: "Only read and answer",
@@ -68,7 +68,7 @@ export default function AssistantPanel() {
     const [settings, setSettings] = useState<AssistantSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [draft, setDraft] = useState<Draft>({ enabled: false, provider: "openai", baseUrl: "", model: "", mode: "answer",
-                                                    dailyLimit: "50" });
+                                                    allowDelete: false, dailyLimit: "50" });
     // Empty: the key there is stays; removeKey takes it away
     const [key, setKey] = useState("");
     const [removeKey, setRemoveKey] = useState(false);
@@ -78,7 +78,8 @@ export default function AssistantPanel() {
     const adopt = (loaded: AssistantSettings) => {
         setSettings(loaded);
         setDraft({ enabled: loaded.enabled, provider: loaded.provider, baseUrl: loaded.baseUrl, model: loaded.model,
-                   mode: loaded.mode || "answer", dailyLimit: String(loaded.dailyLimit) });
+                   mode: loaded.mode || "answer", allowDelete: Boolean(loaded.allowDelete),
+                   dailyLimit: String(loaded.dailyLimit) });
         setKey("");
         setRemoveKey(false);
     };
@@ -92,7 +93,7 @@ export default function AssistantPanel() {
     // The form as it is now, for listing the models and the test before saving
     const payload = (): AssistantSettingsPayload => ({
         enabled: draft.enabled, provider: draft.provider, baseUrl: draft.baseUrl.trim(), model: draft.model.trim(),
-        mode: draft.mode, dailyLimit: Number(draft.dailyLimit) || 0,
+        mode: draft.mode, allowDelete: draft.allowDelete, dailyLimit: Number(draft.dailyLimit) || 0,
         ...(removeKey ? { key: "" } : key.trim() ? { key: key.trim() } : {}),
     });
 
@@ -229,6 +230,15 @@ export default function AssistantPanel() {
                                     ))}
                                 </TextField>
                             } />
+                {draft.mode === "propose" && (
+                    <SettingRow colors={colors} title="Propose deleting protocols"
+                                description="Off by default. Deleting cannot be undone, so the card lists everything that is lost and the person must write the protocol's number to confirm. Never projects, never a running protocol, never one whose depending protocols have results."
+                                control={
+                                    <Switch checked={draft.allowDelete}
+                                            slotProps={{ input: { "aria-label": "Propose deleting protocols" } }}
+                                            onChange={(e) => set({ allowDelete: e.target.checked })} />
+                                } />
+                )}
                 <SettingRow colors={colors} title="Questions per person and day" labelFor="assistant-limit"
                             description="Each question costs money with a paid provider. When someone reaches the limit, the assistant answers them again the next day."
                             control={
@@ -250,12 +260,13 @@ export default function AssistantPanel() {
                     </Box>
                     <Box>
                         <strong>It proposes</strong>, only if chosen above and only in projects the person can work in:
-                        relaunch a protocol (with other parameters, or continue a failed one), stop one, or open the
-                        form of the next step. The card shows what changes and what is lost, and asks about the
-                        protocols that depend on it. Nothing runs until the person presses Apply.
+                        relaunch a protocol (with other parameters, or continue a failed one), copy one with other
+                        parameters, stop one, open the form of the next step and, if turned on, delete one. The card
+                        shows what changes and what is lost, and asks about the protocols that depend on it. Nothing
+                        runs until the person presses Apply.
                     </Box>
                     <Box>
-                        <strong>Never:</strong> delete projects or data, change a protocol's inputs, touch users, roles
+                        <strong>Never:</strong> delete projects, change a protocol's inputs, touch users, roles
                         or settings, or run commands on the server. Those tools do not exist for it, so nothing it
                         reads can make it do them.
                     </Box>
