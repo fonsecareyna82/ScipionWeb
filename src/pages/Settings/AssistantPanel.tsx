@@ -54,14 +54,21 @@ function UsageLine({ label, totals }: { label: string; totals: AssistantUsageTot
     );
 }
 
-type Draft = { enabled: boolean; provider: AssistantProviderKey; baseUrl: string; model: string; dailyLimit: string };
+type Draft = { enabled: boolean; provider: AssistantProviderKey; baseUrl: string; model: string; mode: string;
+                dailyLimit: string };
+
+const MODE_LABELS: Record<string, string> = {
+    answer: "Only read and answer",
+    propose: "Also propose actions, which the person confirms",
+};
 
 export default function AssistantPanel() {
     const look = useLook();
     const { colors, fieldSx, selectSx, menuPaperSx, actionButtonSx, saveButtonSx, isDarkMode } = look;
     const [settings, setSettings] = useState<AssistantSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [draft, setDraft] = useState<Draft>({ enabled: false, provider: "openai", baseUrl: "", model: "", dailyLimit: "50" });
+    const [draft, setDraft] = useState<Draft>({ enabled: false, provider: "openai", baseUrl: "", model: "", mode: "answer",
+                                                    dailyLimit: "50" });
     // Empty: the key there is stays; removeKey takes it away
     const [key, setKey] = useState("");
     const [removeKey, setRemoveKey] = useState(false);
@@ -71,7 +78,7 @@ export default function AssistantPanel() {
     const adopt = (loaded: AssistantSettings) => {
         setSettings(loaded);
         setDraft({ enabled: loaded.enabled, provider: loaded.provider, baseUrl: loaded.baseUrl, model: loaded.model,
-                   dailyLimit: String(loaded.dailyLimit) });
+                   mode: loaded.mode || "answer", dailyLimit: String(loaded.dailyLimit) });
         setKey("");
         setRemoveKey(false);
     };
@@ -85,7 +92,7 @@ export default function AssistantPanel() {
     // The form as it is now, for listing the models and the test before saving
     const payload = (): AssistantSettingsPayload => ({
         enabled: draft.enabled, provider: draft.provider, baseUrl: draft.baseUrl.trim(), model: draft.model.trim(),
-        dailyLimit: Number(draft.dailyLimit) || 0,
+        mode: draft.mode, dailyLimit: Number(draft.dailyLimit) || 0,
         ...(removeKey ? { key: "" } : key.trim() ? { key: key.trim() } : {}),
     });
 
@@ -211,6 +218,17 @@ export default function AssistantPanel() {
                                     {busy === "test" ? "Asking…" : "Test the model"}
                                 </Button>
                             } />
+                <SettingRow colors={colors} title="What it may do" labelFor="assistant-mode"
+                            description="Proposing: it can offer to relaunch, continue or stop a protocol, or open the form of the next one. Each proposal is a card; nothing happens until the person presses Apply."
+                            control={
+                                <TextField id="assistant-mode" sx={{ ...selectSx, width }} size="small" select value={draft.mode}
+                                           SelectProps={{ MenuProps: { PaperProps: { sx: menuPaperSx } } }}
+                                           onChange={(e) => set({ mode: e.target.value })}>
+                                    {(settings.modes ?? ["answer"]).map((value) => (
+                                        <MenuItem key={value} value={value}>{MODE_LABELS[value] ?? value}</MenuItem>
+                                    ))}
+                                </TextField>
+                            } />
                 <SettingRow colors={colors} title="Questions per person and day" labelFor="assistant-limit"
                             description="Each question costs money with a paid provider. When someone reaches the limit, the assistant answers them again the next day."
                             control={
@@ -227,13 +245,19 @@ export default function AssistantPanel() {
                         {" "}(Roles tab). Administrators always have it. Everyone else keeps the plain help chat.
                     </Box>
                     <Box>
-                        <strong>Now:</strong> it only reads. It looks at the projects the person can see (protocols,
-                        parameters, outputs, logs, failure causes) and at the help. It cannot launch, stop, change or
-                        delete anything.
+                        <strong>It reads</strong> the projects the person can see (protocols, parameters, outputs,
+                        logs, failure causes) and the help.
                     </Box>
                     <Box>
-                        <strong>Never:</strong> delete projects or data, touch users, roles or settings, or run commands
-                        on the server. Those tools do not exist for it, so nothing it reads can make it do them.
+                        <strong>It proposes</strong>, only if chosen above and only in projects the person can work in:
+                        relaunch a protocol (with other parameters, or continue a failed one), stop one, or open the
+                        form of the next step. The card shows what changes and what is lost, and asks about the
+                        protocols that depend on it. Nothing runs until the person presses Apply.
+                    </Box>
+                    <Box>
+                        <strong>Never:</strong> delete projects or data, change a protocol's inputs, touch users, roles
+                        or settings, or run commands on the server. Those tools do not exist for it, so nothing it
+                        reads can make it do them.
                     </Box>
                     {!local && (
                         <Note warning look={look}>

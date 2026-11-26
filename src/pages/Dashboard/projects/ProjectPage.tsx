@@ -2,6 +2,7 @@ import "./ProjectPage.css";
 import { useGraphRevisionWatch } from "@/hooks/useGraphRevisionWatch";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { setHelpFocus } from "@/utils/help_chat_focus";
+import { onHelpChatRequest } from "@/utils/help_chat_actions";
 import React, {
   useCallback,
   useEffect,
@@ -6585,6 +6586,17 @@ export default function ProjectPage() {
     });
   }, [projectId, project?.name, highlightedId]);
   useEffect(() => () => setHelpFocus(null), []);
+
+  // What the help chat asks after the user confirms an assistant's card about this project
+  const helpChatHandlersRef = useRef({ handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh });
+  helpChatHandlersRef.current = { handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh };
+  useEffect(() => onHelpChatRequest((request) => {
+    if (projectId == null || Number(request.projectId) !== Number(projectId)) return;
+    const handlers = helpChatHandlersRef.current;
+    if (request.kind === "openProtocol") void handlers.handleNodeDoubleClick({ id: request.protocolId });
+    else if (request.kind === "openProtocolClass") void handlers.openFormForProtocolClass(request.className);
+    else handlers.scheduleDoubleRefresh(5000, true);
+  }), [projectId]);
 
   const openProtocolStepsDialog = useCallback((id: string) => {
     const protocolId = String(id ?? "").trim();

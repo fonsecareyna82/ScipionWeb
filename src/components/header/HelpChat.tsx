@@ -3,8 +3,10 @@ import { BookOpen, Bot, ChevronDown, CircleAlert, ExternalLink, MessageCircleQue
   SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
 
 import {
-  askHelp, getHelpChatStatus, type HelpAnswer, type HelpCard, type HelpChatStatus, type HelpLogPlace, type HelpTurn,
+  applyHelpAction, askHelp, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
+  type HelpLogPlace, type HelpRelaunchMode, type HelpTurn,
 } from "@/api/helpChat";
+import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
 import { useHelpFocus } from "@/utils/help_chat_focus";
 import { renderRichHelpText } from "@/utils/rich_help_text";
@@ -248,6 +250,151 @@ function Outputs({ card }: { card: Extract<HelpCard, { kind: "outputs" }> }) {
   );
 }
 
+const valueText = (value: unknown) => value === true ? "yes" : value === false ? "no" : String(value ?? "");
+
+const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
+  continue: { title: "Continue", note: "keeps what is done and goes on from where it stopped" },
+  restart: { title: "Restart", note: "runs it again from the start; its current results are deleted" },
+};
+
+/** A proposal of the assistant: what would happen, and nothing until the user applies it. */
+function ActionCard({ card }: { card: HelpActionCard }) {
+  const [mode, setMode] = useState<HelpRelaunchMode>(card.action === "relaunch" ? card.mode : "restart");
+  const [scope, setScope] = useState<"single" | "all" | null>(null);
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
+  const children = card.action === "relaunch" ? card.children : [];
+  const needsScope = children.length > 0;
+  const activeChildren = children.filter((child) => child.active);
+
+  const apply = async () => {
+    if (card.action === "next") {
+      const shown = requestFromHelpChat({ kind: "openProtocolClass", projectId: card.projectId, className: card.nextClassName });
+      if (!shown) {
+        setError(`Open project ${card.projectId} to add it.`);
+        return;
+      }
+      setState("done");
+      return;
+    }
+    setState("applying");
+    setError(null);
+    try {
+      await applyHelpAction(card.action === "stop"
+        ? { action: "stop", projectId: card.projectId, protocolId: card.protocolId }
+        : { action: "relaunch", projectId: card.projectId, protocolId: card.protocolId, mode,
+            scope: scope ?? undefined,
+            changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The action could not be applied");
+      setState("open");
+    }
+  };
+
+  const openForm = () => {
+    if (!requestFromHelpChat({ kind: "openProtocol", projectId: card.projectId, protocolId: card.protocolId })) {
+      setError(`Open project ${card.projectId} to see its form.`);
+    }
+  };
+
+  const title = card.action === "stop" ? `Stop ${where}`
+    : card.action === "next" ? `Add ${card.nextLabel} after ${where}`
+      : `${MODE_TEXT[mode].title} ${where}`;
+  const doneText = card.action === "stop" ? "Stopping it." : card.action === "next" ? "Its form is open: choose the input and launch it."
+    : `${MODE_TEXT[mode].title} sent.`;
+
+  return (
+    <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100"
+         data-testid="help-action">
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+        Needs your confirmation
+      </div>
+      <div className="mt-0.5 font-semibold">{title}</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+
+      {card.action === "relaunch" && card.changes.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {card.changes.map((change) => (
+            <li key={change.name}>
+              {change.label}: <span className="text-gray-500 line-through dark:text-gray-400">{valueText(change.from)}</span>
+              {" → "}<strong>{valueText(change.to)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {card.action === "relaunch" && card.modes.length > 1 && (
+        <fieldset className="mt-2 space-y-1" disabled={state !== "open"}>
+          <legend className="sr-only">How to relaunch it</legend>
+          {card.modes.map((value) => (
+            <label key={value} className="flex items-start gap-2">
+              <input type="radio" name={`mode-${card.protocolId}`} className="mt-1" checked={mode === value}
+                     onChange={() => setMode(value)} />
+              <span><strong>{MODE_TEXT[value].title}</strong>: {MODE_TEXT[value].note}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {card.action === "relaunch" && card.modes.length === 1 && (
+        <div className="mt-2 text-gray-600 dark:text-gray-400">{MODE_TEXT[mode].title}: {MODE_TEXT[mode].note}.</div>
+      )}
+
+      {needsScope && (
+        <fieldset className="mt-2 space-y-1" disabled={state !== "open"}>
+          <legend className="font-medium">
+            {children.length === 1 ? "1 protocol depends on it" : `${children.length} protocols depend on it`}:{" "}
+            <span className="font-normal">{children.map((child) => `#${child.protocolId}`).join(", ")}</span>
+          </legend>
+          <label className="flex items-start gap-2">
+            <input type="radio" name={`scope-${card.protocolId}`} className="mt-1" checked={scope === "single"}
+                   onChange={() => setScope("single")} />
+            <span><strong>Only this one</strong>: they are reset and lose their outputs, without running again</span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input type="radio" name={`scope-${card.protocolId}`} className="mt-1" checked={scope === "all"}
+                   onChange={() => setScope("all")} />
+            <span><strong>The whole workflow</strong>: they run again after it</span>
+          </label>
+          {activeChildren.length > 0 && (
+            <div className="text-amber-800 dark:text-amber-300">
+              Running now: {activeChildren.map((child) => `#${child.protocolId}`).join(", ")}.
+            </div>
+          )}
+        </fieldset>
+      )}
+
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+
+      {state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{doneText}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void apply()}
+                  disabled={state === "applying" || (needsScope && scope === null)}
+                  className="rounded-full bg-blue-600 px-3.5 py-1.5 text-[14px] font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {state === "applying" ? "Applying…" : card.action === "next" ? "Open its form" : "Apply"}
+          </button>
+          {card.action === "relaunch" && (
+            <button type="button" onClick={openForm} disabled={state === "applying"}
+                    className="rounded-full border border-blue-300 px-3.5 py-1.5 text-[14px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
+              Open in the form
+            </button>
+          )}
+          <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"}
+                  className="rounded-full px-3.5 py-1.5 text-[14px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800">
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** What the assistant looked at to answer: hidden until asked. */
 function Steps({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
@@ -282,6 +429,7 @@ function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: strin
             </div>
           </>
         )}
+        {answer.cards.map((card, index) => card.kind === "action" ? <ActionCard key={index} card={card} /> : null)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
     );

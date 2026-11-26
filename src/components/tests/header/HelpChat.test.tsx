@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn() }));
+const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn(), applyHelpAction: vi.fn() }));
 vi.mock("@/api/helpChat", () => helpMocks);
 
 import HelpChat from "@/components/header/HelpChat";
+import { onHelpChatRequest, type HelpChatRequest } from "@/utils/help_chat_actions";
 import { setHelpFocus } from "@/utils/help_chat_focus";
 
 function openChat() {
@@ -132,5 +133,94 @@ describe("HelpChat", () => {
     send("hi");
     expect(await screen.findByText("<img src=x onerror=alert(1)> done")).toBeInTheDocument();
     expect(document.querySelector("img[src='x']")).toBeNull();
+  });
+
+  const RELAUNCH = {
+    kind: "action", action: "relaunch", projectId: 7, protocolId: "37", label: "alignPCA-2D", className: "Prot2D",
+    status: "finished", mode: "restart", modes: ["restart"], reason: "Fewer classes fit the data better.",
+    changes: [{ name: "numberOfClasses", label: "Number of classes", from: 50, to: 100 }],
+    children: [{ protocolId: "105", label: "subset", status: "finished", active: false },
+               { protocolId: "106", label: "initial model", status: "running", active: true }],
+  };
+
+  async function proposal(card: object) {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, left: 5 });
+    helpMocks.askHelp.mockResolvedValue({ assistant: true, text: "Here is my proposal.", steps: [], cards: [card] });
+    openChat();
+    await screen.findByText("Answers with AI");
+    send("do it");
+    await screen.findByText("Here is my proposal.");
+  }
+
+  it("asks which protocols to relaunch before applying a relaunch with children", async () => {
+    const requests: HelpChatRequest[] = [];
+    const off = onHelpChatRequest((request) => requests.push(request));
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true });
+    await proposal(RELAUNCH);
+
+    expect(screen.getByText("Restart #37 alignPCA-2D")).toBeInTheDocument();
+    expect(screen.getByText("50")).toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
+    expect(screen.getByText(/2 protocols depend on it/)).toBeInTheDocument();
+    expect(screen.getByText("Running now: #106.")).toBeInTheDocument();
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: /Only this one/ }));
+    fireEvent.click(apply);
+    await screen.findByText("Restart sent.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
+      action: "relaunch", projectId: 7, protocolId: "37", mode: "restart", scope: "single",
+      changes: { numberOfClasses: 100 },
+    });
+    expect(requests).toEqual([{ kind: "refresh", projectId: 7 }]);
+    off();
+  });
+
+  it("does nothing when the proposal is cancelled, and offers the form", async () => {
+    const requests: HelpChatRequest[] = [];
+    const off = onHelpChatRequest((request) => requests.push(request));
+    await proposal({ ...RELAUNCH, children: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Open in the form" }));
+    expect(requests).toEqual([{ kind: "openProtocol", projectId: 7, protocolId: "37" }]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Cancelled: nothing was done.")).toBeInTheDocument();
+    expect(helpMocks.applyHelpAction).not.toHaveBeenCalled();
+    off();
+  });
+
+  it("lets a failed protocol continue or restart", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true });
+    await proposal({ ...RELAUNCH, status: "failed", mode: "continue", modes: ["continue", "restart"], changes: [],
+                     children: [] });
+    expect(screen.getByText("Continue #37 alignPCA-2D")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /Restart/ }));
+    expect(screen.getByText("Restart #37 alignPCA-2D")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(helpMocks.applyHelpAction).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "restart", changes: {} })));
+  });
+
+  it("shows why an action could not be applied and lets it be tried again", async () => {
+    helpMocks.applyHelpAction.mockRejectedValue(new Error("The protocol is running; it has to be stopped first"));
+    await proposal({ kind: "action", action: "stop", projectId: 7, protocolId: "40", label: "picking",
+                     className: "P", status: "running", reason: "" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("The protocol is running; it has to be stopped first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+  });
+
+  it("opens the next protocol's form only in the project page that shows it", async () => {
+    await proposal({ kind: "action", action: "next", projectId: 7, protocolId: "22", label: "extract",
+                     nextClassName: "Prot2D", nextLabel: "2D classification", reason: "" });
+    fireEvent.click(screen.getByRole("button", { name: "Open its form" }));
+    expect(screen.getByText("Open project 7 to add it.")).toBeInTheDocument();
+
+    const requests: HelpChatRequest[] = [];
+    const off = onHelpChatRequest((request) => requests.push(request));
+    fireEvent.click(screen.getByRole("button", { name: "Open its form" }));
+    expect(requests).toEqual([{ kind: "openProtocolClass", projectId: 7, className: "Prot2D" }]);
+    expect(screen.getByText(/Its form is open/)).toBeInTheDocument();
+    off();
   });
 });

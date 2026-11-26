@@ -36,7 +36,21 @@ export type HelpCard =
     }
   | { kind: "suggestions"; protocolId: string; label: string; items: HelpSuggestion[] }
   | { kind: "protocols"; items: HelpProtocolRef[] }
-  | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] };
+  | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] }
+  | HelpActionCard;
+
+// What the assistant proposes: nothing happens until the user applies it
+export type HelpChange = { name: string; label: string; from: unknown; to: unknown };
+export type HelpChild = { protocolId: string; label: string; status: string; active: boolean };
+export type HelpRelaunchMode = "restart" | "continue";
+export type HelpActionCard =
+  | { kind: "action"; action: "relaunch"; projectId: number; protocolId: string; label: string; className: string;
+      status: string; mode: HelpRelaunchMode; modes: HelpRelaunchMode[]; changes: HelpChange[]; children: HelpChild[];
+      reason: string }
+  | { kind: "action"; action: "stop"; projectId: number; protocolId: string; label: string; className: string;
+      status: string; reason: string }
+  | { kind: "action"; action: "next"; projectId: number; protocolId: string; label: string; nextClassName: string;
+      nextLabel: string; reason: string };
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
 export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number };
@@ -85,6 +99,7 @@ export type AssistantSettings = {
   baseUrl: string;
   model: string;
   mode: string;
+  modes?: string[];
   dailyLimit: number;
   keySet: boolean;
   ready: boolean;
@@ -93,6 +108,20 @@ export type AssistantSettings = {
 };
 
 // key: undefined keeps the one there is, "" removes it
+export type HelpActionApply = {
+  action: "relaunch" | "stop";
+  projectId: number;
+  protocolId: string;
+  mode?: HelpRelaunchMode;
+  scope?: "single" | "all";
+  changes?: Record<string, unknown>;
+};
+
+// Runs what the user confirmed; checked again on the server with the user's permissions
+export const applyHelpAction = (payload: HelpActionApply) =>
+  request<{ ok: boolean }>("/help-chat/actions/apply", "The action could not be applied",
+    { method: "POST", body: JSON.stringify(payload) });
+
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"
   | "mode" | "dailyLimit">> & { key?: string };
 

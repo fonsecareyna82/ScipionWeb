@@ -73,6 +73,8 @@ const ACTION_LABELS: Record<string, string> = {
     "users.deleted": "Deleted an account",
     "projects.fileUploaded": "Uploaded a file to a project",
     "settings.mailUpdated": "Changed the mail settings",
+    "settings.assistantUpdated": "Changed the AI assistant settings",
+    "assistant.actionApplied": "Applied an action the AI assistant proposed",
     "settings.notificationDefaultsUpdated": "Changed the default notifications",
     "settings.scratchUpdated": "Changed a scratch folder",
     "settings.signInProviderSaved": "Saved a way to sign in",
