@@ -45,8 +45,14 @@ function iconOf(card: SearchCard) {
   return <Icon className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />;
 }
 
+// The parts of the documentation, as the published site names them
+const DOC_AREAS: Record<string, string> = {
+  "user-guide": "User guide", "getting-started": "Getting started", installation: "Installation",
+  configuration: "Configuration", operations: "Operations", cli: "Command line", support: "Support",
+};
+
 function whereOf(card: SearchCard) {
-  if (card.kind === "guide") return `User guide · ${card.page}`;
+  if (card.kind === "guide") return `${DOC_AREAS[card.area ?? "user-guide"] ?? "Documentation"} · ${card.page}`;
   if (card.kind === "param") return `Parameter of ${card.protocolLabel}${card.section ? ` · ${card.section}` : ""}`;
   return "Protocol";
 }
@@ -113,7 +119,7 @@ function CardBody({ card }: { card: SearchCard }) {
         )}
         {card.kind === "guide" && card.url && (
           <a href={card.url} target="_blank" rel="noreferrer" className={`${LINK_BUTTON} inline-flex items-center gap-1`}>
-            Open in the guide <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            Open in the documentation <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         )}
       </div>

@@ -23,7 +23,7 @@ export type HelpOutput = { name: string; type: string; what: string; size: numbe
 export type HelpCard =
   | { kind: "protocol"; className: string; label: string; summary: string; help: string }
   | { kind: "param"; className: string; protocolLabel: string; name: string; label: string; help: string; section: string }
-  | { kind: "guide"; page: string; title: string; text: string; url: string }
+  | { kind: "guide"; area?: string; page: string; title: string; text: string; url: string }
   | {
       kind: "failure";
       protocolId: string;

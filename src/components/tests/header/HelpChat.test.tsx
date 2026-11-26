@@ -46,9 +46,9 @@ describe("HelpChat", () => {
     expect(helpMocks.askHelp).toHaveBeenCalledWith("dose filter", { projectId: 7, protocolId: "3" }, []);
     expect(screen.getByText("Apply dose filter")).toBeInTheDocument();
     expect(screen.getByText("Parameter of movie alignment · Input")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Open in the guide/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open in the documentation/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Share a project" }));
-    expect(screen.getByRole("link", { name: /Open in the guide/ })).toHaveAttribute("href", "https://docs/x#share");
+    expect(screen.getByRole("link", { name: /Open in the documentation/ })).toHaveAttribute("href", "https://docs/x#share");
   });
 
   it("offers the shortcuts of a selected protocol and asks again from a listed one", async () => {
@@ -374,5 +374,15 @@ describe("HelpChat", () => {
                      title: "Workflow 3D cryosparc from #22", reason: "",
                      next: [{ protocolId: "150", label: "2D", className: "P", stop: true }] });
     expect(screen.getByText("Start the chain")).toBeInTheDocument();
+  });
+
+  it("says which part of the documentation a result comes from", async () => {
+    helpMocks.askHelp.mockResolvedValue({ text: "In the documentation:", cards: [
+      { kind: "guide", area: "installation", page: "Several machines", title: "Join a node", text: "Run node join.",
+        url: "https://docs/installation/multinode/#join-a-node" },
+    ] });
+    openChat();
+    send("how do I add a node");
+    expect(await screen.findByText("Installation · Several machines")).toBeInTheDocument();
   });
 });
