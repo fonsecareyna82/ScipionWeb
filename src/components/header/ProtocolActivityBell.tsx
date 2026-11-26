@@ -75,14 +75,14 @@ function writeFlag(key: string, value: boolean) {
 }
 
 /** The AI assistant's explanation of a failure, under its notice: a few lines, all of it when asked. */
-function AssistantDetail({ text }: { text: string }) {
+function AssistantDetail({ text, summary }: { text: string; summary?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mx-4 mb-2.5 ml-11 rounded-lg bg-sky-50 px-2.5 py-1.5 text-[13.5px] leading-snug text-gray-700 dark:bg-sky-950/30 dark:text-gray-300">
       <div className={`whitespace-pre-line ${open ? "" : "line-clamp-3"}`}>{text}</div>
       <button type="button" onClick={() => setOpen((value) => !value)}
               className="mt-0.5 text-[13.5px] font-medium text-blue-700 hover:underline dark:text-blue-300">
-        {open ? "Show less" : "What the assistant thinks"}
+        {open ? "Show less" : summary ? "The assistant's summary" : "What the assistant thinks"}
       </button>
     </div>
   );
@@ -227,7 +227,7 @@ export default function ProtocolActivityBell() {
                     </span>
                   </span>
                 </button>
-                {event.detail && <AssistantDetail text={event.detail} />}
+                {event.detail && <AssistantDetail text={event.detail} summary={event.kind === "facility.session"} />}
               </li>
             ))}
           </ul>

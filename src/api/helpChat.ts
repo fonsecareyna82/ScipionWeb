@@ -132,6 +132,8 @@ export type AssistantSettings = {
   allowDelete?: boolean;
   // Every failed protocol's notice explained by the model
   explainFailures?: boolean;
+  // Every finished acquisition session's notice summarized by the model
+  summarizeSessions?: boolean;
   dailyLimit: number;
   keySet: boolean;
   ready: boolean;
@@ -168,7 +170,7 @@ export const applyHelpAction = (payload: HelpActionApply) =>
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"
-  | "mode" | "allowDelete" | "explainFailures" | "dailyLimit">> & { key?: string };
+  | "mode" | "allowDelete" | "explainFailures" | "summarizeSessions" | "dailyLimit">> & { key?: string };
 
 export const getAssistantSettings = () =>
   request<AssistantSettings>("/help-chat/settings", "Failed to load the assistant settings");

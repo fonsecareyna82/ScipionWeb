@@ -104,8 +104,9 @@ describe("AssistantPanel", () => {
         const toggle = screen.getByRole("checkbox", { name: "Explain failed protocols" });
         expect(toggle).not.toBeChecked();
         fireEvent.click(toggle);
+        fireEvent.click(screen.getByRole("checkbox", { name: "Summarize finished sessions" }));
         fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
         await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
-        expect(api.saveAssistantSettings.mock.calls[0][0].explainFailures).toBe(true);
+        expect(api.saveAssistantSettings.mock.calls[0][0]).toMatchObject({ explainFailures: true, summarizeSessions: true });
     });
 });

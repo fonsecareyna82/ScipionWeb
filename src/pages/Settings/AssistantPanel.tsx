@@ -57,7 +57,7 @@ function UsageLine({ totals }: { totals: AssistantUsageTotals }) {
 }
 
 type Draft = { enabled: boolean; provider: AssistantProviderKey; baseUrl: string; model: string; mode: string;
-                allowDelete: boolean; explainFailures: boolean; dailyLimit: string };
+                allowDelete: boolean; explainFailures: boolean; summarizeSessions: boolean; dailyLimit: string };
 
 const MODE_LABELS: Record<string, string> = {
     answer: "Only read and answer",
@@ -70,7 +70,8 @@ export default function AssistantPanel() {
     const [settings, setSettings] = useState<AssistantSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [draft, setDraft] = useState<Draft>({ enabled: false, provider: "openai", baseUrl: "", model: "", mode: "answer",
-                                                    allowDelete: false, explainFailures: false, dailyLimit: "50" });
+                                                    allowDelete: false, explainFailures: false,
+                                                    summarizeSessions: false, dailyLimit: "50" });
     // Empty: the key there is stays; removeKey takes it away
     const [key, setKey] = useState("");
     const [removeKey, setRemoveKey] = useState(false);
@@ -84,6 +85,7 @@ export default function AssistantPanel() {
         setDraft({ enabled: loaded.enabled, provider: loaded.provider, baseUrl: loaded.baseUrl, model: loaded.model,
                    mode: loaded.mode || "answer", allowDelete: Boolean(loaded.allowDelete),
                    explainFailures: Boolean(loaded.explainFailures),
+                   summarizeSessions: Boolean(loaded.summarizeSessions),
                    dailyLimit: loaded.dailyLimit > 0 ? String(loaded.dailyLimit) : "" });
         setKey("");
         setRemoveKey(false);
@@ -99,6 +101,7 @@ export default function AssistantPanel() {
     const payload = (): AssistantSettingsPayload => ({
         enabled: draft.enabled, provider: draft.provider, baseUrl: draft.baseUrl.trim(), model: draft.model.trim(),
         mode: draft.mode, allowDelete: draft.allowDelete, explainFailures: draft.explainFailures,
+        summarizeSessions: draft.summarizeSessions,
         dailyLimit: Number(draft.dailyLimit) || 0,
         ...(removeKey ? { key: "" } : key.trim() ? { key: key.trim() } : {}),
     });
@@ -280,6 +283,13 @@ export default function AssistantPanel() {
                                     <Switch checked={draft.explainFailures}
                                             slotProps={{ input: { "aria-label": "Explain failed protocols" } }}
                                             onChange={(e) => set({ explainFailures: e.target.checked })} />
+                                } />
+                    <SettingRow colors={colors} title="Summarize finished sessions"
+                                description="Off by default. When an acquisition session finishes, the assistant adds a summary to the notice of its user and the group's PIs: how much was acquired, how the CTF, drift, dose and picking look against the limits, how far the processing got and what to watch. It gets only figures, never who the people are."
+                                control={
+                                    <Switch checked={draft.summarizeSessions}
+                                            slotProps={{ input: { "aria-label": "Summarize finished sessions" } }}
+                                            onChange={(e) => set({ summarizeSessions: e.target.checked })} />
                                 } />
                     <SettingRow colors={colors} title="Never"
                                 description="Delete projects, change a protocol's inputs, touch users, roles or settings, or run commands on the server. Those tools do not exist for it, so nothing it reads can make it do them."
