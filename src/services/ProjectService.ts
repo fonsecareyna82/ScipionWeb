@@ -1563,6 +1563,8 @@ export type ProtocolRunEvent = {
   link?: string;
   kind?: string;
   notificationId?: number;
+  /** For a failure notice, the AI assistant's explanation, when it gave one. */
+  detail?: string;
 };
 
 export type ProtocolActivity = {

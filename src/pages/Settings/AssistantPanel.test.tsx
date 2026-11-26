@@ -97,4 +97,15 @@ describe("AssistantPanel", () => {
         await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
         expect(api.saveAssistantSettings.mock.calls[0][0].dailyLimit).toBe(0);
     });
+
+    it("turns on the explanation of failed protocols", async () => {
+        render(<AssistantPanel />);
+        fireEvent.click(await screen.findByRole("button", { name: "What it may do" }));
+        const toggle = screen.getByRole("checkbox", { name: "Explain failed protocols" });
+        expect(toggle).not.toBeChecked();
+        fireEvent.click(toggle);
+        fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
+        await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
+        expect(api.saveAssistantSettings.mock.calls[0][0].explainFailures).toBe(true);
+    });
 });

@@ -154,6 +154,21 @@ describe("ProtocolActivityBell", () => {
     expect(eventLink({ projectId: 0, protocolId: "notice-2", status: "notice" })).toBe("/settings?tab=notifications");
   });
 
+  it("shows the assistant's explanation under a failure notice", async () => {
+    const notice = {
+      projectId: 0, projectName: "The protocol 2D failed in the project SPA.", protocolId: "notice-42",
+      protocolClassName: "", label: "2D failed in SPA", status: "notice", kind: "protocol.failed",
+      link: "/project/load/7?protocol=145", notificationId: 42, endedAt: "2026-10-19T12:03:00+00:00",
+      detail: "It ran out of GPU memory: use 100 classes or a smaller box.",
+    };
+    service.fetchProtocolActivity.mockResolvedValue({ now: "T1", live: 0, events: [notice] });
+    renderBell();
+    fireEvent.click(await screen.findByRole("button", { name: /Protocol activity, 1 new/ }));
+    expect(screen.getByText("It ran out of GPU memory: use 100 classes or a smaller box.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "What the assistant thinks" }));
+    expect(screen.getByRole("button", { name: "Show less" })).toBeInTheDocument();
+  });
+
   it("links protocols safely", () => {
     expect(eventLink({ projectId: 7, protocolId: "12", status: "failed" })).toBe("/project/load/7?protocol=12");
     expect(protocolLink({ projectId: 7, protocolId: "12" })).toBe("/project/load/7?protocol=12");

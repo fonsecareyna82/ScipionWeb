@@ -57,7 +57,7 @@ function UsageLine({ totals }: { totals: AssistantUsageTotals }) {
 }
 
 type Draft = { enabled: boolean; provider: AssistantProviderKey; baseUrl: string; model: string; mode: string;
-                allowDelete: boolean; dailyLimit: string };
+                allowDelete: boolean; explainFailures: boolean; dailyLimit: string };
 
 const MODE_LABELS: Record<string, string> = {
     answer: "Only read and answer",
@@ -70,7 +70,7 @@ export default function AssistantPanel() {
     const [settings, setSettings] = useState<AssistantSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [draft, setDraft] = useState<Draft>({ enabled: false, provider: "openai", baseUrl: "", model: "", mode: "answer",
-                                                    allowDelete: false, dailyLimit: "50" });
+                                                    allowDelete: false, explainFailures: false, dailyLimit: "50" });
     // Empty: the key there is stays; removeKey takes it away
     const [key, setKey] = useState("");
     const [removeKey, setRemoveKey] = useState(false);
@@ -83,6 +83,7 @@ export default function AssistantPanel() {
         setSettings(loaded);
         setDraft({ enabled: loaded.enabled, provider: loaded.provider, baseUrl: loaded.baseUrl, model: loaded.model,
                    mode: loaded.mode || "answer", allowDelete: Boolean(loaded.allowDelete),
+                   explainFailures: Boolean(loaded.explainFailures),
                    dailyLimit: loaded.dailyLimit > 0 ? String(loaded.dailyLimit) : "" });
         setKey("");
         setRemoveKey(false);
@@ -97,7 +98,8 @@ export default function AssistantPanel() {
     // The form as it is now, for listing the models and the test before saving
     const payload = (): AssistantSettingsPayload => ({
         enabled: draft.enabled, provider: draft.provider, baseUrl: draft.baseUrl.trim(), model: draft.model.trim(),
-        mode: draft.mode, allowDelete: draft.allowDelete, dailyLimit: Number(draft.dailyLimit) || 0,
+        mode: draft.mode, allowDelete: draft.allowDelete, explainFailures: draft.explainFailures,
+        dailyLimit: Number(draft.dailyLimit) || 0,
         ...(removeKey ? { key: "" } : key.trim() ? { key: key.trim() } : {}),
     });
 
@@ -272,6 +274,13 @@ export default function AssistantPanel() {
                                                 onChange={(e) => set({ allowDelete: e.target.checked })} />
                                     } />
                     )}
+                    <SettingRow colors={colors} title="Explain failed protocols"
+                                description="Off by default. When a protocol fails, the assistant adds its explanation (the likely cause and what to change) to the failure notice, in the bell and in the mail. One question to the model for each failure; mails of failures wait for it a few minutes at most."
+                                control={
+                                    <Switch checked={draft.explainFailures}
+                                            slotProps={{ input: { "aria-label": "Explain failed protocols" } }}
+                                            onChange={(e) => set({ explainFailures: e.target.checked })} />
+                                } />
                     <SettingRow colors={colors} title="Never"
                                 description="Delete projects, change a protocol's inputs, touch users, roles or settings, or run commands on the server. Those tools do not exist for it, so nothing it reads can make it do them."
                                 control={null} />
