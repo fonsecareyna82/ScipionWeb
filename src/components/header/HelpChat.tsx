@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookOpen, Bot, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
-  SlidersHorizontal, Workflow, X } from "lucide-react";
+  SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
 
-import { askHelp, type HelpAnswer, type HelpCard, type HelpLogPlace } from "@/api/helpChat";
+import {
+  askHelp, getHelpChatStatus, type HelpAnswer, type HelpCard, type HelpChatStatus, type HelpLogPlace, type HelpTurn,
+} from "@/api/helpChat";
+import { renderChatMarkdown } from "@/utils/chat_markdown";
 import { useHelpFocus } from "@/utils/help_chat_focus";
 import { renderRichHelpText } from "@/utils/rich_help_text";
 
@@ -24,6 +27,8 @@ const STATUS_CLASS: Record<string, string> = {
 const BODY = "text-[14.5px] leading-relaxed text-gray-700 dark:text-gray-300";
 const LINK_BUTTON = "text-[13.5px] font-medium text-blue-700 hover:underline dark:text-blue-300";
 const EXAMPLES = ["How do I estimate the CTF?", "¿Cómo comparto un proyecto?", "What is the dose filter?"];
+// The turns sent to the assistant so it follows the conversation
+const HISTORY_TURNS = 12;
 
 function isSearchCard(card: HelpCard): card is SearchCard {
   return card.kind === "protocol" || card.kind === "param" || card.kind === "guide";
@@ -65,9 +70,9 @@ function HelpBubble({ children, tone = "plain" }: { children: ReactNode; tone?: 
   );
 }
 
-function Typing() {
+function Typing({ label }: { label: string }) {
   return (
-    <div className="flex items-start gap-2" role="status" aria-label="Looking in the help">
+    <div className="flex items-start gap-2" role="status" aria-label={label}>
       <Avatar />
       <div className="flex items-center gap-1 rounded-2xl rounded-tl-md border border-gray-200 bg-white px-4 py-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         {[0, 150, 300].map((delay) => (
@@ -243,7 +248,44 @@ function Outputs({ card }: { card: Extract<HelpCard, { kind: "outputs" }> }) {
   );
 }
 
+/** What the assistant looked at to answer: hidden until asked. */
+function Steps({ steps }: { steps: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (steps.length === 0) return null;
+  return (
+    <div className="mt-2">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
+              className="inline-flex items-center gap-1 text-[13.5px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+        {steps.length === 1 ? "Looked at 1 thing" : `Looked at ${steps.length} things`}
+      </button>
+      {open && (
+        <ul className="mt-1 space-y-0.5 pl-5 text-[13.5px] text-gray-500 dark:text-gray-400">
+          {steps.map((step, index) => <li key={index} className="list-disc">{step}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: string) => void }) {
+  if (answer.assistant) {
+    const found = answer.cards.filter(isSearchCard);
+    return (
+      <HelpBubble>
+        {renderChatMarkdown(answer.text)}
+        {found.length > 0 && (
+          <>
+            <div className="mb-1.5 mt-3 text-[13.5px] font-medium text-gray-500 dark:text-gray-400">From the help</div>
+            <div className="space-y-1.5">
+              {found.map((card, index) => <RelatedResult key={index} card={card} />)}
+            </div>
+          </>
+        )}
+        <Steps steps={answer.steps ?? []} />
+      </HelpBubble>
+    );
+  }
   const found = answer.cards.filter(isSearchCard);
   const [main, ...related] = found;
   return (
@@ -290,6 +332,16 @@ export default function HelpChat() {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const busy = messages.some((message) => message.from === "help" && message.waiting);
+  // Whether the questions go to the AI assistant (asked each time the chat opens: an admin may turn it on or off)
+  const [status, setStatus] = useState<HelpChatStatus>({ assistant: false });
+  const ai = status.assistant;
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    getHelpChatStatus().then((loaded) => { if (alive) setStatus(loaded); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -316,15 +368,21 @@ export default function HelpChat() {
     if (!text || busy) return;
     const askedId = nextId.current++;
     const answerId = nextId.current++;
+    const history: HelpTurn[] = messages.flatMap((message): HelpTurn[] => message.from === "user"
+      ? [{ role: "user", text: message.text }]
+      : message.answer ? [{ role: "assistant", text: message.answer.text }] : []).slice(-HISTORY_TURNS);
     setMessages((list) => [...list, { id: askedId, from: "user", text }, { id: answerId, from: "help", waiting: true }]);
     setDraft("");
-    askHelp(text, { projectId: focus.projectId, protocolId: focus.protocolId })
-      .then((answer) => setMessages((list) => list.map((message) => message.id === answerId
-        ? { id: answerId, from: "help", answer } : message)))
+    askHelp(text, { projectId: focus.projectId, protocolId: focus.protocolId }, history)
+      .then((answer) => {
+        if (answer.left !== undefined) setStatus((current) => ({ ...current, left: answer.left }));
+        setMessages((list) => list.map((message) => message.id === answerId
+          ? { id: answerId, from: "help", answer } : message));
+      })
       .catch((error: unknown) => setMessages((list) => list.map((message) => message.id === answerId
         ? { id: answerId, from: "help", error: error instanceof Error ? error.message : "The help could not answer" }
         : message)));
-  }, [busy, focus.projectId, focus.protocolId]);
+  }, [busy, focus.projectId, focus.protocolId, messages]);
 
   const shortcuts: string[] = [];
   if (focus.protocolId) shortcuts.push("Why did it fail?", "What comes next?");
@@ -346,12 +404,20 @@ export default function HelpChat() {
               <Bot className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[16px] font-semibold">Help assistant</div>
+              <div className="flex items-center gap-1.5 text-[16px] font-semibold">
+                Help assistant
+                {ai && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[13px] font-medium"
+                        title={status.left !== undefined ? `${status.left} questions left today` : undefined}>
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI
+                  </span>
+                )}
+              </div>
               <div className="truncate text-[13.5px] text-blue-100">
                 {focus.projectId
                   ? <>{focus.projectName || `Project ${focus.projectId}`}{focus.protocolId
                     ? ` · #${focus.protocolId}${focus.protocolLabel ? ` ${focus.protocolLabel}` : ""}` : ""}</>
-                  : "Answers from the web's own help"}
+                  : ai ? "Answers with AI" : "Answers from the web's own help"}
               </div>
             </div>
             {messages.length > 0 && (
@@ -367,10 +433,21 @@ export default function HelpChat() {
           </header>
 
           <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto px-3.5 py-4">
-            <HelpBubble>
-              <p>Hi! I can help you with steps, parameters, protocols that failed and what to run next.</p>
-              <p className="mt-1.5 text-gray-600 dark:text-gray-400">Write your question in English or Spanish.</p>
-            </HelpBubble>
+            {ai ? (
+              <HelpBubble>
+                <p>Hi! I can look at your projects to answer: why a protocol failed, what it produced, which protocol
+                  or parameter to use.</p>
+                <p className="mt-1.5 text-gray-600 dark:text-gray-400">
+                  I only read: I cannot launch, change or delete anything. Write in any language.
+                  {status.left !== undefined && ` ${status.left} question${status.left === 1 ? "" : "s"} left today.`}
+                </p>
+              </HelpBubble>
+            ) : (
+              <HelpBubble>
+                <p>Hi! I can help you with steps, parameters, protocols that failed and what to run next.</p>
+                <p className="mt-1.5 text-gray-600 dark:text-gray-400">Write your question in English or Spanish.</p>
+              </HelpBubble>
+            )}
             {messages.length === 0 && (
               <QuickReplies items={[...shortcuts, ...EXAMPLES]} disabled={busy} onAsk={ask} />
             )}
@@ -384,7 +461,7 @@ export default function HelpChat() {
                   </div>
                 );
               }
-              if (message.waiting) return <Typing key={message.id} />;
+              if (message.waiting) return <Typing key={message.id} label={ai ? "Thinking" : "Looking in the help"} />;
               if (message.error) return <HelpBubble key={message.id} tone="error">{message.error}</HelpBubble>;
               return message.answer ? <Answer key={message.id} answer={message.answer} onAsk={ask} /> : null;
             })}
@@ -394,7 +471,7 @@ export default function HelpChat() {
           <footer className="border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
             <form className="flex items-end gap-2 rounded-3xl border border-gray-300 bg-white py-1.5 pl-4 pr-1.5 focus-within:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
                   onSubmit={(event) => { event.preventDefault(); ask(draft); }}>
-              <textarea ref={inputRef} rows={1} value={draft} maxLength={500} placeholder="Write your question…"
+              <textarea ref={inputRef} rows={1} value={draft} maxLength={ai ? 2000 : 500} placeholder="Write your question…"
                         onChange={(event) => setDraft(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); ask(draft); }

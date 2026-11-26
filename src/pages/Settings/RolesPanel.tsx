@@ -45,6 +45,7 @@ type PanelStyles = {
 const AREAS: Record<string, string> = {
     plugins: "System", settings: "System", jobs: "System", users: "System", roles: "System", groups: "System",
     audit: "System", storage: "System", projects: "Projects", files: "Files", facility: "Facility",
+    assistant: "Assistant",
 };
 
 function permissionAreas(permissions: Permission[]): [string, Permission[]][] {

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn() }));
+const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn() }));
 vi.mock("@/api/helpChat", () => helpMocks);
 
 import HelpChat from "@/components/header/HelpChat";
@@ -20,6 +20,7 @@ function send(question: string) {
 describe("HelpChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: false });
     setHelpFocus(null);
   });
   afterEach(() => act(() => setHelpFocus(null)));
@@ -41,7 +42,7 @@ describe("HelpChat", () => {
 
     expect(screen.getByText("dose filter")).toBeInTheDocument();
     await screen.findByText("In the parameters of motioncor:");
-    expect(helpMocks.askHelp).toHaveBeenCalledWith("dose filter", { projectId: 7, protocolId: "3" });
+    expect(helpMocks.askHelp).toHaveBeenCalledWith("dose filter", { projectId: 7, protocolId: "3" }, []);
     expect(screen.getByText("Apply dose filter")).toBeInTheDocument();
     expect(screen.getByText("Parameter of movie alignment · Input")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Open in the guide/ })).not.toBeInTheDocument();
@@ -63,7 +64,8 @@ describe("HelpChat", () => {
     fireEvent.click(await screen.findByRole("button", { name: /#5\s*picking\s*failed/ }));
 
     await screen.findByText("Out of GPU memory");
-    expect(helpMocks.askHelp).toHaveBeenLastCalledWith("Why did #5 fail?", { projectId: 7, protocolId: "3" });
+    expect(helpMocks.askHelp).toHaveBeenLastCalledWith("Why did #5 fail?", { projectId: 7, protocolId: "3" },
+      expect.any(Array));
     expect(screen.getByText("(line 12 of stderr)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Why did it fail?" })).toBeInTheDocument();
   });
@@ -91,5 +93,44 @@ describe("HelpChat", () => {
     await screen.findByText("picking (#6) has 9,876 particles in outputParticles.");
     expect(screen.getByText("outputParticles")).toBeInTheDocument();
     expect(screen.getByText("Volume")).toBeInTheDocument();
+  });
+
+  it("answers with the AI assistant: its text formatted, what it looked at and the conversation sent", async () => {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, dailyLimit: 50, left: 12 });
+    helpMocks.askHelp.mockResolvedValueOnce({
+      assistant: true, left: 11, cards: [],
+      text: "It ran out of **GPU memory**.\n\n- Use 100 classes\n- Or a box of 200 px",
+      steps: ["Read why protocol 145 failed", "Read the stderr log of protocol 145"],
+    }).mockResolvedValueOnce({ assistant: true, left: 10, cards: [], text: "Yes.", steps: [] });
+    openChat();
+
+    await screen.findByText("Answers with AI");
+    expect(screen.getByText(/12 questions left today/)).toBeInTheDocument();
+    expect(screen.getByText(/I only read/)).toBeInTheDocument();
+    send("Why did it fail?");
+
+    expect(await screen.findByText("GPU memory")).toBeInTheDocument();
+    expect(screen.getByText("GPU memory").tagName).toBe("STRONG");
+    expect(screen.getByText("Use 100 classes").tagName).toBe("LI");
+    fireEvent.click(screen.getByRole("button", { name: "Looked at 2 things" }));
+    expect(screen.getByText("Read the stderr log of protocol 145")).toBeInTheDocument();
+
+    send("Is 100 enough?");
+    await screen.findByText("Yes.");
+    expect(helpMocks.askHelp).toHaveBeenLastCalledWith("Is 100 enough?", { projectId: null, protocolId: null }, [
+      { role: "user", text: "Why did it fail?" },
+      { role: "assistant", text: "It ran out of **GPU memory**.\n\n- Use 100 classes\n- Or a box of 200 px" },
+    ]);
+  });
+
+  it("never draws HTML the model writes", async () => {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, left: 5 });
+    helpMocks.askHelp.mockResolvedValue({ assistant: true, cards: [], steps: [],
+                                          text: "<img src=x onerror=alert(1)> done" });
+    openChat();
+    await screen.findByText("Answers with AI");
+    send("hi");
+    expect(await screen.findByText("<img src=x onerror=alert(1)> done")).toBeInTheDocument();
+    expect(document.querySelector("img[src='x']")).toBeNull();
   });
 });

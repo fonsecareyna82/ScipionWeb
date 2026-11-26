@@ -38,10 +38,14 @@ export type HelpCard =
   | { kind: "protocols"; items: HelpProtocolRef[] }
   | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] };
 
-export type HelpAnswer = { text: string; cards: HelpCard[] };
+// assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
+export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number };
 
-export async function askHelp(question: string, where: { projectId?: number | null; protocolId?: string | null }):
-  Promise<HelpAnswer> {
+// The conversation so far, sent to the assistant so it follows it
+export type HelpTurn = { role: "user" | "assistant"; text: string };
+
+export async function askHelp(question: string, where: { projectId?: number | null; protocolId?: string | null },
+                              history: HelpTurn[] = []): Promise<HelpAnswer> {
   const response = await fetchWithAuth(`${BASE_URL}/help-chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,8 +53,57 @@ export async function askHelp(question: string, where: { projectId?: number | nu
       question,
       projectId: where.projectId ?? null,
       protocolId: where.protocolId ?? null,
+      history,
     }),
   });
   if (!response.ok) throw await buildApiError(response, "The help could not answer");
   return (await readPayload(response)) as HelpAnswer;
 }
+
+async function request<T>(path: string, fallback: string, init?: RequestInit): Promise<T> {
+  const response = await fetchWithAuth(`${BASE_URL}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  if (!response.ok) throw await buildApiError(response, fallback);
+  return (await readPayload(response)) as T;
+}
+
+// Whether this user's questions go to the AI assistant, and how many are left today
+export type HelpChatStatus = { assistant: boolean; dailyLimit?: number; left?: number };
+
+export const getHelpChatStatus = () => request<HelpChatStatus>("/help-chat/status", "Failed to load the chat");
+
+// The AI assistant's settings (administrators). The key is never sent back: only whether there is one.
+export type AssistantProviderKey = "openai" | "google" | "mistral" | "local";
+export type AssistantProviderInfo = { key: AssistantProviderKey; label: string; baseUrl: string; needsKey: boolean };
+export type AssistantUsageTotals = { users: number; questions: number; inputTokens: number; outputTokens: number };
+
+export type AssistantSettings = {
+  enabled: boolean;
+  provider: AssistantProviderKey;
+  baseUrl: string;
+  model: string;
+  mode: string;
+  dailyLimit: number;
+  keySet: boolean;
+  ready: boolean;
+  providers: AssistantProviderInfo[];
+  usage?: { today: AssistantUsageTotals; last30Days: AssistantUsageTotals };
+};
+
+// key: undefined keeps the one there is, "" removes it
+export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"
+  | "mode" | "dailyLimit">> & { key?: string };
+
+export const getAssistantSettings = () =>
+  request<AssistantSettings>("/help-chat/settings", "Failed to load the assistant settings");
+export const saveAssistantSettings = (payload: AssistantSettingsPayload) =>
+  request<AssistantSettings>("/help-chat/settings", "Failed to save the assistant settings",
+    { method: "PUT", body: JSON.stringify(payload) });
+export const listAssistantModels = (payload: AssistantSettingsPayload) =>
+  request<{ models: string[] }>("/help-chat/settings/models", "Could not list the models",
+    { method: "POST", body: JSON.stringify(payload) });
+export const testAssistant = (payload: AssistantSettingsPayload) =>
+  request<{ ok: boolean; reply: string }>("/help-chat/settings/test", "The test did not work",
+    { method: "POST", body: JSON.stringify(payload) });

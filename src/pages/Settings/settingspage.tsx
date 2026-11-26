@@ -19,7 +19,7 @@ import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import {
-  BellRing, Braces, Cpu, HardDrive, Network, RefreshCw, RotateCcw, Save, ScrollText, Server, ShieldCheck,
+  BellRing, Bot, Braces, Cpu, HardDrive, Network, RefreshCw, RotateCcw, Save, ScrollText, Server, ShieldCheck,
   Tag, UserCog, UserRound, UsersRound,
 } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
@@ -56,6 +56,7 @@ import GroupsPanel from "@/pages/Settings/GroupsPanel";
 import AuditPanel from "@/pages/Settings/AuditPanel";
 import UsagePanel from "@/pages/Settings/UsagePanel";
 import NotificationsPanel from "@/pages/Settings/NotificationsPanel";
+import AssistantPanel from "@/pages/Settings/AssistantPanel";
 import UserPreferencesPanel from "@/pages/Settings/UserPreferencesPanel";
 import InstancePanel from "@/pages/Settings/InstancePanel";
 import { useSettingsStyles } from "@/pages/Settings/useSettingsStyles";
@@ -84,6 +85,7 @@ type TabKey =
   | "disk"
   | "tags"
   | "notifications"
+  | "assistant"
   | "environment";
 
 type InstanceSettings = {
@@ -434,7 +436,7 @@ export default function SettingsPage() {
       user: true, tags: true, notifications: true, instance: can("settings.manage"), host: can("settings.manage"),
       environment: can("settings.manage"), jobs: can("jobs.manage"), users: can("users.manage"),
       roles: can("roles.manage"), groups: can("groups.manage"), audit: can("audit.view"),
-      disk: can("storage.view"),
+      disk: can("storage.view"), assistant: can("settings.manage"),
     };
     if (requestedTab && allowed[requestedTab as TabKey]) setTab(requestedTab as TabKey);
   }, [requestedTab, can]);
@@ -943,7 +945,7 @@ export default function SettingsPage() {
   const headerRight = useMemo(() => {
     // The panels with their own actions (Save, Reload…) have none up here
     if (tab === "tags" || tab === "jobs" || tab === "users" || tab === "roles" || tab === "groups"
-        || tab === "audit" || tab === "disk" || tab === "notifications") return null;
+        || tab === "audit" || tab === "disk" || tab === "notifications" || tab === "assistant") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
@@ -1246,6 +1248,7 @@ export default function SettingsPage() {
               {can("storage.view") && <Tab value="disk" label="Usage" icon={<HardDrive size={16} />} iconPosition="start" />}
               <Tab value="notifications" label="Notifications" icon={<BellRing size={16} />} iconPosition="start" />
               <Tab value="tags" label="Tags" icon={<Tag size={16} />} iconPosition="start" />
+              {can("settings.manage") && <Tab value="assistant" label="Assistant" icon={<Bot size={16} />} iconPosition="start" />}
               {can("settings.manage") && <Tab value="environment" label="Environment" icon={<Braces size={16} />} iconPosition="start" />}
             </Tabs>
 
@@ -1292,6 +1295,8 @@ export default function SettingsPage() {
                                 ? <NotificationsPanel canManage={can("settings.manage")} />
                               : tab === "tags"
                                 ? <TagsPanel />
+                              : tab === "assistant"
+                                ? <AssistantPanel />
                                 : renderEnvironmentContent()}
 
             </Box>
