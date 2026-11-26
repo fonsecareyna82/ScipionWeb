@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookOpen, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
+import { BookOpen, ChevronDown, FileText, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
   SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
 
 import {
-  applyHelpAction, askHelp, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
-  type HelpLogPlace, type HelpRelaunchMode, type HelpTemplateCard, type HelpTemplateOptions, type HelpTurn,
+  applyHelpAction, askHelp, downloadReport, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
+  type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpTemplateCard, type HelpTemplateOptions,
+  type HelpTurn,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
@@ -698,6 +699,61 @@ function TemplateOptions({ card, onAsk }: { card: HelpTemplateOptions; onAsk: (q
   );
 }
 
+function saveFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The processing report, to download: the PDF (written on the server, with the methods) and the workflow file. */
+function ReportCard({ card }: { card: HelpReportCard }) {
+  const [busy, setBusy] = useState<"" | "pdf" | "workflow">("");
+  const [error, setError] = useState<string | null>(null);
+
+  const download = async (format: "pdf" | "workflow") => {
+    setBusy(format);
+    setError(null);
+    try {
+      const { blob, filename } = await downloadReport({ projectId: card.projectId, format,
+                                                        ...(card.protocolId ? { protocolId: card.protocolId } : {}) });
+      saveFile(blob, filename);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The report could not be made");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[14.5px] dark:border-gray-700 dark:bg-gray-800/60"
+         data-testid="help-report">
+      <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-gray-100">
+        <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+        Processing report of {card.project}{card.protocolId ? ` up to #${card.protocolId}` : ""}
+      </div>
+      <div className="mt-0.5 text-gray-600 dark:text-gray-400">
+        {card.protocols === 1 ? "1 protocol" : `${card.protocols} protocols`}: programs and versions, every
+        parameter, outputs and runs, and a methods text. The workflow file runs them again with the same parameters.
+      </div>
+      {error && <div className="mt-1.5 text-red-700 dark:text-red-300">{error}</div>}
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        <button type="button" onClick={() => void download("pdf")} disabled={busy !== ""} className={PRIMARY_BUTTON}>
+          {busy === "pdf" ? "Writing the PDF…" : "Download PDF"}
+        </button>
+        <button type="button" onClick={() => void download("workflow")} disabled={busy !== ""}
+                className="rounded-full border border-blue-300 px-3.5 py-1.5 text-[14px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
+          {busy === "workflow" ? "Exporting…" : "Download workflow file"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** What the assistant looked at to answer: hidden until asked. */
 function Steps({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
@@ -734,6 +790,7 @@ function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: strin
         )}
         {answer.cards.map((card, index) => card.kind === "templates"
           ? <TemplateOptions key={`t${index}`} card={card} onAsk={onAsk} /> : null)}
+        {answer.cards.map((card, index) => card.kind === "report" ? <ReportCard key={`r${index}`} card={card} /> : null)}
         {answer.cards.map((card, index) => card.kind !== "action" ? null
           : card.action === "template" ? <TemplateCard key={index} card={card} />
             : card.action === "continue" ? <ContinueCard key={index} card={card} />

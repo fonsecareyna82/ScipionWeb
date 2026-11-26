@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn(), applyHelpAction: vi.fn() }));
+const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn(), applyHelpAction: vi.fn(),
+  downloadReport: vi.fn() }));
 vi.mock("@/api/helpChat", () => helpMocks);
 
 import HelpChat from "@/components/header/HelpChat";
@@ -384,5 +385,23 @@ describe("HelpChat", () => {
     openChat();
     send("how do I add a node");
     expect(await screen.findByText("Installation · Several machines")).toBeInTheDocument();
+  });
+
+  it("downloads the processing report and its workflow file", async () => {
+    const created: string[] = [];
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      created.push(this.download);
+    });
+    helpMocks.downloadReport.mockImplementation(async ({ format }: { format: string }) => ({
+      blob: new Blob(["x"]), filename: format === "pdf" ? "SPA_up_to_37_report.pdf" : "SPA_up_to_37_workflow.json" }));
+    await proposal({ kind: "report", projectId: 7, protocolId: "37", project: "SPA", protocols: 25 });
+    expect(screen.getByText("Processing report of SPA up to #37")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
+    await waitFor(() => expect(created).toEqual(["SPA_up_to_37_report.pdf"]));
+    fireEvent.click(screen.getByRole("button", { name: "Download workflow file" }));
+    await waitFor(() => expect(created).toEqual(["SPA_up_to_37_report.pdf", "SPA_up_to_37_workflow.json"]));
+    expect(helpMocks.downloadReport).toHaveBeenCalledWith({ projectId: 7, format: "pdf", protocolId: "37" });
+    click.mockRestore();
   });
 });

@@ -38,7 +38,11 @@ export type HelpCard =
   | { kind: "protocols"; items: HelpProtocolRef[] }
   | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] }
   | HelpTemplateOptions
+  | HelpReportCard
   | HelpActionCard;
+
+// The processing report of a project (or of what led to one protocol), to download
+export type HelpReportCard = { kind: "report"; projectId: number; protocolId: string; project: string; protocols: number };
 
 // The templates that take a protocol's output, for the user to choose one
 export type HelpTemplateOptions = {
@@ -183,3 +187,18 @@ export const listAssistantModels = (payload: AssistantSettingsPayload) =>
 export const testAssistant = (payload: AssistantSettingsPayload) =>
   request<{ ok: boolean; reply: string }>("/help-chat/settings/test", "The test did not work",
     { method: "POST", body: JSON.stringify(payload) });
+
+// The report as a PDF, or the workflow file to import and run it again: a file to save, with its name
+export async function downloadReport(payload: { projectId: number; protocolId?: string; format: "pdf" | "workflow" }):
+  Promise<{ blob: Blob; filename: string }> {
+  const response = await fetchWithAuth(`${BASE_URL}/help-chat/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw await buildApiError(response, "The report could not be made");
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1]
+    ?? (payload.format === "pdf" ? "report.pdf" : "workflow.json");
+  return { blob: await response.blob(), filename };
+}
