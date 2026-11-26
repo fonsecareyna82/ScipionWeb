@@ -107,13 +107,14 @@ export type HelpTemplateCard = {
 };
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
-export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number };
+export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number;
+  conversationId?: number | null };
 
 // The conversation so far, sent to the assistant so it follows it
 export type HelpTurn = { role: "user" | "assistant"; text: string };
 
 export async function askHelp(question: string, where: { projectId?: number | null; protocolId?: string | null },
-                              history: HelpTurn[] = []): Promise<HelpAnswer> {
+                              history: HelpTurn[] = [], conversationId: number | null = null): Promise<HelpAnswer> {
   const response = await fetchWithAuth(`${BASE_URL}/help-chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,6 +123,7 @@ export async function askHelp(question: string, where: { projectId?: number | nu
       projectId: where.projectId ?? null,
       protocolId: where.protocolId ?? null,
       history,
+      ...(conversationId ? { conversationId } : {}),
     }),
   });
   if (!response.ok) throw await buildApiError(response, "The help could not answer");
@@ -228,4 +230,19 @@ export async function downloadReport(payload: { projectId: number; protocolId?: 
   const filename = /filename="([^"]+)"/.exec(disposition)?.[1]
     ?? (payload.format === "pdf" ? "report.pdf" : "workflow.json");
   return { blob: await response.blob(), filename };
+}
+
+// The user's conversations with the help chat, kept on the server
+export type HelpConversationSummary = { id: number; title: string; projectId: number | null; project: string | null;
+  messages: number; createdAt: string; updatedAt: string };
+export type HelpConversation = { id: number; title: string; projectId: number | null;
+  messages: { role: "user" | "assistant"; text: string; answer: HelpAnswer | null }[] };
+
+export const listConversations = () =>
+  request<{ conversations: HelpConversationSummary[] }>("/help-chat/conversations", "Could not list the conversations");
+export const getConversation = (id: number) =>
+  request<HelpConversation>(`/help-chat/conversations/${id}`, "Could not open the conversation");
+export async function deleteConversation(id: number): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/help-chat/conversations/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await buildApiError(response, "Could not delete the conversation");
 }

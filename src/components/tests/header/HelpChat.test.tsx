@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const helpMocks = vi.hoisted(() => ({ askHelp: vi.fn(), getHelpChatStatus: vi.fn(), applyHelpAction: vi.fn(),
-  downloadReport: vi.fn() }));
+  downloadReport: vi.fn(), listConversations: vi.fn(), getConversation: vi.fn(), deleteConversation: vi.fn() }));
 vi.mock("@/api/helpChat", () => helpMocks);
 
 import HelpChat from "@/components/header/HelpChat";
@@ -23,6 +23,7 @@ describe("HelpChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: false });
+    window.localStorage.clear();
     setHelpFocus(null);
   });
   afterEach(() => act(() => setHelpFocus(null)));
@@ -44,7 +45,7 @@ describe("HelpChat", () => {
 
     expect(screen.getByText("dose filter")).toBeInTheDocument();
     await screen.findByText("In the parameters of motioncor:");
-    expect(helpMocks.askHelp).toHaveBeenCalledWith("dose filter", { projectId: 7, protocolId: "3" }, []);
+    expect(helpMocks.askHelp).toHaveBeenCalledWith("dose filter", { projectId: 7, protocolId: "3" }, [], null);
     expect(screen.getByText("Apply dose filter")).toBeInTheDocument();
     expect(screen.getByText("Parameter of movie alignment · Input")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Open in the documentation/ })).not.toBeInTheDocument();
@@ -67,7 +68,7 @@ describe("HelpChat", () => {
 
     await screen.findByText("Out of GPU memory");
     expect(helpMocks.askHelp).toHaveBeenLastCalledWith("Why did #5 fail?", { projectId: 7, protocolId: "3" },
-      expect.any(Array));
+      expect.any(Array), null);
     expect(screen.getByText("(line 12 of stderr)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Why did it fail?" })).toBeInTheDocument();
   });
@@ -108,7 +109,7 @@ describe("HelpChat", () => {
 
     await screen.findByText("Answers with AI");
     expect(screen.getByText(/12 questions left today/)).toBeInTheDocument();
-    expect(screen.getByText(/I only read/)).toBeInTheDocument();
+    expect(screen.getByText(/never change anything without your confirmation/)).toBeInTheDocument();
     send("Why did it fail?");
 
     expect(await screen.findByText("GPU memory")).toBeInTheDocument();
@@ -122,7 +123,7 @@ describe("HelpChat", () => {
     expect(helpMocks.askHelp).toHaveBeenLastCalledWith("Is 100 enough?", { projectId: null, protocolId: null }, [
       { role: "user", text: "Why did it fail?" },
       { role: "assistant", text: "It ran out of **GPU memory**.\n\n- Use 100 classes\n- Or a box of 200 px" },
-    ]);
+    ], null);
   });
 
   it("never draws HTML the model writes", async () => {
@@ -359,7 +360,7 @@ describe("HelpChat", () => {
     await screen.findByText("Here it is.");
     expect(helpMocks.askHelp).toHaveBeenLastCalledWith(
       'Apply the template "Workflow 3D cryosparc" (WH:Workflow 3D cryosparc) from protocol #105 (outputParticles)',
-      { projectId: null, protocolId: null }, expect.any(Array));
+      { projectId: null, protocolId: null }, expect.any(Array), null);
   });
 
   it("adds a template without launching it, and starts it later", async () => {
@@ -435,5 +436,64 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
       action: "subset", projectId: 7, protocolId: "5", outputName: "outputCTF", table: "objects",
       conditions: [{ column: "_resolution", op: "<", value: "3.4" }], makes: "CTFModel", name: "good CTFs" });
+  });
+
+  it("goes on with the same conversation, lists the earlier ones and shows their cards without acting", async () => {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, left: 5 });
+    helpMocks.askHelp.mockResolvedValueOnce({ assistant: true, text: "First.", steps: [], cards: [], conversationId: 41 })
+      .mockResolvedValueOnce({ assistant: true, text: "Second.", steps: [], cards: [], conversationId: 41 });
+    openChat();
+    await screen.findByText("Answers with AI");
+    send("one");
+    await screen.findByText("First.");
+    send("two");
+    await screen.findByText("Second.");
+    expect(helpMocks.askHelp).toHaveBeenLastCalledWith("two", expect.anything(), expect.any(Array), 41);
+    expect(window.localStorage.getItem("scipionweb.helpChat.conversation")).toBe("41");
+
+    helpMocks.listConversations.mockResolvedValue({ conversations: [
+      { id: 41, title: "one", projectId: 7, project: "SPA", messages: 4, createdAt: "2026-11-27T10:00:00Z",
+        updatedAt: "2026-11-27T10:05:00Z" },
+      { id: 30, title: "Why did #145 fail?", projectId: null, project: null, messages: 2,
+        createdAt: "2026-11-20T10:00:00Z", updatedAt: "2026-11-20T10:00:00Z" }] });
+    helpMocks.getConversation.mockResolvedValue({ id: 30, title: "Why did #145 fail?", projectId: null, messages: [
+      { role: "user", text: "Relaunch #37 with 100 classes", answer: null },
+      { role: "assistant", text: "Here it is.", answer: { assistant: true, text: "Here it is.", steps: [], cards: [
+        { kind: "action", action: "stop", projectId: 7, protocolId: "40", label: "picking", className: "P",
+          status: "running", reason: "" }] } }] });
+    fireEvent.click(screen.getByRole("button", { name: "Earlier conversations" }));
+    const list = await screen.findByTestId("help-history");
+    expect(list).toHaveTextContent("Why did #145 fail?");
+    expect(list).toHaveTextContent("2 questions");
+    fireEvent.click(screen.getByText("Why did #145 fail?"));
+    await screen.findByText("Here it is.");
+    expect(screen.getByText("Relaunch #37 with 100 classes")).toBeInTheDocument();
+    // The card shows what was proposed, but cannot be applied any more
+    expect(screen.getByText("Stop #40 picking")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
+    expect(screen.getByText(/From an earlier conversation/)).toBeInTheDocument();
+    expect(window.localStorage.getItem("scipionweb.helpChat.conversation")).toBe("30");
+
+    fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(screen.queryByText("Here it is.")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("scipionweb.helpChat.conversation")).toBeNull();
+  });
+
+  it("opens again the conversation that was open before a reload, and deletes one", async () => {
+    window.localStorage.setItem("scipionweb.helpChat.conversation", "30");
+    helpMocks.getConversation.mockResolvedValue({ id: 30, title: "t", projectId: null, messages: [
+      { role: "user", text: "Earlier question", answer: null },
+      { role: "assistant", text: "Earlier answer.", answer: { text: "Earlier answer.", cards: [] } }] });
+    openChat();
+    expect(await screen.findByText("Earlier answer.")).toBeInTheDocument();
+
+    helpMocks.listConversations.mockResolvedValue({ conversations: [{ id: 30, title: "t", projectId: null,
+      project: null, messages: 2, createdAt: "2026-11-27T10:00:00Z", updatedAt: "2026-11-27T10:00:00Z" }] });
+    helpMocks.deleteConversation.mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Earlier conversations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete t" }));
+    await waitFor(() => expect(helpMocks.deleteConversation).toHaveBeenCalledWith(30));
+    expect(await screen.findByText("No conversations yet.")).toBeInTheDocument();
+    expect(window.localStorage.getItem("scipionweb.helpChat.conversation")).toBeNull();
   });
 });

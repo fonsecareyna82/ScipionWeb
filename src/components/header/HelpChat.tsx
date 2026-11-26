@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookOpen, ChevronDown, FileText, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { BookOpen, ChevronDown, FileText, History, Trash2, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
   SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
 
 import {
-  applyHelpAction, askHelp, downloadReport, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
+  applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions,
-  type HelpTurn,
+  type HelpConversationSummary, type HelpTurn,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
@@ -15,7 +15,39 @@ import { renderRichHelpText } from "@/utils/rich_help_text";
 
 type Message =
   | { id: number; from: "user"; text: string }
-  | { id: number; from: "help"; answer?: HelpAnswer; error?: string; waiting?: boolean };
+  | { id: number; from: "help"; answer?: HelpAnswer; error?: string; waiting?: boolean; earlier?: boolean };
+
+// An answer from an earlier conversation: its cards show what was proposed, but nothing can be applied from them
+const CardsReadOnly = createContext(false);
+
+function EarlierNote() {
+  return (
+    <div className="mt-2 text-gray-500 dark:text-gray-400">
+      From an earlier conversation: ask again to do it as things are now.
+    </div>
+  );
+}
+
+// The conversation open, kept in this browser so that a reload goes back to it
+const CONVERSATION_KEY = "scipionweb.helpChat.conversation";
+
+function storedConversation(): number | null {
+  try {
+    const value = Number(window.localStorage.getItem(CONVERSATION_KEY));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeConversation(id: number | null) {
+  try {
+    if (id) window.localStorage.setItem(CONVERSATION_KEY, String(id));
+    else window.localStorage.removeItem(CONVERSATION_KEY);
+  } catch {
+    // Nothing kept: the chat still works
+  }
+}
 
 type SearchCard = Extract<HelpCard, { kind: "protocol" | "param" | "guide" }>;
 
@@ -293,6 +325,7 @@ function chainResult(result: { created?: string[]; launched?: string[]; errors?:
 
 /** A template to add, whole or from an output of the project: what it links to, where it stops, and its fields. */
 function TemplateCard({ card }: { card: HelpTemplateCard }) {
+  const readOnly = useContext(CardsReadOnly);
   const [stops, setStops] = useState<Set<string>>(() => new Set(card.steps.filter((step) => step.stop).map((step) => step.id)));
   const [fields, setFields] = useState<Record<string, string>>(
     () => Object.fromEntries(card.fields.map((field) => [field.alias, String(field.value ?? "")])));
@@ -403,7 +436,7 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
       </div>
 
       {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
-      {state === "done" ? (
+      {readOnly ? <EarlierNote /> : state === "done" ? (
         <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
       ) : state === "cancelled" ? (
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
@@ -429,6 +462,7 @@ const conditionText = (condition: HelpSubsetCondition) => `${condition.column} $
 
 /** A subset of an output kept by its values: how many stay, and the name of the new subset. */
 function SubsetCard({ card }: { card: HelpSubsetCard }) {
+  const readOnly = useContext(CardsReadOnly);
   const [name, setName] = useState(card.name);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
   const [error, setError] = useState<string | null>(null);
@@ -475,7 +509,7 @@ function SubsetCard({ card }: { card: HelpSubsetCard }) {
                className="mt-0.5 block w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-[14.5px] outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950" />
       </label>
       {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
-      {state === "done" ? (
+      {readOnly ? <EarlierNote /> : state === "done" ? (
         <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
       ) : state === "cancelled" ? (
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
@@ -537,6 +571,7 @@ function ComparisonCard({ card }: { card: HelpComparisonCard }) {
 
 /** Going on with a chain after a stop: what runs now. */
 function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "continue" }> }) {
+  const readOnly = useContext(CardsReadOnly);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState("");
@@ -574,7 +609,7 @@ function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "conti
         ))}
       </ul>
       {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
-      {state === "done" ? (
+      {readOnly ? <EarlierNote /> : state === "done" ? (
         <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
       ) : state === "cancelled" ? (
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
@@ -593,6 +628,7 @@ function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "conti
 }
 
 function ActionCard({ card }: { card: SimpleActionCard }) {
+  const readOnly = useContext(CardsReadOnly);
   const [mode, setMode] = useState<HelpRelaunchMode>(card.action === "relaunch" ? card.mode : "restart");
   const [scope, setScope] = useState<"single" | "all" | null>(null);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
@@ -755,7 +791,7 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
 
       {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
 
-      {state === "done" ? (
+      {readOnly ? <EarlierNote /> : state === "done" ? (
         <div className="mt-2 font-medium text-green-700 dark:text-green-300">{doneText}</div>
       ) : state === "cancelled" ? (
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
@@ -885,7 +921,16 @@ function Steps({ steps }: { steps: string[] }) {
   );
 }
 
-function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: string) => void }) {
+function Answer({ answer, onAsk, earlier = false }: { answer: HelpAnswer; onAsk: (question: string) => void;
+                                                     earlier?: boolean }) {
+  return (
+    <CardsReadOnly.Provider value={earlier}>
+      <AnswerBody answer={answer} onAsk={onAsk} />
+    </CardsReadOnly.Provider>
+  );
+}
+
+function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: string) => void }) {
   if (answer.assistant) {
     const found = answer.cards.filter(isSearchCard);
     return (
@@ -962,6 +1007,61 @@ export default function HelpChat() {
   // Whether the questions go to the AI assistant (asked each time the chat opens: an admin may turn it on or off)
   const [status, setStatus] = useState<HelpChatStatus>({ assistant: false });
   const ai = status.assistant;
+  // The conversation kept on the server that the questions go on (null: the next question starts one)
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const [history, setHistory] = useState<HelpConversationSummary[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const restored = useRef(false);
+
+  const keep = useCallback((id: number | null) => {
+    setConversationId(id);
+    storeConversation(id);
+  }, []);
+
+  const openConversation = useCallback(async (id: number) => {
+    const loaded = await getConversation(id);
+    setMessages(loaded.messages.map((message): Message => message.role === "user"
+      ? { id: nextId.current++, from: "user", text: message.text }
+      : { id: nextId.current++, from: "help", answer: message.answer ?? { text: message.text, cards: [] },
+          earlier: true }));
+    keep(loaded.id);
+    setView("chat");
+  }, [keep]);
+
+  // The first time it opens, back to the conversation open before a reload
+  useEffect(() => {
+    if (!open || restored.current) return;
+    restored.current = true;
+    const id = storedConversation();
+    if (id && messages.length === 0) openConversation(id).catch(() => keep(null));
+  }, [open, messages.length, openConversation, keep]);
+
+  const showHistory = useCallback(() => {
+    setView("history");
+    setHistoryError(null);
+    listConversations().then((loaded) => setHistory(loaded.conversations))
+      .catch((error: unknown) => setHistoryError(error instanceof Error ? error.message : "Could not list them"));
+  }, []);
+
+  const startAgain = useCallback(() => {
+    setMessages([]);
+    keep(null);
+    setView("chat");
+  }, [keep]);
+
+  const removeConversation = useCallback(async (id: number) => {
+    try {
+      await deleteConversation(id);
+      setHistory((list) => (list ?? []).filter((item) => item.id !== id));
+      if (id === conversationId) {
+        setMessages([]);
+        keep(null);
+      }
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Could not delete it");
+    }
+  }, [conversationId, keep]);
 
   useEffect(() => {
     if (!open) return;
@@ -1000,16 +1100,17 @@ export default function HelpChat() {
       : message.answer ? [{ role: "assistant", text: message.answer.text }] : []).slice(-HISTORY_TURNS);
     setMessages((list) => [...list, { id: askedId, from: "user", text }, { id: answerId, from: "help", waiting: true }]);
     setDraft("");
-    askHelp(text, { projectId: focus.projectId, protocolId: focus.protocolId }, history)
+    askHelp(text, { projectId: focus.projectId, protocolId: focus.protocolId }, history, conversationId)
       .then((answer) => {
         if (answer.left !== undefined) setStatus((current) => ({ ...current, left: answer.left }));
+        if (answer.conversationId) keep(answer.conversationId);
         setMessages((list) => list.map((message) => message.id === answerId
           ? { id: answerId, from: "help", answer } : message));
       })
       .catch((error: unknown) => setMessages((list) => list.map((message) => message.id === answerId
         ? { id: answerId, from: "help", error: error instanceof Error ? error.message : "The help could not answer" }
         : message)));
-  }, [busy, focus.projectId, focus.protocolId, messages]);
+  }, [busy, focus.projectId, focus.protocolId, messages, conversationId, keep]);
 
   const shortcuts: string[] = [];
   if (focus.protocolId) shortcuts.push("Why did it fail?", "What comes next?");
@@ -1048,8 +1149,13 @@ export default function HelpChat() {
                   : ai ? "Answers with AI" : "Answers from the web's own help"}
               </div>
             </div>
+            <button type="button" aria-label="Earlier conversations" title="Earlier conversations"
+                    aria-pressed={view === "history"} onClick={() => (view === "history" ? setView("chat") : showHistory())}
+                    className={`rounded-full p-2 text-gray-200 hover:bg-white/10 ${view === "history" ? "bg-white/15" : ""}`}>
+              <History className="h-[18px] w-[18px]" />
+            </button>
             {messages.length > 0 && (
-              <button type="button" aria-label="Start again" title="Start again" onClick={() => setMessages([])}
+              <button type="button" aria-label="New conversation" title="New conversation" onClick={startAgain}
                       className="rounded-full p-2 text-gray-200 hover:bg-white/10">
                 <RotateCcw className="h-[18px] w-[18px]" />
               </button>
@@ -1060,13 +1166,46 @@ export default function HelpChat() {
             </button>
           </header>
 
+          {view === "history" ? (
+            <div className="flex-1 overflow-y-auto px-3.5 py-4" data-testid="help-history">
+              <div className="mb-2 text-[15px] font-semibold text-gray-900 dark:text-gray-100">Earlier conversations</div>
+              {historyError && <div className="text-[14.5px] text-red-700 dark:text-red-300">{historyError}</div>}
+              {history === null && !historyError && <div className="text-[14.5px] text-gray-500">Loading…</div>}
+              {history?.length === 0 && (
+                <div className="text-[14.5px] text-gray-500 dark:text-gray-400">No conversations yet.</div>
+              )}
+              <ul className="space-y-1.5">
+                {history?.map((item) => (
+                  <li key={item.id} className={`flex items-start gap-1 rounded-lg border bg-white dark:bg-gray-900 ${item.id === conversationId
+                    ? "border-blue-400 dark:border-blue-700" : "border-gray-200 dark:border-gray-800"}`}>
+                    <button type="button" onClick={() => void openConversation(item.id).catch((error: unknown) =>
+                              setHistoryError(error instanceof Error ? error.message : "Could not open it"))}
+                            className="min-w-0 flex-1 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                      <span className="block truncate text-[14.5px] font-medium text-gray-900 dark:text-gray-100">
+                        {item.title || "Untitled"}
+                      </span>
+                      <span className="block truncate text-[13.5px] text-gray-500 dark:text-gray-400">
+                        {new Date(item.updatedAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        {item.project ? ` · ${item.project}` : ""} · {Math.ceil(item.messages / 2)} question{item.messages > 2 ? "s" : ""}
+                      </span>
+                    </button>
+                    <button type="button" aria-label={`Delete ${item.title || "the conversation"}`} title="Delete"
+                            onClick={() => void removeConversation(item.id)}
+                            className="m-1.5 rounded-full p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
           <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto px-3.5 py-4">
             {ai ? (
               <HelpBubble>
                 <p>Hi! I can look at your projects to answer: why a protocol failed, what it produced, which protocol
                   or parameter to use.</p>
                 <p className="mt-1.5 text-gray-600 dark:text-gray-400">
-                  I only read: I cannot launch, change or delete anything. Write in any language.
+                  I never change anything without your confirmation. Write in any language.
                   {status.left !== undefined && ` ${status.left} question${status.left === 1 ? "" : "s"} left today.`}
                 </p>
               </HelpBubble>
@@ -1091,10 +1230,12 @@ export default function HelpChat() {
               }
               if (message.waiting) return <Typing key={message.id} label={ai ? "Thinking" : "Looking in the help"} />;
               if (message.error) return <HelpBubble key={message.id} tone="error">{message.error}</HelpBubble>;
-              return message.answer ? <Answer key={message.id} answer={message.answer} onAsk={ask} /> : null;
+              return message.answer
+                ? <Answer key={message.id} answer={message.answer} onAsk={ask} earlier={message.earlier} /> : null;
             })}
             {lastIsAnswer && <QuickReplies items={shortcuts} disabled={busy} onAsk={ask} />}
           </div>
+          )}
 
           <footer className="border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
             <form className="flex items-end gap-2 rounded-3xl border border-gray-300 bg-white py-1.5 pl-4 pr-1.5 focus-within:border-blue-500 dark:border-gray-700 dark:bg-gray-950"
