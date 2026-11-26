@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1621,7 +1622,10 @@ function Coords2dViewer({
     setTransform(computeFitTransform(bounds, size));
   }, [bounds, size]);
 
-  useEffect(() => {
+  // The fit not yet applied: until it is, a drawing would use the zoom of the micrograph
+  // before and show its circles huge. Fitted before the screen is painted.
+  const pendingFitRef = useRef<ViewTransform | null>(null);
+  useLayoutEffect(() => {
     if (!selectedMicKey || loadingCoordinates || !imageWorldSize) return;
 
     // Deliberately NOT re-fitting when boxSize changes: getBounds() pads
@@ -1632,7 +1636,9 @@ function Coords2dViewer({
     // changes size, only the fit-to-view zoom was reacting to boxSize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
-    setTransform(computeFitTransform(nextBounds, size));
+    const fitted = computeFitTransform(nextBounds, size);
+    pendingFitRef.current = fitted;
+    setTransform(fitted);
   }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, loadingCoordinates]);
 
   const worldToScreen = useCallback(
@@ -2300,6 +2306,11 @@ function Coords2dViewer({
     const ctx = canvas?.getContext("2d");
 
     if (!canvas || !ctx) return;
+    // The canvas keeps what it shows until the new fit is in
+    if (pendingFitRef.current) {
+      if (pendingFitRef.current !== transform) return;
+      pendingFitRef.current = null;
+    }
 
     const ratio = window.devicePixelRatio || 1;
 
@@ -2393,7 +2404,8 @@ function Coords2dViewer({
     selectedPointId,
     size.height,
     size.width,
-    transform.scale,
+    // The object, not its numbers: a fit equal to the one before must still be drawn
+    transform,
     visiblePoints,
     worldToScreen,
   ]);

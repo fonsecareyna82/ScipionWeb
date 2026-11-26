@@ -86,8 +86,8 @@ describe("The coordinates viewer before the micrograph image arrives", () => {
     preview.resolve({ url: "blob:preview:512:384", revoke: () => undefined, originalWidth: 4000, originalHeight: 3000 });
 
     await waitFor(() => expect(arcs.length).toBeGreaterThan(0));
-    const radius = arcs[arcs.length - 1][2];
-    // A box of 200 on a 4000 x 3000 micrograph fitted to the view
+    // A box of 200 on a 4000 x 3000 micrograph fitted to the view, from the first circle on
+    const radius = arcs[0][2];
     expect(radius).toBeLessThan(40);
   });
 });
