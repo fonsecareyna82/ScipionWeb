@@ -294,10 +294,7 @@ function ActionCard({ card }: { card: HelpActionCard }) {
             : { ...base, action: "relaunch", mode, scope: scope ?? undefined,
                 changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) });
       requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
-      if (card.action === "duplicate" && result.newProtocolId) {
-        setCopyId(result.newProtocolId);
-        requestFromHelpChat({ kind: "openProtocol", projectId: card.projectId, protocolId: result.newProtocolId });
-      }
+      if (card.action === "duplicate" && result.newProtocolId) setCopyId(result.newProtocolId);
       setState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The action could not be applied");
@@ -318,7 +315,7 @@ function ActionCard({ card }: { card: HelpActionCard }) {
           : `${MODE_TEXT[mode].title} ${where}`;
   const doneText = card.action === "stop" ? "Stopping it."
     : card.action === "next" ? "Its form is open: choose the input and launch it."
-      : card.action === "duplicate" ? `Copy${copyId ? ` #${copyId}` : ""} made, not launched: check it in its form and launch it.`
+      : card.action === "duplicate" ? `Copy${copyId ? ` #${copyId}` : ""} made, not launched.`
         : card.action === "delete" ? "Deleted."
           : `${MODE_TEXT[mode].title} sent.`;
   const applyText = card.action === "next" ? "Open its form" : card.action === "delete" ? "Delete"

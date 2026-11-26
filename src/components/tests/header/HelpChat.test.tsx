@@ -224,7 +224,7 @@ describe("HelpChat", () => {
     off();
   });
 
-  it("makes a copy with the changes and opens its form", async () => {
+  it("makes a copy with the changes, without opening its form", async () => {
     const requests: HelpChatRequest[] = [];
     const off = onHelpChatRequest((request) => requests.push(request));
     helpMocks.applyHelpAction.mockResolvedValue({ ok: true, newProtocolId: "200" });
@@ -234,11 +234,10 @@ describe("HelpChat", () => {
     expect(screen.getByText("Copy #37 alignPCA-2D")).toBeInTheDocument();
     expect(screen.getByText(/The original and what depends on it stay as they are/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Make the copy" }));
-    await screen.findByText(/Copy #200 made, not launched/);
+    await screen.findByText("Copy #200 made, not launched.");
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "duplicate", projectId: 7, protocolId: "37",
                                                              changes: { numberOfClasses: 30 } });
-    expect(requests).toEqual([{ kind: "refresh", projectId: 7 },
-                              { kind: "openProtocol", projectId: 7, protocolId: "200" }]);
+    expect(requests).toEqual([{ kind: "refresh", projectId: 7 }]);
     off();
   });
 
