@@ -31,12 +31,15 @@ describe("AssistantPanel", () => {
         api.saveAssistantSettings.mockImplementation(async (payload) => ({ ...SETTINGS, ...payload, keySet: true }));
     });
 
-    it("starts off, keeps the key when left empty and shows the usage", async () => {
+    it("starts off, keeps the key when left empty and shows the usage in its own tab", async () => {
         render(<AssistantPanel />);
         expect(await screen.findByText("Set: leave it empty to keep it")).toBeInTheDocument();
         expect(screen.getByRole("checkbox", { name: "Answer with AI" })).not.toBeChecked();
-        expect(screen.getByText(/7 questions from 2 users/)).toBeInTheDocument();
         expect(screen.getByText(/are sent to that provider/)).toBeInTheDocument();
+        expect(screen.queryByText(/7 questions from 2 users/)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Limit and usage" }));
+        expect(screen.getByText(/7 questions from 2 users/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Model" }));
 
         fireEvent.click(screen.getByRole("checkbox", { name: "Answer with AI" }));
         fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
@@ -67,15 +70,18 @@ describe("AssistantPanel", () => {
     it("offers deleting only when proposing, off by default", async () => {
         render(<AssistantPanel />);
         await screen.findByText("Set: leave it empty to keep it");
+        fireEvent.click(screen.getByRole("button", { name: "What it may do" }));
         expect(screen.queryByRole("checkbox", { name: "Propose deleting protocols" })).not.toBeInTheDocument();
     });
 
-    it("shows the delete switch off when proposing", async () => {
+    it("shows the delete switch off when proposing, and keeps it when another tab is open", async () => {
         api.getAssistantSettings.mockResolvedValue({ ...SETTINGS, mode: "propose", modes: ["answer", "propose"] });
         render(<AssistantPanel />);
+        fireEvent.click(await screen.findByRole("button", { name: "What it may do" }));
         const toggle = await screen.findByRole("checkbox", { name: "Propose deleting protocols" });
         expect(toggle).not.toBeChecked();
         fireEvent.click(toggle);
+        fireEvent.click(screen.getByRole("button", { name: "Model" }));
         fireEvent.click(screen.getByRole("button", { name: "Save assistant settings" }));
         await waitFor(() => expect(api.saveAssistantSettings).toHaveBeenCalled());
         expect(api.saveAssistantSettings.mock.calls[0][0]).toMatchObject({ mode: "propose", allowDelete: true });

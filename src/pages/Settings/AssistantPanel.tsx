@@ -1,14 +1,16 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Autocomplete, Box, Button, MenuItem, Stack, Switch, TextField, Typography } from "@mui/material";
+import {
+    Autocomplete, Box, Button, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Typography,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { Bot, Info, ListRestart, Save, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import { Bot, Gauge, Info, ListRestart, Save, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
     getAssistantSettings, listAssistantModels, saveAssistantSettings, testAssistant,
     type AssistantProviderKey, type AssistantSettings, type AssistantSettingsPayload, type AssistantUsageTotals,
 } from "@/api/helpChat";
-import { SETTINGS_TEXT, SettingRow, SettingsSection, sectionTint } from "./SettingsSection";
+import { SETTINGS_TEXT, SettingRow, SettingsSection, choiceButtonsSx, sectionTint } from "./SettingsSection";
 import { useSettingsStyles } from "./useSettingsStyles";
 
 type Look = ReturnType<typeof useSettingsStyles> & { isDarkMode: boolean };
@@ -44,10 +46,10 @@ function Note({ children, warning, look }: { children: ReactNode; warning?: bool
 
 const number = (value: number) => value.toLocaleString("en-GB");
 
-function UsageLine({ label, totals }: { label: string; totals: AssistantUsageTotals }) {
+function UsageLine({ totals }: { totals: AssistantUsageTotals }) {
     return (
         <Box component="span" sx={{ display: "block" }}>
-            <strong>{label}:</strong> {number(totals.questions)} question{totals.questions === 1 ? "" : "s"} from{" "}
+            {number(totals.questions)} question{totals.questions === 1 ? "" : "s"} from{" "}
             {number(totals.users)} user{totals.users === 1 ? "" : "s"}, {number(totals.inputTokens)} tokens read and{" "}
             {number(totals.outputTokens)} written.
         </Box>
@@ -74,6 +76,8 @@ export default function AssistantPanel() {
     const [removeKey, setRemoveKey] = useState(false);
     const [models, setModels] = useState<string[]>([]);
     const [busy, setBusy] = useState<"" | "save" | "models" | "test">("");
+    // Which part is shown; what is changed in one stays while another is open, and Save keeps it all
+    const [part, setPart] = useState<"model" | "permissions" | "usage">("model");
 
     const adopt = (loaded: AssistantSettings) => {
         setSettings(loaded);
@@ -128,162 +132,171 @@ export default function AssistantPanel() {
     const local = draft.provider === "local";
     const width = { xs: "100%", md: 520 };
 
+    const saveButton = (
+        <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={15} />}
+                disabled={busy !== ""} onClick={() => void run("save")}>
+            {busy === "save" ? "Saving…" : "Save assistant settings"}
+        </Button>
+    );
+
     return (
         <Stack spacing={2}>
-            <SettingsSection icon={<Bot size={19} />} title="AI assistant" colors={colors} isDarkMode={isDarkMode}
-                             subtitle="The help chat can answer with an AI model that reads the user's projects: why a protocol failed, what it produced, which protocol or parameter to use."
-                             actions={
-                                 <Button size="small" variant="contained" sx={saveButtonSx} startIcon={<Save size={15} />}
-                                         disabled={busy !== ""} onClick={() => void run("save")}>
-                                     {busy === "save" ? "Saving…" : "Save assistant settings"}
-                                 </Button>
-                             }>
-                <SettingRow colors={colors} title="Answer with AI"
-                            description={
-                                <>
-                                    Off by default: nothing is sent to any model and the chat answers from the web's own
-                                    help, as always. On, the chat of the people allowed below answers with the model.
-                                </>
-                            }
-                            control={
-                                <Switch checked={draft.enabled} slotProps={{ input: { "aria-label": "Answer with AI" } }}
-                                        onChange={(e) => set({ enabled: e.target.checked })} />
-                            } />
-                <SettingRow colors={colors} title="Provider" labelFor="assistant-provider"
-                            description="Who runs the model. A local model is one your centre runs on its own server; nothing leaves the centre then."
-                            control={
-                                <TextField id="assistant-provider" sx={{ ...selectSx, width }} size="small" select
-                                           value={draft.provider}
-                                           SelectProps={{ MenuProps: { PaperProps: { sx: menuPaperSx } } }}
-                                           onChange={(e) => {
-                                               set({ provider: e.target.value as AssistantProviderKey, model: "" });
-                                               setModels([]);
-                                           }}>
-                                    {settings.providers.map((item) => (
-                                        <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
-                                    ))}
-                                </TextField>
-                            } />
-                {local && (
-                    <SettingRow colors={colors} title="Address" labelFor="assistant-address"
-                                description="Where the local model answers, as its server gives it."
-                                control={
-                                    <TextField id="assistant-address" sx={{ ...fieldSx, width }} size="small"
-                                               value={draft.baseUrl} placeholder="http://gpu-server:11434/v1"
-                                               onChange={(e) => set({ baseUrl: e.target.value })} />
-                                } />
-                )}
-                <SettingRow colors={colors} title="Key" labelFor="assistant-key"
-                            description={local ? "Only if your local server asks for one." : "The provider's API key. It is kept encrypted on the server and never shown again, not even to administrators."}
-                            control={
-                                <Stack spacing={0.5} alignItems="flex-start" sx={{ width }}>
-                                    <TextField id="assistant-key" sx={{ ...fieldSx, width: "100%" }} size="small" type="password"
-                                               value={key} autoComplete="new-password" disabled={removeKey}
-                                               helperText={keyThere ? "Set: leave it empty to keep it"
-                                                   : providerChanged && settings.keySet ? "The key of the other provider is forgotten when you save"
-                                                       : "None set"}
-                                               onChange={(e) => setKey(e.target.value)} />
-                                    {settings.keySet && !providerChanged && (
-                                        <Button size="small" variant="text"
-                                                sx={{ textTransform: "none", fontSize: SETTINGS_TEXT.text, fontWeight: 600,
-                                                      color: removeKey ? colors.primary : "#dc2626" }}
-                                                onClick={() => setRemoveKey((value) => !value)}>
-                                            {removeKey ? "Keep the key" : "Remove the key"}
-                                        </Button>
-                                    )}
-                                </Stack>
-                            } />
-                <SettingRow colors={colors} title="Model" labelFor="assistant-model"
-                            description="Load the models the key can use and pick one, or write its name."
-                            control={
-                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "center" }} sx={{ width }}>
-                                    <Autocomplete freeSolo options={models} value={draft.model} sx={{ flex: 1 }}
-                                                  onInputChange={(_, value) => set({ model: value })}
-                                                  slotProps={{ paper: { sx: menuPaperSx } }}
-                                                  renderInput={(params) => (
-                                                      <TextField {...params} id="assistant-model" sx={fieldSx} size="small"
-                                                                 placeholder="Model name" />
-                                                  )} />
-                                    <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ListRestart size={15} />}
-                                            disabled={busy !== "" || (provider.needsKey && !keyThere && !key.trim()) || (local && !draft.baseUrl.trim())}
-                                            onClick={() => void run("models")}>
-                                        {busy === "models" ? "Loading…" : "Load models"}
-                                    </Button>
-                                </Stack>
-                            } />
-                <SettingRow colors={colors} title="Try it"
-                            description="Asks the model one short question with the settings above, before saving them."
-                            control={
-                                <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Sparkles size={15} />}
-                                        disabled={busy !== "" || !draft.model.trim()} onClick={() => void run("test")}>
-                                    {busy === "test" ? "Asking…" : "Test the model"}
-                                </Button>
-                            } />
-                <SettingRow colors={colors} title="What it may do" labelFor="assistant-mode"
-                            description="Proposing: it can offer to relaunch, continue or stop a protocol, or open the form of the next one. Each proposal is a card; nothing happens until the person presses Apply."
-                            control={
-                                <TextField id="assistant-mode" sx={{ ...selectSx, width }} size="small" select value={draft.mode}
-                                           SelectProps={{ MenuProps: { PaperProps: { sx: menuPaperSx } } }}
-                                           onChange={(e) => set({ mode: e.target.value })}>
-                                    {(settings.modes ?? ["answer"]).map((value) => (
-                                        <MenuItem key={value} value={value}>{MODE_LABELS[value] ?? value}</MenuItem>
-                                    ))}
-                                </TextField>
-                            } />
-                {draft.mode === "propose" && (
-                    <SettingRow colors={colors} title="Propose deleting protocols"
-                                description="Off by default. Deleting cannot be undone, so the card lists everything that is lost and the person must write the protocol's number to confirm. Never projects, never a running protocol, never one whose depending protocols have results."
-                                control={
-                                    <Switch checked={draft.allowDelete}
-                                            slotProps={{ input: { "aria-label": "Propose deleting protocols" } }}
-                                            onChange={(e) => set({ allowDelete: e.target.checked })} />
-                                } />
-                )}
-                <SettingRow colors={colors} title="Questions per person and day" labelFor="assistant-limit"
-                            description="Each question costs money with a paid provider. When someone reaches the limit, the assistant answers them again the next day."
-                            control={
-                                <TextField id="assistant-limit" sx={{ ...fieldSx, width: 140 }} size="small" value={draft.dailyLimit}
-                                           inputProps={{ inputMode: "numeric" }} onChange={(e) => set({ dailyLimit: e.target.value })} />
-                            } />
-            </SettingsSection>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}
+                   justifyContent="space-between">
+                <ToggleButtonGroup exclusive size="small" value={part} aria-label="Assistant settings"
+                                   onChange={(_, value) => value && setPart(value)}
+                                   sx={choiceButtonsSx(colors, isDarkMode)}>
+                    <ToggleButton value="model"><Bot size={16} />Model</ToggleButton>
+                    <ToggleButton value="permissions"><ShieldCheck size={16} />What it may do</ToggleButton>
+                    <ToggleButton value="usage"><Gauge size={16} />Limit and usage</ToggleButton>
+                </ToggleButtonGroup>
+                <Box>{saveButton}</Box>
+            </Stack>
 
-            <SettingsSection icon={<ShieldCheck size={19} />} title="What it may do" colors={colors} isDarkMode={isDarkMode} plain
-                             subtitle="It acts with the permissions of the person who asks, never more.">
-                <Stack spacing={1} sx={{ fontSize: SETTINGS_TEXT.text, color: colors.text, lineHeight: 1.55 }}>
-                    <Box>
-                        <strong>Who uses it:</strong> the people whose role has the permission <em>Ask the AI assistant</em>
-                        {" "}(Roles tab). Administrators always have it. Everyone else keeps the plain help chat.
-                    </Box>
-                    <Box>
-                        <strong>It reads</strong> the projects the person can see (protocols, parameters, outputs,
-                        logs, failure causes) and the help.
-                    </Box>
-                    <Box>
-                        <strong>It proposes</strong>, only if chosen above and only in projects the person can work in:
-                        relaunch a protocol (with other parameters, or continue a failed one), copy one with other
-                        parameters, stop one, open the form of the next step and, if turned on, delete one. The card
-                        shows what changes and what is lost, and asks about the protocols that depend on it. Nothing
-                        runs until the person presses Apply.
-                    </Box>
-                    <Box>
-                        <strong>Never:</strong> delete projects, change a protocol's inputs, touch users, roles
-                        or settings, or run commands on the server. Those tools do not exist for it, so nothing it
-                        reads can make it do them.
-                    </Box>
+            {part === "model" && (
+                <SettingsSection icon={<Bot size={19} />} title="Model" colors={colors} isDarkMode={isDarkMode}
+                                 subtitle="The help chat can answer with an AI model that reads the user's projects: why a protocol failed, what it produced, which protocol or parameter to use.">
+                    <SettingRow colors={colors} title="Answer with AI"
+                                description="Off by default: nothing is sent to any model and the chat answers from the web's own help, as always. On, the chat of the people allowed answers with the model."
+                                control={
+                                    <Switch checked={draft.enabled} slotProps={{ input: { "aria-label": "Answer with AI" } }}
+                                            onChange={(e) => set({ enabled: e.target.checked })} />
+                                } />
+                    <SettingRow colors={colors} title="Provider" labelFor="assistant-provider"
+                                description="Who runs the model. A local model is one your centre runs on its own server; nothing leaves the centre then."
+                                control={
+                                    <TextField id="assistant-provider" sx={{ ...selectSx, width }} size="small" select
+                                               value={draft.provider}
+                                               SelectProps={{ MenuProps: { PaperProps: { sx: menuPaperSx } } }}
+                                               onChange={(e) => {
+                                                   set({ provider: e.target.value as AssistantProviderKey, model: "" });
+                                                   setModels([]);
+                                               }}>
+                                        {settings.providers.map((item) => (
+                                            <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                } />
+                    {local && (
+                        <SettingRow colors={colors} title="Address" labelFor="assistant-address"
+                                    description="Where the local model answers, as its server gives it."
+                                    control={
+                                        <TextField id="assistant-address" sx={{ ...fieldSx, width }} size="small"
+                                                   value={draft.baseUrl} placeholder="http://gpu-server:11434/v1"
+                                                   onChange={(e) => set({ baseUrl: e.target.value })} />
+                                    } />
+                    )}
+                    <SettingRow colors={colors} title="Key" labelFor="assistant-key"
+                                description={local ? "Only if your local server asks for one." : "The provider's API key. It is kept encrypted on the server and never shown again, not even to administrators."}
+                                control={
+                                    <Stack spacing={0.5} alignItems="flex-start" sx={{ width }}>
+                                        <TextField id="assistant-key" sx={{ ...fieldSx, width: "100%" }} size="small" type="password"
+                                                   value={key} autoComplete="new-password" disabled={removeKey}
+                                                   helperText={keyThere ? "Set: leave it empty to keep it"
+                                                       : providerChanged && settings.keySet ? "The key of the other provider is forgotten when you save"
+                                                           : "None set"}
+                                                   onChange={(e) => setKey(e.target.value)} />
+                                        {settings.keySet && !providerChanged && (
+                                            <Button size="small" variant="text"
+                                                    sx={{ textTransform: "none", fontSize: SETTINGS_TEXT.text, fontWeight: 600,
+                                                          color: removeKey ? colors.primary : "#dc2626" }}
+                                                    onClick={() => setRemoveKey((value) => !value)}>
+                                                {removeKey ? "Keep the key" : "Remove the key"}
+                                            </Button>
+                                        )}
+                                    </Stack>
+                                } />
+                    <SettingRow colors={colors} title="Model" labelFor="assistant-model"
+                                description="Load the models the key can use and pick one, or write its name."
+                                control={
+                                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "center" }} sx={{ width }}>
+                                        <Autocomplete freeSolo options={models} value={draft.model} sx={{ flex: 1 }}
+                                                      onInputChange={(_, value) => set({ model: value })}
+                                                      slotProps={{ paper: { sx: menuPaperSx } }}
+                                                      renderInput={(params) => (
+                                                          <TextField {...params} id="assistant-model" sx={fieldSx} size="small"
+                                                                     placeholder="Model name" />
+                                                      )} />
+                                        <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<ListRestart size={15} />}
+                                                disabled={busy !== "" || (provider.needsKey && !keyThere && !key.trim()) || (local && !draft.baseUrl.trim())}
+                                                onClick={() => void run("models")}>
+                                            {busy === "models" ? "Loading…" : "Load models"}
+                                        </Button>
+                                    </Stack>
+                                } />
+                    <SettingRow colors={colors} title="Try it"
+                                description="Asks the model one short question with the settings above, before saving them."
+                                control={
+                                    <Button size="small" variant="outlined" sx={actionButtonSx} startIcon={<Sparkles size={15} />}
+                                            disabled={busy !== "" || !draft.model.trim()} onClick={() => void run("test")}>
+                                        {busy === "test" ? "Asking…" : "Test the model"}
+                                    </Button>
+                                } />
                     {!local && (
-                        <Note warning look={look}>
-                            With a provider outside the centre, the questions and what the assistant reads to answer them
-                            (log lines, parameters, project and protocol names) are sent to that provider.
-                        </Note>
+                        <Box sx={{ pb: 2 }}>
+                            <Note warning look={look}>
+                                With a provider outside the centre, the questions and what the assistant reads to answer
+                                them (log lines, parameters, project and protocol names) are sent to that provider.
+                            </Note>
+                        </Box>
+                    )}
+                </SettingsSection>
+            )}
+
+            {part === "permissions" && (
+                <SettingsSection icon={<ShieldCheck size={19} />} title="What it may do" colors={colors} isDarkMode={isDarkMode}
+                                 subtitle="It acts with the permissions of the person who asks, never more.">
+                    <SettingRow colors={colors} title="Who uses it"
+                                description="The people whose role has the permission Ask the AI assistant (Roles tab). Administrators always have it. Everyone else keeps the plain help chat."
+                                control={null} />
+                    <SettingRow colors={colors} title="It reads"
+                                description="What the person can see: their projects, protocols, parameters, outputs and logs, the streaming monitor, the machines, the facility, and the help. Never settings, users, the audit, mail or the server's files."
+                                control={null} />
+                    <SettingRow colors={colors} title="It proposes" labelFor="assistant-mode"
+                                description="In projects the person can work in: relaunch or continue a protocol, copy one with other parameters, stop one, or open the form of the next step. Each proposal is a card; nothing happens until the person presses Apply."
+                                control={
+                                    <TextField id="assistant-mode" sx={{ ...selectSx, width }} size="small" select value={draft.mode}
+                                               SelectProps={{ MenuProps: { PaperProps: { sx: menuPaperSx } } }}
+                                               onChange={(e) => set({ mode: e.target.value })}>
+                                        {(settings.modes ?? ["answer"]).map((value) => (
+                                            <MenuItem key={value} value={value}>{MODE_LABELS[value] ?? value}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                } />
+                    {draft.mode === "propose" && (
+                        <SettingRow colors={colors} title="Propose deleting protocols"
+                                    description="Off by default. Deleting cannot be undone, so the card lists everything that is lost and the person must write the protocol's number to confirm. Never projects, never a running protocol, never one whose depending protocols have results."
+                                    control={
+                                        <Switch checked={draft.allowDelete}
+                                                slotProps={{ input: { "aria-label": "Propose deleting protocols" } }}
+                                                onChange={(e) => set({ allowDelete: e.target.checked })} />
+                                    } />
+                    )}
+                    <SettingRow colors={colors} title="Never"
+                                description="Delete projects, change a protocol's inputs, touch users, roles or settings, or run commands on the server. Those tools do not exist for it, so nothing it reads can make it do them."
+                                control={null} />
+                </SettingsSection>
+            )}
+
+            {part === "usage" && (
+                <SettingsSection icon={<Gauge size={19} />} title="Limit and usage" colors={colors} isDarkMode={isDarkMode}
+                                 subtitle="How much each person may ask, and how much has been asked.">
+                    <SettingRow colors={colors} title="Questions per person and day" labelFor="assistant-limit"
+                                description="Each question costs money with a paid provider. When someone reaches the limit, the assistant answers them again the next day."
+                                control={
+                                    <TextField id="assistant-limit" sx={{ ...fieldSx, width: 140 }} size="small" value={draft.dailyLimit}
+                                               inputProps={{ inputMode: "numeric" }} onChange={(e) => set({ dailyLimit: e.target.value })} />
+                                } />
+                    {settings.usage && (
+                        <SettingRow colors={colors} title="Today" description={<UsageLine totals={settings.usage.today} />}
+                                    control={null} />
                     )}
                     {settings.usage && (
-                        <Note look={look}>
-                            <UsageLine label="Today" totals={settings.usage.today} />
-                            <UsageLine label="Last 30 days" totals={settings.usage.last30Days} />
-                        </Note>
+                        <SettingRow colors={colors} title="Last 30 days"
+                                    description={<UsageLine totals={settings.usage.last30Days} />} control={null} />
                     )}
-                </Stack>
-            </SettingsSection>
+                </SettingsSection>
+            )}
         </Stack>
     );
 }
