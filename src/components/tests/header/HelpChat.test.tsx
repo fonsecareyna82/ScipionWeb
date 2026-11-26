@@ -364,7 +364,7 @@ describe("HelpChat", () => {
   it("adds a template without launching it, and starts it later", async () => {
     helpMocks.applyHelpAction.mockResolvedValue({ ok: true, chainId: 1, created: ["150", "151"], launched: [] });
     await proposal(TEMPLATE_CARD);
-    fireEvent.click(screen.getByRole("button", { name: "Add without launching" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await screen.findByText(/Added 2 protocols .*Nothing launched now\. Ask me to start it/);
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith(expect.objectContaining({ action: "template", launch: false }));
   });

@@ -389,8 +389,8 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
           ))}
         </ul>
         <div className="mt-1 text-gray-600 dark:text-gray-400">
-          Add and launch: adds them all and launches up to the stops; ask me to go on when you have looked.
-          Add without launching: adds them, and nothing runs until you ask.
+          Add: adds them, and nothing runs until you ask. Add and launch: also launches up to the stops; ask me
+          to go on when you have looked.
         </div>
       </div>
 
@@ -401,12 +401,12 @@ function TemplateCard({ card }: { card: HelpTemplateCard }) {
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
       ) : (
         <div className="mt-2.5 flex flex-wrap gap-2">
-          <button type="button" onClick={() => void apply(true)} disabled={state === "applying" || blocked} className={PRIMARY_BUTTON}>
-            {state === "applying" && launching ? "Adding…" : "Add and launch"}
-          </button>
           <button type="button" onClick={() => void apply(false)} disabled={state === "applying" || blocked}
                   className="rounded-full border border-blue-300 px-3.5 py-1.5 text-[14px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
-            {state === "applying" && !launching ? "Adding…" : "Add without launching"}
+            {state === "applying" && !launching ? "Adding…" : "Add"}
+          </button>
+          <button type="button" onClick={() => void apply(true)} disabled={state === "applying" || blocked} className={PRIMARY_BUTTON}>
+            {state === "applying" && launching ? "Adding…" : "Add and launch"}
           </button>
           <button type="button" onClick={() => setState("cancelled")} disabled={state === "applying"} className={QUIET_BUTTON}>
             Cancel
