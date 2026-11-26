@@ -601,21 +601,22 @@ export default function HelpChat() {
       {open && (
         <aside role="dialog" aria-label="Help chat"
                className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-gray-50 shadow-2xl dark:bg-gray-950 sm:inset-auto sm:bottom-5 sm:right-5 sm:h-[min(680px,calc(100vh-7rem))] sm:w-[420px] sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-800">
-          <header className="flex items-center gap-3 bg-blue-600 px-4 py-3 text-white">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+          {/* The header of the web's dialogs and forms (DialogFrame) */}
+          <header className="flex items-center gap-3 bg-[#333d49] px-4 py-3.5 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10">
               <Bot className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-[16px] font-semibold">
                 Help assistant
                 {ai && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[13px] font-medium"
+                  <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[13.5px] font-medium"
                         title={status.left !== undefined ? `${status.left} questions left today` : undefined}>
                     <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI
                   </span>
                 )}
               </div>
-              <div className="truncate text-[13.5px] text-blue-100">
+              <div className="truncate text-[14px] text-gray-200">
                 {focus.projectId
                   ? <>{focus.projectName || `Project ${focus.projectId}`}{focus.protocolId
                     ? ` · #${focus.protocolId}${focus.protocolLabel ? ` ${focus.protocolLabel}` : ""}` : ""}</>
@@ -624,12 +625,12 @@ export default function HelpChat() {
             </div>
             {messages.length > 0 && (
               <button type="button" aria-label="Start again" title="Start again" onClick={() => setMessages([])}
-                      className="rounded-full p-2 text-white/90 hover:bg-white/15">
+                      className="rounded-full p-2 text-gray-200 hover:bg-white/10">
                 <RotateCcw className="h-[18px] w-[18px]" />
               </button>
             )}
             <button type="button" aria-label="Close the help" title="Close" onClick={() => setOpen(false)}
-                    className="rounded-full p-2 text-white/90 hover:bg-white/15">
+                    className="rounded-full p-2 text-gray-200 hover:bg-white/10">
               <X className="h-5 w-5" />
             </button>
           </header>
