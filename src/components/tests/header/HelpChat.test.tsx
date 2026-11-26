@@ -339,4 +339,25 @@ describe("HelpChat", () => {
     await proposal({ ...TEMPLATE_CARD, few: true, steps: [TEMPLATE_CARD.steps[0]] });
     expect(screen.getByText(/From here this template adds only 1 protocol/)).toBeInTheDocument();
   });
+
+  it("lets a template be chosen from the options with one click", async () => {
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, left: 5 });
+    helpMocks.askHelp.mockResolvedValueOnce({ assistant: true, text: "These take your particles:", steps: [], cards: [
+      { kind: "templates", projectId: 7, fromProtocolId: "105", fromOutput: "outputParticles", items: [
+        { id: "WH:Workflow 3D cryosparc", name: "Workflow 3D cryosparc", description: "", adds: 23,
+          keySteps: ["2D classes", "initial model"] },
+        { id: "WH:Workflow 2D Xmipp", name: "Workflow 2D Xmipp", description: "", adds: 1, keySteps: ["2D classes"] },
+      ] },
+    ] }).mockResolvedValueOnce({ assistant: true, text: "Here it is.", steps: [], cards: [] });
+    openChat();
+    await screen.findByText("Answers with AI");
+    send("which workflows from 105?");
+    expect(await screen.findByText("Adds 23 protocols · 2D classes, initial model")).toBeInTheDocument();
+    expect(screen.getByText("Adds 1 protocol · 2D classes")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Use this one" })[0]);
+    await screen.findByText("Here it is.");
+    expect(helpMocks.askHelp).toHaveBeenLastCalledWith(
+      'Apply the template "Workflow 3D cryosparc" (WH:Workflow 3D cryosparc) from protocol #105 (outputParticles)',
+      { projectId: null, protocolId: null }, expect.any(Array));
+  });
 });

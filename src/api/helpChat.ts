@@ -37,7 +37,14 @@ export type HelpCard =
   | { kind: "suggestions"; protocolId: string; label: string; items: HelpSuggestion[] }
   | { kind: "protocols"; items: HelpProtocolRef[] }
   | { kind: "outputs"; protocolId: string; label: string; items: HelpOutput[] }
+  | HelpTemplateOptions
   | HelpActionCard;
+
+// The templates that take a protocol's output, for the user to choose one
+export type HelpTemplateOptions = {
+  kind: "templates"; projectId: number; fromProtocolId: string; fromOutput: string;
+  items: { id: string; name: string; description: string; adds: number; keySteps: string[] }[];
+};
 
 // What the assistant proposes: nothing happens until the user applies it
 export type HelpChange = { name: string; label: string; from: unknown; to: unknown };

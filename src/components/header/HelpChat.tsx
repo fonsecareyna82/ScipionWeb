@@ -4,7 +4,7 @@ import { BookOpen, ChevronDown, CircleAlert, ExternalLink, MessageCircleQuestion
 
 import {
   applyHelpAction, askHelp, getHelpChatStatus, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
-  type HelpLogPlace, type HelpRelaunchMode, type HelpTemplateCard, type HelpTurn,
+  type HelpLogPlace, type HelpRelaunchMode, type HelpTemplateCard, type HelpTemplateOptions, type HelpTurn,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
@@ -655,6 +655,33 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
   );
 }
 
+/** The templates the user may start from a protocol's output: one click asks the assistant for its card. */
+function TemplateOptions({ card, onAsk }: { card: HelpTemplateOptions; onAsk: (question: string) => void }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {card.items.map((item) => (
+        <div key={item.id} className="rounded-lg border border-gray-200 px-2.5 py-2 dark:border-gray-700">
+          <div className="flex items-start gap-2">
+            <Workflow className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-gray-900 dark:text-gray-100">{item.name}</div>
+              <div className="text-[13.5px] text-gray-500 dark:text-gray-400">
+                Adds {item.adds === 1 ? "1 protocol" : `${item.adds} protocols`}
+                {item.keySteps.length > 0 && ` · ${item.keySteps.join(", ")}`}
+              </div>
+            </div>
+            <button type="button"
+                    onClick={() => onAsk(`Apply the template "${item.name}" (${item.id}) from protocol #${card.fromProtocolId}${card.fromOutput ? ` (${card.fromOutput})` : ""}`)}
+                    className="shrink-0 rounded-full border border-blue-300 px-3 py-1 text-[13.5px] font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
+              Use this one
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** What the assistant looked at to answer: hidden until asked. */
 function Steps({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
@@ -689,6 +716,8 @@ function Answer({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: strin
             </div>
           </>
         )}
+        {answer.cards.map((card, index) => card.kind === "templates"
+          ? <TemplateOptions key={`t${index}`} card={card} onAsk={onAsk} /> : null)}
         {answer.cards.map((card, index) => card.kind !== "action" ? null
           : card.action === "template" ? <TemplateCard key={index} card={card} />
             : card.action === "continue" ? <ContinueCard key={index} card={card} />
