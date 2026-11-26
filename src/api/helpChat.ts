@@ -143,7 +143,7 @@ export type HelpChatStatus = { assistant: boolean; dailyLimit?: number; left?: n
 export const getHelpChatStatus = () => request<HelpChatStatus>("/help-chat/status", "Failed to load the chat");
 
 // The AI assistant's settings (administrators). The key is never sent back: only whether there is one.
-export type AssistantProviderKey = "openai" | "google" | "mistral" | "local";
+export type AssistantProviderKey = "openai" | "google" | "mistral" | "anthropic" | "local";
 export type AssistantProviderInfo = { key: AssistantProviderKey; label: string; baseUrl: string; needsKey: boolean };
 export type AssistantUsageTotals = { users: number; questions: number; inputTokens: number; outputTokens: number };
 
