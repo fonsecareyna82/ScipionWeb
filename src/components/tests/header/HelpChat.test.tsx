@@ -644,4 +644,34 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "schedule", projectId: 7, protocolId: "37",
                                                              protocolIds: ["30"] });
   });
+  it("relaunches several protocols, asking about the ones depending on them", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, done: ["30"], failed: [{ protocolId: "31", error: "busy" }] });
+    await proposal({ kind: "action", action: "relaunchmany", projectId: 7, protocolId: "30", label: "ctf",
+                     canContinue: true, needsScope: true, reason: "",
+                     items: [{ protocolId: "30", label: "ctf", status: "failed", skip: null, mode: "continue", children: ["40"] },
+                             { protocolId: "31", label: "pick", status: "finished", skip: null, mode: "restart", children: [] },
+                             { protocolId: "32", label: "2D", status: "running", skip: "running: stop it first" }] });
+    expect(screen.getByText("Relaunch 2 protocols")).toBeInTheDocument();
+    expect(screen.getByText(/left out: running/)).toBeInTheDocument();
+    const relaunch = screen.getByRole("button", { name: "Relaunch them" });
+    expect(relaunch).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Restart them all from scratch/));
+    fireEvent.click(screen.getByLabelText(/Each with its whole workflow/));
+    fireEvent.click(relaunch);
+    await screen.findByText(/Sent: #30\. Not done: #31 \(busy\)/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "relaunchmany", projectId: 7, protocolId: "30",
+                                                             protocolIds: ["30", "31"], mode: "restart", scope: "all" });
+  });
+
+  it("stops several protocols", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, done: ["30", "31"], failed: [] });
+    await proposal({ kind: "action", action: "stopmany", projectId: 7, protocolId: "30", label: "ctf",
+                     canContinue: false, needsScope: false, reason: "",
+                     items: [{ protocolId: "30", label: "ctf", status: "running", skip: null },
+                             { protocolId: "31", label: "pick", status: "running", skip: null }] });
+    fireEvent.click(screen.getByRole("button", { name: "Stop them" }));
+    await screen.findByText("Stopped: #30, #31.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "stopmany", projectId: 7, protocolId: "30",
+                                                             protocolIds: ["30", "31"] });
+  });
 });

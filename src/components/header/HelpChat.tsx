@@ -7,7 +7,7 @@ import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
-  type HelpRenameCard, type HelpScheduleCard,
+  type HelpRenameCard, type HelpScheduleCard, type HelpManyCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -311,7 +311,7 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
 type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
-  | "deletefrom" | "tag" | "untag" | "rename" | "schedule" }>;
+  | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -871,6 +871,90 @@ function ScheduleCard({ card }: { card: HelpScheduleCard }) {
   );
 }
 
+/** Several protocols stopped or relaunched at once, each as alone; the ones left out are shown. */
+function ManyCard({ card }: { card: HelpManyCard }) {
+  const readOnly = useContext(CardsReadOnly);
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [restartAll, setRestartAll] = useState(false);
+  const [scope, setScope] = useState<"single" | "all" | null>(null);
+  const [done, setDone] = useState("");
+  const stop = card.action === "stopmany";
+  const doing = card.items.filter((item) => item.skip === null);
+  const withChildren = doing.filter((item) => (item.children ?? []).length > 0);
+  const ids = (list: string[]) => list.map((id) => `#${id}`).join(", ");
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({
+        action: card.action, projectId: card.projectId, protocolId: card.protocolId,
+        protocolIds: doing.map((item) => item.protocolId),
+        ...(stop ? {} : { mode: restartAll ? "restart" : undefined, scope: scope ?? undefined }) });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      const failed = result.failed ?? [];
+      setDone(`${stop ? "Stopped" : "Sent"}: ${ids(result.done ?? [])}.${failed.length
+        ? ` Not done: ${failed.map((item) => `#${item.protocolId} (${item.error})`).join("; ")}.` : ""}`);
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The action could not be applied");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">
+        {stop ? "Stop" : "Relaunch"} {doing.length === 1 ? "1 protocol" : `${doing.length} protocols`}
+      </div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <ul className="mt-1.5 space-y-0.5">
+        {card.items.map((item) => (
+          <li key={item.protocolId} className={item.skip ? "text-gray-500 dark:text-gray-400" : ""}>
+            <strong>#{item.protocolId}</strong> {item.label}
+            <span className="text-gray-500 dark:text-gray-400"> · {item.status || "new"}</span>
+            {item.skip ? <span> · left out: {item.skip}</span>
+              : item.mode && <span> · {restartAll || item.mode === "restart" ? "from scratch" : "goes on where it stopped"}</span>}
+          </li>
+        ))}
+      </ul>
+      {!stop && card.canContinue && (
+        <LaunchChoice checked={restartAll} onChange={setRestartAll} disabled={state !== "open" || readOnly}
+                      text="Restart them all from scratch" />
+      )}
+      {!stop && card.needsScope && (
+        <fieldset className="mt-2 space-y-1" disabled={state !== "open" || readOnly}>
+          <legend className="font-medium">
+            Other protocols depend on {ids(withChildren.map((item) => item.protocolId))}
+          </legend>
+          <label className="flex items-start gap-2">
+            <input type="radio" name={`many-scope-${card.protocolId}`} className="mt-1" checked={scope === "single"}
+                   onChange={() => setScope("single")} />
+            <span><strong>Only these</strong>: the ones depending on them are reset and lose their outputs, without running again</span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input type="radio" name={`many-scope-${card.protocolId}`} className="mt-1" checked={scope === "all"}
+                   onChange={() => setScope("all")} />
+            <span><strong>Each with its whole workflow</strong>: the ones depending on them run again after them</span>
+          </label>
+        </fieldset>
+      )}
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {readOnly ? <EarlierNote /> : state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <CardButtons state={state} applyText={stop ? "Stop them" : "Relaunch them"}
+                     disabled={!stop && card.needsScope && scope === null}
+                     onApply={() => void apply()} onCancel={() => setState("cancelled")} />
+      )}
+    </div>
+  );
+}
+
 function isTagCard(card: HelpActionCard): card is HelpTagCard {
   return card.action === "tag" || card.action === "untag";
 }
@@ -1350,7 +1434,9 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             : isTagCard(card) ? <TagCard key={index} card={card} />
             : card.action === "rename" ? <RenameCard key={index} card={card as HelpRenameCard} />
             : card.action === "schedule" ? <ScheduleCard key={index} card={card as HelpScheduleCard} />
-              : <ActionCard key={index} card={card} />)}
+            : card.action === "stopmany" || card.action === "relaunchmany"
+              ? <ManyCard key={index} card={card as HelpManyCard} />
+              : <ActionCard key={index} card={card as SimpleActionCard} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
     );

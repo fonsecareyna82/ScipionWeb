@@ -93,6 +93,7 @@ export type HelpActionCard =
   | HelpTagCard
   | HelpRenameCard
   | HelpScheduleCard
+  | HelpManyCard
   | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
       title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
       reason: string };
@@ -122,6 +123,15 @@ export type HelpRenameCard = {
 export type HelpScheduleCard = {
   kind: "action"; action: "schedule"; projectId: number; protocolId: string; label: string; className: string;
   status: string; reason: string; waitFor: { protocolId: string; label: string; status: string; done: boolean }[];
+};
+
+// Several protocols stopped or relaunched at once; skip: why one is left out. Relaunched: each one's own mode
+// and the protocols depending on it
+export type HelpManyItem = { protocolId: string; label: string; status: string; skip: string | null;
+  mode?: HelpRelaunchMode; children?: string[] };
+export type HelpManyCard = {
+  kind: "action"; action: "stopmany" | "relaunchmany"; projectId: number; protocolId: string; label: string;
+  items: HelpManyItem[]; canContinue: boolean; needsScope: boolean; reason: string;
 };
 
 // A subset of an output kept by its values, made with the viewer's own action when applied
@@ -215,7 +225,7 @@ export type AssistantSettings = {
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
   action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset" | "copyworkflow"
-    | "reset" | "deletefrom" | "tag" | "untag" | "rename" | "schedule";
+    | "reset" | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -249,7 +259,8 @@ export type HelpActionApply = {
 export const applyHelpAction = (payload: HelpActionApply) =>
   request<{ ok: boolean; newProtocolId?: string; chainId?: number; created?: string[]; launched?: string[];
             errors?: string[]; kept?: number; total?: number; started?: boolean; protocols?: number;
-            tag?: string; newTag?: boolean; tagged?: string[]; untagged?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
+            tag?: string; newTag?: boolean; tagged?: string[]; untagged?: string[]; done?: string[];
+            failed?: { protocolId: string; error: string }[] }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"
