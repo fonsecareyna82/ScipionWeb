@@ -684,4 +684,35 @@ describe("HelpChat", () => {
     expect(requests).toEqual([focus, focus]);
     off();
   });
+  it("makes a new project with its import and opens it", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, projectId: 55, newProtocolId: "2" });
+    await proposal({ kind: "action", action: "newproject", projectId: 0, protocolId: "", label: "Krios 27",
+                     name: "Krios 27", folder: "/data/krios/27", dataKind: "movies", importTitle: "Import movies",
+                     pattern: "*.tiff", count: 3445, capped: false, examples: ["a.tiff"],
+                     values: [{ name: "samplingRate", label: "Pixel size (Å)", value: 0.83 }],
+                     missing: ["Voltage (kV)"], gainFile: null, streaming: true, reason: "" });
+    expect(screen.getByText("New project “Krios 27”")).toBeInTheDocument();
+    expect(screen.getByText(/fill in Voltage \(kV\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Make the project" }));
+    await screen.findByText("Made: opening it…");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "newproject", projectId: 0, protocolId: "",
+      name: "Krios 27", fields: { folder: "/data/krios/27", data: "movies", pattern: "*.tiff", streaming: true,
+                                  gainFile: "", samplingRate: 0.83 } });
+    expect(assign).toHaveBeenCalledWith("/project/load/55?protocol=2&form=1");
+    vi.unstubAllGlobals();
+  });
+
+  it("watches a stream", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, until: "2026-11-28T10:00:00+00:00" });
+    await proposal({ kind: "action", action: "watch", projectId: 7, protocolId: "", label: "Krios 27", hours: 24,
+                     reason: "", watched: ["Protocols that fail"],
+                     now: { acquisition: "active", items: 500, unit: "movies", micrographs: 60, resolution: 3.42 } });
+    expect(screen.getByText("Watch Krios 27 for 24 h")).toBeInTheDocument();
+    expect(screen.getByText(/CTF 3.4 Å/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Watch it" }));
+    await screen.findByText(/Watching until/);
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "watch", projectId: 7, protocolId: "", hours: 24 });
+  });
 });

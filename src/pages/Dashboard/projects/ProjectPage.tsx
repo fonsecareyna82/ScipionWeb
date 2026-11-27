@@ -6282,10 +6282,14 @@ export default function ProjectPage() {
   };
   useEffect(() => {
     if (!linkedProtocolId || !nodesLoadedOnce || !hasNodes) return;
-    focusProtocol(linkedProtocolId);
+    // &form=1 (a project the help chat just made): its form opens too, to review it
+    if (focusProtocol(linkedProtocolId) && new URLSearchParams(location.search).get("form") === "1") {
+      void handleNodeDoubleClick({ id: linkedProtocolId });
+    }
     // The link is used once: coming back to the graph does not jump again.
     const params = new URLSearchParams(location.search);
     params.delete("protocol");
+    params.delete("form");
     navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : "" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedProtocolId, nodesLoadedOnce, hasNodes]);

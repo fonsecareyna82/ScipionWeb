@@ -7,7 +7,7 @@ import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
-  type HelpRenameCard, type HelpScheduleCard, type HelpManyCard, type HelpFocusCard,
+  type HelpRenameCard, type HelpScheduleCard, type HelpManyCard, type HelpFocusCard, type HelpNewProjectCard, type HelpWatchCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -311,7 +311,8 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
 type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
-  | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany" }>;
+  | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany" | "newproject" | "watch"
+  | "unwatch" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -955,6 +956,104 @@ function ManyCard({ card }: { card: HelpManyCard }) {
   );
 }
 
+/** A new project with the movies (or micrographs) of a folder: made with its import saved, whose form opens. */
+function NewProjectCard({ card }: { card: HelpNewProjectCard }) {
+  const { state, setState, error, run } = useSimpleApply(card);
+  const apply = () => void run(async () => {
+    const result = await applyHelpAction({
+      action: "newproject", projectId: 0, protocolId: "", name: card.name,
+      fields: { folder: card.folder, data: card.dataKind, pattern: card.pattern, streaming: card.streaming,
+                gainFile: card.gainFile ?? "",
+                ...Object.fromEntries(card.values.map((value) => [value.name, value.value])) } });
+    if (result.projectId != null) {
+      window.location.assign(`/project/load/${encodeURIComponent(String(result.projectId))}${result.newProtocolId
+        ? `?protocol=${encodeURIComponent(result.newProtocolId)}&form=1` : ""}`);
+    }
+  });
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">New project “{card.name}”</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="text-gray-600 dark:text-gray-400">Import</dt><dd>{card.importTitle}{card.streaming ? ", in streaming" : ""}</dd>
+        <dt className="text-gray-600 dark:text-gray-400">Folder</dt><dd className="break-all font-mono text-[13.5px]">{card.folder}</dd>
+        <dt className="text-gray-600 dark:text-gray-400">Files</dt>
+        <dd><span className="font-mono text-[13.5px]">{card.pattern}</span>: <strong>{card.count.toLocaleString()}{card.capped ? "+" : ""}</strong> found</dd>
+        {card.values.map((value) => (
+          <div key={value.name} className="contents">
+            <dt className="text-gray-600 dark:text-gray-400">{value.label}</dt><dd>{value.value}</dd>
+          </div>
+        ))}
+        {card.gainFile && (
+          <><dt className="text-gray-600 dark:text-gray-400">Gain</dt><dd className="break-all font-mono text-[13.5px]">{card.gainFile}</dd></>
+        )}
+      </dl>
+      {card.examples.length > 0 && (
+        <div className="mt-1.5 text-gray-600 dark:text-gray-400">
+          e.g. <span className="break-all font-mono text-[13.5px]">{card.examples.join(", ")}</span>
+        </div>
+      )}
+      <div className="mt-2 text-gray-600 dark:text-gray-400">
+        The import is added without launching it: its form opens for you to review{card.missing.length
+          ? ` and fill in ${card.missing.join(", ")}` : ""}, then launch it.
+      </div>
+      <CardEnd state={state} error={error} done="Made: opening it…" applyText="Make the project"
+               onApply={apply} onCancel={() => setState("cancelled")} />
+    </div>
+  );
+}
+
+const fmt = (value: number | null | undefined, digits = 1) => value == null ? null : value.toFixed(digits);
+
+/** Watching a project that processes in streaming: notices in the bell when something gets worse or stops. */
+function WatchCard({ card }: { card: HelpWatchCard }) {
+  const { state, setState, error, run } = useSimpleApply(card);
+  const [until, setUntil] = useState("");
+  const now = card.now;
+  const figures = now ? [
+    now.items != null ? `${now.items} ${now.unit ?? "movies"}` : null,
+    fmt(now.resolution) && `CTF ${fmt(now.resolution)} Å`,
+    fmt(now.totalDrift) && `drift ${fmt(now.totalDrift)} Å`,
+    fmt(now.particles, 0) && `${fmt(now.particles, 0)} particles per micrograph`,
+  ].filter(Boolean) : [];
+  if (card.action === "unwatch") {
+    return (
+      <div className={CARD_BOX} data-testid="help-action">
+        <div className={CARD_EYEBROW}>Needs your confirmation</div>
+        <div className="mt-0.5 font-semibold">Stop watching {card.label}</div>
+        {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+        <CardEnd state={state} error={error} done="I stopped watching it." applyText="Stop watching"
+                 onCancel={() => setState("cancelled")}
+                 onApply={() => void run(() => applyHelpAction({ action: "unwatch", projectId: card.projectId,
+                                                                 protocolId: "" }))} />
+      </div>
+    );
+  }
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">Watch {card.label} for {card.hours} h</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      {figures.length > 0 && <div className="mt-1.5">Now: {figures.join(" · ")}</div>}
+      <div className="mt-1.5 font-medium">I tell you in the bell when there is:</div>
+      <ul className="mt-0.5 list-disc space-y-0.5 pl-5">
+        {(card.watched ?? []).map((item) => <li key={item}>{item}</li>)}
+      </ul>
+      <div className="mt-1.5 text-gray-600 dark:text-gray-400">
+        I stop by myself when the session is over, or ask me to stop.
+      </div>
+      <CardEnd state={state} error={error} done={`Watching${until ? ` until ${new Date(until).toLocaleString()}` : ""}.`}
+               applyText="Watch it" onCancel={() => setState("cancelled")}
+               onApply={() => void run(async () => {
+                 const result = await applyHelpAction({ action: "watch", projectId: card.projectId, protocolId: "",
+                                                        hours: card.hours });
+                 setUntil(result.until ?? "");
+               })} />
+    </div>
+  );
+}
+
 function isTagCard(card: HelpActionCard): card is HelpTagCard {
   return card.action === "tag" || card.action === "untag";
 }
@@ -1463,6 +1562,9 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             : card.action === "schedule" ? <ScheduleCard key={index} card={card as HelpScheduleCard} />
             : card.action === "stopmany" || card.action === "relaunchmany"
               ? <ManyCard key={index} card={card as HelpManyCard} />
+            : card.action === "newproject" ? <NewProjectCard key={index} card={card as HelpNewProjectCard} />
+            : card.action === "watch" || card.action === "unwatch"
+              ? <WatchCard key={index} card={card as HelpWatchCard} />
               : <ActionCard key={index} card={card as SimpleActionCard} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
