@@ -1069,10 +1069,6 @@ function WatchCard({ card }: { card: HelpWatchCard }) {
   );
 }
 
-const ROLE_TEXT: Record<HelpCustomCard["inputs"][number]["role"], string> = {
-  volume: "Volume", mask: "Mask", particles: "Particles",
-};
-
 /** A custom operation: what it does, what it reads, its script to check; added as a protocol and launched. */
 function CustomCard({ card }: { card: HelpCustomCard }) {
   const { state, setState, error, run } = useSimpleApply(card);
@@ -1083,7 +1079,7 @@ function CustomCard({ card }: { card: HelpCustomCard }) {
     const result = await applyHelpAction({
       action: "custom", projectId: card.projectId, protocolId: "", name: card.title,
       fields: { operation: card.operation, script: card.script,
-                inputs: card.inputs.map(({ role, protocolId, output }) => ({ role, protocolId, output })) } });
+                inputs: card.inputs.map(({ protocolId, output }) => ({ protocolId, output })) } });
     if (result.newProtocolId) {
       setAdded(result.newProtocolId);
       requestFromHelpChat({ kind: "focusProtocol", projectId: card.projectId, protocolId: result.newProtocolId });
@@ -1095,14 +1091,15 @@ function CustomCard({ card }: { card: HelpCustomCard }) {
       <div className="mt-0.5 font-semibold">Custom operation “{card.title}”</div>
       {card.reason && <div className={`mt-0.5 ${label}`}>{card.reason}</div>}
       <div className="mt-2">{card.operation}</div>
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+      <div className={`mt-2 font-medium`}>{card.inputs.length === 1 ? "Input" : "Inputs, in this order"}</div>
+      <ol className={`mt-0.5 space-y-0.5 ${card.inputs.length > 1 ? "list-decimal pl-5" : ""}`}>
         {card.inputs.map((item) => (
-          <div key={item.role} className="contents">
-            <dt className={label}>{ROLE_TEXT[item.role]}</dt>
-            <dd><strong>#{item.protocolId}</strong> {item.protocolLabel} · {item.output}</dd>
-          </div>
+          <li key={`${item.protocolId}.${item.output}`}>
+            <strong>#{item.protocolId}</strong> {item.protocolLabel} · {item.output}
+            <span className={label}> ({item.type}{item.size != null ? `, ${item.size.toLocaleString()} items` : ""})</span>
+          </li>
         ))}
-      </dl>
+      </ol>
       <button type="button" className="mt-2 text-[14px] font-medium text-blue-700 hover:underline dark:text-blue-300"
               aria-expanded={showScript} onClick={() => setShowScript((shown) => !shown)}>
         {showScript ? "Hide the script" : `Show the script (${card.lines} lines)`}

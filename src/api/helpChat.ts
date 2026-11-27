@@ -159,8 +159,8 @@ export type HelpWatchCard = {
 };
 
 // A custom operation: a short script written by the assistant, run on outputs of the project as a new protocol
-export type HelpCustomInput = { role: "volume" | "mask" | "particles"; param: string; protocolId: string;
-  protocolLabel: string; output: string };
+export type HelpCustomInput = { protocolId: string; protocolLabel: string; output: string; type: string;
+  size: number | null };
 export type HelpCustomCard = {
   kind: "action"; action: "custom"; projectId: number; protocolId: string; label: string; title: string;
   operation: string; script: string; lines: number; inputs: HelpCustomInput[]; reason: string;
