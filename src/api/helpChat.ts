@@ -91,6 +91,8 @@ export type HelpActionCard =
   | HelpSubsetCard
   | HelpSubworkflowCard
   | HelpTagCard
+  | HelpRenameCard
+  | HelpScheduleCard
   | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
       title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
       reason: string };
@@ -108,6 +110,18 @@ export type HelpSubworkflowCard = {
 export type HelpTagCard = {
   kind: "action"; action: "tag" | "untag"; projectId: number; protocolId: string; label: string; tag: string; newTag: boolean;
   color: string | null; reason: string; protocols: { protocolId: string; label: string; already: boolean }[];
+};
+
+// A new name and/or comment for a protocol
+export type HelpRenameCard = {
+  kind: "action"; action: "rename"; projectId: number; protocolId: string; label: string; className: string;
+  status: string; reason: string; changes: { field: "name" | "comment"; from: string; to: string }[];
+};
+
+// A protocol scheduled to start by itself when the protocols it waits for finish (done: finished already)
+export type HelpScheduleCard = {
+  kind: "action"; action: "schedule"; projectId: number; protocolId: string; label: string; className: string;
+  status: string; reason: string; waitFor: { protocolId: string; label: string; status: string; done: boolean }[];
 };
 
 // A subset of an output kept by its values, made with the viewer's own action when applied
@@ -201,7 +215,7 @@ export type AssistantSettings = {
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
   action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset" | "copyworkflow"
-    | "reset" | "deletefrom" | "tag" | "untag";
+    | "reset" | "deletefrom" | "tag" | "untag" | "rename" | "schedule";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -228,6 +242,7 @@ export type HelpActionApply = {
   // The protocols the card listed: the server refuses if they changed
   protocolIds?: string[];
   tag?: string;
+  renames?: { field: "name" | "comment"; to: string }[];
 };
 
 // Runs what the user confirmed; checked again on the server with the user's permissions

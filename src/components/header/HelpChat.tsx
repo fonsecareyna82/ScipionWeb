@@ -7,6 +7,7 @@ import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
+  type HelpRenameCard, type HelpScheduleCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -310,7 +311,7 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
 type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
-  | "deletefrom" | "tag" | "untag" }>;
+  | "deletefrom" | "tag" | "untag" | "rename" | "schedule" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -766,6 +767,106 @@ function SubworkflowCard({ card }: { card: HelpSubworkflowCard }) {
                      applyText={card.action === "copyworkflow" && launch ? "Copy and launch" : text.apply}
                      disabled={danger && confirm.trim() !== String(count)} />
       )}
+    </div>
+  );
+}
+
+/** One protocol's change made with a click: a rename or a schedule. */
+function useSimpleApply(card: { projectId: number }) {
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const run = async (action: () => Promise<unknown>) => {
+    setState("applying");
+    setError(null);
+    try {
+      await action();
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The action could not be applied");
+      setState("open");
+    }
+  };
+  return { state, setState, error, run };
+}
+
+function CardEnd({ state, error, done, applyText, onApply, onCancel }: {
+  state: "open" | "applying" | "done" | "cancelled"; error: string | null; done: string; applyText: string;
+  onApply: () => void; onCancel: () => void }) {
+  const readOnly = useContext(CardsReadOnly);
+  return (
+    <>
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {readOnly ? <EarlierNote /> : state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <CardButtons state={state} applyText={applyText} onApply={onApply} onCancel={onCancel} />
+      )}
+    </>
+  );
+}
+
+/** A new name and/or comment for a protocol, before and after. */
+function RenameCard({ card }: { card: HelpRenameCard }) {
+  const { state, setState, error, run } = useSimpleApply(card);
+  const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">
+        {card.changes.some((change) => change.field === "name") ? "Rename" : "Change the comment of"} {where}
+      </div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <dl className="mt-2 space-y-1.5">
+        {card.changes.map((change) => (
+          <div key={change.field}>
+            <dt className="font-medium">{change.field === "name" ? "Name" : "Comment"}</dt>
+            <dd className="whitespace-pre-wrap">
+              {change.from && (
+                <span className="block text-gray-500 line-through dark:text-gray-400">{change.from}</span>
+              )}
+              <strong className="block">{change.to || "(empty)"}</strong>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <CardEnd state={state} error={error} done="Done." applyText="Apply" onCancel={() => setState("cancelled")}
+               onApply={() => void run(() => applyHelpAction({
+                 action: "rename", projectId: card.projectId, protocolId: card.protocolId,
+                 renames: card.changes.map((change) => ({ field: change.field, to: change.to })) }))} />
+    </div>
+  );
+}
+
+/** A protocol that starts by itself when the protocols it waits for finish. */
+function ScheduleCard({ card }: { card: HelpScheduleCard }) {
+  const { state, setState, error, run } = useSimpleApply(card);
+  const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
+  const pending = card.waitFor.filter((item) => !item.done);
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">Start {where} when these finish</div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <ul className="mt-1.5 space-y-0.5">
+        {card.waitFor.map((item) => (
+          <li key={item.protocolId}>
+            <strong>#{item.protocolId}</strong> {item.label}
+            <span className="text-gray-500 dark:text-gray-400"> · {item.done ? "finished already" : item.status || "new"}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 text-gray-600 dark:text-gray-400">
+        {pending.length === 0 ? "They finished already: it starts right away. " : "It waits as scheduled, and starts by itself. "}
+        It also waits for its own inputs. Stop it to cancel the wait.
+      </div>
+      <CardEnd state={state} error={error} done="Scheduled." applyText="Schedule it"
+               onCancel={() => setState("cancelled")}
+               onApply={() => void run(() => applyHelpAction({
+                 action: "schedule", projectId: card.projectId, protocolId: card.protocolId,
+                 protocolIds: card.waitFor.map((item) => item.protocolId) }))} />
     </div>
   );
 }
@@ -1247,6 +1348,8 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             : card.action === "subset" ? <SubsetCard key={index} card={card} />
             : isSubworkflowCard(card) ? <SubworkflowCard key={index} card={card} />
             : isTagCard(card) ? <TagCard key={index} card={card} />
+            : card.action === "rename" ? <RenameCard key={index} card={card as HelpRenameCard} />
+            : card.action === "schedule" ? <ScheduleCard key={index} card={card as HelpScheduleCard} />
               : <ActionCard key={index} card={card} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>

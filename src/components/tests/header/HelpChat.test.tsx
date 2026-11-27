@@ -618,4 +618,30 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "untag", projectId: 7, protocolId: "5",
                                                              tag: "to check", protocolIds: ["5"] });
   });
+
+  it("renames a protocol, showing before and after", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, name: "ctffind" });
+    await proposal({ kind: "action", action: "rename", projectId: 7, protocolId: "5", label: "ctffind",
+                     className: "P", status: "finished", reason: "",
+                     changes: [{ field: "comment", from: "old note", to: "old note\nthick ice" }] });
+    expect(screen.getByText("Change the comment of #5 ctffind")).toBeInTheDocument();
+    expect(screen.getByText("old note")).toHaveClass("line-through");
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await screen.findByText("Done.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "rename", projectId: 7, protocolId: "5",
+      renames: [{ field: "comment", to: "old note\nthick ice" }] });
+  });
+
+  it("schedules a protocol to start when others finish", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, waitFor: ["30"] });
+    await proposal({ kind: "action", action: "schedule", projectId: 7, protocolId: "37", label: "2D",
+                     className: "P", status: "saved", reason: "",
+                     waitFor: [{ protocolId: "30", label: "ctf", status: "running", done: false }] });
+    expect(screen.getByText("Start #37 2D when these finish")).toBeInTheDocument();
+    expect(screen.getByText(/It waits as scheduled/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Schedule it" }));
+    await screen.findByText("Scheduled.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "schedule", projectId: 7, protocolId: "37",
+                                                             protocolIds: ["30"] });
+  });
 });
