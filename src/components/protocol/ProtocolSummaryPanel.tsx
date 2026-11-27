@@ -108,6 +108,46 @@ const CALLOUTS = {
               head: "text-amber-700 dark:text-amber-300" },
 } as const;
 
+// A link to an image file of the protocol (a plot) is shown as the image
+const IMAGE_PATH = /\.(png|jpe?g)$/i;
+
+/** An image of the protocol's folder, read with the user's sign-in; its name if it cannot be read. */
+function SummaryImage({ projectId, protocolId, path, name }: {
+  projectId: number | string; protocolId: number | string; path: string; name: string }) {
+  const svc = useProjectService();
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    let made: string | null = null;
+    setUrl(null);
+    setFailed(false);
+    svc.fetchProtocolInlinePreviewBlob(String(projectId), String(protocolId), path)
+      .then(({ blob }) => {
+        if (!alive) return;
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => {
+      alive = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [svc, projectId, protocolId, path]);
+  return (
+    <span className="my-1 block">
+      {url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" title={`Open ${name} at full size`}>
+          <img src={url} alt={name} className="max-h-[28rem] max-w-full rounded border border-border bg-white" />
+        </a>
+      ) : (
+        <span className="text-muted-foreground">{failed ? `${name} (could not be shown)` : `Loading ${name}…`}</span>
+      )}
+      <span className="block text-[13.5px] text-muted-foreground">{name}</span>
+    </span>
+  );
+}
+
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
@@ -198,6 +238,10 @@ export default function ProtocolSummaryPanel({
         );
       }
       case "path":
+        if (IMAGE_PATH.test(piece.path) && projectId != null && protocolId != null) {
+          return <SummaryImage key={index} projectId={projectId} protocolId={protocolId} path={piece.path}
+                               name={piece.text} />;
+        }
         return <span key={index} className="font-mono text-[0.85em]" title={piece.path}>{piece.text}</span>;
       default:
         return <Fragment key={index}>{piece.text}</Fragment>;

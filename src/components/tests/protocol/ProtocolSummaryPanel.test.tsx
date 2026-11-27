@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const serviceMocks = vi.hoisted(() => ({ fetchProtocolSummary: vi.fn() }));
+const serviceMocks = vi.hoisted(() => ({ fetchProtocolSummary: vi.fn(), fetchProtocolInlinePreviewBlob: vi.fn() }));
 vi.mock("@/ProjectServiceContext", () => ({ useProjectService: () => serviceMocks }));
 const opened = vi.hoisted(() => vi.fn());
 vi.mock("@/components/analyze/analyze-output-dialog", () => ({
@@ -150,5 +150,24 @@ describe("ProtocolSummaryPanel", () => {
     serviceMocks.fetchProtocolSummary.mockRejectedValue(new Error("The summary of the protocol could not be read"));
     render(<ProtocolSummaryPanel projectId={7} protocolId="3" />);
     expect(await screen.findByText("The summary of the protocol could not be read")).toBeInTheDocument();
+  });
+});
+
+describe("ProtocolSummaryPanel plots", () => {
+  it("shows a linked image of the protocol as the image, and other files as their name", async () => {
+    const created = vi.fn(() => "blob:plot");
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
+    serviceMocks.fetchProtocolSummary.mockResolvedValue({
+      lines: ["Mean defocus per micrograph",
+              "[[Runs/000185_ProtCustomOperation/extra/output/defocus.png][defocus.png]]",
+              "[[Runs/000185_ProtCustomOperation/extra/output/table.csv][table.csv]]"], objects: {} });
+    serviceMocks.fetchProtocolInlinePreviewBlob.mockResolvedValue({ blob: new Blob(["x"]), meta: {} });
+    render(<ProtocolSummaryPanel projectId={7} protocolId={185} protocolStatus="finished" />);
+    const image = await screen.findByRole("img", { name: "defocus.png" });
+    expect(image).toHaveAttribute("src", "blob:plot");
+    expect(serviceMocks.fetchProtocolInlinePreviewBlob).toHaveBeenCalledWith(
+      "7", "185", "Runs/000185_ProtCustomOperation/extra/output/defocus.png");
+    expect(serviceMocks.fetchProtocolInlinePreviewBlob).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("table.csv")).toBeInTheDocument();
   });
 });
