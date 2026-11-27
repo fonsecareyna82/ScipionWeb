@@ -40,7 +40,15 @@ export type HelpCard =
   | HelpTemplateOptions
   | HelpReportCard
   | HelpComparisonCard
+  | HelpTutorialCard
   | HelpActionCard;
+
+// The tutor's view of where the project is on the usual road of a processing
+export type HelpTutorialState = "done" | "running" | "waiting" | "failed" | "prepared" | "skipped" | "pending";
+export type HelpTutorialStage = { key: string; title: string; state: HelpTutorialState; items: number | null;
+  protocols: { id: string; label: string; status: string }[] };
+export type HelpTutorialCard = { kind: "tutorial"; projectId: number; road: "spa" | "tomo"; title: string;
+  current: string | null; stages: HelpTutorialStage[] };
 
 // Protocols side by side: the parameters that differ, the outputs' sizes, how long each ran
 export type HelpComparisonCard = {
@@ -108,13 +116,17 @@ export type HelpTemplateCard = {
 
 // assistant: answered by the AI model (then steps are what it looked at, and left the questions it has today)
 export type HelpAnswer = { text: string; cards: HelpCard[]; assistant?: boolean; steps?: string[]; left?: number;
-  conversationId?: number | null };
+  conversationId?: number | null; mode?: HelpChatMode };
+
+// "tutor": the assistant guides a new user step by step
+export type HelpChatMode = "tutor";
 
 // The conversation so far, sent to the assistant so it follows it
 export type HelpTurn = { role: "user" | "assistant"; text: string };
 
 export async function askHelp(question: string, where: { projectId?: number | null; protocolId?: string | null },
-                              history: HelpTurn[] = [], conversationId: number | null = null): Promise<HelpAnswer> {
+                              history: HelpTurn[] = [], conversationId: number | null = null,
+                              mode: HelpChatMode | null = null): Promise<HelpAnswer> {
   const response = await fetchWithAuth(`${BASE_URL}/help-chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -124,6 +136,7 @@ export async function askHelp(question: string, where: { projectId?: number | nu
       protocolId: where.protocolId ?? null,
       history,
       ...(conversationId ? { conversationId } : {}),
+      ...(mode ? { mode } : {}),
     }),
   });
   if (!response.ok) throw await buildApiError(response, "The help could not answer");
@@ -234,8 +247,8 @@ export async function downloadReport(payload: { projectId: number; protocolId?: 
 
 // The user's conversations with the help chat, kept on the server
 export type HelpConversationSummary = { id: number; title: string; projectId: number | null; project: string | null;
-  messages: number; createdAt: string; updatedAt: string };
-export type HelpConversation = { id: number; title: string; projectId: number | null;
+  mode?: HelpChatMode | ""; messages: number; createdAt: string; updatedAt: string };
+export type HelpConversation = { id: number; title: string; projectId: number | null; mode?: HelpChatMode | "";
   messages: { role: "user" | "assistant"; text: string; answer: HelpAnswer | null }[] };
 
 export const listConversations = () =>

@@ -496,4 +496,46 @@ describe("HelpChat", () => {
     expect(await screen.findByText("No conversations yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem("scipionweb.helpChat.conversation")).toBeNull();
   });
+
+  it("guides a new user step by step with the project's progress", async () => {
+    act(() => setHelpFocus({ projectId: 7, projectName: "Demo" }));
+    helpMocks.getHelpChatStatus.mockResolvedValue({ assistant: true, dailyLimit: 0 });
+    const card = {
+      kind: "tutorial", projectId: 7, road: "spa", title: "Single particle", current: "micrographs",
+      stages: [
+        { key: "movies", title: "Import the movies", state: "done", items: 30,
+          protocols: [{ id: "2", label: "import movies", status: "finished" }] },
+        { key: "micrographs", title: "Align the movies", state: "running", items: null,
+          protocols: [{ id: "3", label: "movie alignment", status: "running" }] },
+        { key: "ctf", title: "Estimate the CTF", state: "pending", items: null, protocols: [] },
+      ],
+    };
+    helpMocks.askHelp.mockResolvedValueOnce({ text: "The movies are aligning.", cards: [card], assistant: true,
+                                              steps: [], conversationId: 4, mode: "tutor" })
+      .mockResolvedValueOnce({ text: "Wait a bit.", cards: [card], assistant: true, steps: [], conversationId: 4,
+                               mode: "tutor" });
+    const requests: HelpChatRequest[] = [];
+    const stop = onHelpChatRequest((request) => requests.push(request));
+    openChat();
+    fireEvent.click(await screen.findByRole("button", { name: /Guide me step by step/ }));
+
+    await screen.findByText("The movies are aligning.");
+    expect(helpMocks.askHelp).toHaveBeenCalledWith("Guide me step by step", { projectId: 7, protocolId: null }, [],
+                                                   null, "tutor");
+    expect(screen.getByText("Tutor")).toBeInTheDocument();
+    expect(screen.getByText("Single particle · 1 of 3 steps")).toBeInTheDocument();
+    expect(screen.getByText("Align the movies")).toBeInTheDocument();
+    expect(screen.getByText(/30 items/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "#3" }));
+    expect(requests).toEqual([{ kind: "openProtocol", projectId: 7, protocolId: "3" }]);
+
+    // It goes on in the same conversation; only the newest progress stays open
+    fireEvent.click(screen.getByRole("button", { name: "What do I do now?" }));
+    await screen.findByText("Wait a bit.");
+    expect(helpMocks.askHelp).toHaveBeenLastCalledWith("What do I do now?", { projectId: 7, protocolId: null },
+                                                       expect.any(Array), 4, "tutor");
+    expect(screen.getAllByTestId("help-tutorial")).toHaveLength(2);
+    expect(screen.getByText("Now: Align the movies")).toBeInTheDocument();
+    stop();
+  });
 });

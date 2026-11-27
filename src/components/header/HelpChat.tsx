@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookOpen, ChevronDown, FileText, History, Trash2, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
-  SlidersHorizontal, Sparkles, Workflow, X } from "lucide-react";
+  SlidersHorizontal, Sparkles, Workflow, X, CheckCircle2, Circle, CircleDashed, CircleMinus, GraduationCap, Hand, Loader2,
+  XCircle } from "lucide-react";
 
 import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions,
-  type HelpConversationSummary, type HelpTurn,
+  type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
 import { renderChatMarkdown } from "@/utils/chat_markdown";
@@ -16,6 +17,9 @@ import { renderRichHelpText } from "@/utils/rich_help_text";
 type Message =
   | { id: number; from: "user"; text: string }
   | { id: number; from: "help"; answer?: HelpAnswer; error?: string; waiting?: boolean; earlier?: boolean };
+
+// The newest answer of the chat (the tutor's progress shows open only there)
+const LatestAnswer = createContext(true);
 
 // An answer from an earlier conversation: its cards show what was proposed, but nothing can be applied from them
 const CardsReadOnly = createContext(false);
@@ -62,6 +66,8 @@ const STATUS_CLASS: Record<string, string> = {
 
 const BODY = "text-[14.5px] leading-relaxed text-gray-700 dark:text-gray-300";
 const LINK_BUTTON = "text-[13.5px] font-medium text-blue-700 hover:underline dark:text-blue-300";
+// The first question of the tutor (the user sees it as theirs)
+const TUTOR_START = "Guide me step by step";
 const EXAMPLES = ["How do I estimate the CTF?", "¿Cómo comparto un proyecto?", "What is the dose filter?"];
 // The turns sent to the assistant so it follows the conversation
 const HISTORY_TURNS = 12;
@@ -902,6 +908,80 @@ function ReportCard({ card }: { card: HelpReportCard }) {
 }
 
 /** What the assistant looked at to answer: hidden until asked. */
+const STAGE_STATE: Record<HelpTutorialState, { label: string; icon: typeof Circle; className: string }> = {
+  done: { label: "Done", icon: CheckCircle2, className: "text-green-600 dark:text-green-400" },
+  running: { label: "Running", icon: Loader2, className: "animate-spin text-sky-600 dark:text-sky-400" },
+  waiting: { label: "Waiting for you", icon: Hand, className: "text-amber-600 dark:text-amber-400" },
+  failed: { label: "Failed", icon: XCircle, className: "text-red-600 dark:text-red-400" },
+  prepared: { label: "Added, not launched", icon: CircleDashed, className: "text-blue-600 dark:text-blue-400" },
+  skipped: { label: "Not needed", icon: CircleMinus, className: "text-gray-400 dark:text-gray-500" },
+  pending: { label: "To do", icon: Circle, className: "text-gray-300 dark:text-gray-600" },
+};
+
+/** Where the project is on the usual road of a processing, under each answer of the tutor. */
+function TutorialCard({ card }: { card: HelpTutorialCard }) {
+  const latest = useContext(LatestAnswer);
+  const [open, setOpen] = useState(latest);
+  // Folded once a newer answer shows the progress again
+  useEffect(() => { if (!latest) setOpen(false); }, [latest]);
+  const done =card.stages.filter((stage) => stage.state === "done" || stage.state === "skipped").length;
+  const current = card.stages.find((stage) => stage.key === card.current);
+  return (
+    <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40"
+         data-testid="help-tutorial">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left">
+        <GraduationCap className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-semibold text-gray-900 dark:text-gray-100">
+            {card.title} · {done} of {card.stages.length} steps
+          </span>
+          {current && !open && (
+            <span className="block truncate text-[13.5px] text-gray-500 dark:text-gray-400">Now: {current.title}</span>
+          )}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+                     aria-hidden="true" />
+      </button>
+      {open && (
+        <ol className="space-y-0.5 px-2 pb-2">
+          {card.stages.map((stage) => {
+            const state = STAGE_STATE[stage.state] ?? STAGE_STATE.pending;
+            const Icon = state.icon;
+            const isCurrent = stage.key === card.current;
+            const last = stage.protocols[stage.protocols.length - 1];
+            return (
+              <li key={stage.key} className={`flex items-start gap-2 rounded-lg px-2 py-1.5 ${isCurrent
+                ? "bg-blue-50 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:ring-blue-900" : ""}`}>
+                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${state.className}`} aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[14px] ${stage.state === "pending" || stage.state === "skipped"
+                    ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"} ${isCurrent ? "font-semibold" : ""}`}>
+                    {stage.title}
+                  </span>
+                  <span className="block text-[13.5px] text-gray-500 dark:text-gray-400">
+                    {state.label}{stage.items ? ` · ${stage.items.toLocaleString()} items` : ""}
+                    {last && (
+                      <>
+                        {" · "}
+                        <button type="button" title={last.label} className={LINK_BUTTON}
+                                onClick={() => requestFromHelpChat({ kind: "openProtocol", projectId: card.projectId,
+                                                                     protocolId: last.id })}>
+                          #{last.id}
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function Steps({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
   if (steps.length === 0) return null;
@@ -944,6 +1024,8 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             </div>
           </>
         )}
+        {answer.cards.map((card, index) => card.kind === "tutorial"
+          ? <TutorialCard key={`u${index}`} card={card} /> : null)}
         {answer.cards.map((card, index) => card.kind === "templates"
           ? <TemplateOptions key={`t${index}`} card={card} onAsk={onAsk} /> : null)}
         {answer.cards.map((card, index) => card.kind === "report" ? <ReportCard key={`r${index}`} card={card} /> : null)}
@@ -1009,6 +1091,8 @@ export default function HelpChat() {
   const ai = status.assistant;
   // The conversation kept on the server that the questions go on (null: the next question starts one)
   const [conversationId, setConversationId] = useState<number | null>(null);
+  // "tutor": the assistant guides the user step by step (kept with the conversation)
+  const [mode, setMode] = useState<HelpChatMode | null>(null);
   const [view, setView] = useState<"chat" | "history">("chat");
   const [history, setHistory] = useState<HelpConversationSummary[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -1025,6 +1109,7 @@ export default function HelpChat() {
       ? { id: nextId.current++, from: "user", text: message.text }
       : { id: nextId.current++, from: "help", answer: message.answer ?? { text: message.text, cards: [] },
           earlier: true }));
+    setMode(loaded.mode || null);
     keep(loaded.id);
     setView("chat");
   }, [keep]);
@@ -1046,6 +1131,7 @@ export default function HelpChat() {
 
   const startAgain = useCallback(() => {
     setMessages([]);
+    setMode(null);
     keep(null);
     setView("chat");
   }, [keep]);
@@ -1056,6 +1142,7 @@ export default function HelpChat() {
       setHistory((list) => (list ?? []).filter((item) => item.id !== id));
       if (id === conversationId) {
         setMessages([]);
+        setMode(null);
         keep(null);
       }
     } catch (error) {
@@ -1090,9 +1177,10 @@ export default function HelpChat() {
     input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
   }, [draft]);
 
-  const ask = useCallback((question: string) => {
+  const ask = useCallback((question: string, askedMode: HelpChatMode | null = mode) => {
     const text = question.trim();
     if (!text || busy) return;
+    if (askedMode !== mode) setMode(askedMode);
     const askedId = nextId.current++;
     const answerId = nextId.current++;
     const history: HelpTurn[] = messages.flatMap((message): HelpTurn[] => message.from === "user"
@@ -1100,8 +1188,10 @@ export default function HelpChat() {
       : message.answer ? [{ role: "assistant", text: message.answer.text }] : []).slice(-HISTORY_TURNS);
     setMessages((list) => [...list, { id: askedId, from: "user", text }, { id: answerId, from: "help", waiting: true }]);
     setDraft("");
-    askHelp(text, { projectId: focus.projectId, protocolId: focus.protocolId }, history, conversationId)
+    const where = { projectId: focus.projectId, protocolId: focus.protocolId };
+    (askedMode ? askHelp(text, where, history, conversationId, askedMode) : askHelp(text, where, history, conversationId))
       .then((answer) => {
+        if (answer.mode) setMode(answer.mode);
         if (answer.left !== undefined) setStatus((current) => ({ ...current, left: answer.left }));
         if (answer.conversationId) keep(answer.conversationId);
         setMessages((list) => list.map((message) => message.id === answerId
@@ -1110,11 +1200,17 @@ export default function HelpChat() {
       .catch((error: unknown) => setMessages((list) => list.map((message) => message.id === answerId
         ? { id: answerId, from: "help", error: error instanceof Error ? error.message : "The help could not answer" }
         : message)));
-  }, [busy, focus.projectId, focus.protocolId, messages, conversationId, keep]);
+  }, [busy, focus.projectId, focus.protocolId, messages, conversationId, keep, mode]);
+  const askQuick = useCallback((question: string) => ask(question), [ask]);
 
+  const tutor = mode === "tutor";
   const shortcuts: string[] = [];
-  if (focus.protocolId) shortcuts.push("Why did it fail?", "What comes next?");
-  if (focus.projectId) shortcuts.push("How is the project going?");
+  if (tutor) shortcuts.push("What do I do now?", "Is the result fine?", "Explain it more simply");
+  else {
+    if (focus.protocolId) shortcuts.push("Why did it fail?", "What comes next?");
+    if (focus.projectId) shortcuts.push("How is the project going?");
+  }
+  const lastAnswerId = [...messages].reverse().find((message) => message.from === "help")?.id;
   const lastIsAnswer = messages.length > 0 && messages[messages.length - 1].from === "help" && !busy;
 
   return (
@@ -1139,6 +1235,12 @@ export default function HelpChat() {
                   <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[13.5px] font-medium"
                         title={status.left !== undefined ? `${status.left} questions left today` : undefined}>
                     <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI
+                  </span>
+                )}
+                {tutor && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[13.5px] font-medium"
+                        title="The assistant guides you step by step">
+                    <GraduationCap className="h-3.5 w-3.5" aria-hidden="true" /> Tutor
                   </span>
                 )}
               </div>
@@ -1181,8 +1283,11 @@ export default function HelpChat() {
                     <button type="button" onClick={() => void openConversation(item.id).catch((error: unknown) =>
                               setHistoryError(error instanceof Error ? error.message : "Could not open it"))}
                             className="min-w-0 flex-1 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                      <span className="block truncate text-[14.5px] font-medium text-gray-900 dark:text-gray-100">
-                        {item.title || "Untitled"}
+                      <span className="flex items-center gap-1.5 text-[14.5px] font-medium text-gray-900 dark:text-gray-100">
+                        {item.mode === "tutor" && (
+                          <GraduationCap className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-label="Tutor" />
+                        )}
+                        <span className="truncate">{item.title || "Untitled"}</span>
                       </span>
                       <span className="block truncate text-[13.5px] text-gray-500 dark:text-gray-400">
                         {new Date(item.updatedAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -1215,8 +1320,22 @@ export default function HelpChat() {
                 <p className="mt-1.5 text-gray-600 dark:text-gray-400">Write your question in English or Spanish.</p>
               </HelpBubble>
             )}
+            {messages.length === 0 && ai && (
+              <div className="pl-10">
+                <button type="button" disabled={busy} onClick={() => ask(TUTOR_START, "tutor")}
+                        className="flex w-full items-center gap-3 rounded-xl border border-blue-200 bg-white px-3.5 py-2.5 text-left hover:bg-blue-50 disabled:opacity-50 dark:border-blue-900 dark:bg-gray-900 dark:hover:bg-blue-950/40">
+                  <GraduationCap className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                  <span>
+                    <span className="block text-[15px] font-semibold text-blue-700 dark:text-blue-300">Guide me step by step</span>
+                    <span className="block text-[13.5px] text-gray-500 dark:text-gray-400">
+                      New to processing? I follow your project and tell you what to do next, and why.
+                    </span>
+                  </span>
+                </button>
+              </div>
+            )}
             {messages.length === 0 && (
-              <QuickReplies items={[...shortcuts, ...EXAMPLES]} disabled={busy} onAsk={ask} />
+              <QuickReplies items={[...shortcuts, ...EXAMPLES]} disabled={busy} onAsk={askQuick} />
             )}
             {messages.map((message) => {
               if (message.from === "user") {
@@ -1230,10 +1349,13 @@ export default function HelpChat() {
               }
               if (message.waiting) return <Typing key={message.id} label={ai ? "Thinking" : "Looking in the help"} />;
               if (message.error) return <HelpBubble key={message.id} tone="error">{message.error}</HelpBubble>;
-              return message.answer
-                ? <Answer key={message.id} answer={message.answer} onAsk={ask} earlier={message.earlier} /> : null;
+              return message.answer ? (
+                <LatestAnswer.Provider key={message.id} value={message.id === lastAnswerId}>
+                  <Answer answer={message.answer} onAsk={askQuick} earlier={message.earlier} />
+                </LatestAnswer.Provider>
+              ) : null;
             })}
-            {lastIsAnswer && <QuickReplies items={shortcuts} disabled={busy} onAsk={ask} />}
+            {lastIsAnswer && <QuickReplies items={shortcuts} disabled={busy} onAsk={askQuick} />}
           </div>
           )}
 
