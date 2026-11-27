@@ -6,7 +6,7 @@ import { BookOpen, ChevronDown, FileText, History, Trash2, CircleAlert, External
 import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
-  type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions,
+  type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -309,7 +309,8 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 };
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
-type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" }>;
+type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
+  | "deletefrom" | "tag" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -633,6 +634,199 @@ function ContinueCard({ card }: { card: Extract<HelpActionCard, { action: "conti
   );
 }
 
+function LaunchChoice({ checked, onChange, disabled, text }: { checked: boolean; onChange: (value: boolean) => void;
+                                                               disabled: boolean; text: string }) {
+  return (
+    <label className="mt-2 flex items-center gap-2">
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <span>{text}</span>
+    </label>
+  );
+}
+
+function CardButtons({ state, applyText, danger = false, disabled = false, onApply, onCancel }: {
+  state: "open" | "applying"; applyText: string; danger?: boolean; disabled?: boolean; onApply: () => void;
+  onCancel: () => void }) {
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-2">
+      <button type="button" onClick={onApply} disabled={state === "applying" || disabled}
+              className={`rounded-full px-3.5 py-1.5 text-[14px] font-medium text-white disabled:opacity-50 ${danger
+                ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+        {state === "applying" ? "Applying…" : applyText}
+      </button>
+      <button type="button" onClick={onCancel} disabled={state === "applying"}
+              className="rounded-full px-3.5 py-1.5 text-[14px] font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+const SUBWORKFLOW_TEXT = {
+  copyworkflow: { title: "Copy", note: "Copies of these protocols, linked among themselves. The originals stay as they are.",
+                  apply: "Make the copies" },
+  reset: { title: "Reset", note: "Their results are cleared so they can run again. The protocols stay.",
+           apply: "Reset" },
+  deletefrom: { title: "Delete", note: "They are deleted with their folders and results. They cannot be recovered.",
+                apply: "Delete them" },
+} as const;
+
+function isSubworkflowCard(card: HelpActionCard): card is HelpSubworkflowCard {
+  return card.action === "copyworkflow" || card.action === "reset" || card.action === "deletefrom";
+}
+
+/** A protocol with everything depending on it: copied, reset or deleted, exactly the protocols listed. */
+function SubworkflowCard({ card }: { card: HelpSubworkflowCard }) {
+  const readOnly = useContext(CardsReadOnly);
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [launch, setLaunch] = useState(Boolean(card.launch));
+  const [confirm, setConfirm] = useState("");
+  const [done, setDone] = useState("");
+  const text = SUBWORKFLOW_TEXT[card.action];
+  const count = card.protocols.length;
+  const danger = card.action === "deletefrom";
+  const losesResults = card.action !== "copyworkflow";
+  const lost = card.protocols.flatMap((protocol) => protocol.outputs ?? []);
+  const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({
+        action: card.action, projectId: card.projectId, protocolId: card.protocolId,
+        protocolIds: card.protocols.map((protocol) => protocol.protocolId),
+        ...(card.action === "copyworkflow" ? { launch } : {}),
+        ...(danger ? { confirm: confirm.trim() } : {}),
+      });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      setDone(card.action === "copyworkflow"
+        ? `${count === 1 ? "Copy" : `${count} copies`} made${result.newProtocolId ? `, starting at #${result.newProtocolId}` : ""}${result.started ? ", and launched" : ""}.`
+        : card.action === "reset" ? `${count === 1 ? "Reset" : `${count} protocols reset`}.` : `${count === 1 ? "Deleted" : `${count} protocols deleted`}.`);
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The action could not be applied");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={`mt-2 rounded-xl border p-3 text-[14.5px] text-gray-900 dark:text-gray-100 ${danger
+      ? "border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/25"
+      : "border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20"}`}
+         data-testid="help-action">
+      <div className={`text-[13.5px] font-semibold uppercase tracking-wide ${danger
+        ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
+        {danger ? "Cannot be undone" : "Needs your confirmation"}
+      </div>
+      <div className="mt-0.5 font-semibold">
+        {text.title} {where}{count > 1 ? ` and the ${count - 1} after it` : ""}
+      </div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      <div className={`mt-2 ${danger ? "font-semibold" : "text-gray-600 dark:text-gray-400"}`}>{text.note}</div>
+      <ul className="mt-1.5 max-h-48 space-y-0.5 overflow-y-auto pl-1">
+        {card.protocols.map((protocol) => (
+          <li key={protocol.protocolId}>
+            <strong>#{protocol.protocolId}</strong> {protocol.label}
+            <span className="text-gray-500 dark:text-gray-400"> · {protocol.status || "new"}</span>
+            {losesResults && (protocol.outputs ?? []).length > 0 && (
+              <span className="block pl-4 text-[13.5px] text-gray-600 dark:text-gray-400">
+                {(protocol.outputs ?? []).map((output) => `${output.name}${output.size != null
+                  ? `: ${output.size.toLocaleString()} items` : ""}`).join(" · ")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {losesResults && (
+        <div className="mt-1.5 text-gray-700 dark:text-gray-300">
+          {lost.length === 0 ? "No results are lost." : `${lost.length} result${lost.length === 1 ? "" : "s"} lost.`}
+        </div>
+      )}
+      {card.action === "copyworkflow" && (
+        <LaunchChoice checked={launch} onChange={setLaunch} disabled={state !== "open" || readOnly}
+                      text="Launch the copies when they are made" />
+      )}
+      {danger && !readOnly && state !== "done" && (
+        <label className="mt-2 block">
+          <span className="text-gray-700 dark:text-gray-300">Write how many protocols are deleted (<strong>{count}</strong>) to confirm</span>
+          <input value={confirm} onChange={(event) => setConfirm(event.target.value)} disabled={state !== "open"}
+                 aria-label={`Write ${count} to confirm`} inputMode="numeric"
+                 className="mt-1 block w-32 rounded-lg border border-red-300 bg-white px-2.5 py-1.5 text-[14.5px] outline-none focus:border-red-500 dark:border-red-800 dark:bg-gray-950" />
+        </label>
+      )}
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {readOnly ? <EarlierNote /> : state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <CardButtons state={state} danger={danger} onApply={() => void apply()} onCancel={() => setState("cancelled")}
+                     applyText={card.action === "copyworkflow" && launch ? "Copy and launch" : text.apply}
+                     disabled={danger && confirm.trim() !== String(count)} />
+      )}
+    </div>
+  );
+}
+
+/** A tag added by its name to protocols. */
+function TagCard({ card }: { card: HelpTagCard }) {
+  const readOnly = useContext(CardsReadOnly);
+  const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState("");
+  const toTag = card.protocols.filter((protocol) => !protocol.already);
+
+  const apply = async () => {
+    setState("applying");
+    setError(null);
+    try {
+      const result = await applyHelpAction({ action: "tag", projectId: card.projectId, protocolId: card.protocolId,
+                                             tag: card.tag, protocolIds: toTag.map((protocol) => protocol.protocolId) });
+      requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
+      const tagged = result.tagged ?? [];
+      setDone(tagged.length === 0 ? "They already had it." : `Tag added to ${tagged.map((id) => `#${id}`).join(", ")}.`);
+      setState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The tag could not be added");
+      setState("open");
+    }
+  };
+
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-semibold">
+        Add the tag
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[14px] dark:border-gray-700 dark:bg-gray-900">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: card.color || "#9ca3af" }} aria-hidden="true" />
+          {card.tag}
+        </span>
+      </div>
+      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
+      {card.newTag && <div className="mt-2 text-gray-600 dark:text-gray-400">The project has no such tag yet: it is created.</div>}
+      <ul className="mt-1.5 space-y-0.5">
+        {card.protocols.map((protocol) => (
+          <li key={protocol.protocolId}>
+            <strong>#{protocol.protocolId}</strong> {protocol.label}
+            {protocol.already && <span className="text-gray-500 dark:text-gray-400"> · already has it</span>}
+          </li>
+        ))}
+      </ul>
+      {error && <div className="mt-2 text-red-700 dark:text-red-300">{error}</div>}
+      {readOnly ? <EarlierNote /> : state === "done" ? (
+        <div className="mt-2 font-medium text-green-700 dark:text-green-300">{done}</div>
+      ) : state === "cancelled" ? (
+        <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
+      ) : (
+        <CardButtons state={state} applyText="Add the tag" onApply={() => void apply()}
+                     onCancel={() => setState("cancelled")} disabled={toTag.length === 0} />
+      )}
+    </div>
+  );
+}
+
 function ActionCard({ card }: { card: SimpleActionCard }) {
   const readOnly = useContext(CardsReadOnly);
   const [mode, setMode] = useState<HelpRelaunchMode>(card.action === "relaunch" ? card.mode : "restart");
@@ -641,6 +835,8 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState("");
   const [copyId, setCopyId] = useState<string | null>(null);
+  const [launch, setLaunch] = useState(card.action === "duplicate" && Boolean(card.launch));
+  const [started, setStarted] = useState(false);
   const danger = card.action === "delete";
   const confirmed = !danger || confirm.trim().replace(/^#/, "") === card.protocolId;
   const where = `#${card.protocolId}${card.label ? ` ${card.label}` : ""}`;
@@ -665,12 +861,13 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
       const result = await applyHelpAction(card.action === "stop" ? { ...base, action: "stop" }
         : card.action === "delete" ? { ...base, action: "delete", confirm: confirm.trim() }
           : card.action === "duplicate"
-            ? { ...base, action: "duplicate",
+            ? { ...base, action: "duplicate", launch,
                 changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) }
             : { ...base, action: "relaunch", mode, scope: scope ?? undefined,
                 changes: Object.fromEntries(card.changes.map((change) => [change.name, change.to])) });
       requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
       if (card.action === "duplicate" && result.newProtocolId) setCopyId(result.newProtocolId);
+      setStarted(Boolean(result.started));
       setState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The action could not be applied");
@@ -691,11 +888,11 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
           : `${MODE_TEXT[mode].title} ${where}`;
   const doneText = card.action === "stop" ? "Stopping it."
     : card.action === "next" ? "Its form is open: choose the input and launch it."
-      : card.action === "duplicate" ? `Copy${copyId ? ` #${copyId}` : ""} made, not launched.`
+      : card.action === "duplicate" ? `Copy${copyId ? ` #${copyId}` : ""} made${started ? " and launched" : ", not launched"}.`
         : card.action === "delete" ? "Deleted."
           : `${MODE_TEXT[mode].title} sent.`;
   const applyText = card.action === "next" ? "Open its form" : card.action === "delete" ? "Delete"
-    : card.action === "duplicate" ? "Make the copy" : "Apply";
+    : card.action === "duplicate" ? (launch ? "Copy and launch" : "Make the copy") : "Apply";
 
   return (
     <div className={`mt-2 rounded-xl border p-3 text-[14.5px] text-gray-900 dark:text-gray-100 ${danger
@@ -710,9 +907,13 @@ function ActionCard({ card }: { card: SimpleActionCard }) {
       {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
 
       {card.action === "duplicate" && (
-        <div className="mt-2 text-gray-600 dark:text-gray-400">
-          A new protocol, not launched. The original and what depends on it stay as they are.
-        </div>
+        <>
+          <div className="mt-2 text-gray-600 dark:text-gray-400">
+            A new protocol. The original and what depends on it stay as they are.
+          </div>
+          <LaunchChoice checked={launch} onChange={setLaunch} disabled={state !== "open" || readOnly}
+                        text="Launch the copy when it is made" />
+        </>
       )}
 
       {card.action === "delete" && (
@@ -1035,6 +1236,8 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
           : card.action === "template" ? <TemplateCard key={index} card={card} />
             : card.action === "continue" ? <ContinueCard key={index} card={card} />
             : card.action === "subset" ? <SubsetCard key={index} card={card} />
+            : isSubworkflowCard(card) ? <SubworkflowCard key={index} card={card} />
+            : card.action === "tag" ? <TagCard key={index} card={card} />
               : <ActionCard key={index} card={card} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>

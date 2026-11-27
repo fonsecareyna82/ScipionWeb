@@ -83,15 +83,31 @@ export type HelpActionCard =
   | { kind: "action"; action: "next"; projectId: number; protocolId: string; label: string; nextClassName: string;
       nextLabel: string; reason: string }
   | { kind: "action"; action: "duplicate"; projectId: number; protocolId: string; label: string; className: string;
-      status: string; changes: HelpChange[]; reason: string }
+      status: string; changes: HelpChange[]; launch?: boolean; reason: string }
   | { kind: "action"; action: "delete"; projectId: number; protocolId: string; label: string; className: string;
       status: string; outputs: { name: string; type: string; size: number | null }[];
       children: { protocolId: string; label: string; status: string }[]; reason: string }
   | HelpTemplateCard
   | HelpSubsetCard
+  | HelpSubworkflowCard
+  | HelpTagCard
   | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
       title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
       reason: string };
+
+// A protocol with everything depending on it: copied (optionally launched), reset or deleted
+export type HelpOutputLost = { name: string; type: string; size: number | null };
+export type HelpSubworkflowCard = {
+  kind: "action"; action: "copyworkflow" | "reset" | "deletefrom"; projectId: number; protocolId: string;
+  label: string; className: string; status: string; reason: string; launch?: boolean;
+  protocols: { protocolId: string; label: string; status: string; outputs?: HelpOutputLost[] }[];
+};
+
+// A tag added by its name to protocols (newTag: the project does not have it yet)
+export type HelpTagCard = {
+  kind: "action"; action: "tag"; projectId: number; protocolId: string; label: string; tag: string; newTag: boolean;
+  color: string | null; reason: string; protocols: { protocolId: string; label: string; already: boolean }[];
+};
 
 // A subset of an output kept by its values, made with the viewer's own action when applied
 export type HelpSubsetCondition = { column: string; op: string; value: unknown };
@@ -183,7 +199,8 @@ export type AssistantSettings = {
 
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
-  action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset";
+  action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset" | "copyworkflow"
+    | "reset" | "deletefrom" | "tag";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -207,12 +224,16 @@ export type HelpActionApply = {
   makes?: string;
   name?: string;
   chainId?: number;
+  // The protocols the card listed: the server refuses if they changed
+  protocolIds?: string[];
+  tag?: string;
 };
 
 // Runs what the user confirmed; checked again on the server with the user's permissions
 export const applyHelpAction = (payload: HelpActionApply) =>
   request<{ ok: boolean; newProtocolId?: string; chainId?: number; created?: string[]; launched?: string[];
-            errors?: string[]; kept?: number; total?: number }>("/help-chat/actions/apply", "The action could not be applied",
+            errors?: string[]; kept?: number; total?: number; started?: boolean; protocols?: number;
+            tag?: string; newTag?: boolean; tagged?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"

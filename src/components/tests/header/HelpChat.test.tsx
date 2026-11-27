@@ -238,7 +238,7 @@ describe("HelpChat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make the copy" }));
     await screen.findByText("Copy #200 made, not launched.");
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "duplicate", projectId: 7, protocolId: "37",
-                                                             changes: { numberOfClasses: 30 } });
+                                                             launch: false, changes: { numberOfClasses: 30 } });
     expect(requests).toEqual([{ kind: "refresh", projectId: 7 }]);
     off();
   });
@@ -537,5 +537,71 @@ describe("HelpChat", () => {
     expect(screen.getAllByTestId("help-tutorial")).toHaveLength(2);
     expect(screen.getByText("Now: Align the movies")).toBeInTheDocument();
     stop();
+  });
+
+  it("copies and launches when the user asked to launch it", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, newProtocolId: "200", started: true });
+    await proposal({ kind: "action", action: "duplicate", projectId: 7, protocolId: "37", label: "2D",
+                     className: "P", status: "finished", reason: "", changes: [], launch: true });
+    expect(screen.getByLabelText("Launch the copy when it is made")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Copy and launch" }));
+    await screen.findByText("Copy #200 made and launched.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith(expect.objectContaining({ action: "duplicate", launch: true }));
+  });
+
+  const SUBWORKFLOW = { kind: "action", projectId: 7, protocolId: "22", label: "extract", className: "P",
+                        status: "finished", reason: "",
+                        protocols: [
+                          { protocolId: "22", label: "extract", status: "finished",
+                            outputs: [{ name: "outputParticles", type: "SetOfParticles", size: 3445 }] },
+                          { protocolId: "37", label: "2D", status: "finished", outputs: [] },
+                          { protocolId: "105", label: "subset", status: "saved", outputs: [] }] };
+
+  it("deletes a subworkflow only after writing how many protocols go", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, protocols: 3 });
+    await proposal({ ...SUBWORKFLOW, action: "deletefrom" });
+    expect(screen.getByText("Delete #22 extract and the 2 after it")).toBeInTheDocument();
+    expect(screen.getByText(/outputParticles: 3\D?445 items/)).toBeInTheDocument();
+    expect(screen.getByText("1 result lost.")).toBeInTheDocument();
+    const remove = screen.getByRole("button", { name: "Delete them" });
+    fireEvent.change(screen.getByLabelText("Write 3 to confirm"), { target: { value: "22" } });
+    expect(remove).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Write 3 to confirm"), { target: { value: "3" } });
+    fireEvent.click(remove);
+    await screen.findByText("3 protocols deleted.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "deletefrom", projectId: 7, protocolId: "22",
+                                                             protocolIds: ["22", "37", "105"], confirm: "3" });
+  });
+
+  it("copies a subworkflow, launched if ticked, and resets one", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, protocols: 3, newProtocolId: "300", started: true });
+    await proposal({ ...SUBWORKFLOW, action: "copyworkflow" });
+    expect(screen.queryByText(/result.* lost/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Launch the copies when they are made"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy and launch" }));
+    await screen.findByText("3 copies made, starting at #300, and launched.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "copyworkflow", projectId: 7, protocolId: "22",
+                                                             protocolIds: ["22", "37", "105"], launch: true });
+  });
+
+  it("resets a subworkflow", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, protocols: 3 });
+    await proposal({ ...SUBWORKFLOW, action: "reset" });
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await screen.findByText("3 protocols reset.");
+  });
+
+  it("adds a tag, made if new, to the protocols without it", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, tag: "to check", newTag: true, tagged: ["5"] });
+    await proposal({ kind: "action", action: "tag", projectId: 7, protocolId: "5", label: "ctf", tag: "to check",
+                     newTag: true, color: null, reason: "",
+                     protocols: [{ protocolId: "5", label: "ctf", already: false },
+                                 { protocolId: "6", label: "pick", already: true }] });
+    expect(screen.getByText(/it is created/)).toBeInTheDocument();
+    expect(screen.getByText(/already has it/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add the tag" }));
+    await screen.findByText("Tag added to #5.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "tag", projectId: 7, protocolId: "5",
+                                                             tag: "to check", protocolIds: ["5"] });
   });
 });
