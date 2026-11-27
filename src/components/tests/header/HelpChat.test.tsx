@@ -730,4 +730,22 @@ describe("HelpChat", () => {
     await screen.findByText(/Watching until/);
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "watch", projectId: 7, protocolId: "", hours: 24 });
   });
+
+  it("adds and launches a custom operation, its script shown on demand", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, newProtocolId: "61", started: true });
+    await proposal({ kind: "action", action: "custom", projectId: 7, protocolId: "", label: "Negated map",
+                     title: "Negated map", operation: "Negates the map of #45.", script: "print('hi')\n", lines: 1,
+                     reason: "", inputs: [{ role: "volume", param: "inputVolume", protocolId: "45",
+                                            protocolLabel: "refine", output: "outputVolume" }] });
+    expect(screen.getByText("Custom operation “Negated map”")).toBeInTheDocument();
+    expect(screen.queryByTestId("help-custom-script")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show the script (1 lines)" }));
+    expect(screen.getByTestId("help-custom-script")).toHaveTextContent("print('hi')");
+    fireEvent.click(screen.getByRole("button", { name: "Add and launch" }));
+    await screen.findByText("Added as #61 and launched.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({
+      action: "custom", projectId: 7, protocolId: "", name: "Negated map",
+      fields: { operation: "Negates the map of #45.", script: "print('hi')\n",
+                inputs: [{ role: "volume", protocolId: "45", output: "outputVolume" }] } });
+  });
 });

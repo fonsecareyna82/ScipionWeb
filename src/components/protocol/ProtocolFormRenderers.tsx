@@ -579,6 +579,8 @@ export function renderDefaultParamRow({
     current.value ??
     def.default ??
     "";
+  // A long text (a script, a note): several lines
+  const isLongText = String(current.paramClass ?? def.paramClass ?? "") === "TextParam";
 
   const field = (
     <TextField
@@ -586,6 +588,9 @@ export function renderDefaultParamRow({
       fullWidth={!isInline}
       name={stateKey}
       value={textValue}
+      multiline={isLongText}
+      minRows={isLongText ? 3 : undefined}
+      maxRows={isLongText ? 18 : undefined}
       onChange={(e) =>
         setProtocolDetails((prev: any) =>
           isPointerEnabled
@@ -597,7 +602,11 @@ export function renderDefaultParamRow({
         width: isInline ? fieldWidth : "100%",
         minWidth: 0,
         "& .MuiInputBase-root": { minHeight: 36 },
-        "& .MuiInputBase-input": {
+        "& .MuiInputBase-input": isLongText ? {
+          fontSize: 13.5,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          lineHeight: 1.4,
+        } : {
           fontSize: 12,
           padding: "8px 10px",
           lineHeight: 1.2,

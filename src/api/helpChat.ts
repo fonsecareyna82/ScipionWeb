@@ -100,6 +100,7 @@ export type HelpActionCard =
   | HelpManyCard
   | HelpNewProjectCard
   | HelpWatchCard
+  | HelpCustomCard
   | { kind: "action"; action: "continue"; projectId: number; chainId: number; protocolId: string; label: string;
       title: string; next: { protocolId: string; label: string; className: string; stop: boolean }[];
       reason: string };
@@ -155,6 +156,14 @@ export type HelpWatchCard = {
   hours?: number; watched?: string[]; until?: string;
   now?: { acquisition: string | null; items: number | null; unit: string | null; micrographs: number | null;
           resolution?: number | null; totalDrift?: number | null; particles?: number | null };
+};
+
+// A custom operation: a short script written by the assistant, run on outputs of the project as a new protocol
+export type HelpCustomInput = { role: "volume" | "mask" | "particles"; param: string; protocolId: string;
+  protocolLabel: string; output: string };
+export type HelpCustomCard = {
+  kind: "action"; action: "custom"; projectId: number; protocolId: string; label: string; title: string;
+  operation: string; script: string; lines: number; inputs: HelpCustomInput[]; reason: string;
 };
 
 // A subset of an output kept by its values, made with the viewer's own action when applied
@@ -249,7 +258,7 @@ export type AssistantSettings = {
 export type HelpActionApply = {
   action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset" | "copyworkflow"
     | "reset" | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany" | "newproject"
-    | "watch" | "unwatch";
+    | "watch" | "unwatch" | "custom";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;

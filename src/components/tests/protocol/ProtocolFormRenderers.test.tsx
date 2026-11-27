@@ -327,6 +327,18 @@ describe("ProtocolFormRenderers", () => {
     );
   });
 
+  it("renderDefaultParamRow gives a long text (TextParam) several lines", () => {
+    render(
+      renderDefaultParamRow({
+        ...getCommonProps(),
+        def: { default: "", paramClass: "TextParam" },
+        value: "import json\nprint(1)",
+      }),
+    );
+
+    expect(screen.getByDisplayValue(/import json/).tagName).toBe("TEXTAREA");
+  });
+
   it("renderDefaultParamRow supports scalar values and pointers", () => {
     const prev = { params: {} };
     const setProtocolDetails = vi.fn((updater) => updater(prev));

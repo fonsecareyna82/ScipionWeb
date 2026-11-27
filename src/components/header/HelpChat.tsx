@@ -8,6 +8,7 @@ import {
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
   type HelpRenameCard, type HelpScheduleCard, type HelpManyCard, type HelpFocusCard, type HelpNewProjectCard, type HelpWatchCard,
+  type HelpCustomCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -312,7 +313,7 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
 type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
   | "deletefrom" | "tag" | "untag" | "rename" | "schedule" | "stopmany" | "relaunchmany" | "newproject" | "watch"
-  | "unwatch" }>;
+  | "unwatch" | "custom" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -1068,6 +1069,58 @@ function WatchCard({ card }: { card: HelpWatchCard }) {
   );
 }
 
+const ROLE_TEXT: Record<HelpCustomCard["inputs"][number]["role"], string> = {
+  volume: "Volume", mask: "Mask", particles: "Particles",
+};
+
+/** A custom operation: what it does, what it reads, its script to check; added as a protocol and launched. */
+function CustomCard({ card }: { card: HelpCustomCard }) {
+  const { state, setState, error, run } = useSimpleApply(card);
+  const [showScript, setShowScript] = useState(false);
+  const [added, setAdded] = useState("");
+  const label = "text-gray-600 dark:text-gray-400";
+  const apply = () => void run(async () => {
+    const result = await applyHelpAction({
+      action: "custom", projectId: card.projectId, protocolId: "", name: card.title,
+      fields: { operation: card.operation, script: card.script,
+                inputs: card.inputs.map(({ role, protocolId, output }) => ({ role, protocolId, output })) } });
+    if (result.newProtocolId) {
+      setAdded(result.newProtocolId);
+      requestFromHelpChat({ kind: "focusProtocol", projectId: card.projectId, protocolId: result.newProtocolId });
+    }
+  });
+  return (
+    <div className={CARD_BOX} data-testid="help-action">
+      <div className={CARD_EYEBROW}>Needs your confirmation</div>
+      <div className="mt-0.5 font-semibold">Custom operation “{card.title}”</div>
+      {card.reason && <div className={`mt-0.5 ${label}`}>{card.reason}</div>}
+      <div className="mt-2">{card.operation}</div>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        {card.inputs.map((item) => (
+          <div key={item.role} className="contents">
+            <dt className={label}>{ROLE_TEXT[item.role]}</dt>
+            <dd><strong>#{item.protocolId}</strong> {item.protocolLabel} · {item.output}</dd>
+          </div>
+        ))}
+      </dl>
+      <button type="button" className="mt-2 text-[14px] font-medium text-blue-700 hover:underline dark:text-blue-300"
+              aria-expanded={showScript} onClick={() => setShowScript((shown) => !shown)}>
+        {showScript ? "Hide the script" : `Show the script (${card.lines} lines)`}
+      </button>
+      {showScript && (
+        <pre className="mt-1.5 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white p-2.5 font-mono text-[13.5px] leading-snug text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+             data-testid="help-custom-script">{card.script}</pre>
+      )}
+      <div className={`mt-2 ${label}`}>
+        It becomes a new protocol of the project with this script kept in it, and is launched. It runs on the
+        server, writing only in its own folder. Check its result before using it.
+      </div>
+      <CardEnd state={state} error={error} done={added ? `Added as #${added} and launched.` : "Added and launched."}
+               applyText="Add and launch" onApply={apply} onCancel={() => setState("cancelled")} />
+    </div>
+  );
+}
+
 function isTagCard(card: HelpActionCard): card is HelpTagCard {
   return card.action === "tag" || card.action === "untag";
 }
@@ -1579,6 +1632,7 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             : card.action === "newproject" ? <NewProjectCard key={index} card={card as HelpNewProjectCard} />
             : card.action === "watch" || card.action === "unwatch"
               ? <WatchCard key={index} card={card as HelpWatchCard} />
+            : card.action === "custom" ? <CustomCard key={index} card={card as HelpCustomCard} />
               : <ActionCard key={index} card={card as SimpleActionCard} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
