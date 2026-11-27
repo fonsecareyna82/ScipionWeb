@@ -103,9 +103,10 @@ export type HelpSubworkflowCard = {
   protocols: { protocolId: string; label: string; status: string; outputs?: HelpOutputLost[] }[];
 };
 
-// A tag added by its name to protocols (newTag: the project does not have it yet)
+// A tag added by its name to protocols (newTag: the project does not have it yet), or taken off them (untag);
+// already: the protocol has it now
 export type HelpTagCard = {
-  kind: "action"; action: "tag"; projectId: number; protocolId: string; label: string; tag: string; newTag: boolean;
+  kind: "action"; action: "tag" | "untag"; projectId: number; protocolId: string; label: string; tag: string; newTag: boolean;
   color: string | null; reason: string; protocols: { protocolId: string; label: string; already: boolean }[];
 };
 
@@ -200,7 +201,7 @@ export type AssistantSettings = {
 // key: undefined keeps the one there is, "" removes it
 export type HelpActionApply = {
   action: "relaunch" | "stop" | "duplicate" | "delete" | "template" | "continue" | "subset" | "copyworkflow"
-    | "reset" | "deletefrom" | "tag";
+    | "reset" | "deletefrom" | "tag" | "untag";
   projectId: number;
   protocolId: string;
   mode?: HelpRelaunchMode;
@@ -233,7 +234,7 @@ export type HelpActionApply = {
 export const applyHelpAction = (payload: HelpActionApply) =>
   request<{ ok: boolean; newProtocolId?: string; chainId?: number; created?: string[]; launched?: string[];
             errors?: string[]; kept?: number; total?: number; started?: boolean; protocols?: number;
-            tag?: string; newTag?: boolean; tagged?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
+            tag?: string; newTag?: boolean; tagged?: string[]; untagged?: string[] }>("/help-chat/actions/apply", "The action could not be applied",
     { method: "POST", body: JSON.stringify(payload) });
 
 export type AssistantSettingsPayload = Partial<Pick<AssistantSettings, "enabled" | "provider" | "baseUrl" | "model"

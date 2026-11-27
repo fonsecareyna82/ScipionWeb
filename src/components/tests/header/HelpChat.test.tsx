@@ -604,4 +604,18 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "tag", projectId: 7, protocolId: "5",
                                                              tag: "to check", protocolIds: ["5"] });
   });
+
+  it("takes a tag off the protocols that have it", async () => {
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, tag: "to check", untagged: ["5"] });
+    await proposal({ kind: "action", action: "untag", projectId: 7, protocolId: "5", label: "ctf", tag: "to check",
+                     newTag: false, color: "#0a0", reason: "",
+                     protocols: [{ protocolId: "5", label: "ctf", already: true },
+                                 { protocolId: "6", label: "pick", already: false }] });
+    expect(screen.getByText(/Take off the tag/)).toBeInTheDocument();
+    expect(screen.getByText(/does not have it/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Take it off" }));
+    await screen.findByText("Tag taken off #5.");
+    expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "untag", projectId: 7, protocolId: "5",
+                                                             tag: "to check", protocolIds: ["5"] });
+  });
 });

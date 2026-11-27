@@ -310,7 +310,7 @@ const MODE_TEXT: Record<HelpRelaunchMode, { title: string; note: string }> = {
 
 /** A proposal of the assistant: what would happen, and nothing until the user applies it. */
 type SimpleActionCard = Exclude<HelpActionCard, { action: "template" | "continue" | "subset" | "copyworkflow" | "reset"
-  | "deletefrom" | "tag" }>;
+  | "deletefrom" | "tag" | "untag" }>;
 
 const CARD_BOX = "mt-2 rounded-xl border border-amber-300 bg-amber-50/60 p-3 text-[14.5px] text-gray-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-gray-100";
 const CARD_EYEBROW = "text-[13.5px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300";
@@ -770,23 +770,30 @@ function SubworkflowCard({ card }: { card: HelpSubworkflowCard }) {
   );
 }
 
-/** A tag added by its name to protocols. */
+function isTagCard(card: HelpActionCard): card is HelpTagCard {
+  return card.action === "tag" || card.action === "untag";
+}
+
+/** A tag added by its name to protocols, or taken off them. */
 function TagCard({ card }: { card: HelpTagCard }) {
   const readOnly = useContext(CardsReadOnly);
   const [state, setState] = useState<"open" | "applying" | "done" | "cancelled">("open");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState("");
-  const toTag = card.protocols.filter((protocol) => !protocol.already);
+  const remove = card.action === "untag";
+  const toTag = card.protocols.filter((protocol) => (remove ? protocol.already : !protocol.already));
 
   const apply = async () => {
     setState("applying");
     setError(null);
     try {
-      const result = await applyHelpAction({ action: "tag", projectId: card.projectId, protocolId: card.protocolId,
+      const result = await applyHelpAction({ action: card.action, projectId: card.projectId, protocolId: card.protocolId,
                                              tag: card.tag, protocolIds: toTag.map((protocol) => protocol.protocolId) });
       requestFromHelpChat({ kind: "refresh", projectId: card.projectId });
-      const tagged = result.tagged ?? [];
-      setDone(tagged.length === 0 ? "They already had it." : `Tag added to ${tagged.map((id) => `#${id}`).join(", ")}.`);
+      const changed = (remove ? result.untagged : result.tagged) ?? [];
+      const list = changed.map((id) => `#${id}`).join(", ");
+      setDone(remove ? (changed.length === 0 ? "None of them had it." : `Tag taken off ${list}.`)
+        : (changed.length === 0 ? "They already had it." : `Tag added to ${list}.`));
       setState("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "The tag could not be added");
@@ -798,19 +805,21 @@ function TagCard({ card }: { card: HelpTagCard }) {
     <div className={CARD_BOX} data-testid="help-action">
       <div className={CARD_EYEBROW}>Needs your confirmation</div>
       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-semibold">
-        Add the tag
+        {remove ? "Take off the tag" : "Add the tag"}
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[14px] dark:border-gray-700 dark:bg-gray-900">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: card.color || "#9ca3af" }} aria-hidden="true" />
           {card.tag}
         </span>
       </div>
       {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
-      {card.newTag && <div className="mt-2 text-gray-600 dark:text-gray-400">The project has no such tag yet: it is created.</div>}
+      {card.newTag && !remove && <div className="mt-2 text-gray-600 dark:text-gray-400">The project has no such tag yet: it is created.</div>}
+      {remove && <div className="mt-2 text-gray-600 dark:text-gray-400">The tag stays in the project for other protocols.</div>}
       <ul className="mt-1.5 space-y-0.5">
         {card.protocols.map((protocol) => (
           <li key={protocol.protocolId}>
             <strong>#{protocol.protocolId}</strong> {protocol.label}
-            {protocol.already && <span className="text-gray-500 dark:text-gray-400"> · already has it</span>}
+            {remove ? !protocol.already && <span className="text-gray-500 dark:text-gray-400"> · does not have it</span>
+              : protocol.already && <span className="text-gray-500 dark:text-gray-400"> · already has it</span>}
           </li>
         ))}
       </ul>
@@ -820,7 +829,7 @@ function TagCard({ card }: { card: HelpTagCard }) {
       ) : state === "cancelled" ? (
         <div className="mt-2 text-gray-500 dark:text-gray-400">Cancelled: nothing was done.</div>
       ) : (
-        <CardButtons state={state} applyText="Add the tag" onApply={() => void apply()}
+        <CardButtons state={state} applyText={remove ? "Take it off" : "Add the tag"} onApply={() => void apply()}
                      onCancel={() => setState("cancelled")} disabled={toTag.length === 0} />
       )}
     </div>
@@ -1237,7 +1246,7 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
             : card.action === "continue" ? <ContinueCard key={index} card={card} />
             : card.action === "subset" ? <SubsetCard key={index} card={card} />
             : isSubworkflowCard(card) ? <SubworkflowCard key={index} card={card} />
-            : card.action === "tag" ? <TagCard key={index} card={card} />
+            : isTagCard(card) ? <TagCard key={index} card={card} />
               : <ActionCard key={index} card={card} />)}
         <Steps steps={answer.steps ?? []} />
       </HelpBubble>
