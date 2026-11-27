@@ -689,7 +689,7 @@ describe("HelpChat", () => {
     vi.stubGlobal("location", { ...window.location, assign });
     helpMocks.applyHelpAction.mockResolvedValue({ ok: true, projectId: 55, newProtocolId: "2" });
     await proposal({ kind: "action", action: "newproject", projectId: 0, protocolId: "", label: "Krios 27",
-                     name: "Krios 27", folder: "/data/krios/27", dataKind: "movies", importTitle: "Import movies",
+                     name: "Krios 27", folder: "/data/krios/27", importClass: "ProtImportMovies", importTitle: "import movies",
                      pattern: "*.tiff", count: 3445, capped: false, examples: ["a.tiff"],
                      values: [{ name: "samplingRate", label: "Pixel size (Å)", value: 0.83 }],
                      missing: ["Voltage (kV)"], gainFile: null, streaming: true, reason: "" });
@@ -698,9 +698,24 @@ describe("HelpChat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make the project" }));
     await screen.findByText("Made: opening it…");
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "newproject", projectId: 0, protocolId: "",
-      name: "Krios 27", fields: { folder: "/data/krios/27", data: "movies", pattern: "*.tiff", streaming: true,
-                                  gainFile: "", samplingRate: 0.83 } });
+      name: "Krios 27", fields: { data: "ProtImportMovies", folder: "/data/krios/27", pattern: "*.tiff",
+                                  streaming: true, gainFile: "", samplingRate: 0.83 } });
     expect(assign).toHaveBeenCalledWith("/project/load/55?protocol=2&form=1");
+    vi.unstubAllGlobals();
+  });
+
+  it("makes an empty project when only its name was said", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    helpMocks.applyHelpAction.mockResolvedValue({ ok: true, projectId: 57, newProtocolId: null });
+    await proposal({ kind: "action", action: "newproject", projectId: 0, protocolId: "", label: "Test-Krios 27",
+                     name: "Test-Krios 27", importClass: null, importTitle: null, folder: null, pattern: null,
+                     count: null, capped: false, examples: [], values: [], missing: [], gainFile: null,
+                     streaming: false, reason: "" });
+    expect(screen.getByText("An empty project: it opens once made.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Make the project" }));
+    await screen.findByText("Made: opening it…");
+    expect(assign).toHaveBeenCalledWith("/project/load/57");
     vi.unstubAllGlobals();
   });
 

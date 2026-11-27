@@ -141,11 +141,12 @@ export type HelpManyCard = {
 };
 
 // A new project importing the movies (or micrographs) of a folder; the import is saved for the user to review
+// (empty when importClass is null; folder and pattern only when the user gave a folder)
 export type HelpNewProjectCard = {
   kind: "action"; action: "newproject"; projectId: number; protocolId: string; label: string; name: string;
-  folder: string; dataKind: "movies" | "micrographs"; importTitle: string; pattern: string; count: number;
-  capped: boolean; examples: string[]; values: { name: string; label: string; value: number }[]; missing: string[];
-  gainFile: string | null; streaming: boolean; reason: string;
+  importClass: string | null; importTitle: string | null; folder: string | null; pattern: string | null;
+  count: number | null; capped: boolean; examples: string[]; values: { name: string; label: string; value: number }[];
+  missing: string[]; gainFile: string | null; streaming: boolean; reason: string;
 };
 
 // Watching a project that processes in streaming (watch), or no more (unwatch)

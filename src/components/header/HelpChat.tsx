@@ -956,48 +956,62 @@ function ManyCard({ card }: { card: HelpManyCard }) {
   );
 }
 
-/** A new project with the movies (or micrographs) of a folder: made with its import saved, whose form opens. */
+/** A new project: empty, or with the import of the data said (saved, its form opens to review it). */
 function NewProjectCard({ card }: { card: HelpNewProjectCard }) {
   const { state, setState, error, run } = useSimpleApply(card);
   const apply = () => void run(async () => {
     const result = await applyHelpAction({
       action: "newproject", projectId: 0, protocolId: "", name: card.name,
-      fields: { folder: card.folder, data: card.dataKind, pattern: card.pattern, streaming: card.streaming,
-                gainFile: card.gainFile ?? "",
+      fields: { data: card.importClass ?? "", folder: card.folder ?? "", pattern: card.pattern ?? "",
+                streaming: card.streaming, gainFile: card.gainFile ?? "",
                 ...Object.fromEntries(card.values.map((value) => [value.name, value.value])) } });
     if (result.projectId != null) {
       window.location.assign(`/project/load/${encodeURIComponent(String(result.projectId))}${result.newProtocolId
         ? `?protocol=${encodeURIComponent(result.newProtocolId)}&form=1` : ""}`);
     }
   });
+  const label = "text-gray-600 dark:text-gray-400";
   return (
     <div className={CARD_BOX} data-testid="help-action">
       <div className={CARD_EYEBROW}>Needs your confirmation</div>
       <div className="mt-0.5 font-semibold">New project “{card.name}”</div>
-      {card.reason && <div className="mt-0.5 text-gray-600 dark:text-gray-400">{card.reason}</div>}
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-gray-600 dark:text-gray-400">Import</dt><dd>{card.importTitle}{card.streaming ? ", in streaming" : ""}</dd>
-        <dt className="text-gray-600 dark:text-gray-400">Folder</dt><dd className="break-all font-mono text-[13.5px]">{card.folder}</dd>
-        <dt className="text-gray-600 dark:text-gray-400">Files</dt>
-        <dd><span className="font-mono text-[13.5px]">{card.pattern}</span>: <strong>{card.count.toLocaleString()}{card.capped ? "+" : ""}</strong> found</dd>
-        {card.values.map((value) => (
-          <div key={value.name} className="contents">
-            <dt className="text-gray-600 dark:text-gray-400">{value.label}</dt><dd>{value.value}</dd>
+      {card.reason && <div className={`mt-0.5 ${label}`}>{card.reason}</div>}
+      {card.importClass ? (
+        <>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className={label}>Import</dt>
+            <dd className="first-letter:uppercase">{card.importTitle}{card.streaming ? ", in streaming" : ""}</dd>
+            {card.folder && (
+              <><dt className={label}>Folder</dt><dd className="break-all font-mono text-[13.5px]">{card.folder}</dd></>
+            )}
+            {card.pattern && (
+              <><dt className={label}>Files</dt>
+                <dd><span className="font-mono text-[13.5px]">{card.pattern}</span>:{" "}
+                  <strong>{(card.count ?? 0).toLocaleString()}{card.capped ? "+" : ""}</strong> found</dd></>
+            )}
+            {card.values.map((value) => (
+              <div key={value.name} className="contents">
+                <dt className={label}>{value.label}</dt><dd>{value.value}</dd>
+              </div>
+            ))}
+            {card.gainFile && (
+              <><dt className={label}>Gain</dt><dd className="break-all font-mono text-[13.5px]">{card.gainFile}</dd></>
+            )}
+          </dl>
+          {card.examples.length > 0 && (
+            <div className={`mt-1.5 ${label}`}>
+              e.g. <span className="break-all font-mono text-[13.5px]">{card.examples.join(", ")}</span>
+            </div>
+          )}
+          <div className={`mt-2 ${label}`}>
+            The import is added without launching it: its form opens for you to review{card.missing.length
+              ? ` and fill in ${card.missing.join(", ")}` : card.folder ? "" : " and choose the files"}, then
+            launch it.
           </div>
-        ))}
-        {card.gainFile && (
-          <><dt className="text-gray-600 dark:text-gray-400">Gain</dt><dd className="break-all font-mono text-[13.5px]">{card.gainFile}</dd></>
-        )}
-      </dl>
-      {card.examples.length > 0 && (
-        <div className="mt-1.5 text-gray-600 dark:text-gray-400">
-          e.g. <span className="break-all font-mono text-[13.5px]">{card.examples.join(", ")}</span>
-        </div>
+        </>
+      ) : (
+        <div className={`mt-1.5 ${label}`}>An empty project: it opens once made.</div>
       )}
-      <div className="mt-2 text-gray-600 dark:text-gray-400">
-        The import is added without launching it: its form opens for you to review{card.missing.length
-          ? ` and fill in ${card.missing.join(", ")}` : ""}, then launch it.
-      </div>
       <CardEnd state={state} error={error} done="Made: opening it…" applyText="Make the project"
                onApply={apply} onCancel={() => setState("cancelled")} />
     </div>
