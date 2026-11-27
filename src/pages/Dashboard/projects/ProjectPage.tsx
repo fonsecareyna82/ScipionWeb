@@ -6266,19 +6266,23 @@ export default function ProjectPage() {
     [location.search],
   );
   const hasNodes = nodes.length > 0;
+  // Select a protocol and bring it into view (the graph centres on it; the table scrolls to it)
+  const focusProtocol = (protocolId: string): boolean => {
+    const match = nodesRef.current.find((node) => String(node.id) === String(protocolId));
+    if (!match) return false;
+    handleNodeClick({ id: match.id });
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (viewMode === "table") {
+      scrollToProtocol(match.id);
+    } else if (inst) {
+      const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(inst.getViewport().zoom);
+      inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 400 });
+    }
+    return true;
+  };
   useEffect(() => {
     if (!linkedProtocolId || !nodesLoadedOnce || !hasNodes) return;
-    const match = nodes.find((node) => String(node.id) === linkedProtocolId);
-    if (match) {
-      handleNodeClick({ id: match.id });
-      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-      if (viewMode === "table") {
-        scrollToProtocol(match.id);
-      } else if (inst) {
-        const zoom = viewMode === "grid" ? gridZoomRef.current : clampZoom(inst.getViewport().zoom);
-        inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 400 });
-      }
-    }
+    focusProtocol(linkedProtocolId);
     // The link is used once: coming back to the graph does not jump again.
     const params = new URLSearchParams(location.search);
     params.delete("protocol");
@@ -6588,12 +6592,18 @@ export default function ProjectPage() {
   useEffect(() => () => setHelpFocus(null), []);
 
   // What the help chat asks after the user confirms an assistant's card about this project
-  const helpChatHandlersRef = useRef({ handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh });
-  helpChatHandlersRef.current = { handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh };
+  const helpChatHandlersRef = useRef({ handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh,
+                                      focusProtocol });
+  helpChatHandlersRef.current = { handleNodeDoubleClick, openFormForProtocolClass, scheduleDoubleRefresh,
+                                  focusProtocol };
   useEffect(() => onHelpChatRequest((request) => {
     if (projectId == null || Number(request.projectId) !== Number(projectId)) return;
     const handlers = helpChatHandlersRef.current;
     if (request.kind === "openProtocol") void handlers.handleNodeDoubleClick({ id: request.protocolId });
+    else if (request.kind === "focusProtocol") {
+      // Not in the graph (e.g. hidden by a filter): the chat offers to open the project instead
+      if (!handlers.focusProtocol(request.protocolId)) throw new Error("Protocol not shown");
+    }
     else if (request.kind === "openProtocolClass") void handlers.openFormForProtocolClass(request.className);
     else handlers.scheduleDoubleRefresh(5000, true);
   }), [projectId]);

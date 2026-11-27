@@ -674,4 +674,14 @@ describe("HelpChat", () => {
     expect(helpMocks.applyHelpAction).toHaveBeenCalledWith({ action: "stopmany", projectId: 7, protocolId: "30",
                                                              protocolIds: ["30", "31"] });
   });
+  it("centres the graph on the protocol it found, and again from the button", async () => {
+    const requests: HelpChatRequest[] = [];
+    const off = onHelpChatRequest((request) => requests.push(request));
+    await proposal({ kind: "focus", projectId: 7, protocolId: "45", label: "ctffind" });
+    const focus = { kind: "focusProtocol", projectId: 7, protocolId: "45" };
+    expect(requests).toEqual([focus]);
+    fireEvent.click(screen.getByRole("button", { name: "Show #45 ctffind in the graph" }));
+    expect(requests).toEqual([focus, focus]);
+    off();
+  });
 });

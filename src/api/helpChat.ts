@@ -40,6 +40,7 @@ export type HelpCard =
   | HelpTemplateOptions
   | HelpReportCard
   | HelpComparisonCard
+  | HelpFocusCard
   | HelpTutorialCard
   | HelpActionCard;
 
@@ -49,6 +50,9 @@ export type HelpTutorialStage = { key: string; title: string; state: HelpTutoria
   protocols: { id: string; label: string; status: string }[] };
 export type HelpTutorialCard = { kind: "tutorial"; projectId: number; road: "spa" | "tomo"; title: string;
   current: string | null; stages: HelpTutorialStage[] };
+
+// A protocol the assistant found: the project's graph centres on it
+export type HelpFocusCard = { kind: "focus"; projectId: number; protocolId: string; label: string };
 
 // Protocols side by side: the parameters that differ, the outputs' sizes, how long each ran
 export type HelpComparisonCard = {

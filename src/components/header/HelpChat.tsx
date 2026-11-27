@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookOpen, ChevronDown, FileText, History, Trash2, CircleAlert, ExternalLink, MessageCircleQuestionMark, RotateCcw, SendHorizontal,
   SlidersHorizontal, Sparkles, Workflow, X, CheckCircle2, Circle, CircleDashed, CircleMinus, GraduationCap, Hand, Loader2,
-  XCircle } from "lucide-react";
+  LocateFixed, XCircle } from "lucide-react";
 
 import {
   applyHelpAction, askHelp, deleteConversation, downloadReport, getConversation, getHelpChatStatus, listConversations, type HelpActionCard, type HelpAnswer, type HelpCard, type HelpChatStatus,
   type HelpComparisonCard, type HelpLogPlace, type HelpRelaunchMode, type HelpReportCard, type HelpSubsetCard,
   type HelpSubsetCondition, type HelpTemplateCard, type HelpTemplateOptions, type HelpSubworkflowCard, type HelpTagCard,
-  type HelpRenameCard, type HelpScheduleCard, type HelpManyCard,
+  type HelpRenameCard, type HelpScheduleCard, type HelpManyCard, type HelpFocusCard,
   type HelpConversationSummary, type HelpTurn, type HelpChatMode, type HelpTutorialCard, type HelpTutorialState,
 } from "@/api/helpChat";
 import { requestFromHelpChat } from "@/utils/help_chat_actions";
@@ -1313,6 +1313,32 @@ const STAGE_STATE: Record<HelpTutorialState, { label: string; icon: typeof Circl
   pending: { label: "To do", icon: Circle, className: "text-gray-300 dark:text-gray-600" },
 };
 
+/** A protocol the assistant found: the graph centres on it when the answer comes (if that project is open), and
+ * the button does it again, or opens the project there. */
+function FocusCard({ card }: { card: HelpFocusCard }) {
+  const latest = useContext(LatestAnswer);
+  const readOnly = useContext(CardsReadOnly);
+  const shownRef = useRef(false);
+  useEffect(() => {
+    if (shownRef.current || !latest || readOnly) return;
+    shownRef.current = true;
+    requestFromHelpChat({ kind: "focusProtocol", projectId: card.projectId, protocolId: card.protocolId });
+  }, [latest, readOnly, card.projectId, card.protocolId]);
+  const show = () => {
+    if (!requestFromHelpChat({ kind: "focusProtocol", projectId: card.projectId, protocolId: card.protocolId })) {
+      window.location.assign(`/project/load/${encodeURIComponent(String(card.projectId))}?protocol=${
+        encodeURIComponent(card.protocolId)}`);
+    }
+  };
+  return (
+    <button type="button" onClick={show}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-blue-300 px-3 py-1.5 text-[14px] font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40">
+      <LocateFixed className="h-4 w-4" aria-hidden="true" />
+      Show #{card.protocolId}{card.label ? ` ${card.label}` : ""} in the graph
+    </button>
+  );
+}
+
 /** Where the project is on the usual road of a processing, under each answer of the tutor. */
 function TutorialCard({ card }: { card: HelpTutorialCard }) {
   const latest = useContext(LatestAnswer);
@@ -1426,6 +1452,7 @@ function AnswerBody({ answer, onAsk }: { answer: HelpAnswer; onAsk: (question: s
         {answer.cards.map((card, index) => card.kind === "report" ? <ReportCard key={`r${index}`} card={card} /> : null)}
         {answer.cards.map((card, index) => card.kind === "comparison"
           ? <ComparisonCard key={`c${index}`} card={card} /> : null)}
+        {answer.cards.map((card, index) => card.kind === "focus" ? <FocusCard key={`f${index}`} card={card} /> : null)}
         {answer.cards.map((card, index) => card.kind !== "action" ? null
           : card.action === "template" ? <TemplateCard key={index} card={card} />
             : card.action === "continue" ? <ContinueCard key={index} card={card} />
